@@ -1,0 +1,15 @@
+// dice.lust
+// Dice for player.lust to borrow.
+
+do int roll(int sides) {
+    give random(1, sides);
+}
+
+do truth flip() {
+    give either random(0, 1) 1? true or not true;
+}
+
+send roll;
+send flip;
+
+end

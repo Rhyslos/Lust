@@ -1,0 +1,114 @@
+// player.lust
+// A tiny adventure player, made in Lust
+
+get dice:roll;
+
+state = [idle, walking, fighting, knocked_out];
+
+class Player {
+    has {
+        string[name "Hero"];
+        int[hp 20, gold 0, level 1,];
+        float[speed 1.5];
+        truth[alive true, hungry not true];
+        Player[friend nothing];
+        cArray(string itemName, int amount) bag [];
+        state is idle;
+    }
+
+    method pickUp(string itemName, int amount) {
+        bag:inject([itemName, amount]);
+        print(name + " picked up " + amount.text() + " " + itemName);
+    }
+
+    method int attack() {
+        state is fighting;
+        give roll(6) + random(0, 2);
+    }
+
+    method hurt(int damage) {
+        hp = hp - damage;
+
+        is hp <= 0? then {
+            hp = 0;
+            alive = not true;
+            state is knocked_out;
+            print(name + " is knocked out!");
+        } or is hp < 5? then {
+            print(name + " is barely standing");
+        } or {
+            print(name + " has " + hp.text() + " hp left");
+        }
+    }
+
+    method string status() {
+        give either alive true? name + " is ready" or name + " needs a nap";
+    }
+}
+
+object Party {
+    has {
+        Player array members [];
+    }
+
+    method join(Player p) {
+        members:inject(p);
+        int size = #members;
+        print(p.name + " joined! Party size: " + size.text());
+    }
+}
+
+do int heal(Player p, int amount) {
+    is p.alive not true? then {
+        give 0;
+    }
+    p.hp = p.hp + amount;
+    give amount;
+}
+
+send Player;
+send Party;
+send heal;
+send state;
+
+// --- quick test run ---
+// This part only runs when player.lust itself is run.
+
+Player ada = new Player { name "Ada", gold 5 };
+Player bo = new Player { name "Bo" };
+ada.friend = bo;
+
+Party:join(ada);
+Party:join(bo);
+
+ada:pickUp("sword", 1);
+ada:pickUp("apple", 3);
+ada:pickUp("map", 1);
+
+print("Item 2 is: " + ada.bag[2].itemName);
+
+loop (int id, string itemName, int amount in ada.bag) {
+    is itemName "apple"? then {
+        skip;
+    }
+    print("In the bag: " + itemName + " x" + amount.text());
+}
+
+loop 3 {
+    int hit = bo:attack();
+    ada:hurt(hit);
+    wait 1;
+}
+
+loop {
+    ada:hurt(random(1, 4));
+    is ada.alive not true? then {
+        stop;
+    }
+}
+
+int healed = heal(ada, 10);
+print("Healed for " + healed.text());
+print(ada:status());
+
+end
