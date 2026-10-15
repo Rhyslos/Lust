@@ -166,7 +166,7 @@ public sealed class Conversion : Expr
     public Pos MethodPos { get; init; }
 }
 
-public enum FieldKind { Unresolved, Field, Column, State }
+public enum FieldKind { Unresolved, Field, Column, State, Option }
 
 /// `bo.hp`, `bag[2].itemName`
 public sealed class FieldGet : Expr
@@ -176,6 +176,8 @@ public sealed class FieldGet : Expr
     public Pos FieldPos { get; init; }
     public FieldKind Kind { get; set; }
     public FieldSym? Sym { get; set; }
+    public StateSym? OptionState { get; set; }   // for an option written with a dot: fighting.blocking
+    public string OptionPath { get; set; } = "";
 }
 
 public enum MethodKind { Unresolved, User, ArrayInject, ArrayRemove, CArrayInject, CArrayRemove, CArrayHas }

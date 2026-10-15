@@ -213,6 +213,21 @@ class Farm {
 - Two states in the same file may share an option name. Lust always knows which state is meant from what it's compared with.
 - From another file, after `fetch farm:season;`, the type is called `farm.season` (and the main state `farm.state`). The option names work as they are.
 
+### States inside states
+
+An option can hold options of its own, in [ ] right after it. That's handy for anything with a broad mode and finer details, like an enemy's brain or an app's screens:
+
+```
+state = [idle, walking, fighting [attacking, blocking, fleeing [running, hiding]]];
+```
+
+- An option inside another is named with a dot: `state is fighting.blocking;`, `state is fighting.fleeing.hiding;`.
+- A question about an option is also yes for everything inside it: when the state is `fighting.blocking`, both `is state fighting?` and `is state fighting.blocking?` are yes, and `is state fighting.attacking?` is no. In general, `is a b?` with states asks "is a the same as b, or inside it?"
+- `fighting` on its own is an option too, for when the details don't matter yet.
+- `.text()` and `print` show the full name: `fighting.blocking`.
+- `loop (state s in state)` goes through every option, inside ones included, in the order written.
+- An option inside another always needs its full name. Writing `blocking` alone is a mistake, because the same name could sit inside two options.
+
 ## Classes and objects
 
 A **class** is a blueprint: you make as many things from it as you like. An **object** is one ready-made thing, used directly by its name.

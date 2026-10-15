@@ -1,0 +1,7 @@
+nested-states.lust:1:57  walking [ ] is empty. Leave out the [ ] if walking has no options inside it.
+nested-states.lust:6:18  fighting.dancing isn't an option of state. The options are idle, fighting, fighting.attacking, fighting.blocking, walking. Did you mean fighting.blocking?
+nested-states.lust:7:17  red is inside angry, so write angry.red.
+nested-states.lust:12:12  blocking is inside fighting, so write fighting.blocking.
+nested-states.lust:13:12  fighting.blocking.hard isn't an option of state. The options are idle, fighting, fighting.attacking, fighting.blocking, walking. Did you mean fighting.blocking?
+nested-states.lust:14:12  attacking is inside fighting, so write fighting.attacking.
+nested-states.lust:15:16  is sets a state to one of its options by name. To set it from a function, use =: k.state = next(…);

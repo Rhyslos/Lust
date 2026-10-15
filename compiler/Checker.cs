@@ -333,7 +333,7 @@ public sealed class Checker
             {
                 if (field.Type is StateType fst && value is Name opt && !fst.Sym.Options.Contains(opt.Id))
                 {
-                    Error(opt.Pos, $"{opt.Id} isn't an option of {fst.Sym.Display}. The options are {string.Join(", ", fst.Sym.Options)}.{Suggest(opt.Id, fst.Sym.Options)}");
+                    Error(opt.Pos, NotAnOption(opt.Id, fst.Sym));
                     continue;
                 }
                 Expr(value, ctx, field.Type);
@@ -450,7 +450,7 @@ public sealed class Checker
                 }
                 CheckWritable(ss.Target);
                 if (!st.Sym.Options.Contains(ss.Option))
-                    Error(ss.OptionPos, $"{ss.Option} isn't an option of {st.Sym.Display}. The options are {string.Join(", ", st.Sym.Options)}.{Suggest(ss.Option, st.Sym.Options)}");
+                    Error(ss.OptionPos, NotAnOption(ss.Option, st.Sym));
                 ss.State = st.Sym;
                 break;
             }
@@ -778,7 +778,23 @@ public sealed class Checker
             case Call c: return CallType(c, ctx);
             case MethodCall mc: return MethodType(mc, ctx);
             case Conversion cv: return ConversionType(cv, ctx);
-            case FieldGet fg: return FieldType(fg, ctx);
+            case FieldGet fg:
+            {
+                // fighting.blocking: an option inside another option
+                var path = DottedPath(fg);
+                if (path != null && fg.Target is not null && RootIsFree(fg, ctx))
+                {
+                    StateSym? st = expected is StateType est && est.Sym.Options.Contains(path) ? est.Sym : null;
+                    if (st == null)
+                    {
+                        var owners = VisibleStates(ctx.File).Where(x => x.Options.Contains(path)).ToList();
+                        if (owners.Count == 1) st = owners[0];
+                        else if (owners.Count > 1) { Error(fg.Pos, $"{path} is an option of {string.Join(" and ", owners.Select(o => o.Display))}, so Lust can't tell which one is meant here."); return LType.Error; }
+                    }
+                    if (st != null) { fg.Kind = FieldKind.Option; fg.OptionState = st; fg.OptionPath = path; return st.Type; }
+                }
+                return FieldType(fg, ctx);
+            }
             case Index ix:
             {
                 var t = Expr(ix.Target, ctx);
@@ -801,6 +817,30 @@ public sealed class Checker
             case ArrayLit al: return ArrayLitType(al, ctx, expected);
         }
         return LType.Error;
+    }
+
+    /// "x isn't an option of state…", pointing out options that are inside others.
+    static string NotAnOption(string opt, StateSym st)
+    {
+        var inside = st.Options.FirstOrDefault(o => o.EndsWith("." + opt));
+        if (inside != null) return $"{opt} is inside {inside[..inside.LastIndexOf('.')]}, so write {inside}.";
+        return $"{opt} isn't an option of {st.Display}. The options are {string.Join(", ", st.Options)}.{Suggest(opt, st.Options)}";
+    }
+
+    /// a.b.c written as names with dots, or null.
+    static string? DottedPath(Expr e) => e switch
+    {
+        Name n => n.Id,
+        FieldGet { Target: var t } f when DottedPath(t) is string p => p + "." + f.Field,
+        _ => null,
+    };
+
+    /// Is the first name in a.b.c something other than a variable, field, object or file? Then it may be an option.
+    bool RootIsFree(Expr e, Ctx ctx)
+    {
+        while (e is FieldGet f) e = f.Target;
+        if (e is not Name n) return false;
+        return Lookup(ctx, n.Id) == null && ctx.Class?.Field(n.Id) == null && !ctx.File.Classes.ContainsKey(n.Id) && !ctx.File.Modules.Contains(n.Id);
     }
 
     /// Is this a bare option name that belongs to more than one state here?
@@ -841,6 +881,12 @@ public sealed class Checker
         if (owners.Count > 1)
         {
             Error(n.Pos, $"{n.Id} is an option of {string.Join(" and ", owners.Select(o => o.Display))}, so Lust can't tell which one is meant here.");
+            return LType.Error;
+        }
+        var nested = VisibleStates(ctx.File).SelectMany(st => st.Options).FirstOrDefault(o => o.EndsWith("." + n.Id));
+        if (nested != null)
+        {
+            Error(n.Pos, $"{n.Id} is inside {nested[..nested.LastIndexOf('.')]}, so write {nested}.");
             return LType.Error;
         }
         if (ctx.File.Funcs.ContainsKey(n.Id) || (ctx.Class?.Methods.ContainsKey(n.Id) ?? false))

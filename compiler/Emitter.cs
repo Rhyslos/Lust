@@ -42,7 +42,7 @@ public sealed class Emitter
 
         foreach (var f in comp.Files)
             foreach (var s in f.OwnStates)
-                Line($"public enum {s.CsName} {{ {string.Join(", ", s.Options.Select(o => "o_" + o))} }}");
+                Line($"public enum {s.CsName} {{ {string.Join(", ", s.Options.Select((o, i) => $"[LustName({CsString(o)})] o{i}"))} }}");
 
         foreach (var t in comp.CArrays.OrderBy(t => t.Number)) Row(t);
 
@@ -190,8 +190,8 @@ public sealed class Emitter
                 break;
             case StateSet ss:
                 At(ss.Pos);
-                if (ss.Target is Index six) Line($"{Expr(six.Target)}.Set({Expr(six.Key)}, {ss.State!.CsName}.o_{ss.Option});");
-                else Line($"{Expr(ss.Target)} = {ss.State!.CsName}.o_{ss.Option};");
+                if (ss.Target is Index six) Line($"{Expr(six.Target)}.Set({Expr(six.Key)}, {Option(ss.State!, ss.Option)});");
+                else Line($"{Expr(ss.Target)} = {Option(ss.State!, ss.Option)};");
                 break;
             case ExprStmt e:
                 At(e.Pos);
@@ -325,7 +325,7 @@ public sealed class Emitter
                     NameKind.Local => n.Var!.CsName,
                     NameKind.Field => n.Field!.CsName,
                     NameKind.Object => $"{n.Object!.CsName}.Instance",
-                    NameKind.Option => $"{n.State!.CsName}.o_{n.Id}",
+                    NameKind.Option => Option(n.State!, n.Id),
                     _ => throw new InvalidOperationException("unresolved name " + n.Id),
                 };
             case Unary u: return u.Op == UnOp.Neg ? $"(-{Expr(u.Operand)})" : $"(!{Expr(u.Operand)})";
@@ -350,6 +350,9 @@ public sealed class Emitter
                 string l = Expr(s.Left), r = Expr(s.Right);
                 if (s.Left.Type is ClassType || s.Right.Type is ClassType || s.Left.Type == LType.Nothing)
                     return $"({(s.Negated ? "!" : "")}ReferenceEquals({l}, {r}))";
+                // is state fighting? is also yes for fighting.blocking.
+                if (s.Left.Type is StateType)
+                    return $"({(s.Negated ? "!" : "")}LustRt.Under({l}, {r}))";
                 return $"({l} {(s.Negated ? "!=" : "==")} {r})";
             }
             case IsLike il: return $"({(il.Negated ? "!" : "")}({Expr(il.Value)} is {il.Sym!.CsName}))";
@@ -397,6 +400,7 @@ public sealed class Emitter
                 {
                     FieldKind.Field => $"{Expr(fg.Target)}.{fg.Sym!.CsName}",
                     FieldKind.Column => fg.Field == "id" ? $"{Expr(fg.Target)}.id" : $"{Expr(fg.Target)}.c_{fg.Field}",
+                    FieldKind.Option => Option(fg.OptionState!, fg.OptionPath),
                     _ => throw new InvalidOperationException("unresolved field " + fg.Field),
                 };
             case Index ix: return $"{Expr(ix.Target)}.Get({Expr(ix.Key)})";
@@ -419,6 +423,8 @@ public sealed class Emitter
         }
         throw new InvalidOperationException("can't write " + e.GetType().Name);
     }
+
+    static string Option(StateSym st, string path) => $"{st.CsName}.o{st.Options.IndexOf(path)}";
 
     static bool IsConstant(Expr e) => e switch
     {
