@@ -200,6 +200,7 @@ string map names = [];
 - `prices["pear"] = 5;` changes a value, or adds the key when it's new.
 - `prices:remove("seed");` removes a key. `#prices` is how many keys there are.
 - Keys are always text. Values can be any one type: `Dog map`, `int array map`, a state.
+- A negative value goes right after its key: `["cold" -5]`.
 - Looping goes through the keys in the order they were first added. Name the key, then the value:
 
 ```
@@ -297,7 +298,7 @@ has {
 }
 ```
 
-Starting values are plain values only: a number, text, `true`, `not true`, `nothing`, `[]`, or rows for a cArray. Any calculating happens in methods.
+Starting values are plain values only: a number, text, `true`, `not true`, `nothing`, `[]`, rows for a cArray, or a C# value made from plain values (`new DateTime(2026, 1, 1)`). Any calculating happens in methods.
 
 ### Making things
 
@@ -381,7 +382,7 @@ print(twice(double, 3));          // 12
 ```
 
 - A function's name without `()` is the function itself. A method is written `thing:method` without `()`, and stays tied to that thing. Inside a method, the class's own methods work by name alone: `bark`.
-- Call what a variable or parameter holds like a function: `f(5)`. A field that holds one is called like a method: `bo:onBark("hi")`, or `onBark("hi")` inside the class. From an array: `jobs[0]()`.
+- Call what a variable or parameter holds like a function: `f(5)`. A field that holds one is called like a method: `bo:onBark("hi")`, or `onBark("hi")` inside the class. From an array: `jobs[0]()`, and from a cArray's column: `bag[1]:onUse()`.
 - Parameter names may be written for clarity, and are ignored: `do(string who)` is the same type as `do(string)`.
 - A function only fits where it takes and gives back exactly the same types.
 - A function value can be `nothing`, which suits events nobody has filled in yet: `do() [onDayEnd nothing];` in a has block. Calling `nothing` stops the program with an error, so check first: `is onDayEnd nothing?`.
@@ -487,8 +488,9 @@ print(NumberToWordsExtension:ToWords(42));  // forty-two
 
 - Any public type from .NET works: `System.IO.File`, `System.DateTime`, `System.Text.RegularExpressions.Regex` and so on. A type from a NuGet package names the package and version after `from`; it's downloaded the first time, so that needs the internet.
 - Values become Lust's own as they come and go. C# whole numbers are `int`, `double`, `float` and `decimal` are `float`, `string` and `char` are `string`, `bool` is `truth`, and lists and arrays become Lust arrays (a copy). Anything else is a C# value, which Lust keeps and passes back as it is. Its type is written by its short name: `Random dice`, `Random array dice`.
-- When a method has several versions, Lust picks the one that fits the values best.
-- Lust's own values have C# methods too: `"a,b,c":Split(",")` gives a string array, `"lust":ToUpper()`, `3.14159:ToString("F2")`.
+- When a method has several versions, Lust picks the one that fits the values best. Methods that take any number of values (`String:Format("{0} and {1}", a, b)`) take them one by one.
+- Lust's own values have C# methods too: `"a,b,c":Split(",")` gives a string array, `"lust":ToUpper()`, `3.14159:ToString("F2")`, and `name.Length` reads a C# property.
+- A C# type's name on its own isn't a value: it's always followed by `:` or `.`.
 - What a C# method gives back can be left unused (`sb:Append("x");`), unlike a Lust function's.
 - `is a b?` compares C# values the C# way, so two equal dates are the same. `x.text()` gives a C# value as text.
 - Not yet: generic types (List, Dictionary; use Lust's arrays and maps), events, `out` parameters, and C# methods kept as values.
