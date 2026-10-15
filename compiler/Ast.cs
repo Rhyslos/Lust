@@ -110,7 +110,7 @@ public sealed class StrLit : Expr { public string Value { get; init; } = ""; }
 public sealed class TruthLit : Expr { }                       // `true`; `not true` is Not(TruthLit)
 public sealed class NothingLit : Expr { }
 
-public enum NameKind { Unresolved, Local, Field, Object, Option }
+public enum NameKind { Unresolved, Local, Field, Object, Option, Function, Method, CsType }
 
 public sealed class Name : Expr
 {
@@ -120,6 +120,7 @@ public sealed class Name : Expr
     public FieldSym? Field { get; set; }
     public ClassSym? Object { get; set; }
     public StateSym? State { get; set; }   // for an option: which state it belongs to
+    public FuncSym? Func { get; set; }     // for a function or method used as a value: greet, bark
 }
 
 public enum UnOp { Neg, Not }
@@ -166,6 +167,24 @@ public sealed class Call : Expr
     public string Callee { get; init; } = "";
     public List<Expr> Args { get; init; } = new();
     public FuncSym? Func { get; set; }
+    /// When the name holds a function (a variable, parameter or field): what to call.
+    public Expr? Value { get; set; }
+}
+
+/// Calling a function that's kept somewhere other than a name: handlers[0](5)
+public sealed class CallValue : Expr
+{
+    public Expr Target { get; init; } = null!;
+    public List<Expr> Args { get; init; } = new();
+}
+
+/// `bo:bark` without (): the method, kept as a value to call later.
+public sealed class MethodRef : Expr
+{
+    public Expr Target { get; init; } = null!;
+    public string Method { get; init; } = "";
+    public Pos MethodPos { get; init; }
+    public FuncSym? Func { get; set; }
 }
 
 /// `x.text()`, `x.int()`, `x.float()`, `x.isNumber()`: built-in conversions.
@@ -201,6 +220,8 @@ public sealed class MethodCall : Expr
     public List<Expr> Args { get; init; } = new();
     public MethodKind Kind { get; set; }
     public FuncSym? Func { get; set; }
+    public FieldSym? Field { get; set; }   // CallField: a field that holds a function
+    public object? Cs { get; set; }        // Cs: the C# method (a CsCall)
 }
 
 /// `scores[0]`, `bag[2]`

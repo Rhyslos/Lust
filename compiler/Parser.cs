@@ -227,7 +227,7 @@ public sealed class Parser
             switch (Cur.Text)
             {
                 case "class" or "object" when Cur.Kind == Tk.Ident: program.Classes.Add(ClassDeclaration()); return;
-                case "do" when Cur.Kind == Tk.Ident: program.Funcs.Add(FunctionDeclaration(isMethod: false)); return;
+                case "do" when Cur.Kind == Tk.Ident && !DoIsType(): program.Funcs.Add(FunctionDeclaration(isMethod: false)); return;
                 case "send" when Cur.Kind == Tk.Ident: program.Sends.Add(SendDeclaration()); return;
                 case "fetch" or "get" when Cur.Kind == Tk.Ident: program.Fetches.Add(FetchDeclaration()); return;
                 case "state" when Cur.Kind == Tk.Ident && IsStateDeclaration(): program.States.Add(StateDeclaration()); return;
@@ -524,7 +524,7 @@ public sealed class Parser
     {
         var word = Next();
         TypeRef? returns = null;
-        if (!(At(Tk.Ident) && PeekAt(1).Kind == Tk.LParen))
+        if (AtWord("do") || !(At(Tk.Ident) && PeekAt(1).Kind == Tk.LParen))
         {
             if (!At(Tk.Ident)) throw Fail(MissingAt, $"expected a name, like {word.Text} greet() {{ }}");
             if (AtWord("void")) throw Fail(Cur.Pos, Hints["void"]);
@@ -559,6 +559,7 @@ public sealed class Parser
         if (Cur.Kind != Tk.Ident) return false;
         var t = Cur.Text;
         if (LType.Primitive(t) != null || t == "cArray") return true;
+        if (t == "do") return DoIsType();
         if (PeekAt(1).Is("array") || PeekAt(1).Is("map")) return true;
         if (t == "state") return PeekAt(1).Kind == Tk.Ident && !PeekAt(1).Is("is");
         if (Reserved.Contains(t)) return false;
@@ -569,11 +570,48 @@ public sealed class Parser
         return false;
     }
 
+    /// After do: a function type (do int(int) f = …;) rather than a function (do int double(int n) { })?
+    /// A function's ( ) is followed by its { body }.
+    bool DoIsType()
+    {
+        int i = p + 1;
+        while (i < toks.Count && toks[i].Kind != Tk.LParen && toks[i].Kind is not (Tk.Semi or Tk.LBrace or Tk.Eof)) i++;
+        if (i >= toks.Count || toks[i].Kind != Tk.LParen) return false;
+        int depth = 0;
+        for (; i < toks.Count; i++)
+        {
+            if (toks[i].Kind == Tk.LParen) depth++;
+            else if (toks[i].Kind == Tk.RParen && --depth == 0) break;
+            else if (toks[i].Kind is Tk.Semi or Tk.LBrace or Tk.Eof) return false;
+        }
+        return i + 1 < toks.Count && toks[i + 1].Kind != Tk.LBrace;
+    }
+
     TypeRef Type()
     {
         var t = Cur;
         TypeRef type;
-        if (AtWord("cArray"))
+        if (AtWord("do"))
+        {
+            // do(int, string) takes an int and a string; do int(int) also gives back an int.
+            Next();
+            TypeRef? ret = null;
+            if (!At(Tk.LParen)) ret = Type();
+            Expect(Tk.LParen, "a function type lists what it takes in ( ), like do(int) or do int(int, int)");
+            var prms = new List<ParamDecl>();
+            while (!At(Tk.RParen))
+            {
+                var pt = Type();
+                // A name is allowed, to say what it's for: do(int amount)
+                if (At(Tk.Ident) && PeekAt(1).Kind is Tk.Comma or Tk.RParen) Next();
+                prms.Add(new ParamDecl(pt, "", pt.Pos));
+                if (At(Tk.Comma)) { Next(); continue; }
+                if (!At(Tk.RParen)) throw Fail(MissingAt, "expected , or ) here.");
+            }
+            Next();
+            type = new TypeRef { Pos = t.Pos, Kind = TypeKind.Func, Elem = ret, Columns = prms };
+        }
+        else if (AtWord("cArray"))
         {
             Next();
             Expect(Tk.LParen, "a cArray lists its columns: cArray(string itemName, int amount)");
@@ -671,7 +709,7 @@ public sealed class Parser
             case "then": throw Fail(t.Pos, "then comes after a question: is hp 0? then { }");
             case "or": throw Fail(t.Pos, "or goes right after the } of a question: } or { }");
             case "class" or "object": throw Fail(t.Pos, $"a {t.Text} goes at the top level of a file, not inside a block.");
-            case "do": throw Fail(t.Pos, "a function can't go inside another one. Put do at the top level of the file.");
+            case "do" when !DoIsType(): throw Fail(t.Pos, "a function can't go inside another one. Put do at the top level of the file.");
             case "method": throw Fail(t.Pos, "a method can't go inside another one. Put it directly inside its class.");
             case "send" or "fetch" or "get": throw Fail(t.Pos, $"{t.Text} goes at the top level of a file.");
             case "has": throw Fail(t.Pos, "a has block goes inside a class or object.");
@@ -703,7 +741,8 @@ public sealed class Parser
             EndStatement();
             return new StateSet { Pos = t.Pos, Target = target, Option = opt.Text, OptionPos = opt.Pos };
         }
-        if (target is not (Call or MethodCall))
+        if (target is MethodRef mr) throw Fail(mr.MethodPos, $"add () to call it: {Snippet(mr.Target)}:{mr.Method}()");
+        if (target is not (Call or MethodCall or CallValue))
             throw Fail(t.Pos, "this line doesn't do anything. A line can declare, change a variable, call something, ask a question or loop.");
         EndStatement();
         return new ExprStmt { Pos = t.Pos, Expr = target };
@@ -1054,7 +1093,12 @@ public sealed class Parser
                 Next();
                 if (!At(Tk.Ident)) throw Fail(MissingAt, "expected a method name after :, like bo:bark()");
                 var m = Next();
-                if (!At(Tk.LParen)) throw Fail(MissingAt, $"add () to call it: {Snippet(e)}:{m.Text}()");
+                if (!At(Tk.LParen))
+                {
+                    // bo:bark without (): the method itself, to call later.
+                    e = new MethodRef { Pos = e.Pos, Target = e, Method = m.Text, MethodPos = m.Pos };
+                    continue;
+                }
                 var args = Arguments(m.Text);
                 e = new MethodCall { Pos = e.Pos, Target = e, Method = m.Text, MethodPos = m.Pos, Args = args };
                 continue;
@@ -1073,6 +1117,12 @@ public sealed class Parser
                 }
                 finally { noSpacedCall = saved; }
                 e = new Index { Pos = e.Pos, Target = e, Key = key };
+                continue;
+            }
+            if (At(Tk.LParen) && !Cur.SpaceBefore && e is Index or CallValue or Call or MethodCall)
+            {
+                // handlers[0](5): call the function kept there
+                e = new CallValue { Pos = e.Pos, Target = e, Args = Arguments("it") };
                 continue;
             }
             return e;

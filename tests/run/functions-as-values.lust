@@ -1,0 +1,49 @@
+do int double(int n) { give n * 2; }
+do int add(int a, int b) { give a + b; }
+do greet(string who) { print("Hello " + who); }
+
+do int twice(do int(int) f, int x) {
+    give f(f(x));
+}
+
+do int(int) f = double;
+print(f(5));
+print(twice(double, 3));
+do int(int, int) g = add;
+print(g(2, 3));
+do(string who) hi = greet;
+hi("Bo");
+
+class Dog {
+    has {
+        string[name "Rex"];
+        do(string) [onBark nothing];
+    }
+    method bark() {
+        print(name + " says woof");
+        is onBark not nothing? then { onBark(name); }
+    }
+    method do() barker() {
+        give bark;
+    }
+}
+
+Dog bo = new Dog { name "Bo" };
+do() later = bo:bark;
+later();
+bo.onBark = greet;
+bo:bark();
+bo:onBark("again");
+do() b2 = bo:barker();
+b2();
+
+do() array jobs = [bo:bark, later];
+loop (do() j in jobs) { j(); }
+jobs[0]();
+
+do(int) map events = [];
+is f double? then { print("same function"); }
+is f nothing? then { print("nothing?"); } or { print("not nothing"); }
+print(f);
+
+end

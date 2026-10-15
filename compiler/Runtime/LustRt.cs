@@ -205,6 +205,13 @@ public static class LustRt
         return x == y || x.StartsWith(y + ".");
     }
 
+    /// A function kept in a variable or field, checked before it's called.
+    public static T Fn<T>(T f, string name = null) where T : Delegate =>
+        f ?? throw new LustError(name == null ? "this function is nothing, so it can't be called." : $"{name} is nothing, so it can't be called. Check first: is {name} nothing?");
+
+    /// Something whose method is about to be kept as a value: it must not be nothing.
+    public static T Use<T>(T x) where T : class => x ?? throw new NullReferenceException();
+
     public static long Div(long a, long b) { if (b == 0) throw new DivideByZeroException(); return checked(a / b); }
     public static long Mod(long a, long b) { if (b == 0) throw new DivideByZeroException(); return a % b; }
     public static long Same(long v) => v;
@@ -233,6 +240,7 @@ public static class LustRt
         double d => Text(d),
         bool b => Text(b),
         Enum e => OptionName(e),
+        Delegate => "a function",
         _ => v.ToString(),
     };
 

@@ -107,7 +107,7 @@ public sealed class FuncType : LType
     public LType Return { get; }   // LType.None when it gives nothing back
     FuncType(IReadOnlyList<LType> prms, LType ret) { Params = prms; Return = ret; }
     public override string Name => $"do{(Return == None ? "" : " " + Return.Name)}({string.Join(", ", Params.Select(p => p.Name))})";
-    public override string WithArticle => "a function, " + Name + ",";
+    public override string WithArticle => $"a {Name} function";
     public override string Cs => Return == None
         ? (Params.Count == 0 ? "Action" : $"Action<{string.Join(", ", Params.Select(p => p.Cs))}>")
         : $"Func<{string.Join(", ", Params.Select(p => p.Cs).Append(Return.Cs))}>";

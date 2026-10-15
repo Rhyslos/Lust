@@ -340,6 +340,8 @@ public sealed class Emitter
                     NameKind.Field => n.Field!.CsName,
                     NameKind.Object => $"{n.Object!.CsName}.Instance",
                     NameKind.Option => Option(n.State!, n.Id),
+                    NameKind.Function => $"new {n.Type.Cs}({n.Func!.CsName})",
+                    NameKind.Method => $"new {n.Type.Cs}(m_{n.Func!.Name})",
                     _ => throw new InvalidOperationException("unresolved name " + n.Id),
                 };
             case Unary u: return u.Op == UnOp.Neg ? $"(-{Expr(u.Operand)})" : $"(!{Expr(u.Operand)})";
@@ -362,6 +364,9 @@ public sealed class Emitter
             {
                 // Compare as objects when one side is nothing, so C# doesn't need a common type.
                 string l = Expr(s.Left), r = Expr(s.Right);
+                // Two functions are the same when they're the same function (or the same method of the same thing).
+                if (s.Left.Type is FuncType || s.Right.Type is FuncType)
+                    return $"({(s.Negated ? "!" : "")}Equals({l}, {r}))";
                 if (s.Left.Type is ClassType || s.Right.Type is ClassType || s.Left.Type == LType.Nothing)
                     return $"({(s.Negated ? "!" : "")}ReferenceEquals({l}, {r}))";
                 // is state fighting? is also yes for fighting.blocking.
@@ -375,6 +380,12 @@ public sealed class Emitter
                 var type = ei.Type;
                 return $"({Expr(ei.Check)} ? {CastTo(ei.Yes, type)} : {CastTo(ei.No, type)})";
             }
+            case Call { Value: not null } vc:
+                return $"LustRt.Fn({Expr(vc.Value)}, {CsString(vc.Callee)})({FnArguments(vc.Args, (FuncType)vc.Value.Type)})";
+            case CallValue cvl:
+                return $"LustRt.Fn({Expr(cvl.Target)})({FnArguments(cvl.Args, (FuncType)cvl.Target.Type)})";
+            case MethodRef mr:
+                return $"new {mr.Type.Cs}(LustRt.Use({Expr(mr.Target)}).m_{mr.Method})";
             case Call c:
                 return c.Callee switch
                 {
@@ -389,6 +400,7 @@ public sealed class Emitter
                 return mc.Kind switch
                 {
                     MethodKind.User => $"{target}.m_{mc.Method}({Arguments(mc.Args, mc.Func!)})",
+                    MethodKind.CallField => $"LustRt.Fn({target}.{mc.Field!.CsName}, {CsString(mc.Method)})({FnArguments(mc.Args, (FuncType)mc.Field.Type)})",
                     MethodKind.ArrayInject => $"{target}.Inject({Coerce(mc.Args[0], ((ArrayType)mc.Target.Type).Elem)})",
                     MethodKind.ArrayRemove => $"{target}.Remove({Expr(mc.Args[0])})",
                     MethodKind.CArrayInject => $"{target}.Inject({Expr(mc.Args[0])})",
@@ -466,6 +478,9 @@ public sealed class Emitter
         if (type is ClassType && (e.Type != type)) return $"(({type.Cs}){Expr(e)})";
         return Expr(e);
     }
+
+    string FnArguments(List<Expr> args, FuncType ft) =>
+        string.Join(", ", args.Select((a, i) => Coerce(a, ft.Params[i])));
 
     string Arguments(List<Expr> args, FuncSym fn) =>
         string.Join(", ", args.Select((a, i) => Coerce(a, fn.Params[i].Type)));

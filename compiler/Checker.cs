@@ -707,6 +707,8 @@ public sealed class Checker
             _ when actual == LType.String && wanted.IsNumber => $" Use .{wanted.Name}() to turn text into a number.",
             _ when actual == LType.Nothing => " Only things made from classes can be nothing.",
             _ when actual is ClassType ac && wanted is ClassType wc => $" A {ac.Name} isn't like a {wc.Name}.",
+            _ when actual is FuncType af && af.Return == wanted => " Add () to call it.",
+            _ when actual is FuncType && wanted is FuncType => " A function only fits where it takes and gives back exactly the same types.",
             _ => "",
         };
         Error(e.Pos, $"{subject}, but this is {actual.WithArticle}.{fix}");
@@ -812,6 +814,28 @@ public sealed class Checker
                 return LType.Error;
             }
             case Call c: return CallType(c, ctx);
+            case CallValue cv:
+            {
+                var t = Expr(cv.Target, ctx);
+                if (t is FuncType ft) return CallFunctionValue(ft, cv.Args, "it", cv.Pos, ctx);
+                foreach (var a in cv.Args) Expr(a, ctx);
+                if (t != LType.Error) Error(cv.Pos, $"this is {t.WithArticle}, not a function, so it can't be called.");
+                return LType.Error;
+            }
+            case MethodRef mr:
+            {
+                var t = Expr(mr.Target, ctx);
+                if (t == LType.Error) return t;
+                if (t is ClassType ct && ct.Sym.Methods.TryGetValue(mr.Method, out var meth)) { mr.Func = meth; return FuncOf(meth); }
+                if (t is ClassType ct2 && ct2.Sym.Field(mr.Method) != null)
+                {
+                    Error(mr.MethodPos, $"{mr.Method} is a field: {Describe(mr.Target)}.{mr.Method}");
+                    return LType.Error;
+                }
+                if (t is CsType) { Error(mr.MethodPos, $"add () to call it: {Describe(mr.Target)}:{mr.Method}(…). A C# method can't be kept as a value."); return LType.Error; }
+                Error(mr.MethodPos, t is ClassType ct3 ? $"{ct3.Sym.Name} has no method called {mr.Method}.{Suggest(mr.Method, ct3.Sym.Methods.Keys)}" : $"{Describe(mr.Target)} is {t.WithArticle}, which has no methods.");
+                return LType.Error;
+            }
             case MethodCall mc: return MethodType(mc, ctx);
             case Conversion cv: return ConversionType(cv, ctx);
             case FieldGet fg:
@@ -902,7 +926,9 @@ public sealed class Checker
     {
         if (Parser.Builtins.Contains(n.Id))
         {
-            Error(n.Pos, n.Id == "wait" ? "wait goes on its own line: wait 1;" : $"{n.Id} is something you call: {n.Id}(…)");
+            Error(n.Pos, n.Id == "wait" ? "wait goes on its own line: wait 1;"
+                : expected is FuncType ? $"{n.Id} is built into Lust, so it can't be kept as a value. Wrap it in your own function: do show(string s) {{ {n.Id}(s); }}"
+                : $"{n.Id} is something you call: {n.Id}(…)");
             return LType.Error;
         }
         var v = Lookup(ctx, n.Id);
@@ -932,11 +958,9 @@ public sealed class Checker
             Error(n.Pos, $"{n.Id} is inside {nested[..nested.LastIndexOf('.')]}, so write {nested}.");
             return LType.Error;
         }
-        if (ctx.File.Funcs.ContainsKey(n.Id) || (ctx.Class?.Methods.ContainsKey(n.Id) ?? false))
-        {
-            Error(n.Pos, $"{n.Id} is a function. Call it with (): {n.Id}(…)");
-            return LType.Error;
-        }
+        // A function or method on its own, without (), is the function itself, kept as a value.
+        if (ctx.Class != null && ctx.Class.Methods.TryGetValue(n.Id, out var meth)) { n.Kind = NameKind.Method; n.Func = meth; return FuncOf(meth); }
+        if (ctx.File.Funcs.TryGetValue(n.Id, out var fnv)) { n.Kind = NameKind.Function; n.Func = fnv; return FuncOf(fnv); }
         if (ctx.File.States.TryGetValue(n.Id, out var stype))
         {
             Error(n.Pos, $"{n.Id} is a state, a list of options. Use one of its options, like {stype.Options[0]}.");
@@ -1077,12 +1101,12 @@ public sealed class Checker
         }
     }
 
-    void Args(List<Expr> args, IReadOnlyList<(string Name, LType Type)> prms, string callee, Pos pos, Ctx ctx)
+    void Args(List<Expr> args, IReadOnlyList<(string Name, LType Type)> prms, string callee, Pos pos, Ctx ctx, bool unnamed = false)
     {
         if (args.Count != prms.Count)
         {
             foreach (var a in args) Expr(a, ctx);
-            var want = prms.Count == 0 ? "nothing" : string.Join(", ", prms.Select(p => $"{p.Type.Name} {p.Name}"));
+            var want = prms.Count == 0 ? "nothing" : string.Join(", ", prms.Select(p => unnamed ? p.Type.Name : $"{p.Type.Name} {p.Name}"));
             Error(pos, prms.Count == 0
                 ? $"{callee} takes nothing, but got {args.Count}. Leave the () empty."
                 : $"{callee} takes {(prms.Count == 1 ? "1 thing" : $"{prms.Count} things")} ({want}), but got {args.Count}.");
@@ -1093,6 +1117,18 @@ public sealed class Checker
             Expr(args[i], ctx, prms[i].Type);
             ExpectFits(args[i], prms[i].Type, $"{callee}'s {prms[i].Name} is {prms[i].Type.WithArticle}");
         }
+    }
+
+    static FuncType FuncOf(FuncSym fn) => FuncType.Of(fn.Params.Select(p => p.Type).ToList(), fn.Return);
+
+    static readonly string[] Ordinals = { "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth" };
+    static List<(string, LType)> Unnamed(FuncType ft) => ft.Params.Select((t, i) => (i < Ordinals.Length ? Ordinals[i] + " thing" : $"thing {i + 1}", t)).ToList();
+
+    /// Calls a function kept as a value. The checker has already worked out the target's type.
+    LType CallFunctionValue(FuncType ft, List<Expr> args, string callee, Pos pos, Ctx ctx)
+    {
+        Args(args, Unnamed(ft), callee, pos, ctx, unnamed: true);
+        return ft.Return;
     }
 
     LType CallType(Call c, Ctx ctx)
@@ -1131,6 +1167,13 @@ public sealed class Checker
                 Error(c.Pos, "wait goes on its own line, without (): wait 1;");
                 return LType.None;
         }
+        // A variable, parameter or field that holds a function: call what it holds.
+        if (Lookup(ctx, c.Callee) is { Type: FuncType } || ctx.Class?.Field(c.Callee) is { Type: FuncType })
+        {
+            c.Value = new Name { Pos = c.Pos, Id = c.Callee };
+            var ft = (FuncType)Expr(c.Value, ctx);
+            return CallFunctionValue(ft, c.Args, c.Callee, c.Pos, ctx);
+        }
         FuncSym? fn = null;
         if (ctx.Class != null && ctx.Class.Methods.TryGetValue(c.Callee, out var m)) fn = m;
         else if (ctx.File.Funcs.TryGetValue(c.Callee, out var f)) fn = f;
@@ -1162,7 +1205,14 @@ public sealed class Checker
         {
             case ClassType ct:
             {
-                if (!ct.Sym.Methods.TryGetValue(mc.Method, out var m))
+                if (!ct.Sym.Methods.TryGetValue(mc.Method, out var m) && ct.Sym.Field(mc.Method) is { Type: FuncType fieldFn } fnField)
+                {
+                    // bo:onHit(3) where onHit is a field holding a function
+                    mc.Kind = MethodKind.CallField;
+                    mc.Field = fnField;
+                    return CallFunctionValue(fieldFn, mc.Args, mc.Method, mc.MethodPos, ctx);
+                }
+                if (m == null)
                 {
                     foreach (var a in mc.Args) Expr(a, ctx);
                     var hint = ct.Sym.Field(mc.Method) != null ? $" {mc.Method} is a field: {who}.{mc.Method}" : Suggest(mc.Method, ct.Sym.Methods.Keys);
