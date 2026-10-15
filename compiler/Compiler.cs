@@ -9,6 +9,8 @@ public sealed class FileUnit
     public string Module => Source.Module;
     public string CsModule { get; set; } = "";
     public bool IsMain { get; init; }
+    /// Built into Lust (ui.lust): checked like any file, but its classes come from Lust's runtime.
+    public bool IsNative { get; init; }
 
     public Dictionary<string, ClassSym> Classes { get; } = new();   // classes and objects
     public Dictionary<string, FuncSym> Funcs { get; } = new();
@@ -29,6 +31,8 @@ public sealed class Compilation
     public List<FileUnit> Files { get; } = new();
     public Diagnostics Diags { get; } = new();
     public HashSet<CArrayType> CArrays { get; } = new();
+    /// Whether the program fetches the built-in ui file, so it needs Windows and WinForms.
+    public bool UsesUi => Files.Any(f => f.IsNative && f.Module == "ui");
 
     public FileUnit? FileFor(string module, FileUnit from) =>
         Files.FirstOrDefault(f => f.Module.Equals(module, StringComparison.OrdinalIgnoreCase) && f != from);
@@ -55,6 +59,11 @@ public sealed class Compilation
                 }
                 if (c.FileFor(f.Module, unit) != null) continue;
                 var other = System.IO.Path.Combine(dir, f.Module + ".lust");
+                if (!File.Exists(other) && f.Module == "ui")
+                {
+                    queue.Enqueue(c.AddBuiltIn("ui"));
+                    continue;
+                }
                 if (!File.Exists(other))
                 {
                     c.Diags.Add(f.ModulePos, $"there's no file called {f.Module}.lust next to {System.IO.Path.GetFileName(unit.Source.Path)}.");
@@ -64,9 +73,19 @@ public sealed class Compilation
             }
         }
         // Files are numbered in C# (C_F2_Player), so names from different files can never collide.
-        for (int i = 0; i < c.Files.Count; i++) c.Files[i].CsModule = $"F{i + 1}";
+        for (int i = 0; i < c.Files.Count; i++) c.Files[i].CsModule = c.Files[i].IsNative ? "Ui" : $"F{i + 1}";
         Checker.Check(c);
         return c;
+    }
+
+    FileUnit AddBuiltIn(string module)
+    {
+        using var stream = typeof(Compilation).Assembly.GetManifestResourceStream(module + ".lust")!;
+        var text = new StreamReader(stream).ReadToEnd();
+        var file = new SourceFile($"<built in>/{module}.lust", $"{module}.lust (built into Lust)", text);
+        var unit = new FileUnit { Source = file, Ast = Parser.Parse(file, Diags), IsNative = true };
+        Files.Add(unit);
+        return unit;
     }
 
     FileUnit Add(string full, Func<string, string> display, bool isMain)

@@ -1,0 +1,65 @@
+// ui.lust: windows, buttons and text, built into Lust.
+// Bring it in with: fetch ui;
+//
+// The method bodies here are empty because the real work is done by Lust's
+// runtime (LustUi.cs, on top of WinForms). Your own classes build on these with
+// like, and fill in the methods that react: clicked(), toggled(), build().
+
+// Everything that can go in a window.
+class Widget {
+    has {
+        string[text ""];
+        truth[enabled true, visible true];
+    }
+}
+
+// Text on its own.
+class Label like Widget { }
+
+// Make your own button like Button, and say what it does in clicked().
+class Button like Widget {
+    method clicked() { }
+}
+
+// A box to type in. What's typed is in its text.
+class Input like Widget { }
+
+// A tick box. Its on is true while it's ticked.
+class Toggle like Widget {
+    has {
+        truth[on not true];
+    }
+
+    method toggled() { }
+}
+
+// Widgets side by side instead of one under the other.
+class Row like Widget {
+    method add(Widget w) { }
+}
+
+// A window. Make your own like Window, put its contents in build(), then open() it.
+class Window {
+    has {
+        string[title "Lust"];
+        int[width 480, height 360];
+    }
+
+    method build() { }
+    method open() { }
+    method add(Widget w) { }
+    method label(string words) { }
+    method rebuild() { }
+    method alert(string message) { }
+    method close() { }
+}
+
+send Widget;
+send Label;
+send Button;
+send Input;
+send Toggle;
+send Row;
+send Window;
+
+end

@@ -1,0 +1,144 @@
+// pet.lust
+// A tiny virtual pet in a window: name it, then feed it, play with it and put it to bed.
+// Run it with: lust run examples/ui/pet.lust   (Windows only)
+
+fetch ui;
+
+state screen = [naming, playing];
+state mood = [happy, hungry, tired, sleeping, grumpy [a_bit, very]];
+
+object Pet like Window {
+    has {
+        string[title "Lust Pet"];
+        int[width 420, height 340];
+        string[name "Blob"];
+        int[food 5, energy 5, fun 5, days 1];
+        screen is naming;
+        mood is happy;
+        Input[nameBox nothing];
+        Label[face nothing, stats nothing];
+        Toggle[lights nothing];
+    }
+
+    method build() {
+        is screen naming? then {
+            label("A little blob hatched! What will you call it?");
+            nameBox = new Input { text name };
+            add(nameBox);
+            add(new StartButton { text "That's its name" });
+        } or {
+            face = new Label;
+            stats = new Label;
+            add(face);
+            add(stats);
+            Row actions = new Row;
+            actions:add(new FeedButton { text "Feed" });
+            actions:add(new PlayButton { text "Play" });
+            actions:add(new SleepButton { text "Sleep" });
+            add(actions);
+            lights = new LightSwitch { text "Lights on", on true };
+            add(lights);
+            show();
+        }
+    }
+
+    // Works out the mood, then puts everything on screen.
+    method show() {
+        is mood sleeping? then {
+            give;
+        }
+        is food < 2? then { mood is hungry; }
+        or is energy < 2? then { mood is tired; }
+        or is fun < 2? then { mood is grumpy.very; }
+        or is fun < 4? then { mood is grumpy.a_bit; }
+        or { mood is happy; }
+        update();
+    }
+
+    method update() {
+        string look = "(^_^)";
+        is mood hungry? then { look = "(o_o) feed me"; }
+        is mood tired? then { look = "(-_-) so sleepy"; }
+        is mood grumpy? then { look = either mood grumpy.very? "(>_<) hmph!" or "(-_-) meh"; }
+        is mood sleeping? then { look = "(u_u) zzz"; }
+        face.text = name + " " + look;
+        stats.text = "Day " + days.text() + "    food " + food.text() + "    energy " + energy.text() + "    fun " + fun.text();
+    }
+
+    // Time passes a little after everything you do.
+    method tick() {
+        food = food - 1;
+        is food < 0? then { food = 0; }
+    }
+}
+
+class StartButton like Button {
+    method clicked() {
+        is Pet.nameBox.text not ""? then {
+            Pet.name = Pet.nameBox.text;
+        }
+        Pet.title = Pet.name + " the pet";
+        Pet.screen is playing;
+        Pet:rebuild();
+    }
+}
+
+class FeedButton like Button {
+    method clicked() {
+        is Pet.mood sleeping? then { Pet:alert(Pet.name + " is asleep."); give; }
+        Pet.food = Pet.food + 3;
+        is Pet.food > 10? then {
+            Pet.food = 10;
+            Pet:alert(Pet.name + " is too full to eat more.");
+        }
+        Pet:show();
+    }
+}
+
+class PlayButton like Button {
+    method clicked() {
+        is Pet.mood sleeping? then { Pet:alert(Pet.name + " is asleep."); give; }
+        is Pet.energy < 1? then { Pet:alert(Pet.name + " is too tired to play."); give; }
+        Pet.fun = Pet.fun + 3;
+        Pet.energy = Pet.energy - 2;
+        Pet:tick();
+        Pet:show();
+    }
+}
+
+class SleepButton like Button {
+    method clicked() {
+        is Pet.mood sleeping? then {
+            Pet.mood is happy;
+            text = "Sleep";
+            Pet:show();
+            give;
+        }
+        is Pet.lights.on? then {
+            Pet:alert("It's too bright to sleep. Turn the lights off first.");
+            give;
+        }
+        Pet.mood is sleeping;
+        Pet.energy = 10;
+        Pet.fun = Pet.fun - 1;
+        Pet.days = Pet.days + 1;
+        Pet:tick();
+        Pet:update();
+        text = "Wake up";
+    }
+}
+
+class LightSwitch like Toggle {
+    method toggled() {
+        text = either on? "Lights on" or "Lights off";
+        is on && Pet.mood sleeping? then {
+            Pet.mood is happy;
+            Pet:show();
+        }
+    }
+}
+
+Pet:open();
+print(Pet.name + " lived for " + Pet.days.text() + " day(s). Bye!");
+
+end

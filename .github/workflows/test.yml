@@ -1,5 +1,6 @@
-# Runs every test on each push and pull request, and builds lust.exe for Windows.
-# Download it from the run's page: Actions tab → the latest run → Artifacts → lust-windows.
+# Runs every test on Linux and Windows for each push and pull request.
+# On Windows it also builds the UI examples (WinForms), and the Linux run
+# builds a ready-made lust.exe: Actions tab → the latest run → Artifacts → lust-windows.
 name: Test
 
 on:
@@ -9,7 +10,14 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 
@@ -28,12 +36,24 @@ jobs:
           $L check examples/hello.lust
           $L check examples/player.lust
           $L check examples/valley/main.lust
+          $L check examples/ui/counter.lust
+          $L check examples/ui/pet.lust
           printf 'Ada\nb\n2\nw\ns\nw\ns\nh\nq\n' | $L run examples/valley/main.lust
 
+      - name: Build the UI examples (WinForms)
+        if: runner.os == 'Windows'
+        run: |
+          L="dotnet compiler/bin/Release/net8.0/lust.dll"
+          $L build examples/ui/counter.lust
+          $L build examples/ui/pet.lust
+          ls examples/ui/build
+
       - name: Build lust.exe for Windows
+        if: runner.os == 'Linux'
         run: dotnet publish compiler -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o lust-windows
 
       - uses: actions/upload-artifact@v4
+        if: runner.os == 'Linux'
         with:
           name: lust-windows
           path: lust-windows/lust.exe

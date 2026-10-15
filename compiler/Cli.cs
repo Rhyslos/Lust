@@ -103,7 +103,12 @@ public static class Cli
     {
         var program = CompileAndReport(path);
         if (program == null) return 1;
-        var result = Runner.Run(program.Main.Source, Emitter.Emit(program), capture: false);
+        if (program.UsesUi && !OperatingSystem.IsWindows())
+        {
+            Console.Error.WriteLine($"{program.Main.Source.Display} fetches ui, and windows only open on Windows. lust check still works here.");
+            return 2;
+        }
+        var result = Runner.Run(program.Main.Source, Emitter.Emit(program), capture: false, ui: program.UsesUi);
         if (result.Stderr.Length > 0) Console.Error.WriteLine(result.Stderr);
         return result.ExitCode;
     }
@@ -112,7 +117,8 @@ public static class Cli
     {
         var program = CompileAndReport(path);
         if (program == null) return 1;
-        Console.WriteLine(program.Files.Count == 1 ? $"{program.Main.Source.Display} looks good." : $"{program.Main.Source.Display} and the {program.Files.Count - 1} file{(program.Files.Count == 2 ? "" : "s")} it fetches from look good.");
+        var others = program.Files.Count(f => !f.IsMain && !f.IsNative);
+        Console.WriteLine(others == 0 ? $"{program.Main.Source.Display} looks good." : $"{program.Main.Source.Display} and the {others} file{(others == 1 ? "" : "s")} it fetches from look good.");
         return 0;
     }
 
@@ -130,7 +136,7 @@ public static class Cli
         if (program == null) return 1;
         var outDir = Path.Combine(Path.GetDirectoryName(program.Main.Source.Path)!, "build");
         Console.WriteLine($"Building {program.Main.Source.Display}…");
-        var result = Runner.Build(program.Main.Source, Emitter.Emit(program), outDir);
+        var result = Runner.Build(program.Main.Source, Emitter.Emit(program), outDir, program.UsesUi);
         if (result.ExitCode != 0) { Console.Error.WriteLine(result.Stderr); return result.ExitCode; }
         var exe = Runner.AppName(program.Main.Source) + (OperatingSystem.IsWindows() ? ".exe" : "");
         Console.WriteLine($"Done: {Path.Combine(DisplayName(outDir), exe)}");

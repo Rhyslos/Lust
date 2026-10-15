@@ -249,10 +249,15 @@ public static class LustRt
     {
         Exception failure = null;
         var t = new Thread(() => { try { run(); } catch (Exception e) { failure = e; } }, 512 * 1024 * 1024);
+        // Windows (WinForms) need this thread setting.
+        if (OperatingSystem.IsWindows()) t.SetApartmentState(ApartmentState.STA);
         t.Start();
         t.Join();
         if (failure != null) Fail(failure);
     }
+
+    /// Set by the UI runtime, to also show a mistake in a message box.
+    public static Action<string> OnFail;
 
     /// Reports a mistake that happened while running, at the Lust line it came from, then stops.
     public static void Fail(Exception e)
@@ -279,6 +284,7 @@ public static class LustRt
             }
         }
         Console.Error.WriteLine(where + message);
+        try { OnFail?.Invoke(where + message); } catch { }
         Environment.Exit(1);
     }
 }
