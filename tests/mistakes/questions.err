@@ -1,0 +1,8 @@
+questions.lust:2:9  a question ends with ? before then: is hp 0? then { }
+questions.lust:3:4  a question needs a yes-or-no answer, but this is a string. Compare it with something, like is name "Ada"?
+questions.lust:4:4  a question needs a yes-or-no answer, but hp is an int. Try is hp 0?
+questions.lust:5:7  can't compare an int with a string. Use .text() on the number to compare them as text.
+questions.lust:6:10  after not, say what it isn't: is hp not 0?
+questions.lust:7:7  loop ( … ) needs a yes-or-no answer, but hp is an int. Try loop (hp > 0)
+questions.lust:8:6  loop needs a whole number of times. Use .int() to drop the part after the point.
+questions.lust:9:6  loop needs a number of times, but this is a string.

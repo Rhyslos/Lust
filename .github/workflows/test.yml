@@ -1,0 +1,32 @@
+# Runs every test on each push and pull request, and builds lust.exe for Windows.
+# Download it from the run's page: Actions tab → the latest run → Artifacts → lust-windows.
+name: Test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - run: dotnet build compiler -c Release
+
+      - name: Run the Lust tests
+        run: dotnet compiler/bin/Release/net8.0/lust.dll test tests
+
+      - name: Build lust.exe for Windows
+        run: dotnet publish compiler -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o lust-windows
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lust-windows
+          path: lust-windows/lust.exe
+          if-no-files-found: error

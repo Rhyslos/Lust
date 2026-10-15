@@ -1,0 +1,5 @@
+int low = 6;
+int high = 1;
+int r = random(low, high);
+
+end

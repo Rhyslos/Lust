@@ -59,8 +59,9 @@ lives = lives - 1;
 
 **Strict rules:**
 - A variable keeps its type forever. `lives = "many";` is an error.
-- A variable must be declared before it's used, and only once per block.
-- A variable declared inside `{ }` only exists inside those braces.
+- A variable must be declared before it's used.
+- A variable declared inside `{ }` only exists inside those braces. Once the block ends, the name is free again.
+- A name can't be declared again while it still exists, not even inside an inner block. `int hp = 1;` followed by `loop 2 { int hp = 2; }` is a mistake, because it's never clear which `hp` is meant.
 
 ### nothing
 
@@ -132,6 +133,7 @@ Both sides must be the same type.
 - `+ - * / %` work on `int` and `float`. Parentheses `( )` group: `(a + b) * 2`.
 - An `int` and a `float` together give a `float`. A `float` never quietly becomes an `int`; use `.int()`, which drops the part after the point.
 - `int / int` gives an `int` (`7 / 2` is `3`). Use `7.float() / 2` for `3.5`.
+- An `int` that gets too big, or dividing an `int` by zero, stops the program with an error naming the line.
 - `+` also joins two strings. Joining a string with anything else is an error: turn it into text first with `.text()`.
 
 ```
@@ -179,27 +181,34 @@ loop (int id, string itemName, int amount in bag) {
 
 ## state
 
-Each file can have one `state`: a list of options something can be in. It goes at the top level of the file.
+A state is a list of options something can be in. Each file can have one **main state**, and any number of **named states** for when one isn't enough. They go at the top level of the file.
 
 ```
-state = [idle, walking, fighting, knocked_out];
+state = [idle, walking, fighting, knocked_out];   // the main state
+state season = [spring, summer, fall, winter];     // named states
+state weather = [sunny, rainy, stormy];
 ```
 
-A class or object that has the state says which option it starts in, in its `has` block:
+A class or object that has a state says which option it starts in, in its `has` block. The main state is written `state is …`, and a named one uses its name:
 
 ```
-class Player {
+class Farm {
     has {
         state is idle;
+        season is spring;
+        weather is sunny;
     }
 }
 ```
 
-- Change it with `is`: `state is fighting;` inside a method, or `bo.state is fighting;` from outside.
-- Ask about it in a question: `is bo.state fighting?`.
-- `bo.state.text()` gives the option's name as text, like `"fighting"`.
-- `loop (state s in state) { }` goes through every option, in the order written.
-- From another file, after `fetch player:state;`, the type is called `player.state`. The option names work as they are, because Lust knows which state is being compared.
+- Change it with `is`: `season is summer;` inside a method, or `farm.season is summer;` from outside.
+- Ask about it in a question: `is farm.season winter?`.
+- `farm.season.text()` gives the option's name as text, like `"winter"`.
+- `loop (season s in season) { }` goes through every option, in the order written. For the main state: `loop (state s in state) { }`.
+- A state can also be a variable's type: `season today = spring;`.
+- A class or object can have each state once at most.
+- Two states in the same file may share an option name. Lust always knows which state is meant from what it's compared with.
+- From another file, after `fetch farm:season;`, the type is called `farm.season` (and the main state `farm.state`). The option names work as they are.
 
 ## Classes and objects
 
@@ -261,6 +270,32 @@ The braces fill in fields, in the same style as `has`. Anything not mentioned ke
 - Methods use `:`: `bo:bark();`, `Game:addPoints(10);`.
 - Inside a method, the thing's own fields and methods are used by name alone: `hp`, `bark()`. There is no `self`.
 
+### like: building on another class
+
+`like` makes a class that starts as a copy of another one and adds to it:
+
+```
+class Wizard like Player {
+    has {
+        int[mana 50];
+        int[hp 15];          // Player has hp too: this changes its starting value
+    }
+
+    method int attack() {    // replaces Player's attack for wizards
+        give mana / 10 + random(1, 6);
+    }
+}
+
+Wizard merlin = new Wizard { name "Merlin" };
+```
+
+- A Wizard gets every field, state and method that Player has.
+- Its `has` block adds new fields. Listing one Player already has, with the same type, only changes its starting value.
+- A method with the same name as one of Player's replaces it for wizards. It must take the same parameters and give back the same type.
+- A Wizard can go anywhere a Player is expected: a `Player` variable, a `Player array`, a `Player` parameter. Methods called on it use the Wizard's version.
+- Ask what something really is with `is`: `is hero like Wizard? then { … }`.
+- A class is like one other class at most. An object can be like a class too: `object Boss like Wizard { … }`.
+
 ## Functions (do)
 
 `do` makes a function that doesn't belong to anything. `method` makes one inside a class or object. Both work the same way:
@@ -278,6 +313,7 @@ do int double(int n) {
 - The return type goes before the name, and is left out when nothing comes back. There is no `void`.
 - `give` hands a value back and ends the function. A function with a return type must `give` on every path; one without may only use `give;` on its own to leave early.
 - Parameters are typed: `(int a, string b)`.
+- `do` and `method` can't go inside another function or method. Every function sits at the top level of its file, and every method directly inside its class or object.
 
 ## Loops
 
@@ -326,7 +362,7 @@ get dice:[roll, flip];
 | `print(x);` | shows `x` on its own line. Takes any type. |
 | `wait seconds;` | pauses, then carries on (see below). Takes an `int` or `float`. |
 | `random(low, high)` | a whole number from `low` to `high`, both included |
-| `x.text()` | `x` as text. Works on `int`, `float`, `truth` and state options. |
+| `x.text()` | `x` as text. Works on `int`, `float`, `truth` and state options. A float always shows its point (`3.0`), and a truth shows as `true` or `not true`. |
 | `x.int()` | a `float` with the part after the point dropped |
 | `x.float()` | an `int` as a `float` |
 
@@ -348,7 +384,9 @@ Mistakes only visible while running (a missing cArray id, reading past the end o
 
 ## How Lust runs
 
-Lust is compiled. `lust run main.lust` reads `main.lust` and everything it fetches, checks the rules above, turns the result into C#, and runs it with .NET. `lust build main.lust` makes an `.exe` instead.
+Lust is compiled. `lust run main.lust` reads `main.lust` and everything it fetches, checks the rules above, turns the result into C#, and runs it with .NET. `lust build main.lust` makes an `.exe` instead, in a `build` folder next to the file.
+
+You need the .NET SDK (version 8 or newer) installed. The compiler lives in [`compiler/`](compiler), and `lust cs main.lust` shows the C# it writes.
 
 ## Reserved words
 
@@ -356,7 +394,7 @@ These can't be used as names:
 
 ```
 class object has method do give new nothing
-is then or either not true
+is then or either not true like
 loop stop skip in
 state send fetch get end
 int float string truth array cArray
@@ -373,3 +411,6 @@ Decisions for later, so nobody guesses:
 - Reading typed input, such as `ask("Name?")`, and turning text into numbers.
 - A method and a `do` function with the same name: which one a bare call means.
 - Whether `nothing` is allowed for arrays and cArrays.
+- Calling the original version of a method from the one that replaces it (with `like`).
+- Functions as values: storing a function in a variable or passing it along, for events like "when the day ends, run this".
+- Calling C# libraries from Lust (something like `fetch native:…`), for graphics, sound, files and apps.

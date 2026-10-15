@@ -1,0 +1,8 @@
+lives = 2;
+print(score);
+int hp = 1;
+int hp = 2;
+loop 1 { int hp = 3; }
+hp = hp + 1;
+
+end

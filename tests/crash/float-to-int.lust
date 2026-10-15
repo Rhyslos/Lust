@@ -1,0 +1,5 @@
+float huge = 1.0;
+loop 400 { huge = huge * 10; }
+int n = huge.int();
+
+end
