@@ -26,7 +26,7 @@ public sealed class Parser
     public static readonly HashSet<string> Reserved = new()
     {
         "class", "object", "has", "method", "do", "give", "new", "nothing",
-        "is", "then", "or", "either", "not", "true",
+        "is", "then", "or", "either", "not", "true", "like",
         "loop", "stop", "skip", "in",
         "state", "send", "fetch", "get", "end",
         "int", "float", "string", "truth", "array", "cArray",
@@ -74,6 +74,7 @@ public sealed class Parser
         ["state"] = "state", ["send"] = "sharing between files", ["fetch"] = "sharing between files",
         ["get"] = "sharing between files", ["array"] = "arrays", ["cArray"] = "cArrays", ["in"] = "arrays",
         ["nothing"] = "nothing (it comes with classes)",
+        ["like"] = "classes",
     };
 
     static string NotYetMessage(string feature) =>
