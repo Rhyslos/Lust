@@ -1,0 +1,9 @@
+class Player {
+    has {
+        array[];
+        int[];
+        map[];
+    }
+}
+
+end

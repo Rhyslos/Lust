@@ -1,0 +1,3 @@
+empty-fields.lust:3:9  say what the array holds, and give it a name: string array bag [];
+empty-fields.lust:4:13  name the fields inside the [ ], each with its starting value: int[name 0];
+empty-fields.lust:5:9  say what the map holds, and give it a name: string map bag [];
