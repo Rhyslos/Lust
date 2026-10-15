@@ -1,0 +1,18 @@
+cs-mistakes.lust:1:10  C# has no type called System.Mathh. Check the spelling and the namespace (like System.Math). Types from NuGet packages need from "Package" 1.0.0 at the end.
+cs-mistakes.lust:5:10  System.Collections.Generic.List is a generic C# type (it needs <…>), and Lust can't use those yet. Lust's own arrays and maps do the jobs of List and Dictionary.
+cs-mistakes.lust:8:16  Math:Sqrt doesn't take (string). It takes (float d).
+cs-mistakes.lust:9:16  Math has no static method called Sqrtt. Did you mean Sqrt?
+cs-mistakes.lust:10:1  Math is a static C# class, so there are no Math values. Use it directly: Math:Something(…)
+cs-mistakes.lust:12:4  StringBuilder has no method called Appendd. Did you mean Append?
+cs-mistakes.lust:13:12  StringBuilder has no property or field called Lengthh. Did you mean Length?
+cs-mistakes.lust:14:18  new DateTime doesn't take (string). It takes one of: (int ticks) · (int ticks, DateTimeKind kind) · (DateOnly date, TimeOnly time) · (DateOnly date, TimeOnly time, DateTimeKind kind) · (int year, int month, int day) · (int year, int month, int day, Calendar calendar).
+cs-mistakes.lust:15:3  Year can only be read, not changed.
+cs-mistakes.lust:16:12  s is a string, but this is a float. Use .text() to turn it into text.
+cs-mistakes.lust:17:9  t is an int, but this is a string. Use .int() to turn text into a number.
+cs-mistakes.lust:18:12  add () to call it: Math:Round(…). A C# method can't be kept as a value.
+cs-mistakes.lust:19:41  StringBuilder has no property called Capacityy. Did you mean Capacity?
+cs-mistakes.lust:20:13  sb.Length is an int, but this is a string. Use .int() to turn text into a number.
+cs-mistakes.lust:21:19  "hello" is a string, which has no field called length. To count its letters, use #"hello".
+cs-mistakes.lust:22:1  a String is just a string in Lust. Write string.
+cs-mistakes.lust:23:25  DateTime has no static method called Now. Now is a property: DateTime.Now
+cs-mistakes.lust:24:11  day is an int, but this is a DateTime (from C#).

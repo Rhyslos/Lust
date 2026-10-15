@@ -236,7 +236,8 @@ public sealed class Emitter
                 break;
             case Assign a:
                 At(a.Pos);
-                if (a.Target is Index ix) Line($"{Expr(ix.Target)}.Set({Expr(ix.Key)}, {Coerce(a.Value, a.Target.Type)});");
+                if (a.Target is FieldGet { Kind: FieldKind.Cs } csf) Line($"{CsMemberRaw(csf)} = {CsLibs.ToCs(Coerce(a.Value, a.Target.Type), a.Value.Type == LType.Int && a.Target.Type == LType.Float ? LType.Float : a.Value.Type, csf.Cs!.ValueType)};");
+                else if (a.Target is Index ix) Line($"{Expr(ix.Target)}.Set({Expr(ix.Key)}, {Coerce(a.Value, a.Target.Type)});");
                 else Line($"{Expr(a.Target)} = {Coerce(a.Value, a.Target.Type)};");
                 break;
             case StateSet ss:
@@ -246,7 +247,8 @@ public sealed class Emitter
                 break;
             case ExprStmt e:
                 At(e.Pos);
-                Line($"{Expr(e.Expr)};");
+                // A C# call on its own line: what it gives back is dropped, so no conversion around it.
+                Line(e.Expr is MethodCall { Kind: MethodKind.Cs } csm ? $"{CsCallRaw(csm)};" : $"{Expr(e.Expr)};");
                 break;
             case Wait w:
                 At(w.Pos);
@@ -390,6 +392,7 @@ public sealed class Emitter
                     NameKind.Field => n.Field!.CsName,
                     NameKind.Object => $"{n.Object!.CsName}.Instance",
                     NameKind.Option => Option(n.State!, n.Id),
+                    NameKind.CsType => n.Type.Cs,
                     NameKind.Function => $"new {n.Type.Cs}({n.Func!.CsName})",
                     NameKind.Method => $"new {n.Type.Cs}(m_{n.Func!.Name})",
                     _ => throw new InvalidOperationException("unresolved name " + n.Id),
@@ -415,7 +418,8 @@ public sealed class Emitter
                 // Compare as objects when one side is nothing, so C# doesn't need a common type.
                 string l = Expr(s.Left), r = Expr(s.Right);
                 // Two functions are the same when they're the same function (or the same method of the same thing).
-                if (s.Left.Type is FuncType || s.Right.Type is FuncType)
+                // C# values compare the C# way (two equal dates are the same).
+                if (s.Left.Type is FuncType or CsType || s.Right.Type is FuncType or CsType)
                     return $"({(s.Negated ? "!" : "")}Equals({l}, {r}))";
                 if (s.Left.Type is ClassType || s.Right.Type is ClassType || s.Left.Type == LType.Nothing)
                     return $"({(s.Negated ? "!" : "")}ReferenceEquals({l}, {r}))";
@@ -452,6 +456,7 @@ public sealed class Emitter
                 return mc.Kind switch
                 {
                     MethodKind.User => $"{target}.m_{mc.Method}({Arguments(mc.Args, mc.Func!)})",
+                    MethodKind.Cs => CsLibs.FromCsCode(CsCallRaw(mc), ((CsCall)mc.Cs!).Returns),
                     MethodKind.CallField => $"LustRt.Fn({target}.{mc.Field!.CsName}, {CsString(mc.Method)})({FnArguments(mc.Args, (FuncType)mc.Field.Type)})",
                     MethodKind.ArrayInject => $"{target}.Inject({Coerce(mc.Args[0], ((ArrayType)mc.Target.Type).Elem)})",
                     MethodKind.ArrayRemove => $"{target}.Remove({Expr(mc.Args[0])})",
@@ -469,7 +474,7 @@ public sealed class Emitter
                 bool fromText = cv.Target.Type == LType.String;
                 return cv.Method switch
                 {
-                    "text" => $"LustRt.Text({target})",
+                    "text" => cv.Target.Type is CsType ? $"LustRt.Text((object){target})" : $"LustRt.Text({target})",
                     "int" => fromText ? $"LustRt.ParseInt({target})" : $"LustRt.Int({target})",
                     "float" => fromText ? $"LustRt.ParseFloat({target})" : $"((double){target})",
                     "lines" => $"LustRt.Lines({target})",
@@ -482,11 +487,18 @@ public sealed class Emitter
                     FieldKind.Field => $"{Expr(fg.Target)}.{fg.Sym!.CsName}",
                     FieldKind.Column => fg.Field == "id" ? $"{Expr(fg.Target)}.id" : $"{Expr(fg.Target)}.c_{fg.Field}",
                     FieldKind.Option => Option(fg.OptionState!, fg.OptionPath),
+                    FieldKind.Cs => CsLibs.FromCsCode(CsMemberRaw(fg), fg.Cs!.ValueType),
                     _ => throw new InvalidOperationException("unresolved field " + fg.Field),
                 };
             case Index ix: return $"{Expr(ix.Target)}.Get({Expr(ix.Key)})";
             case Length len:
                 return len.Target.Type == LType.String ? $"LustRt.Letters({Expr(len.Target)})" : $"{Expr(len.Target)}.Count";
+            case New { CsClr: not null } cn:
+            {
+                var args = cn.CsCtor == null ? "" : CsArgs(cn.Args ?? new(), cn.CsCtor);
+                var inits = cn.Inits.Select((init, i) => $"{cn.CsInits[i].Member.Name} = {CsLibs.ToCs(Coerce(init.Value, init.Value.Type), init.Value.Type, cn.CsInits[i].ValueType)}");
+                return $"new {CsNames.Of(cn.CsClr)}({args}){(cn.Inits.Count > 0 ? " { " + string.Join(", ", inits) + " }" : "")}";
+            }
             case New nw:
             {
                 if (nw.Inits.Count == 0) return $"new {nw.Sym!.CsName}()";
@@ -532,6 +544,21 @@ public sealed class Emitter
         if (type is ClassType && (e.Type != type)) return $"(({type.Cs}){Expr(e)})";
         return Expr(e);
     }
+
+    /// A C# call without turning what it gives back into a Lust value.
+    string CsCallRaw(MethodCall mc)
+    {
+        var call = (CsCall)mc.Cs!;
+        var args = CsArgs(mc.Args, call);
+        var target = call.IsStatic ? CsNames.Of(call.Method.DeclaringType!) : $"({Expr(mc.Target)})";
+        return $"{target}.{call.Method.Name}({args})";
+    }
+
+    string CsMemberRaw(FieldGet fg) =>
+        fg.Cs!.IsStatic ? $"{CsNames.Of(((CsStaticType)fg.Target.Type).Clr)}.{fg.Cs.Member.Name}" : $"({Expr(fg.Target)}).{fg.Cs.Member.Name}";
+
+    string CsArgs(List<Expr> args, CsCall call) =>
+        string.Join(", ", args.Select((a, i) => CsLibs.ToCs(Expr(a), a.Type, call.Params[i].ParameterType)));
 
     string FnArguments(List<Expr> args, FuncType ft) =>
         string.Join(", ", args.Select((a, i) => Coerce(a, ft.Params[i])));

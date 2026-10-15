@@ -221,7 +221,7 @@ public sealed class Conversion : Expr
     public Pos MethodPos { get; init; }
 }
 
-public enum FieldKind { Unresolved, Field, Column, State, Option }
+public enum FieldKind { Unresolved, Field, Column, State, Option, Cs }
 
 /// `bo.hp`, `bag[2].itemName`
 public sealed class FieldGet : Expr
@@ -233,6 +233,7 @@ public sealed class FieldGet : Expr
     public FieldSym? Sym { get; set; }
     public StateSym? OptionState { get; set; }   // for an option written with a dot: fighting.blocking
     public string OptionPath { get; set; } = "";
+    public CsMember? Cs { get; set; }             // a C# property or field
 }
 
 public enum MethodKind { Unresolved, User, ArrayInject, ArrayRemove, CArrayInject, CArrayRemove, CArrayHas, MapHas, MapRemove, CallField, Cs }
@@ -268,6 +269,11 @@ public sealed class New : Expr
     public List<(string Name, Pos Pos, Expr Value)> Inits { get; } = new();
     public ClassSym? Sym { get; set; }
     public List<FieldSym> InitFields { get; } = new();
+    // new Random(42): C# types can take arguments.
+    public List<Expr>? Args { get; init; }
+    public CsCall? CsCtor { get; set; }
+    public System.Type? CsClr { get; set; }
+    public List<CsMember> CsInits { get; } = new();
 }
 
 /// `[1, 2, 3]`, or a cArray row `[1, "sword", 1]`. Its type comes from where it's used.

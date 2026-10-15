@@ -99,6 +99,29 @@ public sealed class Checker
 
     void Connect(FileUnit f)
     {
+        foreach (var fetch in f.Ast.Fetches.Where(x => x.IsCs))
+        {
+            var (type, error) = CsLibs.Find(fetch.CsType, fetch.Package, fetch.Version);
+            if (type == null)
+            {
+                Error(fetch.ModulePos, error ?? $"C# has no type called {fetch.CsType}.");
+                f.Ast.BrokenNames.Add(fetch.Module);   // so its uses below aren't reported too
+                continue;
+            }
+            if (type.IsGenericTypeDefinition) { Error(fetch.ModulePos, $"{fetch.CsType} is a generic C# type, and Lust can't use those yet. Lust's own arrays and maps do the same jobs as List and Dictionary."); continue; }
+            var alias = fetch.Module;
+            if (f.CsTypes.TryGetValue(alias, out var had) && had != type) { Error(fetch.ModulePos, $"{alias} already means {had.FullName} here. Two C# types with the same name can't both be fetched into one file."); continue; }
+            if (f.Classes.ContainsKey(alias) || f.Funcs.ContainsKey(alias) || f.States.ContainsKey(alias)) { Error(fetch.ModulePos, $"{alias} already means something else in this file. Two things can't share a name."); continue; }
+            f.CsTypes[alias] = type;
+            if (fetch.Package != null)
+            {
+                lock (comp.Packages)
+                {
+                    if (comp.Packages.TryGetValue(fetch.Package, out var v) && v != fetch.Version) Error(fetch.ModulePos, $"{fetch.Package} is used with version {v} elsewhere. One program uses one version of a package.");
+                    else comp.Packages[fetch.Package] = fetch.Version!;
+                }
+            }
+        }
         foreach (var fetch in f.Ast.Fetches)
         {
             if (fetch.IsCs) continue;
@@ -224,6 +247,13 @@ public sealed class Checker
             return cls.Type;
         }
         if (f.States.TryGetValue(t.Name, out var state)) return state.Type;
+        if (f.CsTypes.TryGetValue(t.Name, out var clr))
+        {
+            if (clr.IsAbstract && clr.IsSealed) { Error(t.Pos, $"{t.Name} is a static C# class, so there are no {t.Name} values. Use it directly: {t.Name}:Something(…)"); return LType.Error; }
+            var mapped = CsLibs.FromCs(clr);
+            if (mapped is not CsType) { Error(t.Pos, mapped == null ? $"Lust can't use {t.Name} values." : $"a {t.Name} is just {mapped.WithArticle} in Lust. Write {mapped.Name}."); return LType.Error; }
+            return mapped;
+        }
         Error(t.Pos, $"Lust doesn't have a type called {t.Name}.{Suggest(t.Name, f.Classes.Keys.Concat(f.States.Keys).Concat(new[] { "int", "float", "string", "truth" }))} The types are int, float, string, truth, arrays, cArrays, classes and states.");
         return LType.Error;
     }
@@ -572,7 +602,8 @@ public sealed class Checker
             case ExprStmt e:
             {
                 var t = Expr(e.Expr, ctx);
-                if (t != LType.None && t != LType.Error)
+                // C# methods often give back something nobody needs (sb:Append("x") gives back sb), so that's fine.
+                if (t != LType.None && t != LType.Error && e.Expr is not MethodCall { Kind: MethodKind.Cs })
                 {
                     var what = e.Expr is Call c ? $"{c.Callee}(…)" : e.Expr is MethodCall m ? $"{m.Method}(…)" : "this";
                     Error(e.Pos, $"{what} gives back {t.WithArticle}, but nothing uses it. Put it in a variable: {t.Name} x = …;");
@@ -752,6 +783,15 @@ public sealed class Checker
             case Name { Kind: NameKind.Option } n:
                 Error(target.Pos, $"{n.Id} is a state option; it can't be changed.");
                 return false;
+            case FieldGet { Kind: FieldKind.Cs, Cs: { } cm } cf:
+                if (!cm.CanSet) { Error(cf.FieldPos, $"{cf.Field} can only be read, not changed."); return false; }
+                // Changing a C# struct that's a copy (like list[0].X) would change nothing.
+                if (!cm.IsStatic && cf.Target.Type is CsType { Clr.IsValueType: true } && cf.Target is not Name { Kind: NameKind.Local or NameKind.Field })
+                {
+                    Error(cf.FieldPos, $"{Describe(cf.Target)} is a copy of a C# struct, so changing its {cf.Field} would change nothing. Put it in a variable, change that, and put it back.");
+                    return false;
+                }
+                return true;
             case FieldGet { Kind: FieldKind.Column, Field: "id" }:
                 Error(target.Pos, "a row's id can't be changed.");
                 return false;
@@ -811,6 +851,7 @@ public sealed class Checker
         Name n => n.Id,
         FieldGet f => $"{Describe(f.Target)}.{f.Field}",
         Index i => $"{Describe(i.Target)}[…]",
+        StrLit s when s.Value.Length < 20 => $"\"{s.Value}\"",
         _ => "this",
     };
 
@@ -924,7 +965,7 @@ public sealed class Checker
                     Error(mr.MethodPos, $"{mr.Method} is a field: {Describe(mr.Target)}.{mr.Method}");
                     return LType.Error;
                 }
-                if (t is CsType) { Error(mr.MethodPos, $"add () to call it: {Describe(mr.Target)}:{mr.Method}(…). A C# method can't be kept as a value."); return LType.Error; }
+                if (t is CsType or CsStaticType) { Error(mr.MethodPos, $"add () to call it: {Describe(mr.Target)}:{mr.Method}(…). A C# method can't be kept as a value."); return LType.Error; }
                 Error(mr.MethodPos, t is ClassType ct3 ? $"{ct3.Sym.Name} has no method called {mr.Method}.{Suggest(mr.Method, ct3.Sym.Methods.Keys)}" : $"{Describe(mr.Target)} is {t.WithArticle}, which has no methods.");
                 return LType.Error;
             }
@@ -1040,6 +1081,7 @@ public sealed class Checker
         {
             n.Kind = NameKind.Option; n.State = est.Sym; return est;
         }
+        if (ctx.File.CsTypes.TryGetValue(n.Id, out var csClr)) { n.Kind = NameKind.CsType; return new CsStaticType(csClr); }
         var owners = VisibleStates(ctx.File).Where(s => s.Options.Contains(n.Id)).ToList();
         if (owners.Count == 1) { n.Kind = NameKind.Option; n.State = owners[0]; return owners[0].Type; }
         if (owners.Count > 1)
@@ -1096,6 +1138,8 @@ public sealed class Checker
             Error(fg.FieldPos, $"add () to call it: .{fg.Field}()");
             return LType.Error;
         }
+        if (t is CsStaticType or CsType || t == LType.String)
+            return CsFieldType(fg, t);
         switch (t)
         {
             case ClassType ct:
@@ -1141,7 +1185,7 @@ public sealed class Checker
         {
             case "text":
                 if (t == LType.String) { Error(cv.MethodPos, "this is already text."); return t; }
-                if (t.IsNumber || t == LType.Truth || t is StateType) return LType.String;
+                if (t.IsNumber || t == LType.Truth || t is StateType || t is CsType) return LType.String;
                 break;
             case "int":
                 if (t == LType.Float || t == LType.String) return LType.Int;
@@ -1305,6 +1349,8 @@ public sealed class Checker
         var t = Expr(mc.Target, ctx);
         if (t == LType.Error) { foreach (var a in mc.Args) Expr(a, ctx); return t; }
         string who = Describe(mc.Target);
+        if (t is CsStaticType or CsType || t == LType.String || t == LType.Int || t == LType.Float)
+            return CsMethodType(mc, t, ctx);
         switch (t)
         {
             case ClassType ct:
@@ -1391,6 +1437,12 @@ public sealed class Checker
 
     LType NewType(New nw, Ctx ctx)
     {
+        if (ctx.File.CsTypes.TryGetValue(nw.Class, out var clr)) return CsNewType(nw, clr, ctx);
+        if (nw.Args != null)
+        {
+            foreach (var a in nw.Args) Expr(a, ctx);
+            Error(nw.ClassPos, $"Lust has no constructors. Fill in fields with braces: new {nw.Class} {{ name \"Bo\" }}");
+        }
         if (!ctx.File.Classes.TryGetValue(nw.Class, out var cls))
         {
             foreach (var i in nw.Inits) Expr(i.Value, ctx);
@@ -1533,6 +1585,82 @@ public sealed class Checker
             Expr(item, ctx, table.Columns[i].Type);
             ExpectFits(item, table.Columns[i].Type, $"the column {table.Columns[i].Name} is {table.Columns[i].Type.WithArticle}");
         }
+    }
+
+    // ----- C# -----
+
+    LType CsFieldType(FieldGet fg, LType t)
+    {
+        bool statics = t is CsStaticType;
+        var clr = t switch { CsStaticType s => s.Clr, CsType c => c.Clr ?? typeof(object), _ => typeof(string) };
+        var member = CsLibs.Member(clr, fg.Field, statics);
+        if (member == null)
+        {
+            var hint = CsLibs.HasMethodNamed(clr, fg.Field) ? $" {fg.Field} is a method: {Describe(fg.Target)}:{fg.Field}(…)" : Suggest(fg.Field, CsLibs.MemberNames(clr, statics));
+            if (t == LType.String && member == null) { Error(fg.FieldPos, $"{Describe(fg.Target)} is a string, which has no field called {fg.Field}.{(fg.Field is "length" or "count" or "size" ? $" To count its letters, use #{Describe(fg.Target)}." : hint)}"); return LType.Error; }
+            Error(fg.FieldPos, $"{CsNames.Short(clr)} has no {(statics ? "static " : "")}property or field called {fg.Field}.{hint}");
+            return LType.Error;
+        }
+        var lt = CsLibs.FromCs(member.ValueType);
+        if (lt == null) { Error(fg.FieldPos, $"Lust can't use {fg.Field}: it's a {CsNames.Short(member.ValueType)}."); return LType.Error; }
+        fg.Kind = FieldKind.Cs;
+        fg.Cs = member;
+        return lt;
+    }
+
+    LType CsMethodType(MethodCall mc, LType t, Ctx ctx)
+    {
+        bool statics = t is CsStaticType;
+        var clr = t switch { CsStaticType s => s.Clr, CsType c => c.Clr ?? typeof(object), _ when t == LType.Int => typeof(long), _ when t == LType.Float => typeof(double), _ => typeof(string) };
+        var args = mc.Args.Select(a => Expr(a, ctx)).ToList();
+        if (args.Contains(LType.Error)) return LType.Error;
+        var bad = mc.Args.FirstOrDefault(a => a.Type == LType.None);
+        if (bad != null) { Error(bad.Pos, "this doesn't give anything back."); return LType.Error; }
+        var name = CsNames.Short(clr);
+        var (call, error) = CsLibs.Pick(CsLibs.Methods(clr, mc.Method, statics), args, $"{name}:{mc.Method}");
+        if (call == null)
+        {
+            if (error != null) { Error(mc.MethodPos, error); return LType.Error; }
+            if (!statics && CsLibs.Methods(clr, mc.Method, true).Any()) { Error(mc.MethodPos, $"{mc.Method} belongs to {name} itself, not to one {name}: {name}:{mc.Method}(…)"); return LType.Error; }
+            if (statics && CsLibs.Methods(clr, mc.Method, false).Any()) { Error(mc.MethodPos, $"{mc.Method} belongs to one {name}, not to {name} itself. Make one first: {name} x = new {name}; then x:{mc.Method}(…)"); return LType.Error; }
+            var hint = CsLibs.Member(clr, mc.Method, statics) != null ? $" {mc.Method} is a property: {Describe(mc.Target)}.{mc.Method}" : Suggest(mc.Method, CsLibs.MemberNames(clr, statics));
+            Error(mc.MethodPos, t is CsStaticType or CsType ? $"{name} has no {(statics ? "static " : "")}method called {mc.Method}.{hint}" : $"{Describe(mc.Target)} is {t.WithArticle}, which has no method called {mc.Method}.{hint}");
+            return LType.Error;
+        }
+        mc.Kind = MethodKind.Cs;
+        mc.Cs = call;
+        return CsLibs.FromCs(call.Returns)!;
+    }
+
+    LType CsNewType(New nw, System.Type clr, Ctx ctx)
+    {
+        nw.CsClr = clr;
+        var name = CsNames.Short(clr);
+        if (clr.IsAbstract) { Error(nw.ClassPos, clr.IsSealed ? $"{name} is a static C# class, so it can't be made. Use it directly: {name}:Something(…)" : $"{name} is abstract in C#, so it can't be made with new."); return LType.Error; }
+        var args = (nw.Args ?? new()).Select(a => Expr(a, ctx)).ToList();
+        if (args.Contains(LType.Error)) return LType.Error;
+        if (!(clr.IsValueType && args.Count == 0))
+        {
+            var (call, error) = CsLibs.Pick(clr.GetConstructors(), args, $"new {name}");
+            if (call == null) { Error(nw.ClassPos, error ?? $"{name} can't be made from Lust: it has no public constructor."); return LType.Error; }
+            nw.CsCtor = call;
+        }
+        foreach (var (field, pos, value) in nw.Inits)
+        {
+            var member = CsLibs.Member(clr, field, statics: false);
+            var vt = member == null ? null : CsLibs.FromCs(member.ValueType);
+            if (member == null || !member.CanSet || vt == null)
+            {
+                Expr(value, ctx);
+                Error(pos, member == null ? $"{name} has no property called {field}.{Suggest(field, CsLibs.MemberNames(clr, false))}" : $"{field} can't be set from Lust.");
+                continue;
+            }
+            Expr(value, ctx, vt);
+            if (CsLibs.Fit(value.Type, member.ValueType) == null) ExpectFits(value, vt, $"{field} is {vt.WithArticle}");
+            nw.CsInits.Add(member);
+        }
+        var result = CsLibs.FromCs(clr);
+        return result ?? LType.Error;
     }
 
     // ----- spelling suggestions -----

@@ -1264,8 +1264,9 @@ public sealed class Parser
         var start = Next().Pos; // new
         if (!At(Tk.Ident)) throw Fail(MissingAt, "say what to make: new Player");
         var cls = Next();
-        var e = new New { Pos = start, Class = cls.Text, ClassPos = cls.Pos };
-        if (At(Tk.LParen)) throw Fail(Cur.Pos, $"Lust has no constructors. Fill in fields with braces: new {cls.Text} {{ name \"Bo\" }}");
+        // new Random(42): only C# types take arguments; the checker says so for Lust classes.
+        var args = At(Tk.LParen) ? Arguments(cls.Text) : null;
+        var e = new New { Pos = start, Class = cls.Text, ClassPos = cls.Pos, Args = args };
         if (!At(Tk.LBrace)) return e;
         Next();
         bool saved = noSpacedCall;

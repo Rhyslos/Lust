@@ -170,6 +170,27 @@ public sealed class LustCArray<R> where R : LustRow
     public override string ToString() => "[" + string.Join(", ", order.Select(r => r.ToString())) + "]";
 }
 
+/// Helpers for calling C#.
+public static class LustCs
+{
+    public static string Str(string s) => s ?? "";
+
+    public static char Char(string s)
+    {
+        if (s == null || s.Length != 1) throw new LustError($"C# wants one letter here, but got \"{s}\".");
+        return s[0];
+    }
+
+    public static TOut[] ToArray<TIn, TOut>(LustArray<TIn> a, Func<TIn, TOut> convert)
+    {
+        if (a == null) throw new NullReferenceException();
+        return a.Snapshot().Select(convert).ToArray();
+    }
+
+    public static LustArray<TOut> FromList<TIn, TOut>(IEnumerable<TIn> items, Func<TIn, TOut> convert) =>
+        items == null ? new LustArray<TOut>() : LustArray<TOut>.Of(items.Select(convert).ToArray());
+}
+
 public static class LustRt
 {
     // LUST_SEED makes random repeatable, for tests.

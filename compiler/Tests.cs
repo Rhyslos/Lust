@@ -66,7 +66,7 @@ public static class Tests
         var saves = Path.Combine(Path.GetTempPath(), "lust", "test-saves", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(saves);
         Runner.Result result;
-        try { result = Runner.Run(program.Main.Source, Emitter.Emit(program), capture: true, new Dictionary<string, string> { ["LUST_SEED"] = "1", ["LUST_SAVES"] = saves }, input); }
+        try { result = Runner.Run(program.Main.Source, Emitter.Emit(program), capture: true, new Dictionary<string, string> { ["LUST_SEED"] = "1", ["LUST_SAVES"] = saves }, input, packages: program.Packages); }
         finally { try { Directory.Delete(saves, true); } catch { } }
         if (result.ExitCode == 3) return result.Stderr;
         if (File.Exists(errFile))

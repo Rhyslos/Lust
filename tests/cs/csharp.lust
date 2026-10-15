@@ -1,0 +1,51 @@
+fetch cs:System.Math;
+fetch cs:System.Text.StringBuilder;
+fetch cs:System.Random;
+fetch cs:System.DateTime;
+fetch cs:System.IO.Path;
+fetch cs:System.Text.RegularExpressions.Regex;
+fetch cs:System.Environment;
+fetch cs:System.ConsoleColor;
+fetch cs:System.String;
+
+float r = Math:Sqrt(2.0);
+print(r);
+print(Math:Sqrt(16));
+print(Math:Max(3, 7));
+print(Math:Round(3.14159, 2));
+print(Math.PI);
+print(Math:Abs(-5));
+
+StringBuilder sb = new StringBuilder;
+sb:Append("Hello");
+sb:Append(", ");
+sb:Append(42);
+print(sb:ToString());
+print(sb.Length);
+print(sb.text());
+
+Random dice = new Random(7);
+int roll = dice:Next(1, 7);
+print(roll > 0 && roll < 7);
+
+DateTime d = new DateTime(2026, 10, 15);
+print(d.Year);
+print(d:AddDays(20).Month);
+print(d:ToString("yyyy-MM-dd"));
+DateTime d2 = new DateTime(2026, 10, 15);
+is d d2? then { print("same day"); }
+
+print(Path:Combine("a", "b"));
+print(Regex:IsMatch("hello123", "[0-9]+"));
+string array parts = "a,b,c":Split(",");
+print(parts);
+print(#parts);
+print("Lust":ToUpper());
+print("  padded  ":Trim());
+print("hello":Contains("ell"));
+print("hello":Replace("l", "L"));
+float pi = 3.14159;
+print(pi:ToString("F2"));
+print(String:Join("-", parts));
+
+end

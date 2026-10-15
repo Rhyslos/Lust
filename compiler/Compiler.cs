@@ -22,6 +22,8 @@ public sealed class FileUnit
     public List<FuncSym> OwnFuncs { get; } = new();
     public List<StateSym> OwnStates { get; } = new();
     public Dictionary<string, SaveSym> Saves { get; } = new();
+    /// C# types brought in with fetch cs:, by their short name (Math for System.Math).
+    public Dictionary<string, System.Type> CsTypes { get; } = new();
     public List<SaveSym> OwnSaves { get; } = new();
     /// The variables declared at the very top of the file (not inside a block), by name.
     public Dictionary<string, Variable> TopScope { get; set; } = new();
@@ -36,6 +38,8 @@ public sealed class Compilation
     public List<FileUnit> Files { get; } = new();
     public Diagnostics Diags { get; } = new();
     public HashSet<CArrayType> CArrays { get; } = new();
+    /// NuGet packages the program uses, with their versions.
+    public Dictionary<string, string> Packages { get; } = new(StringComparer.OrdinalIgnoreCase);
     /// Whether the program fetches the built-in ui file, so it needs Windows and WinForms.
     public bool UsesUi => Files.Any(f => f.IsNative && f.Module == "ui");
 
