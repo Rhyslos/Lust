@@ -59,8 +59,9 @@ lives = lives - 1;
 
 **Strict rules:**
 - A variable keeps its type forever. `lives = "many";` is an error.
-- A variable must be declared before it's used, and only once per block.
-- A variable declared inside `{ }` only exists inside those braces.
+- A variable must be declared before it's used.
+- A variable declared inside `{ }` only exists inside those braces. Once the block ends, the name is free again.
+- A name can't be declared again while it still exists, not even inside an inner block. `int hp = 1;` followed by `loop 2 { int hp = 2; }` is a mistake, because it's never clear which `hp` is meant.
 
 ### nothing
 
@@ -132,6 +133,7 @@ Both sides must be the same type.
 - `+ - * / %` work on `int` and `float`. Parentheses `( )` group: `(a + b) * 2`.
 - An `int` and a `float` together give a `float`. A `float` never quietly becomes an `int`; use `.int()`, which drops the part after the point.
 - `int / int` gives an `int` (`7 / 2` is `3`). Use `7.float() / 2` for `3.5`.
+- An `int` that gets too big, or dividing an `int` by zero, stops the program with an error naming the line.
 - `+` also joins two strings. Joining a string with anything else is an error: turn it into text first with `.text()`.
 
 ```
@@ -326,7 +328,7 @@ get dice:[roll, flip];
 | `print(x);` | shows `x` on its own line. Takes any type. |
 | `wait seconds;` | pauses, then carries on (see below). Takes an `int` or `float`. |
 | `random(low, high)` | a whole number from `low` to `high`, both included |
-| `x.text()` | `x` as text. Works on `int`, `float`, `truth` and state options. |
+| `x.text()` | `x` as text. Works on `int`, `float`, `truth` and state options. A float always shows its point (`3.0`), and a truth shows as `true` or `not true`. |
 | `x.int()` | a `float` with the part after the point dropped |
 | `x.float()` | an `int` as a `float` |
 
@@ -348,7 +350,9 @@ Mistakes only visible while running (a missing cArray id, reading past the end o
 
 ## How Lust runs
 
-Lust is compiled. `lust run main.lust` reads `main.lust` and everything it fetches, checks the rules above, turns the result into C#, and runs it with .NET. `lust build main.lust` makes an `.exe` instead.
+Lust is compiled. `lust run main.lust` reads `main.lust` and everything it fetches, checks the rules above, turns the result into C#, and runs it with .NET. `lust build main.lust` makes an `.exe` instead, in a `build` folder next to the file.
+
+You need the .NET SDK (version 8 or newer) installed. The compiler lives in [`compiler/`](compiler), and `lust cs main.lust` shows the C# it writes.
 
 ## Reserved words
 

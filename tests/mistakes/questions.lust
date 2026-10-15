@@ -1,0 +1,11 @@
+int hp = 3;
+is hp 0 then { print("zero"); }
+is "x"? then { print("x"); }
+is hp? then { print("hp"); }
+is hp "three"? then { print("three"); }
+is hp not? then { print("?"); }
+loop (hp) { stop; }
+loop 2.5 { }
+loop "x" { }
+
+end

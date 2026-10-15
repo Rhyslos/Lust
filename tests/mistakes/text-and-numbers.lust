@@ -1,0 +1,7 @@
+int age = 3;
+print("Age: " + age);
+print("Age: " + age.text());
+print(1 + true);
+print("a" + (1 + 2));
+
+end

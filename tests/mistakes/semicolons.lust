@@ -1,0 +1,5 @@
+int hp = 3
+print(hp);
+print("x")
+
+end

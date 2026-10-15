@@ -1,0 +1,46 @@
+// hello.lust
+// Everything this version of Lust can do: variables, math, questions and loops.
+// Run it with: lust run examples/hello.lust
+
+string name = "Ada";
+int hp = 10;
+float speed = 1.5;
+truth hungry = true;
+
+print("Hello " + name + "!");
+print(name + " has " + hp.text() + " hp and moves at " + speed.text());
+
+// Questions instead of if
+is hp 0? then {
+    print(name + " is out cold");
+} or is hp < 5? then {
+    print(name + " is barely standing");
+} or {
+    print(name + " feels fine");
+}
+
+is hungry && hp > 5? then {
+    print("Snack time!");
+}
+
+string mood = either hungry? "grumpy" or "happy";
+print(name + " is " + mood);
+
+// The one loop
+loop 3 {
+    print("hip hip hooray");
+}
+
+int round = 0;
+loop (hp > 0) {
+    round = round + 1;
+    int hit = random(1, 4);
+    hp = hp - hit;
+    is hp < 0? then { hp = 0; }
+    print("Round " + round.text() + ": took " + hit.text() + ", " + hp.text() + " hp left");
+    wait 0.2;
+}
+
+print(name + " needs a nap after " + round.text() + " rounds.");
+
+end

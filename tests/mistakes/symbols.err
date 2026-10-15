@@ -1,0 +1,8 @@
+symbols.lust:1:7  this text never ends. Add a closing " on the same line.
+symbols.lust:2:7  text goes in double quotes, like "hello".
+symbols.lust:2:14  text goes in double quotes, like "hello".
+symbols.lust:4:4  Lust has no += yet. Write it out, like hp = hp + 5;
+symbols.lust:5:10  Lust has no !=. To check if two things differ, ask: is a not b?
+symbols.lust:6:9  use && to join checks.
+symbols.lust:7:5  a name can't start with a number.
+symbols.lust:8:1  Lust comments start with // and run to the end of the line. There are no /* */ comments.
