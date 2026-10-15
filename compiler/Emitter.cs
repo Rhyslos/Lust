@@ -97,6 +97,9 @@ public sealed class Emitter
         Line("{");
         indent++;
         Line("Console.OutputEncoding = System.Text.Encoding.UTF8;");
+        // Numbers look the same on every computer (3.14, not 3,14), C# methods included.
+        Line("System.Globalization.CultureInfo.DefaultThreadCurrentCulture = System.Globalization.CultureInfo.InvariantCulture;");
+        Line("System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;");
         foreach (var f in comp.Files.Where(f => !f.IsNative))
             Line($"LustRt.Name({CsString(LinePath(f.Source))}, {CsString(f.Source.Display)});");
         if (saves.Count > 0)

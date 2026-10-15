@@ -101,7 +101,7 @@ public static class Runner
                 <Nullable>disable</Nullable>
                 <ImplicitUsings>disable</ImplicitUsings>
                 <CheckForOverflowUnderflow>true</CheckForOverflowUnderflow>
-                <InvariantGlobalization>true</InvariantGlobalization>
+                <InvariantGlobalization>{(packages == null || packages.Count == 0 ? "true" : "false")}</InvariantGlobalization>
                 <RollForward>Major</RollForward>
                 <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
                 <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
