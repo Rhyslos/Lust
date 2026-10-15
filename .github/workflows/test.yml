@@ -58,8 +58,8 @@ jobs:
           $L run examples/ui/pet.lust > pet.txt 2>&1 || true
           cat counter.txt pet.txt
           # Show the output as notes on the run too, so it can be read without the full log.
-          echo "::notice title=counter::$(head -c 3000 counter.txt | tr '\n' '|')"
-          echo "::notice title=pet::$(head -c 3000 pet.txt | tr '\n' '|')"
+          echo "::notice title=counter::$(head -c 3000 counter.txt | tr -d '\r' | tr '\n' '|')"
+          echo "::notice title=pet::$(head -c 3000 pet.txt | tr -d '\r' | tr '\n' '|')"
           grep -q "Clicks: 3" counter.txt
           grep -q "Smokey the pet" pet.txt
           grep -q "lived for" pet.txt
