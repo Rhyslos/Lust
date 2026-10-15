@@ -29,7 +29,7 @@ public static class Runner
         return $"net{Environment.Version.Major}.0";
     }
 
-    /// Lust programs never use NuGet packages, so restore looks in an empty folder instead of
+    /// Without NuGet packages, restore looks in an empty folder instead of
     /// asking nuget.org. That keeps runs quick and lets them work offline.
     static string EmptyFeed
     {
