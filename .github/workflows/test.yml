@@ -57,11 +57,10 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           L="dotnet compiler/bin/Release/net8.0/lust.dll"
-          $L build examples/ui/counter.lust
-          $L build examples/ui/pet.lust
-          $L build examples/ui/stars.lust > build.txt 2>&1 && ok=1 || ok=0
+          ok=1
+          for f in counter pet stars; do $L build examples/ui/$f.lust >> build.txt 2>&1 || ok=0; done
           cat build.txt
-          if [ $ok = 0 ]; then echo "::error title=ui build::$(head -c 4000 build.txt | tr -d '\r' | tr '\n' '|')"; exit 1; fi
+          if [ $ok = 0 ]; then echo "::error title=ui build::$(grep -i 'error' build.txt | sort -u | head -c 4000 | tr -d '\r' | tr '\n' '|')"; exit 1; fi
           ls examples/ui/build
 
       - name: Run the UI examples, clicking every button by themselves
