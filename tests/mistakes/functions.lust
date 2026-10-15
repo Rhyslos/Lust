@@ -1,0 +1,38 @@
+do int add(int a, int b) {
+    give a + b;
+}
+
+do maybe(int n) {
+    is n > 0? then {
+        give n;
+    }
+}
+
+do int half(int n) {
+    is n > 0? then {
+        give n / 2;
+    }
+}
+
+do int loopsForever() {
+    loop {
+        give 1;
+    }
+}
+
+int top = 5;
+
+do useTop() {
+    print(top);
+}
+
+print(add(1));
+print(add(1, "2"));
+add(1, 2);
+print(nope(3));
+int q = add;
+do inner() {
+    do nested() { }
+}
+
+end

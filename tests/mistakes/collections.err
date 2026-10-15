@@ -1,0 +1,24 @@
+collections.lust:1:24  this array holds ints, but this is a string. Use .int() to turn text into a number.
+collections.lust:3:14  inject's item is a string, but this is an int. Use .text() to turn it into text.
+collections.lust:4:7  arrays have inject and remove, not add. Use names:inject(…).
+collections.lust:5:14  scores is an int array, which has no fields. To count items, use #scores.
+collections.lust:6:14  an item's number is an int, but this is a float.
+collections.lust:7:14  an item's number is an int, but this is a string.
+collections.lust:9:7  [ ] picks from an array or a cArray, but x is an int.
+collections.lust:10:7  scores holds ints, so write loop (int s in scores)
+collections.lust:11:1  a loop through an array takes one name: loop (int x in scores)
+collections.lust:12:7  say what type n is: loop (int n in …)
+collections.lust:13:16  loop ( … in …) goes through an array, a cArray or a state, but x is an int.
+collections.lust:14:7  Lust can't tell what kind of array [] is here. Put it in a variable with a type first: int array scores = [];
+collections.lust:16:45  the column itemName is a string, but this is an int. Use .text() to turn it into text.
+collections.lust:16:48  the column amount is an int, but this is a string. Use .int() to turn text into a number.
+collections.lust:16:68  the column amount is an int, but this is a string. Use .int() to turn text into a number.
+collections.lust:17:12  a row has 2 values: [itemName, amount], or [id, itemName, amount] to pick its id.
+collections.lust:18:5  inject takes one row, written out: bag:inject([itemName, amount]);
+collections.lust:19:11  pick a row first, by its id: bag[1].itemName
+collections.lust:20:14  the rows have no column called colour. The columns are id, itemName, amount.
+collections.lust:21:1  a row's id can't be changed.
+collections.lust:22:1  a cArray row can't be replaced in one go. Change its columns: bag[2].amount = 5;
+collections.lust:23:1  a loop through a cArray names the id and every column: loop (int id, string itemName, int amount in bag)
+collections.lust:24:15  every cArray already has an id column, so leave it out of the list.
+collections.lust:27:5  n is the loop's current item, so it can't be changed here.

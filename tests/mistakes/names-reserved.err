@@ -2,4 +2,4 @@ names-reserved.lust:1:5  class is one of Lust's own words, so it can't be a name
 names-reserved.lust:2:5  print is built into Lust, so it can't be a name.
 names-reserved.lust:3:8  int is one of Lust's own words, so it can't be a name.
 names-reserved.lust:4:1  true is one of Lust's own words; it can't be changed.
-names-reserved.lust:5:1  Lust doesn't have a type called Player. The types are int, float, string and truth.
+names-reserved.lust:5:1  Lust doesn't have a type called Player. The types are int, float, string, truth, arrays, cArrays, classes and states.

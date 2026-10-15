@@ -1,8 +1,8 @@
-conversions.lust:1:9  Lust doesn't have .foo(). The built-in ones are .text(), .int() and .float().
+conversions.lust:1:9  Lust doesn't have .foo(). The built-in ones are .text(), .int(), .float() and .isNumber().
 conversions.lust:2:11  this is already text.
 conversions.lust:3:9  this is already an int.
 conversions.lust:4:11  this is already a float.
 conversions.lust:5:9  add () to call it: .text()
-conversions.lust:7:9  x has no field called hp. Fields come with classes, in a later milestone.
+conversions.lust:7:9  x is an int, which has no fields.
 conversions.lust:8:11  not flips a truth, but this is an int.
 conversions.lust:9:7  - only works on numbers, not on a string.

@@ -49,7 +49,7 @@ public static class Tests
     {
         var outFile = Path.ChangeExtension(path, ".out");
         var errFile = Path.ChangeExtension(path, ".err");
-        var (program, mistakes) = Cli.Compile(path, Path.GetFileName(path));
+        var (program, mistakes) = Cli.Compile(path, fileNamesOnly: true);
 
         if (program == null)
         {
@@ -58,7 +58,7 @@ public static class Tests
             return Compare(File.ReadAllText(errFile), got, "the mistakes");
         }
 
-        var result = Runner.Run(program.File, Emitter.Emit(program), capture: true, new Dictionary<string, string> { ["LUST_SEED"] = "1" });
+        var result = Runner.Run(program.Main.Source, Emitter.Emit(program), capture: true, new Dictionary<string, string> { ["LUST_SEED"] = "1" });
         if (result.ExitCode == 3) return result.Stderr;
         if (File.Exists(errFile))
         {

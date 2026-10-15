@@ -3,10 +3,10 @@ namespace Lust;
 /// The `lust` command.
 public static class Cli
 {
-    const string Version = "0.2.0";
+    const string Version = "0.3.0";
 
     const string Usage = """
-        Lust 0.2.0
+        Lust 0.3.0
 
           lust run <file.lust>      check the file, then run it
           lust check <file.lust>    only check it, and list any mistakes
@@ -50,18 +50,12 @@ public static class Cli
         return 2;
     }
 
-    /// Reads and checks a file. Returns null (after printing the mistakes) when it isn't ready to run.
-    public static (Program? program, IReadOnlyList<Diagnostic> mistakes) Compile(string path, string? display = null)
+    /// Reads and checks a file and everything it fetches. The program is null when there are mistakes.
+    /// With fileNamesOnly, messages show just file names (for tests).
+    public static (Compilation? program, IReadOnlyList<Diagnostic> mistakes) Compile(string path, bool fileNamesOnly = false)
     {
-        var full = Path.GetFullPath(path);
-        var text = File.ReadAllText(full);
-        display ??= DisplayName(full);
-        var file = new SourceFile(full, display, text);
-        var diags = new Diagnostics();
-        var program = Parser.Parse(file, diags);
-        // Check types even after a structural mistake, so all the mistakes show at once.
-        Checker.Check(program, diags);
-        return (diags.Any ? null : program, diags.All);
+        var comp = Compilation.Load(path, full => fileNamesOnly ? Path.GetFileName(full) : DisplayName(full));
+        return (comp.Diags.Any ? null : comp, comp.Diags.All);
     }
 
     static string DisplayName(string full)
@@ -85,7 +79,7 @@ public static class Cli
         return true;
     }
 
-    static Program? CompileAndReport(string path)
+    static Compilation? CompileAndReport(string path)
     {
         if (!FileOk(path)) return null;
         var (program, mistakes) = Compile(path);
@@ -99,7 +93,7 @@ public static class Cli
     {
         var program = CompileAndReport(path);
         if (program == null) return 1;
-        var result = Runner.Run(program.File, Emitter.Emit(program), capture: false);
+        var result = Runner.Run(program.Main.Source, Emitter.Emit(program), capture: false);
         if (result.Stderr.Length > 0) Console.Error.WriteLine(result.Stderr);
         return result.ExitCode;
     }
@@ -108,7 +102,7 @@ public static class Cli
     {
         var program = CompileAndReport(path);
         if (program == null) return 1;
-        Console.WriteLine($"{program.File.Display} looks good.");
+        Console.WriteLine(program.Files.Count == 1 ? $"{program.Main.Source.Display} looks good." : $"{program.Main.Source.Display} and the {program.Files.Count - 1} file{(program.Files.Count == 2 ? "" : "s")} it fetches from look good.");
         return 0;
     }
 
@@ -124,11 +118,11 @@ public static class Cli
     {
         var program = CompileAndReport(path);
         if (program == null) return 1;
-        var outDir = Path.Combine(Path.GetDirectoryName(program.File.Path)!, "build");
-        Console.WriteLine($"Building {program.File.Display}…");
-        var result = Runner.Build(program.File, Emitter.Emit(program), outDir);
+        var outDir = Path.Combine(Path.GetDirectoryName(program.Main.Source.Path)!, "build");
+        Console.WriteLine($"Building {program.Main.Source.Display}…");
+        var result = Runner.Build(program.Main.Source, Emitter.Emit(program), outDir);
         if (result.ExitCode != 0) { Console.Error.WriteLine(result.Stderr); return result.ExitCode; }
-        var exe = Runner.AppName(program.File) + (OperatingSystem.IsWindows() ? ".exe" : "");
+        var exe = Runner.AppName(program.Main.Source) + (OperatingSystem.IsWindows() ? ".exe" : "");
         Console.WriteLine($"Done: {Path.Combine(DisplayName(outDir), exe)}");
         return 0;
     }

@@ -32,6 +32,8 @@ public sealed class Parser
         "int", "float", "string", "truth", "array", "cArray",
     };
 
+    public static readonly HashSet<string> Builtins = new() { "print", "wait", "random", "ask" };
+
     /// Words from other languages, and what to write in Lust instead.
     static readonly Dictionary<string, string> Hints = new()
     {
@@ -64,21 +66,19 @@ public sealed class Parser
         ["elseif"] = "Lust uses or is …? then { } for another question.",
         ["match"] = "Lust asks questions with is …? then { } or is …? then { }.",
         ["switch"] = "Lust asks questions with is …? then { } or is …? then { }.",
+        ["enum"] = "Lust calls it state: state = [idle, busy];",
+        ["extends"] = "Lust uses like: class Wizard like Player { }",
+        ["inherits"] = "Lust uses like: class Wizard like Player { }",
+        ["static"] = "for one ready-made thing, use object: object Game { }",
+        ["struct"] = "Lust has class (a blueprint) and object (one ready-made thing).",
     };
 
-    /// Words for parts of Lust that later milestones add.
-    static readonly Dictionary<string, string> NotYet = new()
-    {
-        ["class"] = "classes", ["object"] = "objects", ["has"] = "has blocks", ["method"] = "methods",
-        ["new"] = "classes", ["do"] = "functions (do)", ["give"] = "functions (do and give)",
-        ["state"] = "state", ["send"] = "sharing between files", ["fetch"] = "sharing between files",
-        ["get"] = "sharing between files", ["array"] = "arrays", ["cArray"] = "cArrays", ["in"] = "arrays",
-        ["nothing"] = "nothing (it comes with classes)",
-        ["like"] = "classes",
-    };
+    /// Hints that only make sense where a value goes (elsewhere these words can be names, like a function called double).
+    static readonly HashSet<string> ValueHints = new() { "false", "null", "self", "this" };
+    /// Hints about types and declarations: skipped when the word is being called, as in double(3).
+    static readonly HashSet<string> TypeHints = new() { "bool", "boolean", "double", "str", "void", "var", "let", "struct", "static", "enum", "import", "export", "extends", "inherits" };
 
-    static string NotYetMessage(string feature) =>
-        $"this version of Lust doesn't have {feature} yet. That comes in a later milestone.";
+    bool HintApplies(Token t) => Hints.ContainsKey(t.Text) && !(TypeHints.Contains(t.Text) && PeekAt(1).Kind is Tk.LParen or Tk.Dot or Tk.Colon or Tk.Assign or Tk.LBrack);
 
     // ----- token helpers -----
 
@@ -107,7 +107,15 @@ public sealed class Parser
     void ExpectWord(string w, string message)
     {
         if (AtWord(w)) { Next(); return; }
-        throw Fail(Cur.Kind == Tk.Eof ? Prev.End : Cur.Pos, message);
+        throw Fail(MissingAt, message);
+    }
+
+    Token ExpectName(string what)
+    {
+        if (!At(Tk.Ident)) throw Fail(MissingAt, $"expected {what} here.");
+        var t = Next();
+        CheckName(t);
+        return t;
     }
 
     /// Every statement ends with ;. A missing one is reported where the line ends, and parsing carries on.
@@ -135,7 +143,7 @@ public sealed class Parser
                 if (!AtWord("or")) return;
                 continue;
             }
-            if (Cur.Pos.Line != startLine && Cur.Kind == Tk.Ident && (Reserved.Contains(Cur.Text) || Hints.ContainsKey(Cur.Text)) && !Cur.Is("or") && !Cur.Is("then") && !Cur.Is("not") && !Cur.Is("true")) return;
+            if (Cur.Pos.Line != startLine && Cur.Kind == Tk.Ident && (Reserved.Contains(Cur.Text) || Hints.ContainsKey(Cur.Text)) && !Cur.Is("or") && !Cur.Is("then") && !Cur.Is("not") && !Cur.Is("true") && !Cur.Is("nothing") && !Cur.Is("new") && !Cur.Is("in") && !Cur.Is("like")) return;
             Next();
         }
     }
@@ -157,10 +165,12 @@ public sealed class Parser
 
     // ----- program -----
 
+    Program program = null!;
+
     Program ParseProgram()
     {
-        var stmts = new List<Stmt>();
-        bool ended = false;
+        program = new Program { File = file };
+        bool ended = false, pastFetches = false;
         while (!At(Tk.Eof))
         {
             if (diags.Full) break;
@@ -172,13 +182,347 @@ public sealed class Parser
                 break;
             }
             if (At(Tk.RBrace)) { diags.Add(Cur.Pos, "this } doesn't close anything."); Next(); continue; }
-            var s = Statement();
-            if (s != null) stmts.Add(s);
+            if ((AtWord("fetch") || AtWord("get")) && pastFetches)
+                diags.Add(Cur.Pos, $"{Cur.Text} lines go at the top of the file, before anything else.");
+            if (!AtWord("fetch") && !AtWord("get")) pastFetches = true;
+            TopLevelItem();
         }
         if (!ended && !diags.Full)
             diags.Add(toks.Count > 1 ? Prev.End : Cur.Pos, $"{file.Display} never ends. Add end on its last line.");
-        return new Program { File = file, Stmts = stmts };
+        return program;
     }
+
+    void TopLevelItem()
+    {
+        int start = p, line = Cur.Pos.Line;
+        try
+        {
+            switch (Cur.Text)
+            {
+                case "class" or "object" when Cur.Kind == Tk.Ident: program.Classes.Add(ClassDeclaration()); return;
+                case "do" when Cur.Kind == Tk.Ident: program.Funcs.Add(FunctionDeclaration(isMethod: false)); return;
+                case "send" when Cur.Kind == Tk.Ident: program.Sends.Add(SendDeclaration()); return;
+                case "fetch" or "get" when Cur.Kind == Tk.Ident: program.Fetches.Add(FetchDeclaration()); return;
+                case "state" when Cur.Kind == Tk.Ident && IsStateDeclaration(): program.States.Add(StateDeclaration()); return;
+                case "method" when Cur.Kind == Tk.Ident: throw Fail(Cur.Pos, "methods go inside a class or object. For a function on its own, use do.");
+                case "has" when Cur.Kind == Tk.Ident: throw Fail(Cur.Pos, "a has block goes inside a class or object.");
+                case "give" when Cur.Kind == Tk.Ident: throw Fail(Cur.Pos, "give only works inside a function or method.");
+            }
+        }
+        catch (ParseStop)
+        {
+            if (p == start) Next();
+            Recover(line);
+            return;
+        }
+        var s = Statement();
+        if (s != null) program.Stmts.Add(s);
+    }
+
+    // ----- declarations -----
+
+    bool IsStateDeclaration() =>
+        (PeekAt(1).Kind == Tk.Assign && PeekAt(2).Kind == Tk.LBrack) ||
+        (PeekAt(1).Kind == Tk.Ident && PeekAt(2).Kind == Tk.Assign && PeekAt(3).Kind == Tk.LBrack);
+
+    StateDecl StateDeclaration()
+    {
+        var start = Next().Pos; // state
+        string name = "state";
+        if (At(Tk.Ident)) name = ExpectName("a name for the state").Text;
+        Expect(Tk.Assign, "expected = and the options in [ ].");
+        Expect(Tk.LBrack, "expected [ and the options, like state = [idle, busy];");
+        var decl = new StateDecl { Pos = start, Name = name };
+        while (!At(Tk.RBrack))
+        {
+            if (!At(Tk.Ident)) throw Fail(MissingAt, "a state's options are names, like [idle, walking, fighting].");
+            var opt = Next();
+            if (Reserved.Contains(opt.Text)) throw Fail(opt.Pos, $"{opt.Text} is one of Lust's own words, so it can't be an option.");
+            decl.Options.Add((opt.Text, opt.Pos));
+            if (At(Tk.Comma)) { Next(); continue; }
+            if (!At(Tk.RBrack)) throw Fail(MissingAt, "expected , or ] here.");
+        }
+        Next();
+        if (decl.Options.Count == 0) diags.Add(start, "a state needs at least one option.");
+        EndStatement();
+        return decl;
+    }
+
+    SendDecl SendDeclaration()
+    {
+        var decl = new SendDecl { Pos = Next().Pos };
+        do
+        {
+            if (At(Tk.Comma)) Next();
+            if (!At(Tk.Ident)) throw Fail(MissingAt, "say what to send, like send Player;");
+            var t = Next();
+            decl.Names.Add((t.Text, t.Pos));
+        } while (At(Tk.Comma));
+        EndStatement();
+        return decl;
+    }
+
+    FetchDecl FetchDeclaration()
+    {
+        var word = Next();
+        bool isGet = word.Text == "get";
+        if (!At(Tk.Ident)) throw Fail(MissingAt, $"say which file to {word.Text} from, like {word.Text} dice:roll;");
+        var module = Next();
+        List<(string, Pos)>? names = null;
+        if (At(Tk.Colon))
+        {
+            Next();
+            names = new();
+            if (At(Tk.LBrack))
+            {
+                Next();
+                while (!At(Tk.RBrack))
+                {
+                    if (!At(Tk.Ident)) throw Fail(MissingAt, "expected a name here.");
+                    var t = Next();
+                    names.Add((t.Text, t.Pos));
+                    if (At(Tk.Comma)) { Next(); continue; }
+                    if (!At(Tk.RBrack)) throw Fail(MissingAt, "expected , or ] here.");
+                }
+                Next();
+            }
+            else
+            {
+                if (!At(Tk.Ident)) throw Fail(MissingAt, $"say what to {word.Text}, like {word.Text} {module.Text}:{(isGet ? "roll" : "Player")};");
+                var t = Next();
+                names.Add((t.Text, t.Pos));
+                if (At(Tk.LBrack)) throw Fail(Cur.Pos, "fetching single methods isn't in Lust yet. Fetch the whole class.");
+            }
+        }
+        else if (isGet) throw Fail(MissingAt, $"get brings in one function, like get {module.Text}:roll; To bring in everything, use fetch {module.Text};");
+        EndStatement();
+        return new FetchDecl { Pos = word.Pos, Module = module.Text, ModulePos = module.Pos, Names = names, IsGet = isGet };
+    }
+
+    ClassDecl ClassDeclaration()
+    {
+        var word = Next();
+        bool isObject = word.Text == "object";
+        var nameTok = ExpectName($"a name for the {word.Text}, like {word.Text} {(isObject ? "Game" : "Player")} {{ }}");
+        string? parent = null;
+        Pos parentPos = default;
+        if (AtWord("like"))
+        {
+            Next();
+            if (!At(Tk.Ident)) throw Fail(MissingAt, $"say what {nameTok.Text} is like: {word.Text} {nameTok.Text} like Player {{ }}");
+            var pt = Next();
+            parent = pt.Text;
+            parentPos = pt.Pos;
+        }
+        var decl = new ClassDecl { Pos = word.Pos, Name = nameTok.Text, IsObject = isObject, Parent = parent, ParentPos = parentPos };
+        var open = Expect(Tk.LBrace, $"expected {{ to start the {word.Text}.");
+        bool seenHas = false, seenMethod = false;
+        while (!At(Tk.RBrace))
+        {
+            if (At(Tk.Eof) || diags.Full || (AtWord("end") && PeekAt(1).Kind == Tk.Eof))
+                throw Fail(open.Pos, "this { is never closed. Add a } where the class ends.");
+            int start = p, line = Cur.Pos.Line;
+            try
+            {
+                if (AtWord("has"))
+                {
+                    if (seenHas) diags.Add(Cur.Pos, "a class has one has block. Put all its fields in it.");
+                    else if (seenMethod) diags.Add(Cur.Pos, "the has block goes first, above the methods.");
+                    seenHas = true;
+                    HasBlock(decl);
+                }
+                else if (AtWord("method"))
+                {
+                    seenMethod = true;
+                    decl.Methods.Add(FunctionDeclaration(isMethod: true));
+                }
+                else if (AtWord("do")) throw Fail(Cur.Pos, "inside a class, functions are methods: method name() { }");
+                else if (LooksLikeDeclaration() || (Cur.Kind == Tk.Ident && PeekAt(1).Kind == Tk.LBrack))
+                    throw Fail(Cur.Pos, "fields go inside the has block: has { int[hp 20]; }");
+                else throw Fail(Cur.Pos, $"a {word.Text} holds a has block and methods, nothing else.");
+            }
+            catch (ParseStop)
+            {
+                if (p == start) Next();
+                Recover(line);
+            }
+        }
+        Next();
+        return decl;
+    }
+
+    void HasBlock(ClassDecl decl)
+    {
+        Next(); // has
+        var open = Expect(Tk.LBrace, "expected { after has.");
+        while (!At(Tk.RBrace))
+        {
+            if (At(Tk.Eof) || diags.Full || (AtWord("end") && PeekAt(1).Kind == Tk.Eof))
+                throw Fail(open.Pos, "this { is never closed. Add a } where the has block ends.");
+            int start = p, line = Cur.Pos.Line;
+            try { HasEntry(decl); }
+            catch (ParseStop)
+            {
+                if (p == start) Next();
+                Recover(line);
+            }
+        }
+        Next();
+    }
+
+    void HasEntry(ClassDecl decl)
+    {
+        var start = Cur;
+        // A state the class is in: `state is idle;`, `season is spring;`, `farm.season is spring;`
+        if (At(Tk.Ident) && (PeekAt(1).Is("is") || (PeekAt(1).Kind == Tk.Dot && PeekAt(2).Kind == Tk.Ident && PeekAt(3).Is("is"))))
+        {
+            var first = Next();
+            string? module = null;
+            string name = first.Text;
+            if (At(Tk.Dot)) { Next(); module = first.Text; name = Next().Text; }
+            Next(); // is
+            if (!At(Tk.Ident)) throw Fail(MissingAt, $"say which option it starts in: {name} is idle;");
+            var opt = Next();
+            decl.Fields.Add(new FieldDecl
+            {
+                Pos = start.Pos, IsState = true, Name = name,
+                Type = new TypeRef { Pos = start.Pos, Kind = TypeKind.Named, Name = name, Module = module },
+                Default = new Name { Pos = opt.Pos, Id = opt.Text },
+            });
+            EndStatement();
+            return;
+        }
+        if (!At(Tk.Ident)) throw Fail(Cur.Pos, "a has block holds fields, like int[hp 20, gold 0];");
+        if (Hints.TryGetValue(Cur.Text, out var hint)) throw Fail(Cur.Pos, hint);
+        var type = Type();
+        if (At(Tk.LBrack))
+        {
+            // int[hp 20, gold 0,];
+            Next();
+            while (!At(Tk.RBrack))
+            {
+                var nameTok = ExpectName("a field name, like hp 20");
+                if (At(Tk.Assign)) throw Fail(Cur.Pos, $"no = in a has block. Write the name and then its starting value: {nameTok.Text} {ExampleValue(type)}");
+                if (At(Tk.Comma) || At(Tk.RBrack)) throw Fail(MissingAt, $"give {nameTok.Text} a starting value: {nameTok.Text} {ExampleValue(type)}");
+                var value = Expression();
+                decl.Fields.Add(new FieldDecl { Pos = nameTok.Pos, Type = type, Name = nameTok.Text, Default = value });
+                if (At(Tk.Comma)) { Next(); continue; }
+                if (!At(Tk.RBrack)) throw Fail(MissingAt, "expected , or ] here.");
+            }
+            Next();
+            EndStatement();
+            return;
+        }
+        // string array bag [];   cArray(string itemName, int amount) loot [];
+        var fieldName = ExpectName("a field name");
+        if (At(Tk.Assign)) throw Fail(Cur.Pos, $"no = in a has block. Write the name and then its starting value: {fieldName.Text} {ExampleValue(type)}");
+        if (At(Tk.Semi)) throw Fail(MissingAt, $"give {fieldName.Text} a starting value: {type} {fieldName.Text} {ExampleValue(type)};");
+        var dflt = Expression();
+        decl.Fields.Add(new FieldDecl { Pos = fieldName.Pos, Type = type, Name = fieldName.Text, Default = dflt });
+        EndStatement();
+    }
+
+    static string ExampleValue(TypeRef t) => t.Kind != TypeKind.Named ? "[]" : t.Name switch
+    {
+        "int" => "0", "float" => "1.5", "string" => "\"text\"", "truth" => "true", _ => "nothing",
+    };
+
+    FuncDecl FunctionDeclaration(bool isMethod)
+    {
+        var word = Next();
+        TypeRef? returns = null;
+        if (!(At(Tk.Ident) && PeekAt(1).Kind == Tk.LParen))
+        {
+            if (!At(Tk.Ident)) throw Fail(MissingAt, $"expected a name, like {word.Text} greet() {{ }}");
+            if (AtWord("void")) throw Fail(Cur.Pos, Hints["void"]);
+            returns = Type();
+        }
+        if (!At(Tk.Ident)) throw Fail(MissingAt, $"expected a name, like {word.Text} {(returns != null ? returns + " " : "")}greet() {{ }}");
+        var nameTok = Next();
+        CheckName(nameTok);
+        var decl = new FuncDecl { Pos = word.Pos, Name = nameTok.Text, NamePos = nameTok.Pos, Returns = returns, IsMethod = isMethod };
+        Expect(Tk.LParen, $"expected ( after {nameTok.Text}, even when it takes nothing: {nameTok.Text}()");
+        while (!At(Tk.RParen))
+        {
+            if (!At(Tk.Ident)) throw Fail(MissingAt, "expected a parameter, like (int amount)");
+            if (Cur.Kind == Tk.Ident && (PeekAt(1).Kind is Tk.Comma or Tk.RParen))
+                throw Fail(Cur.Pos, $"say what type {Cur.Text} is: (int {Cur.Text})");
+            var ptype = Type();
+            var pname = ExpectName("a parameter name");
+            decl.Params.Add(new ParamDecl(ptype, pname.Text, pname.Pos));
+            if (At(Tk.Comma)) { Next(); continue; }
+            if (!At(Tk.RParen)) throw Fail(MissingAt, "expected , or ) here.");
+        }
+        Next();
+        decl.Body = BlockStmt();
+        return decl;
+    }
+
+    // ----- types -----
+
+    /// Could the tokens here start a variable declaration, like `int x =` or `Player bo =`?
+    bool LooksLikeDeclaration()
+    {
+        if (Cur.Kind != Tk.Ident) return false;
+        var t = Cur.Text;
+        if (LType.Primitive(t) != null || t == "cArray") return true;
+        if (PeekAt(1).Is("array")) return true;
+        if (t == "state") return PeekAt(1).Kind == Tk.Ident && !PeekAt(1).Is("is");
+        if (Reserved.Contains(t) || Hints.ContainsKey(t)) return false;
+        if (PeekAt(1).Kind == Tk.Ident && !Reserved.Contains(PeekAt(1).Text) && PeekAt(2).Kind is Tk.Assign or Tk.Semi) return true;
+        if (PeekAt(1).Kind == Tk.Dot && PeekAt(2).Kind == Tk.Ident && PeekAt(3).Kind == Tk.Ident && !Reserved.Contains(PeekAt(3).Text) && PeekAt(4).Kind == Tk.Assign) return true;
+        return false;
+    }
+
+    TypeRef Type()
+    {
+        var t = Cur;
+        TypeRef type;
+        if (AtWord("cArray"))
+        {
+            Next();
+            Expect(Tk.LParen, "a cArray lists its columns: cArray(string itemName, int amount)");
+            var cols = new List<ParamDecl>();
+            while (!At(Tk.RParen))
+            {
+                if (Cur.Kind == Tk.Ident && (PeekAt(1).Kind is Tk.Comma or Tk.RParen))
+                    throw Fail(Cur.Pos, $"say what type the column {Cur.Text} is: cArray(string {Cur.Text})");
+                var ctype = Type();
+                var cname = ExpectName("a column name");
+                if (cname.Text == "id") throw Fail(cname.Pos, "every cArray already has an id column, so leave it out of the list.");
+                cols.Add(new ParamDecl(ctype, cname.Text, cname.Pos));
+                if (At(Tk.Comma)) { Next(); continue; }
+                if (!At(Tk.RParen)) throw Fail(MissingAt, "expected , or ) here.");
+            }
+            Next();
+            if (cols.Count == 0) throw Fail(t.Pos, "a cArray needs at least one column besides its id: cArray(string itemName)");
+            type = new TypeRef { Pos = t.Pos, Kind = TypeKind.CArray, Columns = cols };
+        }
+        else
+        {
+            if (!At(Tk.Ident)) throw Fail(MissingAt, "expected a type here, like int or Player.");
+            if (Hints.TryGetValue(Cur.Text, out var hint) && LType.Primitive(Cur.Text) == null) throw Fail(Cur.Pos, hint);
+            Next();
+            string? module = null;
+            string name = t.Text;
+            if (At(Tk.Dot) && PeekAt(1).Kind == Tk.Ident) { Next(); module = t.Text; name = Next().Text; }
+            type = new TypeRef { Pos = t.Pos, Kind = TypeKind.Named, Name = name, Module = module };
+        }
+        while (AtWord("array"))
+        {
+            Next();
+            type = new TypeRef { Pos = t.Pos, Kind = TypeKind.Array, Elem = type };
+        }
+        return type;
+    }
+
+    void CheckName(Token t)
+    {
+        if (Reserved.Contains(t.Text)) throw Fail(t.Pos, $"{t.Text} is one of Lust's own words, so it can't be a name.");
+        if (Builtins.Contains(t.Text)) throw Fail(t.Pos, $"{t.Text} is built into Lust, so it can't be a name.");
+    }
+
+    // ----- statements -----
 
     Stmt? Statement()
     {
@@ -220,54 +564,72 @@ public sealed class Parser
                 EndStatement();
                 return new Wait { Pos = t.Pos, Seconds = e };
             }
+            case "give":
+            {
+                Next();
+                Expr? value = At(Tk.Semi) ? null : Expression();
+                EndStatement();
+                return new Give { Pos = t.Pos, Value = value };
+            }
             case "end": throw Fail(t.Pos, "end only goes on the file's last line. Is a } missing above?");
             case "then": throw Fail(t.Pos, "then comes after a question: is hp 0? then { }");
             case "or": throw Fail(t.Pos, "or goes right after the } of a question: } or { }");
+            case "class" or "object": throw Fail(t.Pos, $"a {t.Text} goes at the top level of a file, not inside a block.");
+            case "do": throw Fail(t.Pos, "a function can't go inside another one. Put do at the top level of the file.");
+            case "method": throw Fail(t.Pos, "a method can't go inside another one. Put it directly inside its class.");
+            case "send" or "fetch" or "get": throw Fail(t.Pos, $"{t.Text} goes at the top level of a file.");
+            case "has": throw Fail(t.Pos, "a has block goes inside a class or object.");
+            case "state" when IsStateDeclaration(): throw Fail(t.Pos, "a state is declared at the top level of a file.");
         }
-        if (LType.FromName(t.Text) != null) return VarDeclStmt();
-        if (Hints.TryGetValue(t.Text, out var hint)) throw Fail(t.Pos, hint);
-        if (NotYet.TryGetValue(t.Text, out var feature)) throw Fail(t.Pos, NotYetMessage(feature));
+        if (LooksLikeDeclaration()) return VarDeclStmt();
+        if (HintApplies(t)) throw Fail(t.Pos, Hints[t.Text]);
 
-        // Two names in a row look like a declaration with a type Lust doesn't have.
-        if (PeekAt(1).Kind == Tk.Ident && !Reserved.Contains(PeekAt(1).Text) && PeekAt(2).Kind is Tk.Assign or Tk.Semi)
-            throw Fail(t.Pos, $"Lust doesn't have a type called {t.Text}. The types are int, float, string and truth.");
-
-        if (PeekAt(1).Kind == Tk.Assign)
+        var target = Postfix();
+        if (At(Tk.Assign))
         {
-            if (Reserved.Contains(t.Text)) throw Fail(t.Pos, $"{t.Text} is one of Lust's own words; it can't be changed.");
-            var target = (Name)Primary();
-            Next(); // =
+            if (target is TruthLit or NothingLit)
+                throw Fail(t.Pos, $"{t.Text} is one of Lust's own words; it can't be changed.");
+            if (target is not (Name or FieldGet or Index))
+                throw Fail(t.Pos, "the left side of = must be something that can change, like hp or bo.hp.");
+            if (target is Name { Id: var id } && Reserved.Contains(id))
+                throw Fail(t.Pos, $"{id} is one of Lust's own words; it can't be changed.");
+            Next();
             var value = Expression();
             EndStatement();
             return new Assign { Pos = t.Pos, Target = target, Value = value };
         }
-
-        var expr = Expression();
-        if (expr is not Call)
+        if (AtWord("is"))
+        {
+            Next();
+            if (!At(Tk.Ident)) throw Fail(MissingAt, $"say which option: {Snippet(target)} is idle;");
+            var opt = Next();
+            EndStatement();
+            return new StateSet { Pos = t.Pos, Target = target, Option = opt.Text, OptionPos = opt.Pos };
+        }
+        if (target is not (Call or MethodCall))
             throw Fail(t.Pos, "this line doesn't do anything. A line can declare, change a variable, call something, ask a question or loop.");
         EndStatement();
-        return new ExprStmt { Pos = t.Pos, Expr = expr };
+        return new ExprStmt { Pos = t.Pos, Expr = target };
     }
 
     Stmt VarDeclStmt()
     {
-        var typeTok = Next();
-        var type = new TypeRef { Pos = typeTok.Pos, Name = typeTok.Text };
-        if (AtWord("array")) throw Fail(Cur.Pos, NotYetMessage("arrays"));
-        if (At(Tk.LBrack)) throw Fail(Cur.Pos, $"{typeTok.Text}[…] only goes inside a has block. Here, write {typeTok.Text} name = value;");
-        if (!At(Tk.Ident)) throw Fail(Cur.Kind == Tk.Eof ? Prev.End : Cur.Pos, $"give the {typeTok.Text} a name, like {typeTok.Text} {Example(typeTok.Text)};");
+        var start = Cur;
+        var type = Type();
+        if (At(Tk.LBrack)) throw Fail(Cur.Pos, $"{type}[…] only goes inside a has block. Here, write {type} name = value;");
+        if (!At(Tk.Ident)) throw Fail(MissingAt, $"give the {type} a name, like {type} {Example(type)};");
         var nameTok = Next();
         CheckName(nameTok);
         if (At(Tk.Semi) || At(Tk.Eof))
-            throw Fail(nameTok.End, $"give {nameTok.Text} a starting value, like {typeTok.Text} {nameTok.Text} = {Example(typeTok.Text).Split(" = ")[1]};");
+            throw Fail(nameTok.End, $"give {nameTok.Text} a starting value, like {type} {nameTok.Text} = {Example(type).Split(" = ")[1]};");
         if (!At(Tk.Assign)) throw Fail(Cur.Pos, $"expected = and a starting value after {nameTok.Text}.");
         Next();
         var init = Expression();
         EndStatement();
-        return new VarDecl { Pos = typeTok.Pos, TypeRef = type, Id = nameTok.Text, IdPos = nameTok.Pos, Init = init };
+        return new VarDecl { Pos = start.Pos, TypeRef = type, Id = nameTok.Text, IdPos = nameTok.Pos, Init = init };
     }
 
-    static string Example(string type) => type switch
+    static string Example(TypeRef type) => type.Kind != TypeKind.Named ? "list = []" : type.Name switch
     {
         "int" => "lives = 3",
         "float" => "speed = 1.5",
@@ -275,12 +637,6 @@ public sealed class Parser
         "truth" => "alive = true",
         _ => "x = …",
     };
-
-    void CheckName(Token t)
-    {
-        if (Reserved.Contains(t.Text)) throw Fail(t.Pos, $"{t.Text} is one of Lust's own words, so it can't be a name.");
-        if (t.Text is "print" or "wait" or "random") throw Fail(t.Pos, $"{t.Text} is built into Lust, so it can't be a name.");
-    }
 
     // ----- is … ? then { } or … -----
 
@@ -294,7 +650,7 @@ public sealed class Parser
             ExpectWord("is", "expected is.");
             var check = Check();
             if (!At(Tk.Question))
-                throw Fail(Cur.Kind == Tk.Eof ? Prev.End : Cur.Pos, AtWord("then") ? "a question ends with ? before then: is hp 0? then { }" : "a question ends with ?, like is hp 0? then { }");
+                throw Fail(MissingAt, AtWord("then") ? "a question ends with ? before then: is hp 0? then { }" : "a question ends with ?, like is hp 0? then { }");
             Next();
             ExpectWord("then", "after the ? comes then and a block: is hp 0? then { }");
             var body = BlockStmt();
@@ -339,9 +695,18 @@ public sealed class Parser
         noSpacedCall = true;
         Expr left;
         try { left = NotExpr(); } finally { noSpacedCall = false; }
+        bool negated = false;
+        if (AtWord("not") && PeekAt(1).Is("like")) { Next(); negated = true; }
+        if (AtWord("like"))
+        {
+            Next();
+            if (!At(Tk.Ident)) throw Fail(MissingAt, $"say which class: is {Snippet(left)} like Wizard?");
+            var cls = Next();
+            return new IsLike { Pos = left.Pos, Value = left, Class = cls.Text, ClassPos = cls.Pos, Negated = negated };
+        }
         if (AtWord("not"))
         {
-            var notTok = Next();
+            Next();
             if (!StartsValue(Cur)) throw Fail(Cur.Pos, $"after not, say what it isn't: is {Snippet(left)} not 0?");
             var right = NotExpr();
             return new Same { Pos = left.Pos, Left = left, Right = right, Negated = true };
@@ -358,11 +723,16 @@ public sealed class Parser
     static bool StartsValue(Token t) => t.Kind switch
     {
         Tk.Int or Tk.Float or Tk.String or Tk.LParen or Tk.Hash or Tk.LBrack => true,
-        Tk.Ident => !Reserved.Contains(t.Text) || t.Text is "true" or "nothing" or "either",
+        Tk.Ident => !Reserved.Contains(t.Text) || t.Text is "true" or "nothing" or "either" or "new",
         _ => false,
     };
 
-    static string Snippet(Expr e) => e is Name n ? n.Id : "x";
+    static string Snippet(Expr e) => e switch
+    {
+        Name n => n.Id,
+        FieldGet f => $"{Snippet(f.Target)}.{f.Field}",
+        _ => "x",
+    };
 
     // ----- loop -----
 
@@ -372,9 +742,26 @@ public sealed class Parser
         if (At(Tk.LBrace)) return new Loop { Pos = start, Kind = LoopKind.Forever, Body = BlockStmt() };
         if (At(Tk.LParen))
         {
-            // loop (int n in list) is for later; spot it so the message is clear.
-            if (PeekAt(1).Kind == Tk.Ident && (LType.FromName(PeekAt(1).Text) != null || PeekAt(2).Is("in") || PeekAt(3).Is("in")))
-                throw Fail(PeekAt(1).Pos, NotYetMessage("arrays"));
+            if (LoopHasIn())
+            {
+                Next(); // (
+                var vars = new List<ParamDecl>();
+                while (true)
+                {
+                    if (!At(Tk.Ident)) throw Fail(MissingAt, "expected a type and a name, like loop (int n in scores)");
+                    if (PeekAt(1).Is("in") || PeekAt(1).Kind == Tk.Comma)
+                        throw Fail(Cur.Pos, $"say what type {Cur.Text} is: loop (int {Cur.Text} in …)");
+                    var vtype = Type();
+                    var vname = ExpectName("a name");
+                    vars.Add(new ParamDecl(vtype, vname.Text, vname.Pos));
+                    if (At(Tk.Comma)) { Next(); continue; }
+                    break;
+                }
+                ExpectWord("in", "expected in, like loop (int n in scores)");
+                var source = Expression();
+                Expect(Tk.RParen, "expected ) to close the loop.");
+                return new Loop { Pos = start, Kind = LoopKind.Each, Vars = vars, Expr = source, Body = BlockStmt() };
+            }
             Next();
             var cond = Expression();
             Expect(Tk.RParen, "expected ) to close the loop's check.");
@@ -383,6 +770,21 @@ public sealed class Parser
         var count = Expression();
         if (!At(Tk.LBrace)) throw Fail(Cur.Pos, "expected { after the number of times to loop.");
         return new Loop { Pos = start, Kind = LoopKind.Times, Expr = count, Body = BlockStmt() };
+    }
+
+    /// Is there an `in` between this ( and its matching )?
+    bool LoopHasIn()
+    {
+        int depth = 0;
+        for (int i = p; i < toks.Count; i++)
+        {
+            var t = toks[i];
+            if (t.Kind is Tk.LParen or Tk.LBrack) depth++;
+            else if (t.Kind is Tk.RParen or Tk.RBrack) { if (--depth == 0) return false; }
+            else if (t.Kind is Tk.LBrace or Tk.Semi or Tk.Eof) return false;
+            else if (depth == 1 && t.Is("in")) return true;
+        }
+        return false;
     }
 
     Block BlockStmt()
@@ -412,10 +814,10 @@ public sealed class Parser
     {
         var start = Next().Pos;
         var check = Check();
-        if (!At(Tk.Question)) throw Fail(Cur.Pos, "either needs a question ending with ?: either hp > 0? \"up\" or \"down\"");
+        if (!At(Tk.Question)) throw Fail(MissingAt, "either needs a question ending with ?: either hp > 0? \"up\" or \"down\"");
         Next();
         var yes = Expression();
-        if (!AtWord("or")) throw Fail(Cur.Kind == Tk.Eof ? Prev.End : Cur.Pos, "either needs an or: either hp > 0? \"up\" or \"down\"");
+        if (!AtWord("or")) throw Fail(MissingAt, "either needs an or: either hp > 0? \"up\" or \"down\"");
         Next();
         var no = Expression();
         return new Either { Pos = start, Check = check, Yes = yes, No = no };
@@ -499,8 +901,15 @@ public sealed class Parser
             if (operand is FloatLit f) return new FloatLit { Pos = t.Pos, Value = -f.Value, Text = "-" + f.Text };
             return new Unary { Pos = t.Pos, Op = UnOp.Neg, Operand = operand };
         }
+        if (At(Tk.Hash))
+        {
+            var t = Next();
+            return new Length { Pos = t.Pos, Target = Postfix() };
+        }
         return Postfix();
     }
+
+    static readonly HashSet<string> Conversions = new() { "text", "int", "float", "isNumber" };
 
     Expr Postfix()
     {
@@ -510,20 +919,70 @@ public sealed class Parser
             if (At(Tk.Dot))
             {
                 Next();
-                if (!At(Tk.Ident)) throw Fail(Cur.Pos, "expected a name after the dot, like x.text().");
+                if (!At(Tk.Ident)) throw Fail(MissingAt, "expected a name after the dot, like bo.hp or x.text().");
                 var m = Next();
-                if (!At(Tk.LParen))
-                    throw Fail(m.Pos, m.Text is "text" or "int" or "float" ? $"add () to call it: .{m.Text}()" : $"{Snippet(e)} has no field called {m.Text}. Fields come with classes, in a later milestone.");
-                Next();
-                if (!At(Tk.RParen)) throw Fail(Cur.Pos, $".{m.Text}() doesn't take anything between its ().");
-                Next();
-                e = new Conversion { Pos = e.Pos, Target = e, Method = m.Text, MethodPos = m.Pos };
+                if (At(Tk.LParen) && !Cur.SpaceBefore)
+                {
+                    if (!Conversions.Contains(m.Text))
+                        throw Fail(m.Pos, e is Name or FieldGet
+                            ? $"methods are called with : instead of a dot: {Snippet(e)}:{m.Text}(…)"
+                            : $"Lust doesn't have .{m.Text}(). The built-in ones are .text(), .int(), .float() and .isNumber().");
+                    Next();
+                    if (!At(Tk.RParen)) throw Fail(Cur.Pos, $".{m.Text}() doesn't take anything between its ().");
+                    Next();
+                    e = new Conversion { Pos = e.Pos, Target = e, Method = m.Text, MethodPos = m.Pos };
+                    continue;
+                }
+                e = new FieldGet { Pos = e.Pos, Target = e, Field = m.Text, FieldPos = m.Pos };
                 continue;
             }
-            if (At(Tk.Colon)) throw Fail(Cur.Pos, NotYetMessage("methods"));
-            if (At(Tk.LBrack) && !Cur.SpaceBefore) throw Fail(Cur.Pos, NotYetMessage("arrays"));
+            if (At(Tk.Colon))
+            {
+                Next();
+                if (!At(Tk.Ident)) throw Fail(MissingAt, "expected a method name after :, like bo:bark()");
+                var m = Next();
+                if (!At(Tk.LParen)) throw Fail(MissingAt, $"add () to call it: {Snippet(e)}:{m.Text}()");
+                var args = Arguments(m.Text);
+                e = new MethodCall { Pos = e.Pos, Target = e, Method = m.Text, MethodPos = m.Pos, Args = args };
+                continue;
+            }
+            if (At(Tk.LBrack) && (!Cur.SpaceBefore || !noSpacedCall))
+            {
+                var open = Next();
+                bool saved = noSpacedCall;
+                noSpacedCall = false;
+                Expr key;
+                try
+                {
+                    if (At(Tk.RBrack)) throw Fail(Cur.Pos, "say which item, like scores[0]");
+                    key = Expression();
+                    Expect(Tk.RBrack, "expected ] here.");
+                }
+                finally { noSpacedCall = saved; }
+                e = new Index { Pos = e.Pos, Target = e, Key = key };
+                continue;
+            }
             return e;
         }
+    }
+
+    List<Expr> Arguments(string callee)
+    {
+        Next(); // (
+        var args = new List<Expr>();
+        bool saved = noSpacedCall;
+        noSpacedCall = false;
+        try
+        {
+            if (!At(Tk.RParen))
+            {
+                args.Add(Expression());
+                while (At(Tk.Comma)) { Next(); args.Add(Expression()); }
+            }
+            Expect(Tk.RParen, $"expected ) to close {callee}(.");
+        }
+        finally { noSpacedCall = saved; }
+        return args;
     }
 
     Expr Primary()
@@ -537,43 +996,82 @@ public sealed class Parser
             case Tk.LParen:
             {
                 Next();
-                var e = Expression();
-                Expect(Tk.RParen, "expected ) here.");
-                return e;
+                bool saved = noSpacedCall;
+                noSpacedCall = false;
+                try
+                {
+                    var e = Expression();
+                    Expect(Tk.RParen, "expected ) here.");
+                    return e;
+                }
+                finally { noSpacedCall = saved; }
             }
-            case Tk.Hash: throw Fail(t.Pos, NotYetMessage("arrays"));
-            case Tk.LBrack: throw Fail(t.Pos, NotYetMessage("arrays"));
+            case Tk.LBrack:
+            {
+                Next();
+                var lit = new ArrayLit { Pos = t.Pos };
+                bool saved = noSpacedCall;
+                noSpacedCall = false;
+                try
+                {
+                    while (!At(Tk.RBrack))
+                    {
+                        lit.Items.Add(Expression());
+                        if (At(Tk.Comma)) { Next(); continue; }
+                        if (!At(Tk.RBrack)) throw Fail(MissingAt, "expected , or ] here.");
+                    }
+                    Next();
+                }
+                finally { noSpacedCall = saved; }
+                return lit;
+            }
             case Tk.Eof: throw Fail(Prev.End, "the file stops in the middle of this line.");
             case Tk.Ident: break;
             default: throw Fail(t.Pos, $"expected a value here, but found {Describe(t)}.");
         }
 
         if (t.Text == "true") { Next(); return new TruthLit { Pos = t.Pos }; }
-        if (t.Text == "nothing") throw Fail(t.Pos, NotYetMessage("nothing (it comes with classes)"));
+        if (t.Text == "nothing") { Next(); return new NothingLit { Pos = t.Pos }; }
         if (t.Text == "either") return EitherExpr();
-        if (Hints.TryGetValue(t.Text, out var hint)) throw Fail(t.Pos, hint);
-        if (NotYet.TryGetValue(t.Text, out var feature)) throw Fail(t.Pos, NotYetMessage(feature));
+        if (t.Text == "new") return NewExpr();
+        if (ValueHints.Contains(t.Text) || (Hints.ContainsKey(t.Text) && !TypeHints.Contains(t.Text) && PeekAt(1).Kind != Tk.LParen)) throw Fail(t.Pos, Hints[t.Text]);
+        if (t.Text == "state") { Next(); return new Name { Pos = t.Pos, Id = "state" }; }
         if (Reserved.Contains(t.Text)) throw Fail(t.Pos, $"expected a value here, but found the word {t.Text}.");
 
         Next();
         bool call = At(Tk.LParen) && (!Cur.SpaceBefore || !noSpacedCall);
         if (!call) return new Name { Pos = t.Pos, Id = t.Text };
+        return new Call { Pos = t.Pos, Callee = t.Text, Args = Arguments(t.Text) };
+    }
 
-        Next(); // (
-        var args = new List<Expr>();
+    Expr NewExpr()
+    {
+        var start = Next().Pos; // new
+        if (!At(Tk.Ident)) throw Fail(MissingAt, "say what to make: new Player");
+        var cls = Next();
+        var e = new New { Pos = start, Class = cls.Text, ClassPos = cls.Pos };
+        if (At(Tk.LParen)) throw Fail(Cur.Pos, $"Lust has no constructors. Fill in fields with braces: new {cls.Text} {{ name \"Bo\" }}");
+        if (!At(Tk.LBrace)) return e;
+        Next();
         bool saved = noSpacedCall;
         noSpacedCall = false;
         try
         {
-            if (!At(Tk.RParen))
+            while (!At(Tk.RBrace))
             {
-                args.Add(Expression());
-                while (At(Tk.Comma)) { Next(); args.Add(Expression()); }
+                if (!At(Tk.Ident)) throw Fail(MissingAt, $"expected a field and its value, like new {cls.Text} {{ name \"Bo\" }}");
+                var f = Next();
+                if (At(Tk.Assign)) throw Fail(Cur.Pos, $"no = inside new {{ }}. Write the field and its value: {f.Text} …");
+                if (At(Tk.Comma) || At(Tk.RBrace)) throw Fail(MissingAt, $"give {f.Text} a value: new {cls.Text} {{ {f.Text} … }}");
+                var value = Expression();
+                e.Inits.Add((f.Text, f.Pos, value));
+                if (At(Tk.Comma)) { Next(); continue; }
+                if (!At(Tk.RBrace)) throw Fail(MissingAt, "expected , or } here.");
             }
-            Expect(Tk.RParen, $"expected ) to close {t.Text}(.");
+            Next();
         }
         finally { noSpacedCall = saved; }
-        return new Call { Pos = t.Pos, Callee = t.Text, Args = args };
+        return e;
     }
 
     static string Describe(Token t) => t.Kind switch

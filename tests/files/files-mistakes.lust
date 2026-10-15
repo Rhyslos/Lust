@@ -1,0 +1,14 @@
+// Mistakes when sharing between files.
+fetch farm:secret;
+get farm:Crop;
+fetch farm:harvestTime;
+fetch farm:Tractor;
+fetch nowhere:Thing;
+get farm;
+fetch farm:Barn;
+int x = 1;
+fetch tools:Hoe;
+Barn b = Barn;
+print(farm);
+
+end

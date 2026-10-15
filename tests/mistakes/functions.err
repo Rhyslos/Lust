@@ -1,0 +1,9 @@
+functions.lust:7:14  maybe doesn't give anything back. To give an int, say so: do int maybe(…)
+functions.lust:15:1  half must give back an int at the end. Add give …; before this }.
+functions.lust:26:11  top is a variable at the top of the file, and functions and methods can't see those. Pass it in as a parameter, or keep it in an object.
+functions.lust:29:7  add takes 2 things (int a, int b), but got 1.
+functions.lust:30:14  add's b is an int, but this is a string. Use .int() to turn text into a number.
+functions.lust:31:1  add(…) gives back an int, but nothing uses it. Put it in a variable: int x = …;
+functions.lust:32:7  there's no function called nope.
+functions.lust:33:9  add is a function. Call it with (): add(…)
+functions.lust:35:5  a function can't go inside another one. Put do at the top level of the file.

@@ -1,0 +1,18 @@
+idle
+spring
+walking
+Ada stays inside
+idle
+winter
+nothing grows
+not spring
+Season: spring
+Season: summer
+Season: fall
+Season: winter
+idle
+walking
+fighting
+fall
+winter
+Farmer { name "Bo", state idle, season winter, weather sunny }
