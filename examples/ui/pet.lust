@@ -100,6 +100,7 @@ class PlayButton like Button {
         is Pet.mood sleeping? then { Pet:alert(Pet.name + " is asleep."); give; }
         is Pet.energy < 1? then { Pet:alert(Pet.name + " is too tired to play."); give; }
         Pet.fun = Pet.fun + 3;
+        is Pet.fun > 10? then { Pet.fun = 10; }
         Pet.energy = Pet.energy - 2;
         Pet:tick();
         Pet:show();

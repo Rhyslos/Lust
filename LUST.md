@@ -10,7 +10,7 @@ is hp <= 0? then {
 
 This file is the source of truth. The compiler follows it, and when the two disagree, one of them gets fixed.
 
-**Contents:** [Files](#files) · [Types and variables](#types-and-variables) · [Truth and checks](#truth-and-checks) · [Math and text](#math-and-text) · [Arrays](#arrays) · [cArrays](#carrays) · [state](#state) · [Classes and objects](#classes-and-objects) · [Functions](#functions-do) · [Loops](#loops) · [Sharing between files](#sharing-between-files) · [Built-ins](#built-ins) · [Errors](#errors) · [How Lust runs](#how-lust-runs) · [Reserved words](#reserved-words) · [Still open](#still-open)
+**Contents:** [Files](#files) · [Types and variables](#types-and-variables) · [Truth and checks](#truth-and-checks) · [Math and text](#math-and-text) · [Arrays](#arrays) · [cArrays](#carrays) · [state](#state) · [Classes and objects](#classes-and-objects) · [Functions](#functions-do) · [Loops](#loops) · [Sharing between files](#sharing-between-files) · [Windows and buttons](#windows-and-buttons-ui) · [Built-ins](#built-ins) · [Errors](#errors) · [How Lust runs](#how-lust-runs) · [Reserved words](#reserved-words) · [Still open](#still-open)
 
 ---
 
@@ -376,6 +376,72 @@ get dice:[roll, flip];
 - Fetching something the other file doesn't send is an error.
 - `fetch farm;` brings in everything `farm.lust` sends, functions included.
 - Only the file you run has its top-level code run. A fetched file only lends its classes, objects, functions and state, so test code at the bottom of `player.lust` doesn't run when `main.lust` fetches it.
+
+## Windows and buttons (ui)
+
+`fetch ui;` brings in Lust's built-in UI file, for programs with a window. These only run on Windows (they use WinForms underneath), but `lust check` works anywhere.
+
+```
+fetch ui;
+
+object App like Window {
+    has {
+        string[title "Counter"];
+        int[width 300, height 160];
+        int[clicks 0];
+        Label[count nothing];
+    }
+
+    method build() {
+        count = new Label { text "No clicks yet." };
+        add(count);
+        add(new PlusButton { text "Click me" });
+    }
+}
+
+class PlusButton like Button {
+    method clicked() {
+        App.clicks = App.clicks + 1;
+        App.count.text = "Clicks: " + App.clicks.text();
+    }
+}
+
+App:open();
+
+end
+```
+
+What `ui` sends:
+
+| Class | Has | Methods |
+| --- | --- | --- |
+| `Window` | `title`, `width`, `height` | `build()` (yours to fill in), `open()`, `add(Widget w)`, `label(string words)`, `rebuild()`, `alert(string message)`, `close()` |
+| `Widget` | `text`, `enabled`, `visible` | everything below is like Widget |
+| `Label` | | text on its own |
+| `Button` | | `clicked()`: make your own button like Button and fill this in |
+| `Input` | | a box to type in; what's typed is in its `text` |
+| `Toggle` | `on` | a tick box; `toggled()` runs when it's ticked or unticked |
+| `Row` | | `add(Widget w)`: puts widgets side by side |
+
+- Make your window `like Window`, usually as an object, and put what it shows in `build()`. `open()` shows it, and the program waits there until the window is closed.
+- Widgets go top to bottom in the order they're added. A `Row` puts its widgets side by side.
+- Your buttons and toggles say what they do by being `like Button` or `like Toggle` and filling in `clicked()` or `toggled()`.
+- To change what's on screen, change fields: `App.count.text = "…";`, `button.enabled = not true;`. After every click, Lust shows the new values. Keep a widget in a field when you want to change it later.
+- Before a click runs, what was typed into `Input`s and ticked in `Toggle`s is already in their `text` and `on`.
+- `rebuild()` empties the window and runs `build()` again. With a state, that switches screens:
+
+```
+state screen = [naming, playing];
+…
+method build() {
+    is screen naming? then { … } or { … }
+}
+…
+Pet.screen is playing;
+Pet:rebuild();
+```
+
+- `alert("…")` shows a message in a box. A mistake while the window is open shows in a box too, since the window closes.
 
 ## Built-ins
 

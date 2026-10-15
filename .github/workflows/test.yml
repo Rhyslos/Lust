@@ -61,7 +61,7 @@ jobs:
           echo "::notice title=counter::$(head -c 3000 counter.txt | tr -d '\r' | tr '\n' '|')"
           echo "::notice title=pet::$(head -c 3000 pet.txt | tr -d '\r' | tr '\n' '|')"
           grep -q "Clicks: 3" counter.txt
-          grep -q "Smokey the pet" pet.txt
+          grep -q "Blob the pet" pet.txt
           grep -q "lived for" pet.txt
 
       - name: Build lust.exe for Windows
