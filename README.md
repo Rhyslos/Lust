@@ -88,16 +88,19 @@ shop.lust:21  there's no row with id 7. The ids are 1, 2, 3.
 | [`examples/hello.lust`](examples/hello.lust) | variables, questions, loops, `random`, `wait` |
 | [`examples/player.lust`](examples/player.lust) | classes, an object, a cArray inventory, states, `get` from [`dice.lust`](examples/dice.lust) |
 | [`examples/valley/`](examples/valley) | **Lust Valley**, a small farming game in three files: buy seeds, water, sleep, harvest, sell. Uses `like`, states, cArrays, arrays, `ask` and `fetch`. |
+| [`examples/ui/counter.lust`](examples/ui/counter.lust) | the smallest window: a label and a button (Windows) |
+| [`examples/ui/pet.lust`](examples/ui/pet.lust) | **a virtual pet** in a window: name it, feed it, play, and turn off the lights to sleep. Screens switch with a state, and its mood uses states inside states (Windows) |
 
 ## Status
 
-Everything in [LUST.md](LUST.md) works: types, questions, `either`, `loop`, classes, objects, `like`, `do` and `give`, arrays, cArrays, main and named states, `send` / `fetch` / `get`, and `ask` for typed input. 41 test programs check it on every push.
+Everything in [LUST.md](LUST.md) works: types, questions, `either`, `loop`, classes, objects, `like`, `do` and `give`, arrays, cArrays, states (including states inside states), `send` / `fetch` / `get`, `ask` for typed input, and windows with buttons through `fetch ui;`. The test programs run on Linux and Windows on every push, and on Windows the UI examples open their windows and click every button by themselves.
 
 What's next:
 
 1. Running `.lust` files and seeing their mistakes inside [Ledger](https://github.com/Rhyslos/Ledger).
 2. The ideas under "Still open" in the rulebook, like functions as values and calling C# libraries.
-3. A small 2D game engine, written in Lust.
+3. More for windows: pictures, colours, and a timer for things that move.
+4. A small 2D game engine, written in Lust.
 
 ## The name
 

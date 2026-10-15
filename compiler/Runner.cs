@@ -53,9 +53,9 @@ public static class Runner
         }
     }
 
-    public static string RuntimeSource()
+    public static string RuntimeSource(string name = "LustRt.cs")
     {
-        using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("LustRt.cs")
+        using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(name)
             ?? throw new InvalidOperationException("the Lust runtime is missing from lust itself.");
         using var reader = new StreamReader(stream);
         return reader.ReadToEnd();
@@ -85,7 +85,7 @@ public static class Runner
     }
 
     /// Writes the project. Returns its folder.
-    static string Prepare(SourceFile file, string csharp)
+    static string Prepare(SourceFile file, string csharp, bool ui)
     {
         var dir = WorkDir(file);
         Directory.CreateDirectory(dir);
@@ -94,7 +94,7 @@ public static class Runner
               <!-- Made by Lust for {System.Security.SecurityElement.Escape(file.Display)}. -->
               <PropertyGroup>
                 <OutputType>Exe</OutputType>
-                <TargetFramework>{Tfm}</TargetFramework>
+                <TargetFramework>{Tfm}{(ui ? "-windows" : "")}</TargetFramework>{(ui ? "\n                <UseWindowsForms>true</UseWindowsForms>\n                <EnableWindowsTargeting>true</EnableWindowsTargeting>" : "")}
                 <AssemblyName>{AppName(file)}</AssemblyName>
                 <Nullable>disable</Nullable>
                 <ImplicitUsings>disable</ImplicitUsings>
@@ -111,6 +111,9 @@ public static class Runner
             """);
         WriteIfChanged(System.IO.Path.Combine(dir, "Program.cs"), csharp);
         WriteIfChanged(System.IO.Path.Combine(dir, "LustRt.cs"), RuntimeSource());
+        var uiFile = System.IO.Path.Combine(dir, "LustUi.cs");
+        if (ui) WriteIfChanged(uiFile, RuntimeSource("LustUi.cs"));
+        else if (File.Exists(uiFile)) File.Delete(uiFile);
         return dir;
     }
 
@@ -150,13 +153,13 @@ public static class Runner
         $"\nThe C# is in {dir}";
 
     /// Builds and runs. With capture, the program's output is collected instead of shown.
-    public static Result Run(SourceFile file, string csharp, bool capture, IDictionary<string, string>? env = null, string? input = null)
+    public static Result Run(SourceFile file, string csharp, bool capture, IDictionary<string, string>? env = null, string? input = null, bool ui = false)
     {
-        var dir = Prepare(file, csharp);
+        var dir = Prepare(file, csharp, ui);
         var (code, output) = DotnetBuild(dir, "-p:Configuration=Debug", "-p:UseAppHost=false");
         if (code != 0) return new Result(3, "", BuildFailure(output, dir));
 
-        var dll = System.IO.Path.Combine(dir, "bin", "Debug", Tfm, AppName(file) + ".dll");
+        var dll = System.IO.Path.Combine(dir, "bin", "Debug", Tfm + (ui ? "-windows" : ""), AppName(file) + ".dll");
         var psi = new ProcessStartInfo(Dotnet) { WorkingDirectory = Environment.CurrentDirectory, UseShellExecute = false, RedirectStandardOutput = capture, RedirectStandardError = capture, RedirectStandardInput = capture };
         psi.ArgumentList.Add(dll);
         if (env != null) foreach (var (k, v) in env) psi.Environment[k] = v;
@@ -175,9 +178,9 @@ public static class Runner
     }
 
     /// Makes a program you can start without Lust, in a build folder next to the .lust file.
-    public static Result Build(SourceFile file, string csharp, string outDir)
+    public static Result Build(SourceFile file, string csharp, string outDir, bool ui = false)
     {
-        var dir = Prepare(file, csharp);
+        var dir = Prepare(file, csharp, ui);
         var (code, output) = DotnetBuild(dir, "-t:Publish", "-p:Configuration=Release", $"-p:PublishDir={outDir.TrimEnd('/', '\\')}{System.IO.Path.DirectorySeparatorChar}");
         return code == 0 ? new Result(0, "", "") : new Result(3, "", BuildFailure(output, dir));
     }

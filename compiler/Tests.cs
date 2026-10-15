@@ -59,6 +59,7 @@ public static class Tests
             return Compare(File.ReadAllText(errFile), got, "the mistakes");
         }
 
+        if (program.UsesUi) return File.Exists(outFile) ? "UI programs can't be run as tests (they open windows). Test their mistakes instead." : "";
         var inFile = Path.ChangeExtension(path, ".in");
         var input = File.Exists(inFile) ? File.ReadAllText(inFile) : null;
         var result = Runner.Run(program.Main.Source, Emitter.Emit(program), capture: true, new Dictionary<string, string> { ["LUST_SEED"] = "1" }, input);

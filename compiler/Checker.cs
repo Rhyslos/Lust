@@ -1040,7 +1040,9 @@ public sealed class Checker
         {
             foreach (var a in args) Expr(a, ctx);
             var want = prms.Count == 0 ? "nothing" : string.Join(", ", prms.Select(p => $"{p.Type.Name} {p.Name}"));
-            Error(pos, $"{callee} takes {(prms.Count == 0 ? "nothing" : prms.Count == 1 ? "1 thing" : $"{prms.Count} things")} ({want}), but got {args.Count}.");
+            Error(pos, prms.Count == 0
+                ? $"{callee} takes nothing, but got {args.Count}. Leave the () empty."
+                : $"{callee} takes {(prms.Count == 1 ? "1 thing" : $"{prms.Count} things")} ({want}), but got {args.Count}.");
             return;
         }
         for (int i = 0; i < args.Count; i++)

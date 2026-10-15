@@ -40,19 +40,20 @@ public sealed class Emitter
         Line("using System.Collections.Generic;");
         Line("");
 
-        foreach (var f in comp.Files)
+        foreach (var f in comp.Files.Where(f => !f.IsNative))
             foreach (var s in f.OwnStates)
                 Line($"public enum {s.CsName} {{ {string.Join(", ", s.Options.Select((o, i) => $"[LustName({CsString(o)})] o{i}"))} }}");
 
         foreach (var t in comp.CArrays.OrderBy(t => t.Number)) Row(t);
 
-        foreach (var f in comp.Files)
+        // Classes from ui.lust are written by hand in the runtime (LustUi.cs).
+        foreach (var f in comp.Files.Where(f => !f.IsNative))
         {
             file = f.Source;
             foreach (var c in f.OwnClasses) Class(c);
         }
 
-        foreach (var f in comp.Files)
+        foreach (var f in comp.Files.Where(f => !f.IsNative))
         {
             if (f.OwnFuncs.Count == 0) continue;
             file = f.Source;
@@ -75,7 +76,7 @@ public sealed class Emitter
         Line("{");
         indent++;
         Line("Console.OutputEncoding = System.Text.Encoding.UTF8;");
-        foreach (var f in comp.Files)
+        foreach (var f in comp.Files.Where(f => !f.IsNative))
             Line($"LustRt.Name({CsString(LinePath(f.Source))}, {CsString(f.Source.Display)});");
         Line("LustRt.Start(Run);");
         indent--;
