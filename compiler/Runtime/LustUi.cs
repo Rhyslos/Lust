@@ -123,7 +123,7 @@ public class C_Ui_Window : LustObject
     public string f_title = "Lust";
     public long f_width = 480, f_height = 360;
 
-    Form form;
+    internal Form form;
     FlowLayoutPanel panel;
     readonly List<C_Ui_Widget> widgets = new();
     long shownWidth = -1, shownHeight = -1;
@@ -148,6 +148,7 @@ public class C_Ui_Window : LustObject
         LustUi.Windows.Add(this);
         form.FormClosed += (_, _) => LustUi.Windows.Remove(this);
         LustUi.Event(Build);
+        if (LustUi.Smoke) form.Shown += (_, _) => LustUi.SmokeTest(this);
         if (Application.MessageLoop) form.Show();
         else Application.Run(form);
     }
@@ -177,7 +178,11 @@ public class C_Ui_Window : LustObject
         Build();
     }
 
-    public virtual void m_alert(string message) => MessageBox.Show(form, message ?? "", f_title);
+    public virtual void m_alert(string message)
+    {
+        if (LustUi.Smoke) { Console.WriteLine("[alert] " + message); return; }
+        MessageBox.Show(form, message ?? "", f_title);
+    }
 
     public virtual void m_close() => form?.Close();
 
@@ -213,6 +218,34 @@ static class LustUi
         Application.SetCompatibleTextRenderingDefault(false);
         // A mistake while a window is open also shows in a message box, since the window closes.
         LustRt.OnFail = message => MessageBox.Show(message, "Lust stopped", MessageBoxButtons.OK, MessageBoxIcon.Error);
+    }
+
+    // ----- smoke test -----
+    // With LUST_UI_SMOKE=1, a window clicks every button and ticks every box by itself
+    // (three times over), prints what its labels say after each, then closes. For tests
+    // on machines where nobody is there to click.
+    internal static readonly bool Smoke = Environment.GetEnvironmentVariable("LUST_UI_SMOKE") == "1";
+
+    internal static void SmokeTest(C_Ui_Window w)
+    {
+        void Dump(string what)
+        {
+            Console.WriteLine($"[{what}] title: {w.f_title}");
+            foreach (var x in w.All()) if (x.control?.Parent != null && x is C_Ui_Label) Console.WriteLine("  " + x.f_text);
+        }
+        Dump("opened");
+        for (int round = 0; round < 3; round++)
+        {
+            foreach (var x in w.All().ToList())
+            {
+                var c = x.control;
+                if (c == null || c.Parent == null || !c.Visible || !c.Enabled) continue;
+                if (c is TextBox t && t.Text == "") t.Text = "Smokey";
+                else if (c is Button b) { b.PerformClick(); Dump("clicked " + x.f_text); }
+                else if (c is CheckBox box) { box.Checked = !box.Checked; Dump("ticked " + x.f_text); }
+            }
+        }
+        w.form.Close();
     }
 
     internal static Control Create(C_Ui_Widget w)

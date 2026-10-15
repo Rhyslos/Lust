@@ -48,6 +48,18 @@ jobs:
           $L build examples/ui/pet.lust
           ls examples/ui/build
 
+      - name: Run the UI examples, clicking every button by themselves
+        if: runner.os == 'Windows'
+        env:
+          LUST_UI_SMOKE: "1"
+        run: |
+          L="dotnet compiler/bin/Release/net8.0/lust.dll"
+          $L run examples/ui/counter.lust | tee counter.txt
+          grep -q "Clicks: 3" counter.txt
+          $L run examples/ui/pet.lust | tee pet.txt
+          grep -q "Smokey the pet" pet.txt
+          grep -q "lived for" pet.txt
+
       - name: Build lust.exe for Windows
         if: runner.os == 'Linux'
         run: dotnet publish compiler -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o lust-windows
