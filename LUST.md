@@ -10,7 +10,7 @@ is hp <= 0? then {
 
 This file is the source of truth. The compiler follows it, and when the two disagree, one of them gets fixed.
 
-**Contents:** [Files](#files) · [Types and variables](#types-and-variables) · [Truth and checks](#truth-and-checks) · [Math and text](#math-and-text) · [Arrays](#arrays) · [cArrays](#carrays) · [state](#state) · [Classes and objects](#classes-and-objects) · [Functions](#functions-do) · [Loops](#loops) · [Sharing between files](#sharing-between-files) · [Windows and buttons](#windows-and-buttons-ui) · [Built-ins](#built-ins) · [Errors](#errors) · [How Lust runs](#how-lust-runs) · [Reserved words](#reserved-words) · [Still open](#still-open)
+**Contents:** [Files](#files) · [Types and variables](#types-and-variables) · [Truth and checks](#truth-and-checks) · [Math and text](#math-and-text) · [Arrays](#arrays) · [cArrays](#carrays) · [state](#state) · [Classes and objects](#classes-and-objects) · [Functions](#functions-do) · [Loops](#loops) · [Sharing between files](#sharing-between-files) · [Windows and buttons](#windows-and-buttons-ui) · [Built-ins](#built-ins) · [Errors](#errors) · [Testing](#testing) · [How Lust runs](#how-lust-runs) · [Reserved words](#reserved-words) · [Still open](#still-open)
 
 ---
 
@@ -59,6 +59,7 @@ lives = lives - 1;
 
 **Strict rules:**
 - A variable keeps its type forever. `lives = "many";` is an error.
+- An `int` fits where a `float` goes: `float speed = 2;` makes `speed` `2.0`. The other way round needs `.int()`.
 - A variable must be declared before it's used.
 - A variable declared inside `{ }` only exists inside those braces. Once the block ends, the name is free again.
 - A name can't be declared again while it still exists, not even inside an inner block. `int hp = 1;` followed by `loop 2 { int hp = 2; }` is a mistake, because it's never clear which `hp` is meant.
@@ -124,7 +125,7 @@ string mood = either hp > 10? "happy" or "grumpy";
 int bonus = either bo.state angry? 10 or 0;
 ```
 
-Both sides must be the same type.
+Both sides must be the same type, except that an `int` and a `float` mix into a `float`: `either hungry? 1 or 1.5` gives `1.0` or `1.5`.
 
 ### Truth values outside questions
 
@@ -135,12 +136,12 @@ Both sides must be the same type.
 - `+ - * / %` work on `int` and `float`. Parentheses `( )` group: `(a + b) * 2`.
 - An `int` and a `float` together give a `float`. A `float` never quietly becomes an `int`; use `.int()`, which drops the part after the point.
 - `int / int` gives an `int` (`7 / 2` is `3`). Use `7.float() / 2` for `3.5`.
-- An `int` that gets too big, or dividing an `int` by zero, stops the program with an error naming the line.
+- An `int` that gets too big, or dividing an `int` by zero, stops the program with an error naming the line. Dividing a `float` by zero isn't a mistake: it gives `infinity` (or `-infinity`), and the program carries on.
 - `+` also joins two strings. Joining a string with anything else is an error: turn it into text first with `.text()`.
 
 ```
 print("Lives: " + lives.text());   // fine
-print("Lives: " + lives);          // error: can't add int to string
+print("Lives: " + lives);          // error: can't add an int to a string
 ```
 
 ## Arrays
@@ -156,6 +157,7 @@ string array names = [];
 - `scores[1] = 25;` replaces an item.
 - Every item must match the type. Reading past the end stops the program with an error naming the line.
 - A loop goes through a copy of the array, so injecting or removing inside the loop is safe.
+- `#` reads the whole thing after it, `.text()` included: `#scores.text()` means `#(scores.text())`. Write `(#scores).text()` for the count as text.
 
 ## cArrays
 
@@ -170,7 +172,7 @@ cArray(string itemName, int amount) bag = [
 
 - `id` is never written in the column list. It's always there, always an `int`, and always unique inside one cArray. Two cArrays can both have an id 1.
 - `bag[2]` is the row whose id is 2 (not the third row). `bag[2].itemName` reads a column and `bag[2].amount = 5;` changes one.
-- `bag:inject(["map", 1]);` adds a row with the next free id (one more than the biggest so far, or 1). `bag:inject([10, "map", 1]);` picks the id yourself.
+- `bag:inject(["map", 1]);` adds a row with a new id: one more than the biggest id the cArray has ever had, starting at 1. Ids are never reused, even after a row is removed. `bag:inject([10, "map", 1]);` picks the id yourself.
 - `bag:remove(2);` removes the row with id 2. `bag:has(2)` is a truth.
 - `#bag` is how many rows there are.
 - An id that's already used, or looking up one that isn't there, is an error.
@@ -204,14 +206,14 @@ class Farm {
 }
 ```
 
-- Change it with `is`: `season is summer;` inside a method, or `farm.season is summer;` from outside. To copy a state from somewhere else, use `=`: `farm.season = nextSeason(farm.season);`.
+- Change it with `is`: `season is summer;` inside a method, or `farm.season is summer;` from outside. To copy a state from somewhere else, use `=`: `farm.season = nextSeason(farm.season);`, or `state = other.state;` for the main state.
 - Ask about it in a question: `is farm.season winter?`.
 - `farm.season.text()` gives the option's name as text, like `"winter"`.
 - `loop (season s in season) { }` goes through every option, in the order written. For the main state: `loop (state s in state) { }`.
 - A state can also be a variable's type: `season today = spring;`. It's changed with `is` too: `today is fall;`, or with `=` from another state value.
 - A class or object can have each state once at most.
 - Two states in the same file may share an option name. Lust always knows which state is meant from what it's compared with.
-- From another file, after `fetch farm:season;`, the type is called `farm.season` (and the main state `farm.state`). The option names work as they are.
+- From another file, after `fetch farm:season;`, the type is called `farm.season`, or just `season` when this file has no state of its own with that name. Another file's main state is always `farm.state`. The option names work as they are.
 
 ### States inside states
 
@@ -344,10 +346,13 @@ do int double(int n) {
 loop { }                          // forever, until stop
 loop 3 { }                        // three times
 loop (hp > 0) { }                 // while that's true
+loop (cmd not "quit") { }         // the check works like a question's
 loop (int n in scores) { }        // each item of an array
 loop (int id, string itemName, int amount in bag) { }   // each row of a cArray
 loop (state s in state) { }       // each option of a state
 ```
+
+The check in `loop ( )` works exactly like a question's, so `a b`, `a not b`, `&&` and `||` all work there.
 
 `stop;` leaves the loop. `skip;` jumps to the next round.
 
@@ -362,7 +367,7 @@ send heal;
 send state;
 ```
 
-Another file in the same folder brings things in with `fetch` (big things: classes, objects, state) and `get` (single functions). `:` means "belongs to": file name on the left, thing on the right.
+Another file brings things in with `fetch` (big things: classes, objects, state) and `get` (single functions). `:` means "belongs to": file name on the left, thing on the right.
 
 ```
 fetch player:Player;
@@ -373,6 +378,7 @@ get dice:[roll, flip];
 ```
 
 - `fetch` and `get` lines come before anything else in the file.
+- The other file must be in the same folder: `fetch farm;` looks for `farm.lust` right next to this file.
 - Fetching something the other file doesn't send is an error.
 - `fetch farm;` brings in everything `farm.lust` sends, functions included.
 - Only the file you run has its top-level code run. A fetched file only lends its classes, objects, functions and state, so test code at the bottom of `player.lust` doesn't run when `main.lust` fetches it.
@@ -454,7 +460,7 @@ Pet:rebuild();
 | `x.int()` | a `float` with the part after the point dropped |
 | `x.float()` | an `int` as a `float` |
 | `ask(question)` | shows the question, waits for a line to be typed, and gives it back as a `string`. Gives back `""` when there's nothing more to read. |
-| `text.int()`, `text.float()` | text turned into a number, like `"42".int()`. Text that isn't a number stops the program, so check first with `.isNumber()`. |
+| `text.int()`, `text.float()` | text turned into a number, like `"42".int()`. `"3.5".int()` drops the part after the point and gives `3`. Text that isn't a number stops the program, so check first with `.isNumber()`. |
 | `text.isNumber()` | `true` when the text is a number |
 
 ### wait
@@ -466,12 +472,24 @@ Pet:rebuild();
 Lust finds as many mistakes as it can before the program starts, and says where and why:
 
 ```
-player.lust:14:22  can't add int to string. Use hp.text() to turn hp into text.
-player.lust:31:5   missing ; at the end of this line.
-main.lust:3:1      player.lust doesn't send Party.
+player.lust:14:22  can't add an int to a string. Use hp.text() to turn hp into text.
+player.lust:31:5  missing ; at the end of this line.
+main.lust:3:12  player.lust doesn't send Party. Add send Party; to player.lust.
 ```
 
 Mistakes only visible while running (a missing cArray id, reading past the end of an array, using `nothing`) stop the program with a message in the same style.
+
+Functions can call each other (and themselves) up to 200000 deep. Past that, Lust stops the program, since that almost always means a function calls itself with no way to stop.
+
+## Testing
+
+`lust test <folder>` runs every `.lust` file in a folder that has an expected result next to it:
+
+- `name.out`: what it should print.
+- `name.err`: the mistakes Lust should report, or the error it should stop with.
+- `name.in`: what's typed in while it runs, for `ask`.
+
+During `lust test`, `random` gives the same numbers every time (the runs are seeded), so tests that use it stay repeatable. Programs that fetch `ui` can't run as tests, but their mistakes can be checked with a `.err` file.
 
 ## How Lust runs
 
@@ -502,4 +520,5 @@ Decisions for later, so nobody guesses:
 - Whether `nothing` is allowed for arrays and cArrays.
 - Calling the original version of a method from the one that replaces it (with `like`).
 - Functions as values: storing a function in a variable or passing it along, for events like "when the day ends, run this".
+- Fetching from other folders, so tests can live in a `tests` folder next to the code they test.
 - Calling C# libraries from Lust (something like `fetch native:…`), for graphics, sound, files and apps.

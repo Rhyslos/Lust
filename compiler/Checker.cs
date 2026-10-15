@@ -348,7 +348,14 @@ public sealed class Checker
     void Body(FuncSym fn, ClassSym? cls)
     {
         var ctx = new Ctx { File = fn.File, Class = cls, Func = fn };
-        foreach (var (name, type) in fn.Params) fn.ParamVars.Add(Declare(ctx, name, type, fn.Decl.Params.First(p => p.Name == name).Pos));
+        for (int i = 0; i < fn.Params.Count; i++)
+        {
+            var (name, type) = fn.Params[i];
+            var pos = fn.Decl.Params[i].Pos;
+            // A repeated parameter was already reported by Signature; give it a hidden name so it isn't reported twice.
+            if (fn.Params.Take(i).Any(p => p.Name == name)) { fn.ParamVars.Add(new Variable { Id = name, Type = type, Pos = pos, CsName = $"v_{name}_dup{++counter}" }); continue; }
+            fn.ParamVars.Add(Declare(ctx, name, type, pos));
+        }
         Block(fn.Decl.Body, ctx);
         if (fn.Return != LType.None && fn.Return != LType.Error && !Returns(fn.Decl.Body))
             Error(fn.Decl.Body.Close, $"{fn.Name} must give back {fn.Return.WithArticle} at the end. Add give …; before this }}.");
@@ -1298,7 +1305,11 @@ public sealed class Checker
         for (int j = 0; j <= b.Length; j++) d[0, j] = j;
         for (int i = 1; i <= a.Length; i++)
             for (int j = 1; j <= b.Length; j++)
+            {
                 d[i, j] = Math.Min(Math.Min(d[i - 1, j] + 1, d[i, j - 1] + 1), d[i - 1, j - 1] + (a[i - 1] == b[j - 1] ? 0 : 1));
+                // Two letters swapped (nmae → name) count as one slip.
+                if (i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1]) d[i, j] = Math.Min(d[i, j], d[i - 2, j - 2] + 1);
+            }
         return d[a.Length, b.Length];
     }
 }

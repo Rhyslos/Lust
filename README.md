@@ -65,7 +65,7 @@ Every push also builds a ready-made `lust.exe`: open the **Actions** tab, click 
 | `lust check file.lust` | only checks, and lists any mistakes |
 | `lust build file.lust` | makes a program you can start without Lust, in a `build` folder |
 | `lust cs file.lust` | shows the C# Lust writes |
-| `lust test tests` | runs the test programs |
+| `lust test tests` | runs the test programs (see Testing in the rulebook) |
 
 Mistakes come out as `file:line:column  message`, all at once, before anything runs:
 

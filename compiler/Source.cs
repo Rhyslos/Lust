@@ -51,10 +51,10 @@ public sealed class Diagnostics
     }
     public bool SymbolMistakeOn(Pos pos) => symbolLines.Contains((pos.File, pos.Line));
 
-    public void Add(Pos pos, string message)
+    public void Add(Pos pos, string message, bool always = false)
     {
         // One message per spot is enough; a second one at the same place is usually a knock-on effect.
-        if (list.Any(d => d.Pos == pos)) return;
+        if (!always && list.Any(d => d.Pos == pos)) return;
         if (!Full) list.Add(new Diagnostic(pos, message));
     }
 }

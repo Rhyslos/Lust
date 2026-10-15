@@ -1,0 +1,10 @@
+course.lust:6:5  Lust uses stop; to leave a loop.
+course.lust:7:5  Lust uses skip; to jump to the next round of a loop.
+course.lust:9:11  Lust joins checks with &&, not and: is hp > 5 && hp < 10?
+course.lust:10:9  inside a question, "or" is written ||: is hp 0 || hungry?
+course.lust:11:14  Lust joins checks with &&, not and: is hp > 5 && hp < 10?
+course.lust:12:17  two values side by side only compare inside a question. Outside one, use either: truth same = either hp 3? true or not true;
+course.lust:13:10  missing ; at the end of this line.
+course.lust:15:7  Lust has no += yet. Write it out: lives = lives + …;
+course.lust:16:7  there's nothing called nmae here. Did you mean name?
+course.lust:18:21  there's already a parameter called n.
