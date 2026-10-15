@@ -27,11 +27,18 @@ jobs:
 
       - run: dotnet build compiler -c Release
 
+      # Failures are also shown as notes on the run, so they can be read without the full log.
       - name: Run the Lust tests
-        run: dotnet compiler/bin/Release/net8.0/lust.dll test tests
+        run: |
+          dotnet compiler/bin/Release/net8.0/lust.dll test tests > tests.txt 2>&1 && ok=1 || ok=0
+          cat tests.txt
+          if [ $ok = 0 ]; then echo "::error title=tests::$(grep -A14 'FAIL' tests.txt | head -c 4000 | tr -d '\r' | tr '\n' '|')"; exit 1; fi
 
       - name: Run the tests that need the internet (NuGet packages)
-        run: dotnet compiler/bin/Release/net8.0/lust.dll test tests-online
+        run: |
+          dotnet compiler/bin/Release/net8.0/lust.dll test tests-online > online.txt 2>&1 && ok=1 || ok=0
+          cat online.txt
+          if [ $ok = 0 ]; then echo "::error title=online tests::$(head -c 4000 online.txt | tr -d '\r' | tr '\n' '|')"; exit 1; fi
 
       - name: Check the examples, and play Lust Valley for a few days
         run: |
@@ -42,7 +49,9 @@ jobs:
           $L check examples/ui/counter.lust
           $L check examples/ui/pet.lust
           $L check examples/ui/stars.lust
-          printf 'Ada\nb\n2\nw\ns\nw\ns\nh\nq\n' | $L run examples/valley/main.lust
+          printf 'Ada\nb\n2\nw\ns\nw\ns\nh\nq\n' | $L run examples/valley/main.lust > valley.txt 2>&1 && ok=1 || ok=0
+          cat valley.txt
+          if [ $ok = 0 ]; then echo "::error title=valley::$(tail -c 3000 valley.txt | tr -d '\r' | tr '\n' '|')"; exit 1; fi
 
       - name: Build the UI examples (WinForms)
         if: runner.os == 'Windows'
@@ -50,7 +59,9 @@ jobs:
           L="dotnet compiler/bin/Release/net8.0/lust.dll"
           $L build examples/ui/counter.lust
           $L build examples/ui/pet.lust
-          $L build examples/ui/stars.lust
+          $L build examples/ui/stars.lust > build.txt 2>&1 && ok=1 || ok=0
+          cat build.txt
+          if [ $ok = 0 ]; then echo "::error title=ui build::$(head -c 4000 build.txt | tr -d '\r' | tr '\n' '|')"; exit 1; fi
           ls examples/ui/build
 
       - name: Run the UI examples, clicking every button by themselves
