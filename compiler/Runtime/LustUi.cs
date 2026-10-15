@@ -228,6 +228,14 @@ static class LustUi
 
     internal static void SmokeTest(C_Ui_Window w)
     {
+        try { SmokeSteps(w); }
+        catch (Exception e) { Console.WriteLine("[smoke test crashed] " + e); }
+        w.form.Close();
+    }
+
+    static void SmokeSteps(C_Ui_Window w)
+    {
+        Console.WriteLine($"[smoke] {w.All().Count()} widgets");
         void Dump(string what)
         {
             Console.WriteLine($"[{what}] title: {w.f_title}");
@@ -245,7 +253,6 @@ static class LustUi
                 else if (c is CheckBox box) { box.Checked = !box.Checked; Dump("ticked " + x.f_text); }
             }
         }
-        w.form.Close();
     }
 
     internal static Control Create(C_Ui_Widget w)
