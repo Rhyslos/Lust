@@ -1,0 +1,23 @@
+idle
+calm
+fierce
+fighting.blocking
+fierce
+blocking counts as fighting
+but not as attacking
+not walking
+fighting.fleeing.hiding
+scared
+hiding counts as fleeing
+storm.rain
+stormy
+now is fighting
+idle
+walking
+fighting
+fighting.attacking
+fighting.blocking
+fighting.fleeing
+fighting.fleeing.running
+fighting.fleeing.hiding
+Knight { name "Bo", state fighting.fleeing, weather storm.rain }

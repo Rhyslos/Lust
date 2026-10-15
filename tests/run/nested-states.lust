@@ -1,0 +1,47 @@
+// States inside states.
+state = [idle, walking, fighting [attacking, blocking, fleeing [running, hiding]]];
+state weather = [clear, storm [rain, thunder]];
+
+class Knight {
+    has {
+        string[name "Ada"];
+        state is idle;
+        weather is storm.rain;
+    }
+
+    method string mood() {
+        is state fighting.fleeing? then { give "scared"; }
+        is state fighting? then { give "fierce"; }
+        give "calm";
+    }
+}
+
+Knight k = new Knight;
+print(k.state);
+print(k:mood());
+
+k.state is fighting;
+print(k:mood());
+k.state is fighting.blocking;
+print(k.state);
+print(k:mood());
+is k.state fighting? then { print("blocking counts as fighting"); }
+is k.state fighting.attacking? then { print("wrong"); } or { print("but not as attacking"); }
+is k.state not walking? then { print("not walking"); }
+
+k.state is fighting.fleeing.hiding;
+print(k.state.text());
+print(k:mood());
+is k.state fighting.fleeing? then { print("hiding counts as fleeing"); }
+
+print(k.weather);
+is k.weather storm? then { print("stormy"); }
+
+state now = fighting.attacking;
+is now fighting? then { print("now is fighting"); }
+loop (state s in state) { print(s); }
+
+Knight b = new Knight { name "Bo", state fighting.fleeing };
+print(b);
+
+end

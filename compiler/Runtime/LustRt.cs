@@ -14,6 +14,14 @@ public sealed class LustError : Exception
     public LustError(string message) : base(message) { }
 }
 
+/// A state option's Lust name, like fighting.blocking.
+[AttributeUsage(AttributeTargets.Field)]
+public sealed class LustNameAttribute : Attribute
+{
+    public string Name { get; }
+    public LustNameAttribute(string name) { Name = name; }
+}
+
 /// What every Lust class and object is built on.
 public abstract class LustObject
 {
@@ -122,7 +130,25 @@ public static class LustRt
     public static string Text(long v) => v.ToString(CultureInfo.InvariantCulture);
     public static string Text(bool v) => v ? "true" : "not true";
     public static string Text(Enum v) => OptionName(v);
-    static string OptionName(Enum v) { var s = v.ToString(); return s.StartsWith("o_") ? s.Substring(2) : s; }
+    static readonly Dictionary<Enum, string> optionNames = new();
+    static string OptionName(Enum v)
+    {
+        lock (optionNames)
+        {
+            if (optionNames.TryGetValue(v, out var name)) return name;
+            var field = v.GetType().GetField(v.ToString());
+            name = (field?.GetCustomAttributes(typeof(LustNameAttribute), false).FirstOrDefault() as LustNameAttribute)?.Name ?? v.ToString();
+            optionNames[v] = name;
+            return name;
+        }
+    }
+
+    /// Is option a the same as b, or inside it? (fighting.blocking is inside fighting.)
+    public static bool Under(Enum a, Enum b)
+    {
+        string x = OptionName(a), y = OptionName(b);
+        return x == y || x.StartsWith(y + ".");
+    }
 
     public static long Div(long a, long b) { if (b == 0) throw new DivideByZeroException(); return checked(a / b); }
     public static long Mod(long a, long b) { if (b == 0) throw new DivideByZeroException(); return a % b; }

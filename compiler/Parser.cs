@@ -244,19 +244,43 @@ public sealed class Parser
         Expect(Tk.Assign, "expected = and the options in [ ].");
         Expect(Tk.LBrack, "expected [ and the options, like state = [idle, busy];");
         var decl = new StateDecl { Pos = start, Name = name };
+        StateOptions(decl, "");
+        if (decl.Options.Count == 0) diags.Add(start, "a state needs at least one option.");
+        EndStatement();
+        return decl;
+    }
+
+    /// The options inside [ ]. An option can hold its own options: fighting [attacking, blocking].
+    /// They're stored by their full name, like fighting.blocking, parents before children.
+    void StateOptions(StateDecl decl, string prefix)
+    {
         while (!At(Tk.RBrack))
         {
             if (!At(Tk.Ident)) throw Fail(MissingAt, "a state's options are names, like [idle, walking, fighting].");
             var opt = Next();
             if (Reserved.Contains(opt.Text)) throw Fail(opt.Pos, $"{opt.Text} is one of Lust's own words, so it can't be an option.");
-            decl.Options.Add((opt.Text, opt.Pos));
+            var full = prefix + opt.Text;
+            decl.Options.Add((full, opt.Pos));
+            if (At(Tk.LBrack))
+            {
+                Next();
+                if (At(Tk.RBrack)) { diags.Add(Cur.Pos, $"{opt.Text} [ ] is empty. Leave out the [ ] if {opt.Text} has no options inside it."); Next(); }
+                else StateOptions(decl, full + ".");
+            }
             if (At(Tk.Comma)) { Next(); continue; }
-            if (!At(Tk.RBrack)) throw Fail(MissingAt, "expected , or ] here.");
+            if (!At(Tk.RBrack)) throw Fail(MissingAt, At(Tk.Ident) ? "expected , between options." : "expected , or ] here.");
         }
         Next();
-        if (decl.Options.Count == 0) diags.Add(start, "a state needs at least one option.");
-        EndStatement();
-        return decl;
+    }
+
+    /// An option written after is: idle, or fighting.blocking for one inside another.
+    (string Text, Pos Pos) OptionPath(string what)
+    {
+        if (!At(Tk.Ident)) throw Fail(MissingAt, what);
+        var first = Next();
+        var text = first.Text;
+        while (At(Tk.Dot) && PeekAt(1).Kind == Tk.Ident) { Next(); text += "." + Next().Text; }
+        return (text, first.Pos);
     }
 
     SendDecl SendDeclaration()
@@ -392,8 +416,7 @@ public sealed class Parser
             string name = first.Text;
             if (At(Tk.Dot)) { Next(); module = first.Text; name = Next().Text; }
             Next(); // is
-            if (!At(Tk.Ident)) throw Fail(MissingAt, $"say which option it starts in: {name} is idle;");
-            var opt = Next();
+            var opt = OptionPath($"say which option it starts in: {name} is idle;");
             decl.Fields.Add(new FieldDecl
             {
                 Pos = start.Pos, IsState = true, Name = name,
@@ -615,8 +638,8 @@ public sealed class Parser
         if (AtWord("is"))
         {
             Next();
-            if (!At(Tk.Ident)) throw Fail(MissingAt, $"say which option: {Snippet(target)} is idle;");
-            var opt = Next();
+            var opt = OptionPath($"say which option: {Snippet(target)} is idle;");
+            if (At(Tk.LParen)) throw Fail(Cur.Pos, $"is sets a state to one of its options by name. To set it from a function, use =: {Snippet(target)} = {opt.Text}(…);");
             EndStatement();
             return new StateSet { Pos = t.Pos, Target = target, Option = opt.Text, OptionPos = opt.Pos };
         }
