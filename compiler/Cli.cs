@@ -3,10 +3,10 @@ namespace Lust;
 /// The `lust` command.
 public static class Cli
 {
-    const string Version = "0.4.1";
+    const string Version = "0.5.0";
 
     const string Usage = """
-        Lust 0.4.1
+        Lust 0.5.0
 
           lust run <file.lust>      check the file, then run it
           lust check <file.lust>    only check it, and list any mistakes

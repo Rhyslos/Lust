@@ -10,7 +10,7 @@ is hp <= 0? then {
 
 This file is the source of truth. The compiler follows it, and when the two disagree, one of them gets fixed.
 
-**Contents:** [Files](#files) · [Types and variables](#types-and-variables) · [Truth and checks](#truth-and-checks) · [Math and text](#math-and-text) · [Arrays](#arrays) · [cArrays](#carrays) · [state](#state) · [Classes and objects](#classes-and-objects) · [Functions](#functions-do) · [Loops](#loops) · [Sharing between files](#sharing-between-files) · [Windows and buttons](#windows-and-buttons-ui) · [Built-ins](#built-ins) · [Errors](#errors) · [Testing](#testing) · [How Lust runs](#how-lust-runs) · [Reserved words](#reserved-words) · [Still open](#still-open)
+**Contents:** [Files](#files) · [Types and variables](#types-and-variables) · [Truth and checks](#truth-and-checks) · [Math and text](#math-and-text) · [Arrays](#arrays) · [cArrays](#carrays) · [Maps](#maps) · [state](#state) · [Classes and objects](#classes-and-objects) · [Functions](#functions-do) · [Loops](#loops) · [Sharing between files](#sharing-between-files) · [Saving and loading](#saving-and-loading) · [C# libraries](#c-libraries) · [Windows and buttons](#windows-and-buttons-ui) · [Built-ins](#built-ins) · [Errors](#errors) · [Testing](#testing) · [How Lust runs](#how-lust-runs) · [Reserved words](#reserved-words) · [Still open](#still-open)
 
 ---
 
@@ -49,7 +49,10 @@ truth alive = true;
 | a class name | one thing made from a class | `Player`, `Dog` |
 | `T array` | a list of `T` | `int array` |
 | `cArray(...)` | a connected array | see [cArrays](#carrays) |
+| `T map` | values found by a text key | `int map`, see [Maps](#maps) |
 | `state` | this file's state | see [state](#state) |
+| `do int(int)` | a function, kept as a value | see [Functions as values](#functions-as-values) |
+| a C# type | a value from a C# library | `Random`, see [C# libraries](#c-libraries) |
 
 Changing a variable uses `=`:
 
@@ -181,6 +184,27 @@ cArray(string itemName, int amount) bag = [
 ```
 loop (int id, string itemName, int amount in bag) {
     print(id.text() + ": " + itemName);
+}
+```
+
+## Maps
+
+A map finds values by a text key. It's written like a has block: each key, then its value.
+
+```
+int map prices = ["apple" 3, "seed" 1];
+string map names = [];
+```
+
+- `prices["apple"]` reads a value. Reading a key that isn't there stops the program with an error naming the line, so check first with `prices:has("pear")`.
+- `prices["pear"] = 5;` changes a value, or adds the key when it's new.
+- `prices:remove("seed");` removes a key. `#prices` is how many keys there are.
+- Keys are always text. Values can be any one type: `Dog map`, `int array map`, a state.
+- Looping goes through the keys in the order they were first added. Name the key, then the value:
+
+```
+loop (string item, int price in prices) {
+    print(item + " costs " + price.text());
 }
 ```
 
@@ -338,6 +362,32 @@ do int double(int n) {
 - Inside a method, a bare call like `bark()` means the class's own method when there is one, and a `do` function otherwise.
 - A parameter or variable inside a method can't use the name of one of its class's fields, since fields are used by name alone.
 
+### Functions as values
+
+A function can be kept in a variable, a field, an array or a map, and passed to another function, for events like "when the day ends, run this". The type says what the function takes, and what it gives back when it gives something:
+
+```
+do int(int) f = double;           // takes an int, gives back an int
+do(string) say = greet;           // takes a string, gives back nothing
+do() later = bo:bark;             // a method of one thing: later() makes bo bark
+
+print(f(5));                      // 10
+later();
+
+do int twice(do int(int) step, int x) {
+    give step(step(x));
+}
+print(twice(double, 3));          // 12
+```
+
+- A function's name without `()` is the function itself. A method is written `thing:method` without `()`, and stays tied to that thing. Inside a method, the class's own methods work by name alone: `bark`.
+- Call what a variable or parameter holds like a function: `f(5)`. A field that holds one is called like a method: `bo:onBark("hi")`, or `onBark("hi")` inside the class. From an array: `jobs[0]()`.
+- Parameter names may be written for clarity, and are ignored: `do(string who)` is the same type as `do(string)`.
+- A function only fits where it takes and gives back exactly the same types.
+- A function value can be `nothing`, which suits events nobody has filled in yet: `do() [onDayEnd nothing];` in a has block. Calling `nothing` stops the program with an error, so check first: `is onDayEnd nothing?`.
+- `is a b?` asks whether two function values are the same function (for a method, of the same thing).
+- Built-ins like `print` can't be kept as values. Wrap them: `do show(string s) { print(s); }`.
+
 ## Loops
 
 `loop` is the only loop:
@@ -349,6 +399,7 @@ loop (hp > 0) { }                 // while that's true
 loop (cmd not "quit") { }         // the check works like a question's
 loop (int n in scores) { }        // each item of an array
 loop (int id, string itemName, int amount in bag) { }   // each row of a cArray
+loop (string key, int value in prices) { }              // each key of a map
 loop (state s in state) { }       // each option of a state
 ```
 
@@ -377,11 +428,71 @@ get dice:roll;
 get dice:[roll, flip];
 ```
 
+Files can sit in folders. The path starts from the folder of the file doing the fetching, with `/` between folders and `../` to go up one:
+
+```
+// game/main.lust
+fetch world/farm:[Farm, season];     // game/world/farm.lust
+get shared/dice:roll;                // game/shared/dice.lust
+
+// tests/farm_test.lust
+fetch ../game/world/farm;            // up out of tests, into game/world
+```
+
 - `fetch` and `get` lines come before anything else in the file.
-- The other file must be in the same folder: `fetch farm;` looks for `farm.lust` right next to this file.
+- `fetch farm;` looks for `farm.lust` right next to this file. Leave out `.lust`, and don't start with `./`.
+- Things from a file are named by the file's own name, whatever folder it's in: after `fetch world/farm:season;` the state is `farm.season`. So one file can't fetch two different files that are both called `farm.lust`.
 - Fetching something the other file doesn't send is an error.
 - `fetch farm;` brings in everything `farm.lust` sends, functions included.
 - Only the file you run has its top-level code run. A fetched file only lends its classes, objects, functions and state, so test code at the bottom of `player.lust` doesn't run when `main.lust` fetches it.
+
+## Saving and loading
+
+A save keeps things between runs of a program. Declare it at the top level of a file, listing what it holds, like declaring a state:
+
+```
+save game = [Farm, Player, day];      // objects, and variables from the top of the file
+
+save game;                            // writes them all
+load game;                            // puts them all back
+is saved game? then { load game; }    // has it been saved before?
+```
+
+- Everything inside is saved: every field, array, map, cArray and state, and every thing they point to. Two fields that held the same thing still hold the same thing after loading, and the cArray ids that were used stay used.
+- `load` puts the values back into those same objects and variables. Load after the variables are declared, or their declaration replaces what was loaded.
+- A save can hold objects, and variables declared at the very top of the file you run. Things made from classes go in through them: in a variable, an array, an object's field.
+- Functions and C# values can't be saved; Lust says so before running. Window parts (labels, buttons, canvases) are skipped, since `build()` makes them again.
+- There can be several saves, saved and loaded separately: `save settings = [Options];` next to `save game = …`. A save can be sent and fetched like a class: `send game;`.
+- Saves live in your user folder, in AppData\Roaming\Lust\(program)\(save).save on Windows. The program's name is its file's name, or its folder's name when the file is called main.lust.
+- A save is text that looks like Lust, so you can open it and change things (the gold, say). Loading is strict: when the save doesn't match the program exactly, for example after adding a field to a class, `load` stops the program with an error that says what's different, and changes nothing. Loading a save that doesn't exist is an error too, so ask `is saved game?` first.
+
+## C# libraries
+
+`fetch cs:` brings in a type from C#, by its full name. After that, it's used by its short name:
+
+```
+fetch cs:System.Math;
+fetch cs:System.Random;
+fetch cs:System.Text.StringBuilder;
+fetch cs:Humanizer.NumberToWordsExtension from "Humanizer.Core" 2.14.1;   // from a NuGet package
+
+float root = Math:Sqrt(2.0);                // static methods use :, like Lust's
+print(Math.PI);                             // properties and fields use .
+Random dice = new Random(42);               // C# types can take values in ( ) when they're made
+int roll = dice:Next(1, 7);
+StringBuilder sb = new StringBuilder { Capacity 100 };
+sb:Append("Hello");
+print(NumberToWordsExtension:ToWords(42));  // forty-two
+```
+
+- Any public type from .NET works: `System.IO.File`, `System.DateTime`, `System.Text.RegularExpressions.Regex` and so on. A type from a NuGet package names the package and version after `from`; it's downloaded the first time, so that needs the internet.
+- Values become Lust's own as they come and go. C# whole numbers are `int`, `double`, `float` and `decimal` are `float`, `string` and `char` are `string`, `bool` is `truth`, and lists and arrays become Lust arrays (a copy). Anything else is a C# value, which Lust keeps and passes back as it is. Its type is written by its short name: `Random dice`, `Random array dice`.
+- When a method has several versions, Lust picks the one that fits the values best.
+- Lust's own values have C# methods too: `"a,b,c":Split(",")` gives a string array, `"lust":ToUpper()`, `3.14159:ToString("F2")`.
+- What a C# method gives back can be left unused (`sb:Append("x");`), unlike a Lust function's.
+- `is a b?` compares C# values the C# way, so two equal dates are the same. `x.text()` gives a C# value as text.
+- Not yet: generic types (List, Dictionary; use Lust's arrays and maps), events, `out` parameters, and C# methods kept as values.
+- When C# stops the program (say, a file that can't be opened), the error shows C#'s message at the Lust line.
 
 ## Windows and buttons (ui)
 
@@ -421,13 +532,15 @@ What `ui` sends:
 
 | Class | Has | Methods |
 | --- | --- | --- |
-| `Window` | `title`, `width`, `height` | `build()` (yours to fill in), `open()`, `add(Widget w)`, `label(string words)`, `rebuild()`, `alert(string message)`, `close()` |
-| `Widget` | `text`, `enabled`, `visible` | everything below is like Widget |
+| `Window` | `title`, `width`, `height`, `background` | `build()` (yours to fill in), `open()`, `add(Widget w)`, `label(string words)`, `rebuild()`, `alert(string message)`, `close()`, and for things that move: `tick()` and `keyPressed(string key)` (yours), `startTimer(float seconds)`, `stopTimer()`, `isKeyDown(string key)` |
+| `Widget` | `text`, `enabled`, `visible`, `color`, `background`, `textSize` | everything below is like Widget |
 | `Label` | | text on its own |
 | `Button` | | `clicked()`: make your own button like Button and fill this in |
 | `Input` | | a box to type in; what's typed is in its `text` |
 | `Toggle` | `on` | a tick box; `toggled()` runs when it's ticked or unticked |
 | `Row` | | `add(Widget w)`: puts widgets side by side |
+| `Picture` | `file`, `width`, `height` | a picture from a file (png, jpg, gif, bmp); a width or height of 0 means its own size |
+| `Canvas` | `width`, `height` | somewhere to draw: `rect(x, y, w, h, paint)`, `circle(x, y, radius, paint)`, `line(x1, y1, x2, y2, paint)`, `write(x, y, words, paint)`, `picture(file, x, y)`, `clear()`, and `clicked(int x, int y)` (yours) |
 
 - Make your window `like Window`, usually as an object, and put what it shows in `build()`. `open()` shows it, and the program waits there until the window is closed.
 - Widgets go top to bottom in the order they're added. A `Row` puts its widgets side by side.
@@ -448,6 +561,13 @@ Pet:rebuild();
 ```
 
 - `alert("…")` shows a message in a box. A mistake while the window is open shows in a box too, since the window closes.
+- **Colours** are names like `"red"`, `"gold"` or `"skyblue"` (any colour name Windows knows), or codes like `"#ff3355"`. `""` means the usual colour. `color` is a widget's text colour, `background` what's behind it, and `textSize` its text size (0 is the usual size).
+- **Pictures** and files on a canvas are found next to the `.lust` file, or next to the `.exe` once it's built, so copy them there.
+- **Drawing:** a canvas keeps everything drawn on it until `clear()`. x and y count from its top left corner. A game usually clears and draws everything again in each `tick()`.
+- **Things that move:** `startTimer(0.05)` makes `tick()` run on its own every 0.05 seconds, until `stopTimer()`. After every tick, Lust shows the new values, just like after a click.
+- **Keys:** `keyPressed(key)` runs when a key goes down, and `isKeyDown(key)` says whether one is held right now, which suits movement in `tick()`. Keys are named `"A"` to `"Z"`, `"0"` to `"9"`, `"Space"`, `"Enter"`, `"Escape"`, `"Tab"`, `"Backspace"`, `"Left"`, `"Right"`, `"Up"`, `"Down"`, `"Shift"`, `"Control"`, `"Alt"` and `"F1"` to `"F12"`.
+
+[`examples/ui/stars.lust`](examples/ui/stars.lust) is a small game with all of these.
 
 ## Built-ins
 
@@ -462,6 +582,11 @@ Pet:rebuild();
 | `ask(question)` | shows the question, waits for a line to be typed, and gives it back as a `string`. Gives back `""` when there's nothing more to read. |
 | `text.int()`, `text.float()` | text turned into a number, like `"42".int()`. `"3.5".int()` drops the part after the point and gives `3`. Text that isn't a number stops the program, so check first with `.isNumber()`. |
 | `text.isNumber()` | `true` when the text is a number |
+| `text.lines()` | the text cut into its lines, as a `string array` |
+| `readText(file)` | the whole text file, as a `string` |
+| `writeText(file, words)` | writes the text into the file, replacing what was there (and making its folder if needed) |
+
+Text files are found next to the `.lust` file you run, or next to the program once it's built with `lust build`. A full path like `C:\notes\todo.txt` works too. Reading a file that isn't there stops the program with an error.
 
 ### wait
 
@@ -489,7 +614,7 @@ Functions can call each other (and themselves) up to 200000 deep. Past that, Lus
 - `name.err`: the mistakes Lust should report, or the error it should stop with.
 - `name.in`: what's typed in while it runs, for `ask`.
 
-During `lust test`, `random` gives the same numbers every time (the runs are seeded), so tests that use it stay repeatable. Programs that fetch `ui` can't run as tests, but their mistakes can be checked with a `.err` file.
+Folders inside the folder are searched too, and a `.lust` file with no expected result is a helper that other tests fetch. During `lust test`, `random` gives the same numbers every time (the runs are seeded), so tests that use it stay repeatable, and every test starts with no saves. Programs that fetch `ui` can't run as tests, but their mistakes can be checked with a `.err` file.
 
 ## How Lust runs
 
@@ -506,10 +631,11 @@ class object has method do give new nothing
 is then or either not true like
 loop stop skip in
 state send fetch get end
-int float string truth array cArray
+int float string truth array cArray map
+save load saved
 ```
 
-`print`, `wait`, `random` and `ask` are built-ins and can't be used as names.
+`print`, `wait`, `random`, `ask`, `readText` and `writeText` are built-ins and can't be used as names.
 
 ## Still open
 
@@ -519,6 +645,6 @@ Decisions for later, so nobody guesses:
 - Fetching a single method, as in `fetch dog:Dog[bark]`.
 - Whether `nothing` is allowed for arrays and cArrays.
 - Calling the original version of a method from the one that replaces it (with `like`).
-- Functions as values: storing a function in a variable or passing it along, for events like "when the day ends, run this".
-- Fetching from other folders, so tests can live in a `tests` folder next to the code they test.
-- Calling C# libraries from Lust (something like `fetch native:…`), for graphics, sound, files and apps.
+- Functions written right where they're used (lambdas), like `do(int n) { print(n); }` as a value.
+- Generic C# types (List, Dictionary), C# events, and keeping C# methods as values.
+- Sound, and more widgets (lists, sliders, menus).
