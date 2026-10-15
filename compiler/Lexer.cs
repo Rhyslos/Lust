@@ -63,12 +63,12 @@ public static class Lexer
                 Add(Tk.Ident, j - i, pos);
                 continue;
             }
-            if (char.IsDigit(c))
+            if (c >= '0' && c <= '9')
             {
                 int j = i;
-                while (j < s.Length && char.IsDigit(s[j])) j++;
-                bool isFloat = j + 1 < s.Length && s[j] == '.' && char.IsDigit(s[j + 1]);
-                if (isFloat) { j++; while (j < s.Length && char.IsDigit(s[j])) j++; }
+                while (j < s.Length && s[j] >= '0' && s[j] <= '9') j++;
+                bool isFloat = j + 1 < s.Length && s[j] == '.' && s[j + 1] >= '0' && s[j + 1] <= '9';
+                if (isFloat) { j++; while (j < s.Length && s[j] >= '0' && s[j] <= '9') j++; }
                 string text = s.Substring(i, j - i);
                 if (j < s.Length && (char.IsLetter(s[j]) || s[j] == '_'))
                 {
@@ -77,6 +77,7 @@ public static class Lexer
                 if (isFloat)
                 {
                     var v = double.Parse(text, CultureInfo.InvariantCulture);
+                    if (double.IsInfinity(v)) diags.AddSymbol(pos, $"this number is too big for a float.");
                     tokens.Add(new Token(Tk.Float, text, pos, space) { FloatValue = v });
                 }
                 else

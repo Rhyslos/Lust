@@ -1,0 +1,41 @@
+// Arrays: numbered from 0, with inject, remove and #.
+int array scores = [10, 20, 30];
+string array names = [];
+float array speeds = [1, 2.5];
+
+print(scores[0]);
+print(#scores);
+scores:inject(40);
+scores[1] = 25;
+print(scores);
+scores:remove(0);
+print(scores);
+print("Last: " + scores[#scores - 1].text());
+
+names:inject("Ada");
+names:inject("Bo");
+loop (string n in names) {
+    print("Hi " + n);
+}
+print(speeds);
+
+int total = 0;
+loop (int s in scores) {
+    total = total + s;
+}
+print(total);
+
+// Changing the array inside a loop is safe: the loop goes through a copy.
+loop (int s in scores) {
+    scores:inject(s);
+}
+print(#scores);
+
+int array array grid = [[1, 2], [3, 4]];
+print(grid[1][0]);
+print(grid);
+
+print(#"hello");
+print([1, 2, 3]);
+
+end

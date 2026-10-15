@@ -1,0 +1,27 @@
+classes.lust:3:20  Dog already has a field called hp.
+classes.lust:4:21  name is a string, but this is an int. Use .text() to turn it into text.
+classes.lust:5:17  a starting value in a has block must be a plain value, like 0, "text", true, nothing or []. Work things out in a method instead.
+classes.lust:6:9  Lust doesn't have a type called Cat. The types are int, float, string, truth, arrays, cArrays, classes and states.
+classes.lust:7:18  give speed a starting value: speed 0
+classes.lust:11:14  bark doesn't give anything back. To give an int, say so: method int bark(…)
+classes.lust:16:5  count must give back an int at the end. Add give …; before this }.
+classes.lust:18:22  Dog has a field called hp, so a parameter can't use that name. Try newHp.
+classes.lust:19:13  Dog has a field called age, so a variable here can't use that name.
+classes.lust:25:16  Dog already has hp as an int. A class that's like it can change its starting value, but not its type.
+classes.lust:28:16  bark replaces Dog's bark, so it must take and give back the same types: method bark()
+classes.lust:33:18  Loop1 ends up being like itself. A chain of like can't go in a circle.
+classes.lust:36:16  Game is an object. Only a class can be built on with like.
+classes.lust:38:25  Dog has no field called wings.
+classes.lust:38:34  hp is already filled in.
+classes.lust:39:16  Lust has no constructors. Fill in fields with braces: new Dog { name "Bo" }
+classes.lust:40:1  Game is an object, not a type. Use it directly by name: Game.something
+classes.lust:40:14  Game is an object, so there's only ever one. Use it directly: Game.something
+classes.lust:41:3  Dog has no method called fly.
+classes.lust:42:9  Dog has no field called wings.
+classes.lust:43:6  d.hp is an int, which has no methods.
+classes.lust:44:9  n is an int, but this doesn't give anything back.
+classes.lust:46:12  zero is an int, but this is nothing. Only things made from classes can be nothing.
+classes.lust:47:11  a Dog can never be a Game, so this question is always no.
+classes.lust:48:3  methods are called with : instead of a dot: d:bark(…)
+classes.lust:49:7  Dog is a class, a blueprint. Make one with new Dog, or use a variable that holds one.
+classes.lust:50:1  give only works inside a function or method.

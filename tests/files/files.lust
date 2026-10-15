@@ -1,0 +1,29 @@
+// fetch, get and send between files.
+fetch farm:[Crop, Barn];
+fetch farm:state;
+fetch farm:season;
+get farm:harvestTime;
+fetch tools;
+
+Crop c = new Crop { name "corn" };
+print(c.state);
+c:grow();
+print(c.state);
+is c.state ready? then { print("ready to harvest"); }
+is c.season spring? then { print("planted in spring"); }
+
+Barn:store(c);
+print(Barn.stored);
+print(harvestTime(4));
+
+farm.state s = growing;
+print(s);
+loop (farm.season x in farm.season) { print(x); }
+season y = summer;
+print(y);
+
+print(shout("hello"));
+Hoe h = new Hoe;
+print(h.sharpness);
+
+end

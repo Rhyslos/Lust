@@ -1,0 +1,31 @@
+// Cases found by an independent bug hunt. Each line here once broke Lust.
+cArray(string event, int base) bag = [[1, "a", 2]];
+print(bag[1].event);
+cArray(int x, int c_x) t = [[1, 2]];
+print(t[1].x);
+cArray(int hasId) h = [[5]];
+print(h);
+state = [idle, busy, value__];
+state array ss = [idle, idle];
+ss[0] is busy;
+print(ss);
+state s = value__;
+print(s);
+print("NaN".isNumber());
+print(100000000000000000000.0);
+print(0.00001);
+print(#"😀");
+print(-5.text());
+print(-2.5.int());
+print([1, 2.5]);
+int x = 4;
+is x > 3 && (x < 5 || x 9)? then { print("grouped ok"); }
+state season = [spring, idle];
+state now = idle;
+is idle now? then { print("idle resolved"); }
+do state next(state v) { give busy; }
+now = next(now);
+print(now);
+int match = 1;
+print(match);
+end

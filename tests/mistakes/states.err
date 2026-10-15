@@ -1,0 +1,10 @@
+states.lust:2:1  this file already has a main state, on line 1. Give this one a name: state season = [...];
+states.lust:3:22  happy is already an option of mood.
+states.lust:9:18  sleeping isn't an option of state. The options are idle, busy.
+states.lust:11:9  there's no state called color here.
+states.lust:16:12  flying isn't an option of state. The options are idle, busy.
+states.lust:19:1  hp is an int, not a state, so it can't be set with is. Use = to change it: hp = …;
+states.lust:20:12  can't compare a state option with an int.
+states.lust:21:7  sunny is an option of weather and sky, so Lust can't tell which one is meant here.
+states.lust:22:10  m is a mood option, but this is a state option.
+states.lust:23:7  w goes through state's options, so its type is state.

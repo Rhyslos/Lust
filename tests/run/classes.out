@@ -1,0 +1,27 @@
+Rex says woof
+Bo says woof
+Pip says yip
+12
+21
+0
+2
+7
+Bo needs a nap
+Rex is fine
+Welcome, Rex! Dogs so far: 1
+Welcome, Pip! Dogs so far: 2
+Dogs welcome
+10
+42
+Rex
+Hello from a function
+Pip says yip
+any is a puppy
+rex is not a puppy
+still not a puppy
+rex has no friend yet
+rex's friend is Bo
+99
+Dog { name "Rex", hp 10, age 3, hungry not true, friend Dog }
+Puppy { name "Pip", hp 10, age 0, hungry not true, friend nothing, toys 2 }
+Dog { name "Bo", hp 99, age 3, hungry not true, friend nothing }

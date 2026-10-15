@@ -65,7 +65,11 @@ public static class Runner
     public static string AppName(SourceFile file)
     {
         var name = new string(file.Module.Where(c => char.IsLetterOrDigit(c) || c is '_' or '-').ToArray());
-        return name.Length == 0 ? "program" : name;
+        if (name.Length == 0) return "program";
+        // Names .NET uses for itself would load the wrong program.
+        bool taken = name.StartsWith("System", StringComparison.OrdinalIgnoreCase) || name.StartsWith("Microsoft", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("mscorlib", StringComparison.OrdinalIgnoreCase) || name.Equals("netstandard", StringComparison.OrdinalIgnoreCase) || name.Equals("WindowsBase", StringComparison.OrdinalIgnoreCase);
+        return taken ? name + "-program" : name;
     }
 
     static string WorkDir(SourceFile file)
@@ -125,12 +129,14 @@ public static class Runner
         return (proc.ExitCode, output + err.Result);
     }
 
-    /// Runs dotnet build or publish on the project, restoring from the empty folder first,
+    /// Builds (or publishes) the project, restoring from the empty folder first,
     /// and from the normal package sources if .NET turns out to need something after all.
-    static (int code, string output) DotnetBuild(string dir, string verb, params string[] extra)
+    // `dotnet msbuild -restore` does the same as `dotnet build`, without the build command's own
+    // check-in with nuget.org on every run.
+    static (int code, string output) DotnetBuild(string dir, params string[] extra)
     {
         var proj = System.IO.Path.Combine(dir, "app.csproj");
-        var common = new[] { verb, proj, "-nologo", "-v", "q", "-clp:NoSummary" }.Concat(extra);
+        var common = new[] { "msbuild", proj, "-restore", "-nologo", "-v:q", "-clp:NoSummary" }.Concat(extra);
         var (code, output) = Capture(Dotnet, common.Append($"-p:RestoreSources={EmptyFeed}"), dir);
         if (code != 0 && (output.Contains("NU1101") || output.Contains("NU1102") || output.Contains("NETSDK1")))
             (code, output) = Capture(Dotnet, common, dir);
@@ -144,14 +150,14 @@ public static class Runner
         $"\nThe C# is in {dir}";
 
     /// Builds and runs. With capture, the program's output is collected instead of shown.
-    public static Result Run(SourceFile file, string csharp, bool capture, IDictionary<string, string>? env = null)
+    public static Result Run(SourceFile file, string csharp, bool capture, IDictionary<string, string>? env = null, string? input = null)
     {
         var dir = Prepare(file, csharp);
-        var (code, output) = DotnetBuild(dir, "build", "-c", "Debug", "-p:UseAppHost=false");
+        var (code, output) = DotnetBuild(dir, "-p:Configuration=Debug", "-p:UseAppHost=false");
         if (code != 0) return new Result(3, "", BuildFailure(output, dir));
 
         var dll = System.IO.Path.Combine(dir, "bin", "Debug", Tfm, AppName(file) + ".dll");
-        var psi = new ProcessStartInfo(Dotnet) { WorkingDirectory = Environment.CurrentDirectory, UseShellExecute = false, RedirectStandardOutput = capture, RedirectStandardError = capture };
+        var psi = new ProcessStartInfo(Dotnet) { WorkingDirectory = Environment.CurrentDirectory, UseShellExecute = false, RedirectStandardOutput = capture, RedirectStandardError = capture, RedirectStandardInput = capture };
         psi.ArgumentList.Add(dll);
         if (env != null) foreach (var (k, v) in env) psi.Environment[k] = v;
         using var proc = Process.Start(psi)!;
@@ -160,6 +166,8 @@ public static class Runner
             proc.WaitForExit();
             return new Result(proc.ExitCode, "", "");
         }
+        if (input != null) proc.StandardInput.Write(input);
+        proc.StandardInput.Close();
         var err = proc.StandardError.ReadToEndAsync();
         var stdout = proc.StandardOutput.ReadToEnd();
         proc.WaitForExit();
@@ -170,7 +178,7 @@ public static class Runner
     public static Result Build(SourceFile file, string csharp, string outDir)
     {
         var dir = Prepare(file, csharp);
-        var (code, output) = DotnetBuild(dir, "publish", "-c", "Release", "-o", outDir);
+        var (code, output) = DotnetBuild(dir, "-t:Publish", "-p:Configuration=Release", $"-p:PublishDir={outDir.TrimEnd('/', '\\')}{System.IO.Path.DirectorySeparatorChar}");
         return code == 0 ? new Result(0, "", "") : new Result(3, "", BuildFailure(output, dir));
     }
 }

@@ -111,6 +111,8 @@ is hungry true && bo.state sleepy? then {
 
 - `then { }` runs when the answer is yes. `or is …? then { }` asks another question. A last `or { }` catches everything else. Both `or` parts are optional.
 - Comparing two different types (`is hp "zero"?`) is an error.
+- Things made from classes, arrays and cArrays are the same only when they're the very same thing, not when they hold the same values. To check if an array is empty, ask `is #scores 0?`.
+- Parts of a check can be grouped with `( )`: `is ready && (hp 0 || state fighting)?`
 - A negative number right after the first value reads as subtraction, so write `is x (-1)?`.
 
 ### either
@@ -149,10 +151,11 @@ string array names = [];
 ```
 
 - Arrays start at **0**: `scores[0]` is `10`.
-- `#scores` is how many items there are.
+- `#scores` is how many items there are. `#` on text counts its letters: `#"hello"` is `5`.
 - `scores:inject(40);` adds to the end. `scores:remove(0);` removes the item at that position.
 - `scores[1] = 25;` replaces an item.
 - Every item must match the type. Reading past the end stops the program with an error naming the line.
+- A loop goes through a copy of the array, so injecting or removing inside the loop is safe.
 
 ## cArrays
 
@@ -201,11 +204,11 @@ class Farm {
 }
 ```
 
-- Change it with `is`: `season is summer;` inside a method, or `farm.season is summer;` from outside.
+- Change it with `is`: `season is summer;` inside a method, or `farm.season is summer;` from outside. To copy a state from somewhere else, use `=`: `farm.season = nextSeason(farm.season);`.
 - Ask about it in a question: `is farm.season winter?`.
 - `farm.season.text()` gives the option's name as text, like `"winter"`.
 - `loop (season s in season) { }` goes through every option, in the order written. For the main state: `loop (state s in state) { }`.
-- A state can also be a variable's type: `season today = spring;`.
+- A state can also be a variable's type: `season today = spring;`. It's changed with `is` too: `today is fall;`, or with `=` from another state value.
 - A class or object can have each state once at most.
 - Two states in the same file may share an option name. Lust always knows which state is meant from what it's compared with.
 - From another file, after `fetch farm:season;`, the type is called `farm.season` (and the main state `farm.state`). The option names work as they are.
@@ -291,7 +294,7 @@ Wizard merlin = new Wizard { name "Merlin" };
 
 - A Wizard gets every field, state and method that Player has.
 - Its `has` block adds new fields. Listing one Player already has, with the same type, only changes its starting value.
-- A method with the same name as one of Player's replaces it for wizards. It must take the same parameters and give back the same type.
+- A method with the same name as one of Player's replaces it for wizards. It must take the same types of parameters (their names can differ) and give back the same type.
 - A Wizard can go anywhere a Player is expected: a `Player` variable, a `Player array`, a `Player` parameter. Methods called on it use the Wizard's version.
 - Ask what something really is with `is`: `is hero like Wizard? then { … }`.
 - A class is like one other class at most. An object can be like a class too: `object Boss like Wizard { … }`.
@@ -314,6 +317,9 @@ do int double(int n) {
 - `give` hands a value back and ends the function. A function with a return type must `give` on every path; one without may only use `give;` on its own to leave early.
 - Parameters are typed: `(int a, string b)`.
 - `do` and `method` can't go inside another function or method. Every function sits at the top level of its file, and every method directly inside its class or object.
+- Functions and methods can't see variables declared at the top of a file. They work with their parameters, their own fields, objects and other functions. To share a value between functions, keep it in an object.
+- Inside a method, a bare call like `bark()` means the class's own method when there is one, and a `do` function otherwise.
+- A parameter or variable inside a method can't use the name of one of its class's fields, since fields are used by name alone.
 
 ## Loops
 
@@ -353,18 +359,22 @@ get dice:[roll, flip];
 
 - `fetch` and `get` lines come before anything else in the file.
 - Fetching something the other file doesn't send is an error.
+- `fetch farm;` brings in everything `farm.lust` sends, functions included.
 - Only the file you run has its top-level code run. A fetched file only lends its classes, objects, functions and state, so test code at the bottom of `player.lust` doesn't run when `main.lust` fetches it.
 
 ## Built-ins
 
 | Built-in | Does |
 | --- | --- |
-| `print(x);` | shows `x` on its own line. Takes any type. |
+| `print(x);` | shows `x` on its own line. Takes any type: a thing made from a class shows like its has block (`Dog { name "Rex", hp 10 }`), an array as `[1, 2, 3]`, and `nothing` as `nothing`. |
 | `wait seconds;` | pauses, then carries on (see below). Takes an `int` or `float`. |
 | `random(low, high)` | a whole number from `low` to `high`, both included |
 | `x.text()` | `x` as text. Works on `int`, `float`, `truth` and state options. A float always shows its point (`3.0`), and a truth shows as `true` or `not true`. |
 | `x.int()` | a `float` with the part after the point dropped |
 | `x.float()` | an `int` as a `float` |
+| `ask(question)` | shows the question, waits for a line to be typed, and gives it back as a `string`. Gives back `""` when there's nothing more to read. |
+| `text.int()`, `text.float()` | text turned into a number, like `"42".int()`. Text that isn't a number stops the program, so check first with `.isNumber()`. |
+| `text.isNumber()` | `true` when the text is a number |
 
 ### wait
 
@@ -400,7 +410,7 @@ state send fetch get end
 int float string truth array cArray
 ```
 
-`print`, `wait` and `random` are built-ins and can't be reused as function names.
+`print`, `wait`, `random` and `ask` are built-ins and can't be used as names.
 
 ## Still open
 
@@ -408,8 +418,6 @@ Decisions for later, so nobody guesses:
 
 - `+=` and friends (`hp += 5;`). Left out for now.
 - Fetching a single method, as in `fetch dog:Dog[bark]`.
-- Reading typed input, such as `ask("Name?")`, and turning text into numbers.
-- A method and a `do` function with the same name: which one a bare call means.
 - Whether `nothing` is allowed for arrays and cArrays.
 - Calling the original version of a method from the one that replaces it (with `like`).
 - Functions as values: storing a function in a variable or passing it along, for events like "when the day ends, run this".

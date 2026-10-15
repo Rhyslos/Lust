@@ -1,0 +1,52 @@
+class Dog {
+    has {
+        int[hp 20, hp 3];
+        string[name 5];
+        int[age hp];
+        Cat[friend nothing];
+        int[speed];
+    }
+
+    method bark() {
+        give 3;
+    }
+
+    method int count() {
+        print("no give");
+    }
+
+    method setHp(int hp) {
+        int age = 2;
+    }
+}
+
+class Puppy like Dog {
+    has {
+        string[hp "lots"];
+    }
+
+    method int bark() {
+        give 1;
+    }
+}
+
+class Loop1 like Loop2 { }
+class Loop2 like Loop1 { }
+object Game { }
+class Bad like Game { }
+
+Dog d = new Dog { hp 5, wings 2, hp 6 };
+Dog e = new Dog(5);
+Game g = new Game;
+d:fly();
+print(d.wings);
+d.hp:bark();
+int n = d:bark();
+Dog nobody = nothing;
+int zero = nothing;
+is d like Game? then { }
+d.bark();
+print(Dog);
+give 5;
+
+end

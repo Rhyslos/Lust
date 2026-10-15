@@ -1,0 +1,5 @@
+// Numbers C# would work out while building still fail while running, with the line.
+print("start");
+print(7 % 0);
+
+end

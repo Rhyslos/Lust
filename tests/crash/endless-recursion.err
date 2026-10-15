@@ -1,0 +1,1 @@
+endless-recursion.lust:3  a function kept calling itself and never stopped (over 20000 calls deep).

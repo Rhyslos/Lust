@@ -5,53 +5,173 @@ namespace Lust;
 
 /// Writes a checked Lust program as C#. Every statement is tagged with its
 /// Lust line (#line), so a crash can be reported at the right place in the .lust file.
+///
+/// What becomes what:
+///   state            → an enum            S_file_name
+///   cArray row       → a class            R_n
+///   class            → a class            C_file_Name   (fields f_x, methods m_x)
+///   object           → a class with one   O_file_Name.Instance
+///   do function      → a static method    M_file.F_name
+///   top-level code   → LustProgram.Run()  (only for the file you run)
 public sealed class Emitter
 {
     readonly StringBuilder sb = new();
-    readonly SourceFile file;
+    readonly Compilation comp;
+    SourceFile file = null!;
+    ClassSym? cls;
     int indent;
     int counter;
 
-    Emitter(SourceFile file) { this.file = file; }
+    Emitter(Compilation comp) { this.comp = comp; }
 
-    public static string Emit(Program program)
+    public static string Emit(Compilation comp)
     {
-        var e = new Emitter(program.File);
-        e.Line($"// Written by Lust from {program.File.Display}. It's rewritten on every run, so don't edit it.");
-        e.Line("#nullable disable");
-        e.Line("#pragma warning disable");
-        e.Line("using System;");
-        e.Line("");
-        e.Line("static class LustProgram");
-        e.Line("{");
-        e.indent++;
-        e.Line("static void Main()");
-        e.Line("{");
-        e.indent++;
-        e.Line("Console.OutputEncoding = System.Text.Encoding.UTF8;");
-        e.Line($"LustRt.Name({CsString(e.LinePath)}, {CsString(program.File.Display)});");
-        e.Line("try { Run(); }");
-        e.Line("catch (Exception e) { LustRt.Fail(e); }");
-        e.indent--;
-        e.Line("}");
-        e.Line("");
-        e.Line("static void Run()");
-        e.Line("{");
-        e.indent++;
-        foreach (var s in program.Stmts) e.Stmt(s);
-        e.Raw("#line default");
-        e.indent--;
-        e.Line("}");
-        e.indent--;
-        e.Line("}");
+        var e = new Emitter(comp);
+        e.WriteAll();
         return e.sb.ToString();
+    }
+
+    void WriteAll()
+    {
+        Line($"// Written by Lust from {comp.Main.Source.Display}. It's rewritten on every run, so don't edit it.");
+        Line("#nullable disable");
+        Line("#pragma warning disable");
+        Line("using System;");
+        Line("using System.Collections.Generic;");
+        Line("");
+
+        foreach (var f in comp.Files)
+            foreach (var s in f.OwnStates)
+                Line($"public enum {s.CsName} {{ {string.Join(", ", s.Options.Select(o => "o_" + o))} }}");
+
+        foreach (var t in comp.CArrays.OrderBy(t => t.Number)) Row(t);
+
+        foreach (var f in comp.Files)
+        {
+            file = f.Source;
+            foreach (var c in f.OwnClasses) Class(c);
+        }
+
+        foreach (var f in comp.Files)
+        {
+            if (f.OwnFuncs.Count == 0) continue;
+            file = f.Source;
+            cls = null;
+            Line($"public static class M_{f.CsModule}");
+            Line("{");
+            indent++;
+            foreach (var fn in f.OwnFuncs) Function(fn, $"public static {(fn.Return == LType.None ? "void" : fn.Return.Cs)} F_{fn.Name}");
+            indent--;
+            Line("}");
+            Line("");
+        }
+
+        file = comp.Main.Source;
+        cls = null;
+        Line("static class LustProgram");
+        Line("{");
+        indent++;
+        Line("static void Main()");
+        Line("{");
+        indent++;
+        Line("Console.OutputEncoding = System.Text.Encoding.UTF8;");
+        foreach (var f in comp.Files)
+            Line($"LustRt.Name({CsString(LinePath(f.Source))}, {CsString(f.Source.Display)});");
+        Line("LustRt.Start(Run);");
+        indent--;
+        Line("}");
+        Line("");
+        Line("static void Run()");
+        Line("{");
+        indent++;
+        foreach (var s in comp.Main.Ast.Stmts) Stmt(s);
+        Raw("#line default");
+        indent--;
+        Line("}");
+        indent--;
+        Line("}");
     }
 
     void Line(string text) => sb.Append(' ', indent * 4).Append(text).Append('\n');
     void Raw(string text) => sb.Append(text).Append('\n');
+
     // #line takes the file name exactly as written, without \ escapes, so it isn't a normal C# string.
-    string LinePath => file.Path.Replace("\"", "");
-    void At(Pos pos) => Raw($"#line {pos.Line} \"{LinePath}\"");
+    static string LinePath(SourceFile f) => f.Path.Replace("\"", "");
+    void At(Pos pos) => Raw($"#line {pos.Line} \"{LinePath(pos.File)}\"");
+
+    // ----- declarations -----
+
+    void Row(CArrayType t)
+    {
+        var name = t.Row.Cs;
+        Line($"public sealed class {name} : LustRow");
+        Line("{");
+        indent++;
+        foreach (var (col, type) in t.Columns) Line($"public {type.Cs} c_{col};");
+        // Positional parameter names, so no column name can clash with C# or with each other.
+        var prms = string.Join("", t.Columns.Select((c, i) => $", {c.Type.Cs} a{i}"));
+        Line($"public {name}(bool hasId_, long id_{prms}) : base(hasId_, id_) {{ {string.Join(" ", t.Columns.Select((c, i) => $"c_{c.Name} = a{i};"))} }}");
+        Line($"public override string ToString() => \"[\" + id{string.Join("", t.Columns.Select(c => $" + \", \" + LustRt.Show(c_{c.Name})"))} + \"]\";");
+        indent--;
+        Line("}");
+        Line("");
+    }
+
+    void Class(ClassSym c)
+    {
+        cls = c;
+        var parent = c.Parent?.CsName ?? "LustObject";
+        Line($"public {(c.IsObject ? "sealed " : "")}class {c.CsName} : {parent}");
+        Line("{");
+        indent++;
+        if (c.IsObject) Line($"public static readonly {c.CsName} Instance = new {c.CsName}();");
+        foreach (var f in c.Fields.Where(f => f.Owner == c)) Line($"public {f.Type.Cs} {f.CsName};");
+        Line($"public {c.CsName}()");
+        Line("{");
+        indent++;
+        foreach (var (field, value) in c.Defaults)
+        {
+            At(value.Pos);
+            Line($"{field.CsName} = {Coerce(value, field.Type)};");
+        }
+        Raw("#line default");
+        indent--;
+        Line("}");
+        Line($"public override string LustName => {CsString(c.Name)};");
+        // print shows a class like its has block: Player { name "Ada", hp 20 }
+        var shown = c.Fields.Select(f => $"{CsString(f.Name + " ")} + LustRt.Show({f.CsName})").ToList();
+        var show = shown.Count == 0
+            ? CsString(c.Name + " { }")
+            : $"{CsString(c.Name + " { ")} + {string.Join(" + \", \" + ", shown)} + \" }}\"";
+        Line($"public override string LustShow() => {show};");
+        foreach (var m in c.OwnMethods)
+        {
+            var modifier = m.IsOverride ? "public override" : c.IsObject ? "public" : "public virtual";
+            Function(m, $"{modifier} {(m.Return == LType.None ? "void" : m.Return.Cs)} m_{m.Name}");
+        }
+        indent--;
+        Line("}");
+        Line("");
+        cls = null;
+    }
+
+    void Function(FuncSym fn, string head)
+    {
+        var d = fn.Decl;
+        var prms = string.Join(", ", fn.ParamVars.Select(v => $"{v.Type.Cs} {v.CsName}"));
+        Line($"{head}({prms})");
+        currentFunc = fn;
+        Line("{");
+        indent++;
+        Line("LustRt.Enter();");
+        Line("try");
+        Block(d.Body);
+        Line("finally { LustRt.Leave(); }");
+        indent--;
+        Line("}");
+        currentFunc = null;
+        Raw("#line default");
+    }
 
     // ----- statements -----
 
@@ -65,7 +185,13 @@ public sealed class Emitter
                 break;
             case Assign a:
                 At(a.Pos);
-                Line($"{a.Target.Var!.CsName} = {Coerce(a.Value, a.Target.Var.Type)};");
+                if (a.Target is Index ix) Line($"{Expr(ix.Target)}.Set({Expr(ix.Key)}, {Coerce(a.Value, a.Target.Type)});");
+                else Line($"{Expr(a.Target)} = {Coerce(a.Value, a.Target.Type)};");
+                break;
+            case StateSet ss:
+                At(ss.Pos);
+                if (ss.Target is Index six) Line($"{Expr(six.Target)}.Set({Expr(six.Key)}, {ss.State!.CsName}.o_{ss.Option});");
+                else Line($"{Expr(ss.Target)} = {ss.State!.CsName}.o_{ss.Option};");
                 break;
             case ExprStmt e:
                 At(e.Pos);
@@ -74,6 +200,10 @@ public sealed class Emitter
             case Wait w:
                 At(w.Pos);
                 Line($"LustRt.Wait({Expr(w.Seconds)});");
+                break;
+            case Give g:
+                At(g.Pos);
+                Line(g.Value == null ? "return;" : $"return {Coerce(g.Value, ReturnType(g))};");
                 break;
             case IsChain chain:
                 for (int i = 0; i < chain.Branches.Count; i++)
@@ -90,21 +220,7 @@ public sealed class Emitter
                 }
                 break;
             case Loop loop:
-                At(loop.Pos);
-                switch (loop.Kind)
-                {
-                    case LoopKind.Forever:
-                        Line("while (true)");
-                        break;
-                    case LoopKind.While:
-                        Line($"while ({Expr(loop.Expr!)})");
-                        break;
-                    case LoopKind.Times:
-                        int n = ++counter;
-                        Line($"for (long i_{n} = 0, n_{n} = {Expr(loop.Expr!)}; i_{n} < n_{n}; i_{n}++)");
-                        break;
-                }
-                Block(loop.Body);
+                LoopStmt(loop);
                 break;
             case Stop:
                 At(s.Pos);
@@ -120,6 +236,10 @@ public sealed class Emitter
         }
     }
 
+    // The function a give belongs to, found while writing it.
+    FuncSym? currentFunc;
+    LType ReturnType(Give g) => currentFunc?.Return ?? g.Value!.Type;
+
     void Block(Block b)
     {
         Line("{");
@@ -127,6 +247,56 @@ public sealed class Emitter
         foreach (var s in b.Stmts) Stmt(s);
         indent--;
         Line("}");
+    }
+
+    void LoopStmt(Loop loop)
+    {
+        At(loop.Pos);
+        switch (loop.Kind)
+        {
+            case LoopKind.Forever:
+                Line("while (true)");
+                Block(loop.Body);
+                return;
+            case LoopKind.While:
+                Line($"while ({Expr(loop.Expr!)})");
+                Block(loop.Body);
+                return;
+            case LoopKind.Times:
+            {
+                int n = ++counter;
+                Line($"for (long i_{n} = 0, n_{n} = {Expr(loop.Expr!)}; i_{n} < n_{n}; i_{n}++)");
+                Block(loop.Body);
+                return;
+            }
+        }
+        var vars = loop.LoopVars;
+        switch (loop.Each)
+        {
+            case EachKind.Array:
+                Line($"foreach ({vars[0].Type.Cs} {vars[0].CsName} in {Expr(loop.Expr!)}.Snapshot())");
+                Block(loop.Body);
+                break;
+            case EachKind.State:
+                Line($"foreach ({vars[0].Type.Cs} {vars[0].CsName} in Enum.GetValues<{loop.EachState!.CsName}>())");
+                Block(loop.Body);
+                break;
+            case EachKind.CArray:
+            {
+                var table = (CArrayType)loop.Expr!.Type;
+                int n = ++counter;
+                Line($"foreach (var row_{n} in {Expr(loop.Expr!)}.Snapshot())");
+                Line("{");
+                indent++;
+                Line($"long {vars[0].CsName} = row_{n}.id;");
+                for (int i = 0; i < table.Columns.Count && i + 1 < vars.Count; i++)
+                    Line($"{vars[i + 1].Type.Cs} {vars[i + 1].CsName} = row_{n}.c_{table.Columns[i].Name};");
+                foreach (var s in loop.Body.Stmts) Stmt(s);
+                indent--;
+                Line("}");
+                break;
+            }
+        }
     }
 
     // ----- expressions -----
@@ -148,8 +318,23 @@ public sealed class Emitter
             }
             case StrLit s: return CsString(s.Value);
             case TruthLit: return "true";
-            case Name n: return n.Var!.CsName;
+            case NothingLit: return "null";
+            case Name n:
+                return n.Kind switch
+                {
+                    NameKind.Local => n.Var!.CsName,
+                    NameKind.Field => n.Field!.CsName,
+                    NameKind.Object => $"{n.Object!.CsName}.Instance",
+                    NameKind.Option => $"{n.State!.CsName}.o_{n.Id}",
+                    _ => throw new InvalidOperationException("unresolved name " + n.Id),
+                };
             case Unary u: return u.Op == UnOp.Neg ? $"(-{Expr(u.Operand)})" : $"(!{Expr(u.Operand)})";
+            case Binary { Op: BinOp.Div or BinOp.Mod } bi when bi.Left.Type == LType.Int && bi.Right.Type == LType.Int:
+                // Through the runtime, so 1 / 0 is a "divided by zero" while running, not a C# build error.
+                return $"LustRt.{(bi.Op == BinOp.Div ? "Div" : "Mod")}({Expr(bi.Left)}, {Expr(bi.Right)})";
+            case Binary { Op: BinOp.Add or BinOp.Sub or BinOp.Mul } bc when bc.Type == LType.Int && IsConstant(bc):
+                // Numbers only: C# would work it out while building and refuse an overflow, so hide them.
+                return $"({Expr(bc.Left)} {(bc.Op == BinOp.Add ? "+" : bc.Op == BinOp.Sub ? "-" : "*")} LustRt.Same({Expr(bc.Right)}))";
             case Binary b:
             {
                 string op = b.Op switch
@@ -159,25 +344,108 @@ public sealed class Emitter
                 };
                 return $"({Expr(b.Left)} {op} {Expr(b.Right)})";
             }
-            case Same s: return $"({Expr(s.Left)} {(s.Negated ? "!=" : "==")} {Expr(s.Right)})";
-            case Either ei: return $"({Expr(ei.Check)} ? {Coerce(ei.Yes, ei.Type)} : {Coerce(ei.No, ei.Type)})";
+            case Same s:
+            {
+                // Compare as objects when one side is nothing, so C# doesn't need a common type.
+                string l = Expr(s.Left), r = Expr(s.Right);
+                if (s.Left.Type is ClassType || s.Right.Type is ClassType || s.Left.Type == LType.Nothing)
+                    return $"({(s.Negated ? "!" : "")}ReferenceEquals({l}, {r}))";
+                return $"({l} {(s.Negated ? "!=" : "==")} {r})";
+            }
+            case IsLike il: return $"({(il.Negated ? "!" : "")}({Expr(il.Value)} is {il.Sym!.CsName}))";
+            case Either ei:
+            {
+                var type = ei.Type;
+                return $"({Expr(ei.Check)} ? {CastTo(ei.Yes, type)} : {CastTo(ei.No, type)})";
+            }
             case Call c:
                 return c.Callee switch
                 {
                     "print" => $"LustRt.Print({Expr(c.Args[0])})",
                     "random" => $"LustRt.Random({Expr(c.Args[0])}, {Expr(c.Args[1])})",
-                    _ => throw new InvalidOperationException("unknown call " + c.Callee),
+                    "ask" => $"LustRt.Ask({(c.Args.Count == 1 ? Expr(c.Args[0]) : "\"\"")})",
+                    _ => $"{(c.Func!.Owner != null ? "m_" + c.Func.Name : c.Func.CsName)}({Arguments(c.Args, c.Func)})",
                 };
+            case MethodCall mc:
+            {
+                var target = Expr(mc.Target);
+                return mc.Kind switch
+                {
+                    MethodKind.User => $"{target}.m_{mc.Method}({Arguments(mc.Args, mc.Func!)})",
+                    MethodKind.ArrayInject => $"{target}.Inject({Coerce(mc.Args[0], ((ArrayType)mc.Target.Type).Elem)})",
+                    MethodKind.ArrayRemove => $"{target}.Remove({Expr(mc.Args[0])})",
+                    MethodKind.CArrayInject => $"{target}.Inject({Expr(mc.Args[0])})",
+                    MethodKind.CArrayRemove => $"{target}.Remove({Expr(mc.Args[0])})",
+                    MethodKind.CArrayHas => $"{target}.Has({Expr(mc.Args[0])})",
+                    _ => throw new InvalidOperationException("unresolved method " + mc.Method),
+                };
+            }
             case Conversion cv:
+            {
+                var target = Expr(cv.Target);
+                bool fromText = cv.Target.Type == LType.String;
                 return cv.Method switch
                 {
-                    "text" => $"LustRt.Text({Expr(cv.Target)})",
-                    "int" => $"LustRt.Int({Expr(cv.Target)})",
-                    _ => $"((double){Expr(cv.Target)})",
+                    "text" => $"LustRt.Text({target})",
+                    "int" => fromText ? $"LustRt.ParseInt({target})" : $"LustRt.Int({target})",
+                    "float" => fromText ? $"LustRt.ParseFloat({target})" : $"((double){target})",
+                    _ => $"LustRt.IsNumber({target})",
+                };
+            }
+            case FieldGet fg:
+                return fg.Kind switch
+                {
+                    FieldKind.Field => $"{Expr(fg.Target)}.{fg.Sym!.CsName}",
+                    FieldKind.Column => fg.Field == "id" ? $"{Expr(fg.Target)}.id" : $"{Expr(fg.Target)}.c_{fg.Field}",
+                    _ => throw new InvalidOperationException("unresolved field " + fg.Field),
+                };
+            case Index ix: return $"{Expr(ix.Target)}.Get({Expr(ix.Key)})";
+            case Length len:
+                return len.Target.Type == LType.String ? $"LustRt.Letters({Expr(len.Target)})" : $"{Expr(len.Target)}.Count";
+            case New nw:
+            {
+                if (nw.Inits.Count == 0) return $"new {nw.Sym!.CsName}()";
+                var inits = nw.Inits.Select((init, i) => $"{nw.InitFields[i].CsName} = {Coerce(init.Value, nw.InitFields[i].Type)}");
+                return $"new {nw.Sym!.CsName} {{ {string.Join(", ", inits)} }}";
+            }
+            case ArrayLit al:
+                return al.Type switch
+                {
+                    ArrayType at => al.Items.Count == 0 ? $"new {at.Cs}()" : $"{at.Cs}.Of({string.Join(", ", al.Items.Select(x => Coerce(x, at.Elem)))})",
+                    CArrayType ct => $"new {ct.Cs}({string.Join(", ", al.Items.Select(Expr))})",
+                    RowType rt => RowLit(al, rt.Table),
+                    _ => throw new InvalidOperationException("untyped array"),
                 };
         }
         throw new InvalidOperationException("can't write " + e.GetType().Name);
     }
+
+    static bool IsConstant(Expr e) => e switch
+    {
+        IntLit or FloatLit => true,
+        Unary u => IsConstant(u.Operand),
+        Binary b => IsConstant(b.Left) && IsConstant(b.Right),
+        _ => false,
+    };
+
+    string RowLit(ArrayLit al, CArrayType table)
+    {
+        int offset = al.RowHasId ? 1 : 0;
+        var id = al.RowHasId ? Expr(al.Items[0]) : "0L";
+        var cols = table.Columns.Select((c, i) => Coerce(al.Items[i + offset], c.Type));
+        return $"new {table.Row.Cs}({(al.RowHasId ? "true" : "false")}, {id}{string.Join("", cols.Select(c => ", " + c))})";
+    }
+
+    /// Both sides of either need the same C# type.
+    string CastTo(Expr e, LType type)
+    {
+        if (type == LType.Float && e.Type == LType.Int) return $"((double){Expr(e)})";
+        if (type is ClassType && (e.Type != type)) return $"(({type.Cs}){Expr(e)})";
+        return Expr(e);
+    }
+
+    string Arguments(List<Expr> args, FuncSym fn) =>
+        string.Join(", ", args.Select((a, i) => Coerce(a, fn.Params[i].Type)));
 
     public static string CsString(string s)
     {
@@ -191,6 +459,7 @@ public sealed class Emitter
                 case '\n': sb.Append("\\n"); break;
                 case '\r': sb.Append("\\r"); break;
                 case '\t': sb.Append("\\t"); break;
+                case '{': sb.Append('{'); break;
                 default:
                     if (char.IsControl(c)) sb.Append($"\\u{(int)c:x4}");
                     else sb.Append(c);
