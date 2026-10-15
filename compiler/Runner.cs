@@ -146,14 +146,14 @@ public static class Runner
         $"\nThe C# is in {dir}";
 
     /// Builds and runs. With capture, the program's output is collected instead of shown.
-    public static Result Run(SourceFile file, string csharp, bool capture, IDictionary<string, string>? env = null)
+    public static Result Run(SourceFile file, string csharp, bool capture, IDictionary<string, string>? env = null, string? input = null)
     {
         var dir = Prepare(file, csharp);
         var (code, output) = DotnetBuild(dir, "-p:Configuration=Debug", "-p:UseAppHost=false");
         if (code != 0) return new Result(3, "", BuildFailure(output, dir));
 
         var dll = System.IO.Path.Combine(dir, "bin", "Debug", Tfm, AppName(file) + ".dll");
-        var psi = new ProcessStartInfo(Dotnet) { WorkingDirectory = Environment.CurrentDirectory, UseShellExecute = false, RedirectStandardOutput = capture, RedirectStandardError = capture };
+        var psi = new ProcessStartInfo(Dotnet) { WorkingDirectory = Environment.CurrentDirectory, UseShellExecute = false, RedirectStandardOutput = capture, RedirectStandardError = capture, RedirectStandardInput = capture };
         psi.ArgumentList.Add(dll);
         if (env != null) foreach (var (k, v) in env) psi.Environment[k] = v;
         using var proc = Process.Start(psi)!;
@@ -162,6 +162,8 @@ public static class Runner
             proc.WaitForExit();
             return new Result(proc.ExitCode, "", "");
         }
+        if (input != null) proc.StandardInput.Write(input);
+        proc.StandardInput.Close();
         var err = proc.StandardError.ReadToEndAsync();
         var stdout = proc.StandardOutput.ReadToEnd();
         proc.WaitForExit();

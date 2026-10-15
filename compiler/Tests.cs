@@ -5,6 +5,7 @@ namespace Lust;
 /// Next to each test.lust is what should happen:
 ///   test.out   what it prints when it runs
 ///   test.err   the mistakes Lust reports, or the error it stops with while running
+///   test.in    (optional) what's typed in while it runs, for ask
 /// A .lust file with neither is a helper for other tests and is skipped.
 public static class Tests
 {
@@ -58,7 +59,9 @@ public static class Tests
             return Compare(File.ReadAllText(errFile), got, "the mistakes");
         }
 
-        var result = Runner.Run(program.Main.Source, Emitter.Emit(program), capture: true, new Dictionary<string, string> { ["LUST_SEED"] = "1" });
+        var inFile = Path.ChangeExtension(path, ".in");
+        var input = File.Exists(inFile) ? File.ReadAllText(inFile) : null;
+        var result = Runner.Run(program.Main.Source, Emitter.Emit(program), capture: true, new Dictionary<string, string> { ["LUST_SEED"] = "1" }, input);
         if (result.ExitCode == 3) return result.Stderr;
         if (File.Exists(errFile))
         {

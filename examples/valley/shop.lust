@@ -1,0 +1,35 @@
+// shop.lust
+// Pierre would be proud.
+
+object Shop {
+    has {
+        cArray(string seed, int cost) prices [
+            [1, "turnip", 10],
+            [2, "strawberry", 6],
+            [3, "pumpkin", 35]
+        ];
+    }
+
+    method list() {
+        print("  The shop sells:");
+        loop (int id, string seed, int cost in prices) {
+            print("    " + id.text() + ". " + seed + " seeds, " + cost.text() + "g");
+        }
+    }
+
+    method truth sells(int id) {
+        give prices:has(id);
+    }
+
+    method int cost(int id) {
+        give prices[id].cost;
+    }
+
+    method string seed(int id) {
+        give prices[id].seed;
+    }
+}
+
+send Shop;
+
+end
