@@ -1,0 +1,12 @@
+// Fetching from folders: down into parts/, and from there back up with ../
+get parts/dice:[roll, double];
+fetch parts/deeper/farm:[Farm, season];
+
+Farm f = new Farm;
+print(f.name + " in " + f.season.text());
+print(double(21));
+print(roll(3, 3));
+season s = winter;
+print(s.text());
+
+end

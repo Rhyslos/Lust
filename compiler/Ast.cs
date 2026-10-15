@@ -10,7 +10,7 @@ public abstract class Node
 
 // ----- types as written -----
 
-public enum TypeKind { Named, Array, CArray }
+public enum TypeKind { Named, Array, CArray, Map, Func }
 
 /// `int`, `Player`, `farm.season`, `int array`, `cArray(string itemName, int amount)`.
 public sealed class TypeRef : Node
@@ -18,12 +18,14 @@ public sealed class TypeRef : Node
     public TypeKind Kind { get; init; }
     public string Name { get; init; } = "";       // Named: the type's name
     public string? Module { get; init; }          // Named: `farm` in `farm.season`
-    public TypeRef? Elem { get; init; }           // Array
-    public List<ParamDecl> Columns { get; init; } = new();  // CArray
+    public TypeRef? Elem { get; init; }           // Array, Map; for Func what it gives back
+    public List<ParamDecl> Columns { get; init; } = new();  // CArray; for Func its parameter types
 
     public override string ToString() => Kind switch
     {
         TypeKind.Array => $"{Elem} array",
+        TypeKind.Map => $"{Elem} map",
+        TypeKind.Func => $"do{(Elem != null ? " " + Elem : "")}({string.Join(", ", Columns.Select(c => c.Type.ToString()))})",
         TypeKind.CArray => $"cArray({string.Join(", ", Columns.Select(c => $"{c.Type} {c.Name}"))})",
         _ => Module != null ? $"{Module}.{Name}" : Name,
     };
@@ -80,11 +82,19 @@ public sealed class SendDecl : Node
 /// `fetch dog:Dog;`, `fetch dog:[A, B];`, `fetch dog;`, `get dice:roll;`
 public sealed class FetchDecl : Node
 {
-    public string Module { get; init; } = "";
+    public string Module { get; init; } = "";      // the file's own name: farm in world/farm
+    public string Path { get; init; } = "";        // as written: world/farm, ../game/farm, or just farm
     public Pos ModulePos { get; init; }
     public List<(string Name, Pos Pos)>? Names { get; init; }   // null: everything the file sends
     public bool IsGet { get; init; }
     public string Word => IsGet ? "get" : "fetch";
+    public FileUnit? Unit { get; set; }            // the file it points to, once found
+
+    // fetch cs:System.Math;   fetch cs:Raylib_cs.Raylib from "Raylib-cs" 6.1.1;
+    public bool IsCs { get; init; }
+    public string CsType { get; init; } = "";
+    public string? Package { get; init; }
+    public string? Version { get; init; }
 }
 
 // ----- expressions -----
@@ -180,7 +190,7 @@ public sealed class FieldGet : Expr
     public string OptionPath { get; set; } = "";
 }
 
-public enum MethodKind { Unresolved, User, ArrayInject, ArrayRemove, CArrayInject, CArrayRemove, CArrayHas }
+public enum MethodKind { Unresolved, User, ArrayInject, ArrayRemove, CArrayInject, CArrayRemove, CArrayHas, MapHas, MapRemove, CallField, Cs }
 
 /// `bo:bark()`, `scores:inject(4)`
 public sealed class MethodCall : Expr
@@ -217,6 +227,7 @@ public sealed class New : Expr
 public sealed class ArrayLit : Expr
 {
     public List<Expr> Items { get; } = new();
+    public List<Expr>? Keys { get; set; }  // a map: ["apple" 3, "seed" 1] has keys "apple", "seed" and items 3, 1
     public bool RowHasId { get; set; }     // for a row: whether the id was written
 }
 
@@ -265,7 +276,7 @@ public sealed class IsChain : Stmt
 }
 
 public enum LoopKind { Forever, Times, While, Each }
-public enum EachKind { Array, CArray, State }
+public enum EachKind { Array, CArray, State, Map }
 
 public sealed class Loop : Stmt
 {

@@ -29,7 +29,8 @@ public sealed class Parser
         "is", "then", "or", "either", "not", "true", "like",
         "loop", "stop", "skip", "in",
         "state", "send", "fetch", "get", "end",
-        "int", "float", "string", "truth", "array", "cArray",
+        "int", "float", "string", "truth", "array", "cArray", "map",
+        "save", "load", "saved",
     };
 
     public static readonly HashSet<string> Builtins = new() { "print", "wait", "random", "ask" };
@@ -316,8 +317,24 @@ public sealed class Parser
     {
         var word = Next();
         bool isGet = word.Text == "get";
+        if (!isGet && AtWord("cs") && PeekAt(1).Kind == Tk.Colon) return CsFetch(word);
+        // A path: dice, shared/dice, ../game/dice
+        var pathStart = Cur.Pos;
+        string path = "";
+        while (At(Tk.Dot) && PeekAt(1).Kind == Tk.Dot && PeekAt(2).Kind == Tk.Slash) { Next(); Next(); Next(); path += "../"; }
+        if (At(Tk.Dot) && PeekAt(1).Kind == Tk.Slash) throw Fail(Cur.Pos, $"a file in the same folder needs no ./ in front: {word.Text} {(PeekAt(2).Kind == Tk.Ident ? PeekAt(2).Text : "dice")};");
+        if (At(Tk.Dot)) throw Fail(Cur.Pos, $"to go up a folder, write ../ like {word.Text} ../shared/dice;");
         if (!At(Tk.Ident)) throw Fail(MissingAt, $"say which file to {word.Text} from, like {word.Text} dice:roll;");
         var module = Next();
+        path += module.Text;
+        while (At(Tk.Slash))
+        {
+            Next();
+            if (!At(Tk.Ident)) throw Fail(MissingAt, $"a folder path goes folder/file, like {word.Text} shared/dice;");
+            module = Next();
+            path += "/" + module.Text;
+        }
+        if (At(Tk.Dot) && PeekAt(1).Is("lust")) throw Fail(Cur.Pos, $"leave out .lust: {word.Text} {path};");
         List<(string, Pos)>? names = null;
         if (At(Tk.Colon))
         {
@@ -346,7 +363,34 @@ public sealed class Parser
         }
         else if (isGet) throw Fail(MissingAt, $"get brings in one function, like get {module.Text}:roll; To bring in everything, use fetch {module.Text};");
         EndStatement();
-        return new FetchDecl { Pos = word.Pos, Module = module.Text, ModulePos = module.Pos, Names = names, IsGet = isGet };
+        return new FetchDecl { Pos = word.Pos, Module = module.Text, Path = path, ModulePos = path.Contains('/') ? pathStart : module.Pos, Names = names, IsGet = isGet };
+    }
+
+    /// fetch cs:System.Math;   fetch cs:Raylib_cs.Raylib from "Raylib-cs" 6.1.1;
+    FetchDecl CsFetch(Token word)
+    {
+        Next(); // cs
+        Next(); // :
+        if (!At(Tk.Ident)) throw Fail(MissingAt, "say which C# type, with its namespace: fetch cs:System.Math;");
+        var start = Cur.Pos;
+        var name = Next().Text;
+        while (At(Tk.Dot) && PeekAt(1).Kind == Tk.Ident) { Next(); name += "." + Next().Text; }
+        if (At(Tk.LBrack)) throw Fail(Cur.Pos, "fetch one C# type per line: fetch cs:System.Math;");
+        string? package = null, version = null;
+        if (AtWord("from"))
+        {
+            Next();
+            if (!At(Tk.String)) throw Fail(MissingAt, "after from comes the NuGet package's name in quotes, and its version: from \"Raylib-cs\" 6.1.1");
+            package = Next().StringValue;
+            // The version is written plainly (6.1.1), so it's put back together from the pieces.
+            var v = new System.Text.StringBuilder();
+            while (!At(Tk.Semi) && !At(Tk.Eof) && Cur.Pos.Line == Prev.Pos.Line && (v.Length == 0 || !Cur.SpaceBefore))
+                v.Append(Next().Text);
+            if (v.Length == 0) throw Fail(MissingAt, $"say which version of {package} to use, like from \"{package}\" 1.0.0");
+            version = v.ToString().Trim('"');
+        }
+        EndStatement();
+        return new FetchDecl { Pos = word.Pos, IsCs = true, CsType = name, ModulePos = start, Module = name[(name.LastIndexOf('.') + 1)..], Path = "cs", Package = package, Version = version };
     }
 
     ClassDecl ClassDeclaration()
@@ -515,13 +559,13 @@ public sealed class Parser
         if (Cur.Kind != Tk.Ident) return false;
         var t = Cur.Text;
         if (LType.Primitive(t) != null || t == "cArray") return true;
-        if (PeekAt(1).Is("array")) return true;
+        if (PeekAt(1).Is("array") || PeekAt(1).Is("map")) return true;
         if (t == "state") return PeekAt(1).Kind == Tk.Ident && !PeekAt(1).Is("is");
         if (Reserved.Contains(t)) return false;
         if (Hints.ContainsKey(t) && !(PeekAt(1).Kind == Tk.Ident && PeekAt(2).Kind is Tk.Assign or Tk.Semi)) return false;
         if (PeekAt(1).Kind == Tk.Ident && !Reserved.Contains(PeekAt(1).Text) && PeekAt(2).Kind is Tk.Assign or Tk.Semi) return true;
         if (PeekAt(1).Kind == Tk.Dot && PeekAt(2).Kind == Tk.Ident && PeekAt(3).Kind == Tk.Ident && !Reserved.Contains(PeekAt(3).Text) && PeekAt(4).Kind == Tk.Assign) return true;
-        if (PeekAt(1).Kind == Tk.Dot && PeekAt(2).Kind == Tk.Ident && PeekAt(3).Is("array")) return true;
+        if (PeekAt(1).Kind == Tk.Dot && PeekAt(2).Kind == Tk.Ident && (PeekAt(3).Is("array") || PeekAt(3).Is("map"))) return true;
         return false;
     }
 
@@ -559,10 +603,10 @@ public sealed class Parser
             if (At(Tk.Dot) && PeekAt(1).Kind == Tk.Ident) { Next(); module = t.Text; name = Next().Text; }
             type = new TypeRef { Pos = t.Pos, Kind = TypeKind.Named, Name = name, Module = module };
         }
-        while (AtWord("array"))
+        while (AtWord("array") || AtWord("map"))
         {
-            Next();
-            type = new TypeRef { Pos = t.Pos, Kind = TypeKind.Array, Elem = type };
+            var kind = Next().Text == "map" ? TypeKind.Map : TypeKind.Array;
+            type = new TypeRef { Pos = t.Pos, Kind = kind, Elem = type };
         }
         return type;
     }
@@ -631,6 +675,7 @@ public sealed class Parser
             case "method": throw Fail(t.Pos, "a method can't go inside another one. Put it directly inside its class.");
             case "send" or "fetch" or "get": throw Fail(t.Pos, $"{t.Text} goes at the top level of a file.");
             case "has": throw Fail(t.Pos, "a has block goes inside a class or object.");
+            case "map" or "array": throw Fail(t.Pos, $"say what the {t.Text} holds first, like int {t.Text} {(PeekAt(1).Kind == Tk.Ident ? PeekAt(1).Text : "list")} = [];");
             case "state" when IsStateDeclaration(): throw Fail(t.Pos, "a state is declared at the top level of a file.");
         }
         if (LooksLikeDeclaration()) return VarDeclStmt();
@@ -1080,12 +1125,22 @@ public sealed class Parser
                 Next();
                 var lit = new ArrayLit { Pos = t.Pos };
                 bool saved = noSpacedCall;
-                noSpacedCall = false;
+                // ["apple" 3]: two values side by side are a map's key and value, so "apple" [1] isn't picking from "apple".
+                noSpacedCall = true;
                 try
                 {
                     while (!At(Tk.RBrack))
                     {
-                        lit.Items.Add(Expression());
+                        var item = Expression();
+                        if (StartsValue(Cur) && !At(Tk.LBrack) || At(Tk.LBrack) && Cur.SpaceBefore)
+                        {
+                            if (lit.Keys == null && lit.Items.Count > 0) throw Fail(Cur.Pos, "this looks like a map's key and value, but the items before it are plain. Write every item as key value, like [\"apple\" 3, \"seed\" 1].");
+                            lit.Keys ??= new();
+                            lit.Keys.Add(item);
+                            item = Expression();
+                        }
+                        else if (lit.Keys != null) throw Fail(MissingAt, $"in a map every item is a key and a value, like \"apple\" 3.");
+                        lit.Items.Add(item);
                         if (At(Tk.Comma)) { Next(); continue; }
                         if (!At(Tk.RBrack)) throw Fail(MissingAt, "expected , or ] here.");
                     }

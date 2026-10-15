@@ -64,6 +64,58 @@ public sealed class LustArray<T> : IEnumerable<T>
     public override string ToString() => "[" + string.Join(", ", items.Select(x => LustRt.Show(x))) + "]";
 }
 
+/// A map: values found by a text key. Keys stay in the order they were first added.
+public sealed class LustMap<T>
+{
+    readonly Dictionary<string, T> byKey = new();
+    readonly List<string> order = new();
+
+    public static LustMap<T> Of(params (string Key, T Value)[] pairs)
+    {
+        var m = new LustMap<T>();
+        foreach (var (k, v) in pairs)
+        {
+            if (m.byKey.ContainsKey(k)) throw new LustError($"the map has \"{k}\" twice.");
+            m.Set(k, v);
+        }
+        return m;
+    }
+
+    public long Count => order.Count;
+
+    static string Quote(string k) => k == null ? "nothing" : "\"" + k + "\"";
+
+    public T Get(string key)
+    {
+        if (key != null && byKey.TryGetValue(key, out var v)) return v;
+        if (order.Count == 0) throw new LustError($"there's no {Quote(key)} in the map. The map is empty.");
+        var keys = order.Count <= 8 ? string.Join(", ", order.Select(Quote)) : string.Join(", ", order.Take(8).Select(Quote)) + $" and {order.Count - 8} more";
+        throw new LustError($"there's no {Quote(key)} in the map. The keys are {keys}. Check first with :has({Quote(key)}).");
+    }
+
+    /// Changes the value for a key, or adds the key when it's new.
+    public void Set(string key, T value)
+    {
+        if (key == null) throw new LustError("a map's key can't be nothing.");
+        if (!byKey.ContainsKey(key)) order.Add(key);
+        byKey[key] = value;
+    }
+
+    public bool Has(string key) => key != null && byKey.ContainsKey(key);
+
+    public void Remove(string key)
+    {
+        Get(key);
+        byKey.Remove(key);
+        order.Remove(key);
+    }
+
+    /// Loops go through a copy, so changing the map inside the loop is safe.
+    public KeyValuePair<string, T>[] Snapshot() => order.Select(k => new KeyValuePair<string, T>(k, byKey[k])).ToArray();
+
+    public override string ToString() => "[" + string.Join(", ", order.Select(k => LustRt.Show(k) + " " + LustRt.Show(byKey[k]))) + "]";
+}
+
 /// One row of a cArray. The compiler makes a class for each kind of row, with its columns.
 public abstract class LustRow
 {

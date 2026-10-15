@@ -15,7 +15,8 @@ public sealed class FileUnit
     public Dictionary<string, ClassSym> Classes { get; } = new();   // classes and objects
     public Dictionary<string, FuncSym> Funcs { get; } = new();
     public Dictionary<string, StateSym> States { get; } = new();    // "state", "season", "farm.state", "farm.season"
-    public HashSet<string> Modules { get; } = new();                // files this one fetched from
+    public HashSet<string> Modules { get; } = new();                // files this one fetched from, by their own names
+    public Dictionary<string, FileUnit> ModuleFiles { get; } = new();
 
     public List<ClassSym> OwnClasses { get; } = new();
     public List<FuncSym> OwnFuncs { get; } = new();
@@ -34,8 +35,7 @@ public sealed class Compilation
     /// Whether the program fetches the built-in ui file, so it needs Windows and WinForms.
     public bool UsesUi => Files.Any(f => f.IsNative && f.Module == "ui");
 
-    public FileUnit? FileFor(string module, FileUnit from) =>
-        Files.FirstOrDefault(f => f.Module.Equals(module, StringComparison.OrdinalIgnoreCase) && f != from);
+    static readonly StringComparison PathCase = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
     /// Reads the file and everything it fetches, then checks it all.
     /// `display` turns a full path into the name shown in messages.
@@ -52,24 +52,32 @@ public sealed class Compilation
             var dir = System.IO.Path.GetDirectoryName(unit.Source.Path)!;
             foreach (var f in unit.Ast.Fetches)
             {
-                if (f.Module.Equals(unit.Module, StringComparison.OrdinalIgnoreCase))
+                if (f.IsCs) continue;
+                var other = System.IO.Path.GetFullPath(System.IO.Path.Combine(dir, f.Path.Replace('/', System.IO.Path.DirectorySeparatorChar) + ".lust"));
+                if (other.Equals(unit.Source.Path, PathCase))
                 {
                     c.Diags.Add(f.ModulePos, $"{unit.Source.Display} can't {f.Word} from itself.");
                     continue;
                 }
-                if (c.FileFor(f.Module, unit) != null) continue;
-                var other = System.IO.Path.Combine(dir, f.Module + ".lust");
-                if (!File.Exists(other) && f.Module == "ui")
+                var known = c.Files.FirstOrDefault(u => !u.IsNative && u.Source.Path.Equals(other, PathCase));
+                if (known != null) { f.Unit = known; continue; }
+                if (!File.Exists(other) && f.Path == "ui")
                 {
-                    queue.Enqueue(c.AddBuiltIn("ui"));
+                    f.Unit = c.Files.FirstOrDefault(u => u.IsNative && u.Module == "ui");
+                    if (f.Unit == null) queue.Enqueue(f.Unit = c.AddBuiltIn("ui"));
                     continue;
                 }
                 if (!File.Exists(other))
                 {
-                    c.Diags.Add(f.ModulePos, $"there's no file called {f.Module}.lust next to {System.IO.Path.GetFileName(unit.Source.Path)}.");
+                    var here = System.IO.Path.GetFileName(unit.Source.Path);
+                    c.Diags.Add(f.ModulePos, f.Path.Contains('/')
+                        ? (Directory.Exists(System.IO.Path.GetDirectoryName(other))
+                            ? $"there's no file {f.Path}.lust, looking from the folder {here} is in."
+                            : $"there's no folder {f.Path[..f.Path.LastIndexOf('/')]}, looking from the folder {here} is in.")
+                        : $"there's no file called {f.Module}.lust next to {here}.");
                     continue;
                 }
-                queue.Enqueue(c.Add(System.IO.Path.GetFullPath(other), display, isMain: false));
+                queue.Enqueue(f.Unit = c.Add(other, display, isMain: false));
             }
         }
         // Files are numbered in C# (C_F2_Player), so names from different files can never collide.

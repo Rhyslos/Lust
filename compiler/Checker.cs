@@ -93,10 +93,18 @@ public sealed class Checker
     {
         foreach (var fetch in f.Ast.Fetches)
         {
-            var other = comp.FileFor(fetch.Module, f);
+            if (fetch.IsCs) continue;
+            var other = fetch.Unit;
             if (other == null) continue; // already reported
             if (f.Classes.TryGetValue(other.Module, out var clash) && clash.File == f)
                 Error(clash.Decl.Pos, $"{other.Module} is also the name of a file this one fetches from. Give the {clash.Kind} another name.");
+            // Things are called by the file's own name (farm.season), so two files called farm can't both come in.
+            if (f.ModuleFiles.TryGetValue(other.Module, out var same) && same != other)
+            {
+                Error(fetch.ModulePos, $"this file already fetches a different file called {other.Module}.lust. Two files with the same name can't both be fetched into one file.");
+                continue;
+            }
+            f.ModuleFiles[other.Module] = other;
             f.Modules.Add(other.Module);
             var names = fetch.Names?.Select(n => (n.Name, n.Pos)).ToList()
                 ?? other.Sent.Keys.Select(n => (n, fetch.ModulePos)).ToList();
@@ -119,8 +127,8 @@ public sealed class Checker
                 }
                 if (fetch.Names != null)
                 {
-                    if (fetch.IsGet && !isFunc) { Error(pos, $"{name} is a {(isState ? "state" : other.Classes[name].Kind)}, so it's brought in with fetch: fetch {other.Module}:{name};"); continue; }
-                    if (!fetch.IsGet && isFunc) { Error(pos, $"{name} is a function, so it's brought in with get: get {other.Module}:{name};"); continue; }
+                    if (fetch.IsGet && !isFunc) { Error(pos, $"{name} is a {(isState ? "state" : other.Classes[name].Kind)}, so it's brought in with fetch: fetch {fetch.Path}:{name};"); continue; }
+                    if (!fetch.IsGet && isFunc) { Error(pos, $"{name} is a function, so it's brought in with get: get {fetch.Path}:{name};"); continue; }
                 }
                 if (isClass) AddVisible(f.Classes, name, other.Classes[name], pos, f);
                 else if (isFunc) AddVisible(f.Funcs, name, other.Funcs[name], pos, f);
@@ -159,6 +167,17 @@ public sealed class Checker
             {
                 var elem = ResolveType(t.Elem!, f);
                 return elem == LType.Error ? LType.Error : ArrayType.Of(elem);
+            }
+            case TypeKind.Map:
+            {
+                var elem = ResolveType(t.Elem!, f);
+                return elem == LType.Error ? LType.Error : MapType.Of(elem);
+            }
+            case TypeKind.Func:
+            {
+                var prms = t.Columns.Select(c => ResolveType(c.Type, f)).ToList();
+                var ret = t.Elem == null ? LType.None : ResolveType(t.Elem, f);
+                return prms.Contains(LType.Error) || ret == LType.Error ? LType.Error : FuncType.Of(prms, ret);
             }
             case TypeKind.CArray:
             {
@@ -366,7 +385,7 @@ public sealed class Checker
         IntLit or FloatLit or StrLit or TruthLit or NothingLit => true,
         Unary { Op: UnOp.Not, Operand: TruthLit } => true,
         Name { Kind: NameKind.Option } => true,
-        ArrayLit a => a.Items.All(IsPlain),
+        ArrayLit a => a.Items.All(IsPlain) && (a.Keys?.All(IsPlain) ?? true),
         _ => e.Type == LType.Error,
     };
 
@@ -579,6 +598,16 @@ public sealed class Checker
                     Error(vars[0].Item4.Pos, $"{Describe(source)} holds {Plural(at.Elem)}, so write loop ({at.Elem.Name} {vars[0].Name} in {Describe(source)})");
                 DeclareAll();
                 break;
+            case MapType mt:
+            {
+                loop.Each = EachKind.Map;
+                var want = $"loop (string key, {mt.Elem.Name} value in {Describe(source)})";
+                if (vars.Count != 2) { Error(loop.Pos, $"a loop through a map names the key and the value: {want}"); DeclareAll(); break; }
+                if (vars[0].Type != LType.String && vars[0].Type != LType.Error) Error(vars[0].Item4.Pos, $"the first name is the key, which is text: {want}");
+                if (vars[1].Type != LType.Error && !LType.Fits(mt.Elem, vars[1].Type)) Error(vars[1].Item4.Pos, $"{Describe(source)} holds {Plural(mt.Elem)}: {want}");
+                DeclareAll();
+                break;
+            }
             case CArrayType ct:
             {
                 loop.Each = EachKind.CArray;
@@ -595,7 +624,7 @@ public sealed class Checker
                 DeclareAll();
                 break;
             default:
-                Error(source.Pos, $"loop ( … in …) goes through an array, a cArray or a state, but {Describe(source)} is {t.WithArticle}.");
+                Error(source.Pos, $"loop ( … in …) goes through an array, a cArray, a map or a state, but {Describe(source)} is {t.WithArticle}.");
                 DeclareAll();
                 break;
         }
@@ -805,19 +834,26 @@ public sealed class Checker
             case Index ix:
             {
                 var t = Expr(ix.Target, ctx);
+                if (t is MapType mt)
+                {
+                    var mk = Expr(ix.Key, ctx, LType.String);
+                    if (mk != LType.String && mk != LType.Error)
+                        Error(ix.Key.Pos, $"a map's keys are text, but this is {mk.WithArticle}.{(mk.IsNumber ? " Use .text() to turn it into text." : "")}");
+                    return mt.Elem;
+                }
                 var k = Expr(ix.Key, ctx, LType.Int);
                 if (t == LType.Error) return t;
                 if (k != LType.Int && k != LType.Error) Error(ix.Key.Pos, $"{(t is CArrayType ? "a row's id" : "an item's number")} is an int, but this is {k.WithArticle}.");
                 if (t is ArrayType at) return at.Elem;
                 if (t is CArrayType ct) return ct.Row;
-                Error(ix.Pos, $"[ ] picks from an array or a cArray, but {Describe(ix.Target)} is {t.WithArticle}.");
+                Error(ix.Pos, $"[ ] picks from an array, a cArray or a map, but {Describe(ix.Target)} is {t.WithArticle}.");
                 return LType.Error;
             }
             case Length len:
             {
                 var t = Expr(len.Target, ctx);
-                if (t == LType.Error || t is ArrayType or CArrayType || t == LType.String) return LType.Int;
-                Error(len.Pos, $"# counts the items in an array or cArray, or the letters in text, but this is {t.WithArticle}.");
+                if (t == LType.Error || t is ArrayType or CArrayType or MapType || t == LType.String) return LType.Int;
+                Error(len.Pos, $"# counts the items in an array, cArray or map, or the letters in text, but this is {t.WithArticle}.");
                 return LType.Int;
             }
             case New nw: return NewType(nw, ctx);
@@ -1153,6 +1189,21 @@ public sealed class Checker
                 foreach (var a in mc.Args) Expr(a, ctx);
                 Error(mc.MethodPos, $"arrays have inject and remove, not {mc.Method}.{(mc.Method is "add" or "push" or "append" ? $" Use {who}:inject(…)." : mc.Method is "length" or "count" or "size" ? $" To count items, use #{who}." : "")}");
                 return LType.Error;
+            case MapType mapT:
+                switch (mc.Method)
+                {
+                    case "has":
+                        mc.Kind = MethodKind.MapHas;
+                        Args(mc.Args, new[] { ("key", LType.String) }, "has", mc.MethodPos, ctx);
+                        return LType.Truth;
+                    case "remove":
+                        mc.Kind = MethodKind.MapRemove;
+                        Args(mc.Args, new[] { ("key", LType.String) }, "remove", mc.MethodPos, ctx);
+                        return LType.None;
+                }
+                foreach (var a in mc.Args) Expr(a, ctx);
+                Error(mc.MethodPos, $"maps have has and remove, not {mc.Method}.{(mc.Method is "inject" or "add" or "set" or "put" ? $" To add or change a key, write {who}[\"key\"] = …;" : "")}");
+                return LType.Error;
             case CArrayType ct2:
                 switch (mc.Method)
                 {
@@ -1218,6 +1269,49 @@ public sealed class Checker
 
     LType ArrayLitType(ArrayLit al, Ctx ctx, LType? expected)
     {
+        if (expected is MapType mt0 || (expected == null && al.Keys != null))
+        {
+            if (al.Keys == null && al.Items.Count > 0)
+            {
+                foreach (var item in al.Items) Expr(item, ctx);
+                Error(al.Items[0].Pos, $"a map's items are a key and a value, like [\"apple\" 3, \"seed\" 1].");
+                return expected ?? LType.Error;
+            }
+            var keys = al.Keys ?? new List<Expr>();
+            foreach (var k in keys)
+            {
+                var kt = Expr(k, ctx, LType.String);
+                if (kt != LType.String && kt != LType.Error) Error(k.Pos, $"a map's keys are text, but this is {kt.WithArticle}.{(kt.IsNumber ? " Use .text() to turn it into text." : "")}");
+            }
+            foreach (var group in keys.OfType<StrLit>().GroupBy(k => k.Value).Where(g => g.Count() > 1))
+                Error(group.Skip(1).First().Pos, $"\"{group.Key}\" is already a key in this map.");
+            if (expected is MapType mt)
+            {
+                foreach (var item in al.Items)
+                {
+                    Expr(item, ctx, mt.Elem);
+                    ExpectFits(item, mt.Elem, $"this map holds {Plural(mt.Elem)}");
+                }
+                return mt;
+            }
+            var vtypes = al.Items.Select(item => Expr(item, ctx)).ToList();
+            if (vtypes.Contains(LType.Error)) return LType.Error;
+            if (vtypes.Any(t => t == LType.None || t == LType.Nothing))
+            {
+                Error(al.Pos, "Lust can't tell what kind of map this is. Put it in a variable with a type first: int map prices = [\"apple\" 3];");
+                return LType.Error;
+            }
+            var velem = vtypes.All(t => t.IsNumber) && vtypes.Contains(LType.Float) ? LType.Float : vtypes[0];
+            foreach (var item in al.Items) ExpectFits(item, velem, $"this map holds {Plural(velem)}");
+            return MapType.Of(velem);
+        }
+        if (al.Keys != null)
+        {
+            foreach (var k in al.Keys) Expr(k, ctx);
+            foreach (var item in al.Items) Expr(item, ctx);
+            Error(al.Pos, expected is CArrayType ? "a cArray's rows are written in [ ] with commas, like [1, \"sword\", 1]." : $"this is written like a map (key value), but {(expected != null ? $"it should be {expected.WithArticle}" : "an array is wanted")}.");
+            return expected ?? LType.Error;
+        }
         if (expected is ArrayType at)
         {
             foreach (var item in al.Items)

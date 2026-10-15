@@ -1,0 +1,13 @@
+state season = [spring, summer, fall, winter];
+
+class Farm {
+    has {
+        string[name "Sunny Acres"];
+        season is spring;
+    }
+}
+
+send Farm;
+send season;
+
+end

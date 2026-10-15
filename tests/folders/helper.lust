@@ -1,0 +1,9 @@
+object Helper {
+    method int pick(int low, int high) {
+        give random(low, high);
+    }
+}
+
+send Helper;
+
+end

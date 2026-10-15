@@ -1,0 +1,10 @@
+fetch parts/deeper/farm:Farm;
+fetch other/farm:Barn;
+fetch parts/nope:Thing;
+fetch nofolder/dice:roll;
+fetch ./dice;
+fetch parts/dice.lust:roll;
+fetch ../folders/foldermistakes;
+fetch parts/dice:roll;
+
+end

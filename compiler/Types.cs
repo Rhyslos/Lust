@@ -36,7 +36,8 @@ public abstract class LType
     {
         if (from == to || from == Error || to == Error) return true;
         if (from == Int && to == Float) return true;
-        if (from == Nothing && to is ClassType) return true;
+        if (from == Nothing && (to is ClassType or FuncType || to is CsType { CanBeNothing: true })) return true;
+        if (to == CsType.Anything && from != None && from != Nothing) return true;
         if (from is ClassType fc && to is ClassType tc) return fc.Sym.IsLike(tc.Sym);
         return false;
     }
@@ -75,6 +76,52 @@ public sealed class ArrayType : LType
         {
             if (!made.TryGetValue(elem, out var t)) made[elem] = t = new ArrayType(elem);
             return t;
+        }
+    }
+}
+
+/// A map: values looked up by a text key, like prices["apple"].
+public sealed class MapType : LType
+{
+    public LType Elem { get; }
+    MapType(LType elem) { Elem = elem; }
+    public override string Name => Elem.Name + " map";
+    public override string Cs => $"LustMap<{Elem.Cs}>";
+    public override string WithArticle => (Elem is CArrayType ? "a " : base.WithArticle.Split(' ')[0] + " ") + Name;
+
+    static readonly Dictionary<LType, MapType> made = new();
+    public static MapType Of(LType elem)
+    {
+        lock (made)
+        {
+            if (!made.TryGetValue(elem, out var t)) made[elem] = t = new MapType(elem);
+            return t;
+        }
+    }
+}
+
+/// A function kept as a value: do int(int) takes an int and gives back an int.
+public sealed class FuncType : LType
+{
+    public IReadOnlyList<LType> Params { get; }
+    public LType Return { get; }   // LType.None when it gives nothing back
+    FuncType(IReadOnlyList<LType> prms, LType ret) { Params = prms; Return = ret; }
+    public override string Name => $"do{(Return == None ? "" : " " + Return.Name)}({string.Join(", ", Params.Select(p => p.Name))})";
+    public override string WithArticle => "a function, " + Name + ",";
+    public override string Cs => Return == None
+        ? (Params.Count == 0 ? "Action" : $"Action<{string.Join(", ", Params.Select(p => p.Cs))}>")
+        : $"Func<{string.Join(", ", Params.Select(p => p.Cs).Append(Return.Cs))}>";
+
+    static readonly List<FuncType> made = new();
+    public static FuncType Of(IReadOnlyList<LType> prms, LType ret)
+    {
+        lock (made)
+        {
+            foreach (var t in made)
+                if (t.Return == ret && t.Params.SequenceEqual(prms)) return t;
+            var n = new FuncType(prms.ToList(), ret);
+            made.Add(n);
+            return n;
         }
     }
 }
@@ -195,4 +242,30 @@ public sealed class StateSym
     public string Display { get; set; } = "";
 
     public StateSym() { Type = new StateType(this); }
+}
+
+/// A type from C#, brought in with fetch cs:System.Random; or met as a C# method's result.
+public sealed class CsType : LType
+{
+    public System.Type? Clr { get; }       // null for Anything
+    readonly string name;
+    CsType(System.Type? clr, string name) { Clr = clr; this.name = name; }
+    public override string Name => name;
+    public override string Cs => Clr == null ? "object" : CsNames.Of(Clr);
+    public override string WithArticle => Clr == null ? "anything" : $"a {name} (from C#)";
+    public bool CanBeNothing => Clr == null || !Clr.IsValueType;
+
+    /// C#'s object: anything at all goes in, as for Console.WriteLine(object).
+    public static readonly CsType Anything = new(null, "anything");
+
+    static readonly Dictionary<System.Type, CsType> made = new();
+    public static CsType Of(System.Type clr)
+    {
+        if (clr == typeof(object)) return Anything;
+        lock (made)
+        {
+            if (!made.TryGetValue(clr, out var t)) made[clr] = t = new CsType(clr, CsNames.Short(clr));
+            return t;
+        }
+    }
 }

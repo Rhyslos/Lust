@@ -282,6 +282,19 @@ public sealed class Emitter
                 Line($"foreach ({vars[0].Type.Cs} {vars[0].CsName} in Enum.GetValues<{loop.EachState!.CsName}>())");
                 Block(loop.Body);
                 break;
+            case EachKind.Map:
+            {
+                int n = ++counter;
+                Line($"foreach (var kv_{n} in {Expr(loop.Expr!)}.Snapshot())");
+                Line("{");
+                indent++;
+                Line($"string {vars[0].CsName} = kv_{n}.Key;");
+                Line($"{vars[1].Type.Cs} {vars[1].CsName} = {(vars[1].Type == LType.Float && ((MapType)loop.Expr!.Type).Elem == LType.Int ? "(double)" : "")}kv_{n}.Value;");
+                foreach (var s in loop.Body.Stmts) Stmt(s);
+                indent--;
+                Line("}");
+                break;
+            }
             case EachKind.CArray:
             {
                 var table = (CArrayType)loop.Expr!.Type;
@@ -381,6 +394,8 @@ public sealed class Emitter
                     MethodKind.CArrayInject => $"{target}.Inject({Expr(mc.Args[0])})",
                     MethodKind.CArrayRemove => $"{target}.Remove({Expr(mc.Args[0])})",
                     MethodKind.CArrayHas => $"{target}.Has({Expr(mc.Args[0])})",
+                    MethodKind.MapHas => $"{target}.Has({Expr(mc.Args[0])})",
+                    MethodKind.MapRemove => $"{target}.Remove({Expr(mc.Args[0])})",
                     _ => throw new InvalidOperationException("unresolved method " + mc.Method),
                 };
             }
@@ -416,6 +431,7 @@ public sealed class Emitter
             case ArrayLit al:
                 return al.Type switch
                 {
+                    MapType mt => al.Items.Count == 0 ? $"new {mt.Cs}()" : $"{mt.Cs}.Of({string.Join(", ", al.Items.Select((x, i) => $"({Expr(al.Keys![i])}, {Coerce(x, mt.Elem)})"))})",
                     ArrayType at => al.Items.Count == 0 ? $"new {at.Cs}()" : $"{at.Cs}.Of({string.Join(", ", al.Items.Select(x => Coerce(x, at.Elem)))})",
                     CArrayType ct => $"new {ct.Cs}({string.Join(", ", al.Items.Select(Expr))})",
                     RowType rt => RowLit(al, rt.Table),
