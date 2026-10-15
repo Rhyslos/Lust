@@ -1,7 +1,7 @@
 mistakes.lust:5:12  clicked replaces Button's clicked, so it must take and give back the same types: method clicked()
 mistakes.lust:18:13  add's w is a Widget, but this is a string.
 mistakes.lust:19:15  label's words is a string, but this is an int. Use .text() to turn it into text.
-mistakes.lust:20:30  Label has no field called colour.
+mistakes.lust:20:30  Label has no field called colour. Did you mean color?
 mistakes.lust:21:30  text is a string, but this is an int. Use .text() to turn it into text.
 mistakes.lust:26:5  methods are called with : instead of a dot: App:open(…)
 mistakes.lust:27:5  App has no method called fly.

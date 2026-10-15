@@ -358,6 +358,8 @@ public sealed class Parser
             path += "/" + module.Text;
         }
         if (At(Tk.Dot) && PeekAt(1).Is("lust")) throw Fail(Cur.Pos, $"leave out .lust: {word.Text} {path};");
+        if ((At(Tk.Dot) || At(Tk.Minus)) && !Cur.SpaceBefore)
+            throw Fail(Cur.Pos, "folder and file names in a fetch can only have letters, numbers and _. Rename the folder or file, like my_file.");
         List<(string, Pos)>? names = null;
         if (At(Tk.Colon))
         {
@@ -597,17 +599,18 @@ public sealed class Parser
     /// A function's ( ) is followed by its { body }.
     bool DoIsType()
     {
-        int i = p + 1;
-        while (i < toks.Count && toks[i].Kind != Tk.LParen && toks[i].Kind is not (Tk.Semi or Tk.LBrace or Tk.Eof)) i++;
-        if (i >= toks.Count || toks[i].Kind != Tk.LParen) return false;
+        // A function's line reaches its { body }; a variable's reaches = or ; first.
         int depth = 0;
-        for (; i < toks.Count; i++)
+        for (int i = p + 1; i < toks.Count; i++)
         {
-            if (toks[i].Kind == Tk.LParen) depth++;
-            else if (toks[i].Kind == Tk.RParen && --depth == 0) break;
-            else if (toks[i].Kind is Tk.Semi or Tk.LBrace or Tk.Eof) return false;
+            var k = toks[i].Kind;
+            if (k is Tk.LParen or Tk.LBrack) depth++;
+            else if (k is Tk.RParen or Tk.RBrack) depth--;
+            else if (k == Tk.Eof) return false;
+            else if (depth <= 0 && k is Tk.Assign or Tk.Semi) return true;
+            else if (depth <= 0 && k == Tk.LBrace) return false;
         }
-        return i + 1 < toks.Count && toks[i + 1].Kind != Tk.LBrace;
+        return false;
     }
 
     TypeRef Type()
@@ -799,7 +802,7 @@ public sealed class Parser
         return new VarDecl { Pos = start.Pos, TypeRef = type, Id = nameTok.Text, IdPos = nameTok.Pos, Init = init };
     }
 
-    static string Example(TypeRef type) => type.Kind != TypeKind.Named ? "list = []" : type.Name switch
+    static string Example(TypeRef type) => type.Kind == TypeKind.Func ? "f = greet" : type.Kind != TypeKind.Named ? "list = []" : type.Name switch
     {
         "int" => "lives = 3",
         "float" => "speed = 1.5",
@@ -1045,11 +1048,16 @@ public sealed class Parser
         return new Binary { Pos = left.Pos, OpPos = opTok.Pos, Op = op.Value, Left = left, Right = right };
     }
 
+    // While reading the first value of a list item: ["a" -1] is a key and -1, not "a" minus 1.
+    bool listKey;
+    bool NegativeValueNext => At(Tk.Minus) && Cur.SpaceBefore && !PeekAt(1).SpaceBefore && PeekAt(1).Kind is Tk.Int or Tk.Float;
+
     Expr Sum()
     {
         var left = Product();
         while (At(Tk.Plus) || At(Tk.Minus))
         {
+            if (listKey && NegativeValueNext) break;
             var op = Next();
             left = new Binary { Pos = left.Pos, OpPos = op.Pos, Op = op.Kind == Tk.Plus ? BinOp.Add : BinOp.Sub, Left = left, Right = Product() };
         }
@@ -1140,7 +1148,8 @@ public sealed class Parser
             if (At(Tk.LBrack) && (!Cur.SpaceBefore || !noSpacedCall))
             {
                 var open = Next();
-                bool saved = noSpacedCall;
+                bool saved = noSpacedCall, savedKey = listKey;
+        listKey = false;
                 noSpacedCall = false;
                 Expr key;
                 try
@@ -1149,7 +1158,7 @@ public sealed class Parser
                     key = Expression();
                     Expect(Tk.RBrack, "expected ] here.");
                 }
-                finally { noSpacedCall = saved; }
+                finally { noSpacedCall = saved; listKey = savedKey; }
                 e = new Index { Pos = e.Pos, Target = e, Key = key };
                 continue;
             }
@@ -1167,7 +1176,8 @@ public sealed class Parser
     {
         Next(); // (
         var args = new List<Expr>();
-        bool saved = noSpacedCall;
+        bool saved = noSpacedCall, savedKey = listKey;
+        listKey = false;
         noSpacedCall = false;
         try
         {
@@ -1178,7 +1188,7 @@ public sealed class Parser
             }
             Expect(Tk.RParen, $"expected ) to close {callee}(.");
         }
-        finally { noSpacedCall = saved; }
+        finally { noSpacedCall = saved; listKey = savedKey; }
         return args;
     }
 
@@ -1193,7 +1203,8 @@ public sealed class Parser
             case Tk.LParen:
             {
                 Next();
-                bool saved = noSpacedCall;
+                bool saved = noSpacedCall, savedKey = listKey;
+        listKey = false;
                 noSpacedCall = false;
                 try
                 {
@@ -1202,21 +1213,24 @@ public sealed class Parser
                     Expect(Tk.RParen, "expected ) here.");
                     return e;
                 }
-                finally { noSpacedCall = saved; }
+                finally { noSpacedCall = saved; listKey = savedKey; }
             }
             case Tk.LBrack:
             {
                 Next();
                 var lit = new ArrayLit { Pos = t.Pos };
-                bool saved = noSpacedCall;
+                bool saved = noSpacedCall, savedKey = listKey;
+        listKey = false;
                 // ["apple" 3]: two values side by side are a map's key and value, so "apple" [1] isn't picking from "apple".
                 noSpacedCall = true;
                 try
                 {
                     while (!At(Tk.RBrack))
                     {
-                        var item = Expression();
-                        if (StartsValue(Cur) && !At(Tk.LBrack) || At(Tk.LBrack) && Cur.SpaceBefore)
+                        listKey = true;
+                        Expr item;
+                        try { item = Expression(); } finally { listKey = false; }
+                        if (StartsValue(Cur) && !At(Tk.LBrack) || At(Tk.LBrack) && Cur.SpaceBefore || NegativeValueNext)
                         {
                             if (lit.Keys == null && lit.Items.Count > 0) throw Fail(Cur.Pos, "this looks like a map's key and value, but the items before it are plain. Write every item as key value, like [\"apple\" 3, \"seed\" 1].");
                             lit.Keys ??= new();
@@ -1230,7 +1244,7 @@ public sealed class Parser
                     }
                     Next();
                 }
-                finally { noSpacedCall = saved; }
+                finally { noSpacedCall = saved; listKey = savedKey; }
                 return lit;
             }
             case Tk.Eof: throw Fail(Prev.End, "the file stops in the middle of this line.");
@@ -1269,7 +1283,8 @@ public sealed class Parser
         var e = new New { Pos = start, Class = cls.Text, ClassPos = cls.Pos, Args = args };
         if (!At(Tk.LBrace)) return e;
         Next();
-        bool saved = noSpacedCall;
+        bool saved = noSpacedCall, savedKey = listKey;
+        listKey = false;
         noSpacedCall = false;
         try
         {
@@ -1286,7 +1301,7 @@ public sealed class Parser
             }
             Next();
         }
-        finally { noSpacedCall = saved; }
+        finally { noSpacedCall = saved; listKey = savedKey; }
         return e;
     }
 

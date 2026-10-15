@@ -236,7 +236,7 @@ public sealed class FieldGet : Expr
     public CsMember? Cs { get; set; }             // a C# property or field
 }
 
-public enum MethodKind { Unresolved, User, ArrayInject, ArrayRemove, CArrayInject, CArrayRemove, CArrayHas, MapHas, MapRemove, CallField, Cs }
+public enum MethodKind { Unresolved, User, ArrayInject, ArrayRemove, CArrayInject, CArrayRemove, CArrayHas, MapHas, MapRemove, CallField, CallColumn, Cs }
 
 /// `bo:bark()`, `scores:inject(4)`
 public sealed class MethodCall : Expr

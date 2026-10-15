@@ -35,7 +35,7 @@ print(d:ToString("yyyy-MM-dd"));
 DateTime d2 = new DateTime(2026, 10, 15);
 is d d2? then { print("same day"); }
 
-print(Path:Combine("a", "b"));
+print(Path:GetExtension("photo.png"));
 print(Regex:IsMatch("hello123", "[0-9]+"));
 string array parts = "a,b,c":Split(",");
 print(parts);

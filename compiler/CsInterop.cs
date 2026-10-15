@@ -20,6 +20,8 @@ public sealed class CsCall
     public MethodBase Method { get; init; } = null!;
     public ParameterInfo[] Params { get; init; } = Array.Empty<ParameterInfo>();
     public bool IsStatic => Method.IsStatic || Method is ConstructorInfo;
+    /// A params method given its extra values one by one: String:Format("{0} {1}", a, b)
+    public bool Expanded { get; init; }
     public System.Type Returns => Method is MethodInfo mi ? mi.ReturnType : Method.DeclaringType!;
 }
 
@@ -276,7 +278,7 @@ public static class CsLibs
     public static string FromCsCode(string code, System.Type t)
     {
         if (t == typeof(long) || t == typeof(double) || t == typeof(bool)) return code;
-        if (t == typeof(ulong)) return $"checked((long)({code}))";
+        if (t == typeof(ulong)) return $"LustCs.FromULong({code})";
         if (IntLike.Contains(t)) return $"((long)({code}))";
         if (FloatLike.Contains(t)) return $"((double)({code}))";
         if (t == typeof(string)) return $"LustCs.Str({code})";
@@ -300,28 +302,44 @@ public static class CsLibs
         CsCall? best = null;
         int bestScore = int.MaxValue;
         var usable = new List<MethodBase>();
+        bool any = false;
         foreach (var m in candidates)
         {
+            any = true;
             if (m.IsGenericMethodDefinition || m.ContainsGenericParameters) continue;
             var ps = m.GetParameters();
             if (ps.Any(p => p.ParameterType.IsByRef || p.ParameterType.IsPointer)) continue;
             if (m is MethodInfo mi && FromCs(mi.ReturnType) == null) continue;
             usable.Add(m);
             int required = ps.Count(p => !p.HasDefaultValue && !p.IsOptional);
-            if (args.Count < required || args.Count > ps.Length) continue;
             int score = 0;
-            bool fits = true;
+            bool fits = args.Count >= required && args.Count <= ps.Length;
             for (int i = 0; i < args.Count && fits; i++)
             {
                 var f = Fit(args[i], ps[i].ParameterType);
                 if (f == null) fits = false; else score += f.Value;
             }
-            if (!fits) continue;
-            score += (ps.Length - args.Count) * 3;   // fewer left out is better
-            if (score < bestScore) { bestScore = score; best = new CsCall { Method = m, Params = ps }; }
+            if (fits)
+            {
+                score += (ps.Length - args.Count) * 3;   // fewer left out is better
+                if (score < bestScore) { bestScore = score; best = new CsCall { Method = m, Params = ps }; }
+            }
+            // params T[] at the end: the extra values can come one by one.
+            if (ps.Length > 0 && ps[^1].IsDefined(typeof(ParamArrayAttribute)) && args.Count >= ps.Length - 1 && ps[^1].ParameterType.GetElementType() is { } each)
+            {
+                int s2 = 1;
+                bool ok = true;
+                for (int i = 0; i < args.Count && ok; i++)
+                {
+                    var f = Fit(args[i], i < ps.Length - 1 ? ps[i].ParameterType : each);
+                    if (f == null) ok = false; else s2 += f.Value;
+                }
+                if (ok && s2 < bestScore) { bestScore = s2; best = new CsCall { Method = m, Params = ps, Expanded = true }; }
+            }
         }
         if (best != null) return (best, null);
-        if (usable.Count == 0) return (null, null);
+        if (usable.Count == 0)
+            return (null, any ? $"{what} uses C# features Lust can't use yet (out or ref parameters, generics, or values Lust has no type for)." : null);
         var got = args.Count == 0 ? "nothing" : string.Join(", ", args.Select(a => a.Name));
         var options = usable.Select(Describe).Distinct().Take(6).ToList();
         return (null, $"{what} doesn't take ({got}). It takes {(options.Count == 1 ? options[0] : "one of: " + string.Join(" · ", options))}.");

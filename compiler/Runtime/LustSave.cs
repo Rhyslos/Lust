@@ -15,6 +15,7 @@
 //
 // Objects and variables come first, by name. Things made from classes are written once each,
 // after them, as @1, @2…, so two fields that hold the same thing still hold the same thing after loading.
+// An array, map or cArray that's in two places is written once as @3 [ … ], and then @3.
 // Loading is strict: anything that doesn't match the program exactly is an error, and nothing is changed.
 #nullable disable
 using System;
@@ -98,7 +99,14 @@ public sealed class LustSave
         }
     }
 
-    static bool IsWidget(Type t) => t.Name.StartsWith("C_Ui_") && t.Name != "C_Ui_Window";
+    /// Window parts (yours too, like a Button you made) are left out of saves, and so is anything holding them.
+    static bool IsWidget(Type t)
+    {
+        for (var c = t; c != null; c = c.BaseType) if (c.Name == "C_Ui_Widget") return true;
+        if (t.IsGenericType && t.GetGenericArguments().Any(IsWidget)) return true;
+        if (typeof(LustRow).IsAssignableFrom(t)) return t.GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly).Any(f => f.Name.StartsWith("c_") && IsWidget(f.FieldType));
+        return false;
+    }
     static bool IsObjectType(Type t) => t.GetField("Instance", BindingFlags.Public | BindingFlags.Static) != null;
     static string LustField(FieldInfo f) => f.Name.Substring(2);
     string TypeName(Type t) => typeNames.TryGetValue(t, out var n) ? n : t.Name;
@@ -108,6 +116,7 @@ public sealed class LustSave
     public void Save()
     {
         var w = new Writer(this);
+        foreach (var item in items) w.Count(item is Obj o ? o.Get() : ((Var)item).Get(), item is Obj);
         var sb = w.Out;
         sb.Append($"// Lust save \"{name}\" for {Program}. You can change values here, carefully: when it doesn't match the program, loading stops with an error.\n");
         foreach (var item in items)
@@ -146,6 +155,37 @@ public sealed class LustSave
         readonly Dictionary<object, int> ids = new(ReferenceEqualityComparer.Instance);
         readonly Queue<object> todo = new();
         public Writer(LustSave save) { this.save = save; }
+
+        // How many places each array, map and cArray is in, worked out before writing.
+        readonly Dictionary<object, int> uses = new(ReferenceEqualityComparer.Instance);
+        readonly HashSet<object> counted = new(ReferenceEqualityComparer.Instance);
+
+        static bool IsCollection(object v) => v != null && v.GetType().IsGenericType &&
+            (v.GetType().GetGenericTypeDefinition() is var d && (d == typeof(LustArray<>) || d == typeof(LustMap<>) || d == typeof(LustCArray<>)));
+
+        /// Goes through everything the way writing will, counting the arrays, maps and cArrays met.
+        public void Count(object v, bool isItem = false)
+        {
+            switch (v)
+            {
+                case null: return;
+                case LustObject o:
+                    if (!isItem && IsObjectType(o.GetType())) return;   // written by name
+                    if (!counted.Add(o)) return;
+                    foreach (var f in Fields(o.GetType())) Count(f.GetValue(o));
+                    return;
+            }
+            if (!IsCollection(v)) return;
+            uses[v] = uses.TryGetValue(v, out var n) ? n + 1 : 1;
+            if (uses[v] > 1) return;
+            var t = v.GetType();
+            var def = t.GetGenericTypeDefinition();
+            if (def == typeof(LustArray<>)) foreach (var x in (IEnumerable)v) Count(x);
+            else if (def == typeof(LustMap<>)) foreach (var kv in (IEnumerable)t.GetMethod("Snapshot").Invoke(v, null)) Count(kv.GetType().GetProperty("Value").GetValue(kv));
+            else
+                foreach (var row in (LustRow[])t.GetMethod("Snapshot").Invoke(v, null))
+                    foreach (var c in row.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly).Where(f => f.Name.StartsWith("c_"))) Count(c.GetValue(row));
+        }
 
         public void Body(object o, int indent)
         {
@@ -191,6 +231,13 @@ public sealed class LustSave
                     return;
             }
             var t = v.GetType();
+            // A list that's in more than one place: written once with its number, then by its number.
+            if (IsCollection(v) && uses.TryGetValue(v, out var places) && places > 1)
+            {
+                if (ids.TryGetValue(v, out var seen)) { Out.Append('@').Append(seen); return; }
+                ids[v] = ids.Count + 1;
+                Out.Append('@').Append(ids[v]).Append(' ');
+            }
             if (t.IsGenericType && t.GetGenericTypeDefinition() == typeof(LustArray<>))
             {
                 var elem = t.GetGenericArguments()[0];
@@ -268,7 +315,7 @@ public sealed class LustSave
                 throw reader.Mismatch(line, $"there's no class called {typeName} in the program.");
             made[id] = Activator.CreateInstance(t);
         }
-        var resolve = new Resolver(this, reader, made);
+        var resolve = new Resolver(this, reader, made, file.Labels);
         foreach (var (id, typeName, body, line) in file.Things) resolve.Fill(made[id], body, apply);
 
         var seen = new HashSet<string>();
@@ -304,6 +351,7 @@ public sealed class LustSave
         public sealed class Ref : Node { public int Id; }               // @3
         public sealed class List : Node                                 // [1, 2] or ["a" 1] or [[1, "x"]] next 4
         {
+            public int? Label;                                          // @3 [ … ]: in more than one place
             public List<Node> Items = new();
             public List<Node> Keys;
             public long? Next;
@@ -315,6 +363,7 @@ public sealed class LustSave
     {
         public List<(string Name, Node Node, int Line)> Entries = new();
         public List<(int Id, string Type, Node.Body Body, int Line)> Things = new();
+        public Dictionary<int, Node.List> Labels = new();
     }
 
     sealed class Reader
@@ -322,6 +371,7 @@ public sealed class LustSave
         readonly LustSave save;
         readonly string s;
         int i, line = 1;
+        SaveFile file;
         public Reader(LustSave save, string text) { this.save = save; s = text.Replace("\r\n", "\n"); }
 
         string Where => save.FilePath;
@@ -359,7 +409,8 @@ public sealed class LustSave
 
         public SaveFile ReadFile()
         {
-            var file = new SaveFile();
+            file = new SaveFile();
+            var thingIds = new HashSet<int>();
             while (true)
             {
                 Space();
@@ -372,7 +423,7 @@ public sealed class LustSave
                     if (!int.TryParse(idText, NumberStyles.None, CultureInfo.InvariantCulture, out var id)) throw Damaged(at, $"@{idText} should be @ and a number.");
                     var typeName = Word();
                     if (!At('{')) throw Damaged(line, $"@{id} {typeName} needs its fields in {{ }}.");
-                    if (file.Things.Any(x => x.Id == id)) throw Damaged(at, $"@{id} is there twice.");
+                    if (!thingIds.Add(id) || file.Labels.ContainsKey(id)) throw Damaged(at, $"@{id} is there twice.");
                     file.Things.Add((id, typeName, ReadBody(), at));
                     continue;
                 }
@@ -409,6 +460,14 @@ public sealed class LustSave
                 i++;
                 var idText = Word();
                 if (!int.TryParse(idText, NumberStyles.None, CultureInfo.InvariantCulture, out var id)) throw Damaged(at, $"@{idText} should be @ and a number.");
+                if (At('['))
+                {
+                    var labelled = (Node.List)ReadValue();
+                    if (file.Labels.ContainsKey(id)) throw Damaged(at, $"@{id} is there twice.");
+                    labelled.Label = id;
+                    file.Labels[id] = labelled;
+                    return labelled;
+                }
                 return new Node.Ref { Line = at, Id = id };
             }
             if (c == '[')
@@ -483,7 +542,12 @@ public sealed class LustSave
         readonly LustSave save;
         readonly Reader reader;
         readonly Dictionary<int, object> made;
-        public Resolver(LustSave save, Reader reader, Dictionary<int, object> made) { this.save = save; this.reader = reader; this.made = made; }
+        readonly Dictionary<int, Node.List> labels;
+        readonly Dictionary<int, object> lists = new();
+        public Resolver(LustSave save, Reader reader, Dictionary<int, object> made, Dictionary<int, Node.List> labels) { this.save = save; this.reader = reader; this.made = made; this.labels = labels; }
+
+        /// Remembers a list that's in more than one place as soon as it's made, so the other places get the very same one.
+        void Made(Node.List list, object value) { if (list.Label is int l) lists[l] = value; }
 
         LustError Wrong(Node n, string where, string wanted) =>
             reader.Mismatch(n.Line, $"{where} should be {wanted}, but it's {Show(n)}.");
@@ -561,7 +625,7 @@ public sealed class LustSave
                     case Node.Word { Text: "nothing" }: return null;
                     case Node.Ref r:
                         if (!made.TryGetValue(r.Id, out var o)) throw reader.Damaged(r.Line, $"@{r.Id} is used, but there's no @{r.Id} further down.");
-                        if (!t.IsInstanceOfType(o)) throw Wrong(n, where, $"a {save.TypeName(t)}, but @{r.Id} is a {save.TypeName(o.GetType())}");
+                        if (!t.IsInstanceOfType(o)) throw reader.Mismatch(r.Line, $"{where} should be a {save.TypeName(t)}, but @{r.Id} is a {save.TypeName(o.GetType())}.");
                         return o;
                     case Node.Word w when types.TryGetValue(w.Text, out var objType) && IsObjectType(objType):
                         var inst = objType.GetField("Instance").GetValue(null);
@@ -574,11 +638,28 @@ public sealed class LustSave
             {
                 var def = t.GetGenericTypeDefinition();
                 var arg = t.GetGenericArguments()[0];
+                // @3: a list that's written out somewhere else in the save
+                if (n is Node.Ref listRef)
+                {
+                    if (!lists.TryGetValue(listRef.Id, out var shared))
+                    {
+                        if (!labels.TryGetValue(listRef.Id, out var node)) throw reader.Damaged(listRef.Line, $"@{listRef.Id} is used, but there's no @{listRef.Id} [ … ] in the save.");
+                        shared = Convert(node, t, where);
+                    }
+                    if (!t.IsInstanceOfType(shared)) throw reader.Mismatch(listRef.Line, $"{where} and the other place @{listRef.Id} is used hold different kinds of things.");
+                    return shared;
+                }
+                if (n is Node.List { Label: int lb } && lists.TryGetValue(lb, out var already))
+                {
+                    if (!t.IsInstanceOfType(already)) throw reader.Mismatch(n.Line, $"{where} and the other place @{lb} is used hold different kinds of things.");
+                    return already;
+                }
                 if (n is not Node.List list) throw Wrong(n, where, def == typeof(LustMap<>) ? "a map in [ ]" : "a list in [ ]");
                 if (def == typeof(LustArray<>))
                 {
                     if (list.Keys != null) throw Wrong(n, where, "a plain list, without keys");
                     var a = Activator.CreateInstance(t);
+                    Made(list, a);
                     var inject = t.GetMethod("Inject");
                     for (int k = 0; k < list.Items.Count; k++) inject.Invoke(a, new[] { Convert(list.Items[k], arg, $"{where}[{k}]") });
                     return a;
@@ -587,6 +668,7 @@ public sealed class LustSave
                 {
                     if (list.Keys == null && list.Items.Count > 0) throw Wrong(n, where, "a map, with a key before each value");
                     var m = Activator.CreateInstance(t);
+                    Made(list, m);
                     var set = t.GetMethod("Set");
                     var has = t.GetMethod("Has");
                     for (int k = 0; k < list.Items.Count; k++)
@@ -603,6 +685,7 @@ public sealed class LustSave
                     var cols = rowType.GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly).Where(f => f.Name.StartsWith("c_")).ToArray();
                     var ctor = rowType.GetConstructors()[0];
                     var c = Activator.CreateInstance(t, new object[] { Array.CreateInstance(rowType, 0) });
+                    Made(list, c);
                     var inject = t.GetMethod("Inject");
                     foreach (var item in list.Items)
                     {

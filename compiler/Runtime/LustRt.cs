@@ -175,6 +175,9 @@ public static class LustCs
 {
     public static string Str(string s) => s ?? "";
 
+    public static long FromULong(ulong v) =>
+        v <= long.MaxValue ? (long)v : throw new LustError($"{v} is too big for an int.");
+
     public static char Char(string s)
     {
         if (s == null || s.Length != 1) throw new LustError($"C# wants one letter here, but got \"{s}\".");
@@ -272,7 +275,7 @@ public static class LustRt
     /// things made from classes show just their class, so print doesn't go in circles.
     public static string Show(object v) => v switch
     {
-        string s => "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n") + "\"",
+        string s => "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\t", "\\t").Replace("\r", "\\r") + "\"",
         LustObject o => o.LustName,
         _ => Text(v),
     };

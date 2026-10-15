@@ -27,6 +27,8 @@ public sealed class FileUnit
     public List<SaveSym> OwnSaves { get; } = new();
     /// The variables declared at the very top of the file (not inside a block), by name.
     public Dictionary<string, Variable> TopScope { get; set; } = new();
+    /// save and load lines at the top level, to check they come after the variables they use.
+    public List<(Pos Pos, SaveSym Save)> TopSaveUses { get; } = new();
     public Dictionary<string, Pos> Sent { get; } = new();
     public HashSet<string> TopVars { get; } = new();
 }

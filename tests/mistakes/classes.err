@@ -1,6 +1,6 @@
 classes.lust:3:20  Dog already has a field called hp.
 classes.lust:4:21  name is a string, but this is an int. Use .text() to turn it into text.
-classes.lust:5:17  a starting value in a has block must be a plain value, like 0, "text", true, nothing or []. Work things out in a method instead.
+classes.lust:5:17  a starting value in a has block must be a plain value, like 0, "text", true, nothing, [] or new DateTime(2026, 1, 1) for a C# value. Work things out in a method instead.
 classes.lust:6:9  Lust doesn't have a type called Cat. The types are int, float, string, truth, arrays, cArrays, classes and states.
 classes.lust:7:18  give speed a starting value: speed 0
 classes.lust:11:14  bark doesn't give anything back. To give an int, say so: method int bark(…)

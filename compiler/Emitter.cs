@@ -456,6 +456,7 @@ public sealed class Emitter
                 return mc.Kind switch
                 {
                     MethodKind.User => $"{target}.m_{mc.Method}({Arguments(mc.Args, mc.Func!)})",
+                    MethodKind.CallColumn => $"LustRt.Fn({target}.c_{mc.Method}, {CsString(mc.Method)})({FnArguments(mc.Args, (FuncType)((RowType)mc.Target.Type).Table.Column(mc.Method)!)})",
                     MethodKind.Cs => CsLibs.FromCsCode(CsCallRaw(mc), ((CsCall)mc.Cs!).Returns),
                     MethodKind.CallField => $"LustRt.Fn({target}.{mc.Field!.CsName}, {CsString(mc.Method)})({FnArguments(mc.Args, (FuncType)mc.Field.Type)})",
                     MethodKind.ArrayInject => $"{target}.Inject({Coerce(mc.Args[0], ((ArrayType)mc.Target.Type).Elem)})",
@@ -510,7 +511,7 @@ public sealed class Emitter
                 return al.Type switch
                 {
                     MapType mt => al.Items.Count == 0 ? $"new {mt.Cs}()" : $"{mt.Cs}.Of({string.Join(", ", al.Items.Select((x, i) => $"({Expr(al.Keys![i])}, {Coerce(x, mt.Elem)})"))})",
-                    ArrayType at => al.Items.Count == 0 ? $"new {at.Cs}()" : $"{at.Cs}.Of({string.Join(", ", al.Items.Select(x => Coerce(x, at.Elem)))})",
+                    ArrayType at => al.Items.Count == 0 ? $"new {at.Cs}()" : $"{at.Cs}.Of(new {at.Elem.Cs}[] {{ {string.Join(", ", al.Items.Select(x => Coerce(x, at.Elem)))} }})",
                     CArrayType ct => $"new {ct.Cs}({string.Join(", ", al.Items.Select(Expr))})",
                     RowType rt => RowLit(al, rt.Table),
                     _ => throw new InvalidOperationException("untyped array"),
@@ -557,8 +558,15 @@ public sealed class Emitter
     string CsMemberRaw(FieldGet fg) =>
         fg.Cs!.IsStatic ? $"{CsNames.Of(((CsStaticType)fg.Target.Type).Clr)}.{fg.Cs.Member.Name}" : $"({Expr(fg.Target)}).{fg.Cs.Member.Name}";
 
-    string CsArgs(List<Expr> args, CsCall call) =>
-        string.Join(", ", args.Select((a, i) => CsLibs.ToCs(Expr(a), a.Type, call.Params[i].ParameterType)));
+    string CsArgs(List<Expr> args, CsCall call)
+    {
+        if (!call.Expanded) return string.Join(", ", args.Select((a, i) => CsLibs.ToCs(Expr(a), a.Type, call.Params[i].ParameterType)));
+        int fixedCount = call.Params.Length - 1;
+        var each = call.Params[^1].ParameterType.GetElementType()!;
+        var first = args.Take(fixedCount).Select((a, i) => CsLibs.ToCs(Expr(a), a.Type, call.Params[i].ParameterType));
+        var rest = args.Skip(fixedCount).Select(a => CsLibs.ToCs(Expr(a), a.Type, each));
+        return string.Join(", ", first.Append($"new {CsNames.Of(each)}[] {{ {string.Join(", ", rest)} }}"));
+    }
 
     string FnArguments(List<Expr> args, FuncType ft) =>
         string.Join(", ", args.Select((a, i) => Coerce(a, ft.Params[i])));
