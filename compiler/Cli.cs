@@ -3,10 +3,10 @@ namespace Lust;
 /// The `lust` command.
 public static class Cli
 {
-    const string Version = "0.4.0";
+    const string Version = "0.4.1";
 
     const string Usage = """
-        Lust 0.4.0
+        Lust 0.4.1
 
           lust run <file.lust>      check the file, then run it
           lust check <file.lust>    only check it, and list any mistakes
@@ -21,11 +21,45 @@ public static class Cli
     // Very long expressions nest deeply, so Lust runs on a thread with a big stack.
     public static int Main(string[] args)
     {
+        // Started by double-clicking (or by dropping a file on lust.exe)? Then the window
+        // belongs to Lust alone and would vanish the moment Lust is done, so keep it open.
+        bool ownWindow = OpenedFromExplorer();
+        if (ownWindow && args.Length == 0)
+        {
+            Console.WriteLine("""
+                This is Lust. It runs from a terminal, or you can drop a .lust file onto lust.exe.
+
+                To use it from a terminal, open PowerShell or Command Prompt in this folder and type:
+
+                  .\lust run hello.lust
+
+                """);
+            args = new[] { "help" };
+        }
+
         int code = 0;
         var t = new Thread(() => code = MainInner(args), 256 * 1024 * 1024);
         t.Start();
         t.Join();
+
+        if (ownWindow)
+        {
+            Console.WriteLine();
+            Console.Write("Press any key to close.");
+            try { Console.ReadKey(true); } catch (InvalidOperationException) { }
+        }
         return code;
+    }
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    static extern uint GetConsoleProcessList(uint[] list, uint count);
+
+    /// True when no terminal started Lust: Windows made a fresh console just for it.
+    static bool OpenedFromExplorer()
+    {
+        if (!OperatingSystem.IsWindows() || Console.IsInputRedirected || Console.IsOutputRedirected) return false;
+        try { return GetConsoleProcessList(new uint[2], 2) == 1; }
+        catch { return false; }
     }
 
     static int MainInner(string[] args)
