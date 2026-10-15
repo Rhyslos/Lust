@@ -86,7 +86,8 @@ public sealed class Parser
     {
         if (!Hints.ContainsKey(t.Text)) return false;
         var next = PeekAt(1).Kind;
-        if (next is Tk.Assign or Tk.Dot or Tk.Colon or Tk.LBrack or Tk.Semi) return t.Text is "self" or "this" && next == Tk.Dot;
+        if (next == Tk.Semi) return true;   // break; continue; return;
+        if (next is Tk.Assign or Tk.Dot or Tk.Colon or Tk.LBrack) return t.Text is "self" or "this" && next == Tk.Dot;
         if (next == Tk.LParen) return ParenHints.Contains(t.Text);
         return true;
     }
@@ -102,7 +103,9 @@ public sealed class Parser
 
     ParseStop Fail(Pos pos, string message)
     {
-        if (!diags.SymbolMistakeOn(pos) && !diags.SymbolMistakeOn(Prev.Pos)) diags.Add(pos, message);
+        // A bad symbol earlier on the same line usually causes this one; then it's left out.
+        bool knockOn = diags.SymbolMistakeOn(pos) || (Prev.Pos.Line == pos.Line && diags.SymbolMistakeOn(Prev.Pos));
+        if (!knockOn) diags.Add(pos, message);
         return new ParseStop();
     }
 
@@ -133,6 +136,18 @@ public sealed class Parser
     void EndStatement()
     {
         if (At(Tk.Semi)) { Next(); return; }
+        if (diags.SymbolMistakeOn(Prev.Pos)) { if (Cur.Pos.Line == Prev.Pos.Line && !At(Tk.RBrace) && !At(Tk.Eof)) throw new ParseStop(); return; }
+        if (Cur.Pos.Line == Prev.Pos.Line && StartsValue(Cur) && !AtWord("is") && !(Cur.Kind == Tk.Ident && PeekAt(1).Kind is Tk.LParen or Tk.Assign or Tk.Colon or Tk.Dot or Tk.Ident))
+        {
+            // truth same = hp 3;  Two values side by side only compare inside a question.
+            diags.Add(Cur.Pos, "two values side by side only compare inside a question. Outside one, use either: truth same = either hp 3? true or not true;");
+            throw new ParseStop();
+        }
+        if (AtWord("and") || (AtWord("or") && Cur.Pos.Line == Prev.Pos.Line))
+        {
+            diags.Add(Cur.Pos, AtWord("and") ? "Lust joins checks with &&, not and." : "inside a check, \"or\" is written ||.");
+            throw new ParseStop();
+        }
         diags.Add(Prev.End, "missing ; at the end of this line.");
         if (Cur.Pos.Line == Prev.Pos.Line && !At(Tk.RBrace) && !At(Tk.Eof)) throw new ParseStop();
     }
@@ -199,7 +214,7 @@ public sealed class Parser
             TopLevelItem();
         }
         if (!ended && !diags.Full)
-            diags.Add(toks.Count > 1 ? Prev.End : Cur.Pos, $"{file.Display} never ends. Add end on its last line.");
+            diags.Add(toks.Count > 1 ? Prev.End : Cur.Pos, $"{file.Display} never ends. Add end on its last line.", always: true);
         return program;
     }
 
@@ -619,7 +634,7 @@ public sealed class Parser
             case "state" when IsStateDeclaration(): throw Fail(t.Pos, "a state is declared at the top level of a file.");
         }
         if (LooksLikeDeclaration()) return VarDeclStmt();
-        if (HintApplies(t)) throw Fail(t.Pos, Hints[t.Text]);
+        if (HintApplies(t)) { diags.Add(t.Pos, Hints[t.Text]); throw new ParseStop(); }
 
         var target = Postfix();
         if (At(Tk.Assign))
@@ -628,14 +643,14 @@ public sealed class Parser
                 throw Fail(t.Pos, $"{t.Text} is one of Lust's own words; it can't be changed.");
             if (target is not (Name or FieldGet or Index))
                 throw Fail(t.Pos, "the left side of = must be something that can change, like hp or bo.hp.");
-            if (target is Name { Id: var id } && Reserved.Contains(id))
+            if (target is Name { Id: var id } && Reserved.Contains(id) && id != "state")
                 throw Fail(t.Pos, $"{id} is one of Lust's own words; it can't be changed.");
             Next();
             var value = Expression();
             EndStatement();
             return new Assign { Pos = t.Pos, Target = target, Value = value };
         }
-        if (AtWord("is"))
+        if (AtWord("is") && Cur.Pos.Line == Prev.Pos.Line)
         {
             Next();
             var opt = OptionPath($"say which option: {Snippet(target)} is idle;");
@@ -686,8 +701,7 @@ public sealed class Parser
         {
             ExpectWord("is", "expected is.");
             var check = Check();
-            if (!At(Tk.Question))
-                throw Fail(MissingAt, AtWord("then") ? "a question ends with ? before then: is hp 0? then { }" : "a question ends with ?, like is hp 0? then { }");
+            if (!At(Tk.Question)) throw Fail(MissingAt, QuestionEndMessage("is hp 0? then { }"));
             Next();
             ExpectWord("then", "after the ? comes then and a block: is hp 0? then { }");
             var body = BlockStmt();
@@ -701,6 +715,12 @@ public sealed class Parser
         if (At(Tk.Semi)) diags.Add(Cur.Pos, "no ; is needed after a question's }.");
         return new IsChain { Pos = start, Branches = branches, Otherwise = otherwise };
     }
+
+    string QuestionEndMessage(string example) =>
+        AtWord("and") ? "Lust joins checks with &&, not and: is hp > 5 && hp < 10?"
+        : AtWord("or") ? "inside a question, \"or\" is written ||: is hp 0 || hungry?"
+        : AtWord("then") ? $"a question ends with ? before then: {example}"
+        : $"a question ends with ?, like {example}";
 
     /// A question's check: parts like `hp 0`, `alive not true` or `hp < 5`, joined by && and ||.
     Expr Check()
@@ -761,7 +781,7 @@ public sealed class Parser
     static bool StartsValue(Token t) => t.Kind switch
     {
         Tk.Int or Tk.Float or Tk.String or Tk.LParen or Tk.Hash or Tk.LBrack => true,
-        Tk.Ident => !Reserved.Contains(t.Text) || t.Text is "true" or "nothing" or "either" or "new",
+        Tk.Ident => (!Reserved.Contains(t.Text) && t.Text != "and") || t.Text is "true" or "nothing" or "either" or "new",
         _ => false,
     };
 
@@ -801,8 +821,10 @@ public sealed class Parser
                 return new Loop { Pos = start, Kind = LoopKind.Each, Vars = vars, Expr = source, Body = BlockStmt() };
             }
             Next();
-            var cond = Expression();
-            Expect(Tk.RParen, "expected ) to close the loop's check.");
+            // The check works like a question's: loop (cmd not "quit") { }
+            var cond = Check();
+            if (!At(Tk.RParen)) throw Fail(MissingAt, AtWord("and") || AtWord("or") ? QuestionEndMessage("") : "expected ) to close the loop's check.");
+            Next();
             return new Loop { Pos = start, Kind = LoopKind.While, Expr = cond, Body = BlockStmt() };
         }
         var count = Expression();
@@ -852,7 +874,7 @@ public sealed class Parser
     {
         var start = Next().Pos;
         var check = Check();
-        if (!At(Tk.Question)) throw Fail(MissingAt, "either needs a question ending with ?: either hp > 0? \"up\" or \"down\"");
+        if (!At(Tk.Question)) throw Fail(MissingAt, AtWord("and") || AtWord("or") ? QuestionEndMessage("") : "either needs a question ending with ?: either hp > 0? \"up\" or \"down\"");
         Next();
         var yes = Expression();
         if (!AtWord("or")) throw Fail(MissingAt, "either needs an or: either hp > 0? \"up\" or \"down\"");

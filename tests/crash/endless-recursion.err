@@ -1,1 +1,1 @@
-endless-recursion.lust:3  a function kept calling itself and never stopped (over 20000 calls deep).
+endless-recursion.lust:3  functions called each other more than 200000 deep. That usually means a function calls itself with no way to stop.

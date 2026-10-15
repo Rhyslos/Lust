@@ -77,6 +77,7 @@ public sealed class LustCArray<R> where R : LustRow
 {
     readonly Dictionary<long, R> byId = new();
     readonly List<R> order = new();
+    long nextId = 1;
 
     public LustCArray(params R[] rows)
     {
@@ -93,8 +94,10 @@ public sealed class LustCArray<R> where R : LustRow
 
     public void Inject(R row)
     {
-        if (!row.hasId) row.id = order.Count == 0 ? 1 : Math.Max(order.Max(r => r.id) + 1, 1);
+        // A new id is one more than the biggest id this cArray has ever had, so ids are never reused.
+        if (!row.hasId) row.id = nextId;
         else if (byId.ContainsKey(row.id)) throw new LustError($"there's already a row with id {row.id}.");
+        nextId = Math.Max(nextId, row.id + 1);
         row.hasId = true;
         byId[row.id] = row;
         order.Add(row);
@@ -238,9 +241,10 @@ public static class LustRt
 
     // Calls deep inside each other. Endless recursion becomes a Lust message instead of a crash.
     [ThreadStatic] static int depth;
+    const int MaxDepth = 200000;
     public static void Enter()
     {
-        if (++depth > 20000) { depth = 0; throw new LustError("a function kept calling itself and never stopped (over 20000 calls deep)."); }
+        if (++depth > MaxDepth) { depth = 0; throw new LustError($"functions called each other more than {MaxDepth} deep. That usually means a function calls itself with no way to stop."); }
     }
     public static void Leave() => depth--;
 

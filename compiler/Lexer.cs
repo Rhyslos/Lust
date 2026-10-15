@@ -136,9 +136,15 @@ public static class Lexer
                 case "==": diags.AddSymbol(pos, "Lust has no ==. To check if two things are the same, ask: is a b?"); Advance(2); continue;
                 case "!=": diags.AddSymbol(pos, "Lust has no !=. To check if two things differ, ask: is a not b?"); Advance(2); continue;
                 case "+=": case "-=": case "*=": case "/=":
-                    diags.AddSymbol(pos, $"Lust has no {two} yet. Write it out, like hp = hp {two[0]} 5;"); Advance(2); continue;
+                {
+                    var v = tokens.Count > 0 && tokens[^1].Kind == Tk.Ident ? tokens[^1].Text : "hp";
+                    diags.AddSymbol(pos, $"Lust has no {two} yet. Write it out: {v} = {v} {two[0]} …;"); Advance(2); continue;
+                }
                 case "++": case "--":
-                    diags.AddSymbol(pos, $"Lust has no {two}. Write it out, like n = n {two[0]} 1;"); Advance(2); continue;
+                {
+                    var v = tokens.Count > 0 && tokens[^1].Kind == Tk.Ident ? tokens[^1].Text : "n";
+                    diags.AddSymbol(pos, $"Lust has no {two}. Write it out: {v} = {v} {two[0]} 1;"); Advance(2); continue;
+                }
             }
             Tk? one = c switch
             {

@@ -1,0 +1,2 @@
+no-end-semicolon.lust:1:11  missing ; at the end of this line.
+no-end-semicolon.lust:1:11  no-end-semicolon.lust never ends. Add end on its last line.
