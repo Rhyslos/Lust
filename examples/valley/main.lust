@@ -1,6 +1,7 @@
 // main.lust
 // Lust Valley: a tiny farming game.
 // Run it with: lust run examples/valley/main.lust
+// Sleeping saves the game, so you can carry on next time.
 
 fetch crops;
 fetch shop:Shop;
@@ -96,12 +97,27 @@ object Farm {
     }
 }
 
+// Everything about the farm, and the farmer's name, goes in the save.
+save farm = [Farm, name];
+
 print("Welcome to Lust Valley!");
-string name = ask("What's your farmer's name?");
-is name ""? then {
-    name = "Farmer";
+string name = "Farmer";
+truth loaded = not true;
+is saved farm? then {
+    string again = ask("Carry on with your saved farm? [y/n] >");
+    is again "y" || again "Y"? then {
+        load farm;
+        loaded = true;
+        print("Welcome back, " + name + "!");
+    }
 }
-print("Hi " + name + ". Save up " + Farm.goal.text() + "g to buy a tractor!");
+is loaded not true? then {
+    name = ask("What's your farmer's name?");
+    is name ""? then {
+        name = "Farmer";
+    }
+    print("Hi " + name + ". Save up " + Farm.goal.text() + "g to buy a tractor!");
+}
 
 truth playing = true;
 loop (playing) {
@@ -118,6 +134,8 @@ loop (playing) {
         Farm:harvest();
     } or is choice "s"? then {
         Farm:sleep();
+        save farm;
+        print("  (The game is saved.)");
     } or is choice "q" || choice ""? then {
         playing = not true;
     } or {

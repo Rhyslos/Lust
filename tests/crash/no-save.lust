@@ -1,0 +1,5 @@
+object Game { has { int[score 0]; } }
+save game = [Game];
+load game;
+
+end

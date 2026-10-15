@@ -1,0 +1,22 @@
+do int double(int n) { give n * 2; }
+do greet(string who) { print(who); }
+
+do(int) a = double;
+do int(int) b = greet;
+int c = double;
+do int(int) d = double;
+string s = d("x");
+int e = d(1, 2);
+d(3);
+int x = 5;
+int y = x(2);
+do() p = print;
+class Dog { has { int[hp 1]; } method bark() { } }
+Dog bo = new Dog;
+do() q = bo:howl;
+do() r = bo:hp;
+bo:bark;
+int array nums = [1];
+int z = nums[0](1);
+
+end

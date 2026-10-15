@@ -6,10 +6,13 @@
 // like, and fill in the methods that react: clicked(), toggled(), build().
 
 // Everything that can go in a window.
+// Colours are names like "red" or "cornflowerblue", or codes like "#ff3355". "" means the usual colour.
 class Widget {
     has {
         string[text ""];
         truth[enabled true, visible true];
+        string[color "", background ""];
+        int[textSize 0];
     }
 }
 
@@ -33,16 +36,45 @@ class Toggle like Widget {
     method toggled() { }
 }
 
+// A picture from a file (png, jpg, gif, bmp), next to your .lust file.
+// A width or height of 0 means the picture's own size.
+class Picture like Widget {
+    has {
+        string[file ""];
+        int[width 0, height 0];
+    }
+}
+
+// Somewhere to draw. Drawings stay until clear(). x and y count from the top left corner.
+// Make your own like Canvas and fill in clicked() to know where it was clicked.
+class Canvas like Widget {
+    has {
+        int[width 400, height 300];
+    }
+
+    method clear() { }
+    method rect(int x, int y, int w, int h, string paint) { }
+    method circle(int x, int y, int radius, string paint) { }
+    method line(int x1, int y1, int x2, int y2, string paint) { }
+    method write(int x, int y, string words, string paint) { }
+    method picture(string file, int x, int y) { }
+    method clicked(int x, int y) { }
+}
+
 // Widgets side by side instead of one under the other.
 class Row like Widget {
     method add(Widget w) { }
 }
 
 // A window. Make your own like Window, put its contents in build(), then open() it.
+// tick() runs on its own every few seconds after startTimer(seconds), so things can move.
+// keyPressed(key) runs when a key goes down: "A", "7", "Space", "Enter", "Left", "Up", "Escape"…
+// isKeyDown(key) says if a key is held right now, for movement in tick().
 class Window {
     has {
         string[title "Lust"];
         int[width 480, height 360];
+        string[background ""];
     }
 
     method build() { }
@@ -52,6 +84,11 @@ class Window {
     method rebuild() { }
     method alert(string message) { }
     method close() { }
+    method tick() { }
+    method startTimer(float seconds) { }
+    method stopTimer() { }
+    method keyPressed(string key) { }
+    method truth isKeyDown(string key) { give not true; }
 }
 
 send Widget;
@@ -60,6 +97,8 @@ send Button;
 send Input;
 send Toggle;
 send Row;
+send Picture;
+send Canvas;
 send Window;
 
 end

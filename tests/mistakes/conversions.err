@@ -1,4 +1,4 @@
-conversions.lust:1:9  Lust doesn't have .foo(). The built-in ones are .text(), .int(), .float() and .isNumber().
+conversions.lust:1:9  Lust doesn't have .foo(). The built-in ones are .text(), .int(), .float(), .isNumber() and .lines().
 conversions.lust:2:11  this is already text.
 conversions.lust:3:9  this is already an int.
 conversions.lust:4:11  this is already a float.

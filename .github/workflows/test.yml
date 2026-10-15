@@ -27,8 +27,18 @@ jobs:
 
       - run: dotnet build compiler -c Release
 
+      # Failures are also shown as notes on the run, so they can be read without the full log.
       - name: Run the Lust tests
-        run: dotnet compiler/bin/Release/net8.0/lust.dll test tests
+        run: |
+          dotnet compiler/bin/Release/net8.0/lust.dll test tests > tests.txt 2>&1 && ok=1 || ok=0
+          cat tests.txt
+          if [ $ok = 0 ]; then echo "::error title=tests::$(grep -A14 'FAIL' tests.txt | head -c 4000 | tr -d '\r' | tr '\n' '|')"; exit 1; fi
+
+      - name: Run the tests that need the internet (NuGet packages)
+        run: |
+          dotnet compiler/bin/Release/net8.0/lust.dll test tests-online > online.txt 2>&1 && ok=1 || ok=0
+          cat online.txt
+          if [ $ok = 0 ]; then echo "::error title=online tests::$(head -c 4000 online.txt | tr -d '\r' | tr '\n' '|')"; exit 1; fi
 
       - name: Check the examples, and play Lust Valley for a few days
         run: |
@@ -38,14 +48,19 @@ jobs:
           $L check examples/valley/main.lust
           $L check examples/ui/counter.lust
           $L check examples/ui/pet.lust
-          printf 'Ada\nb\n2\nw\ns\nw\ns\nh\nq\n' | $L run examples/valley/main.lust
+          $L check examples/ui/stars.lust
+          printf 'Ada\nb\n2\nw\ns\nw\ns\nh\nq\n' | $L run examples/valley/main.lust > valley.txt 2>&1 && ok=1 || ok=0
+          cat valley.txt
+          if [ $ok = 0 ]; then echo "::error title=valley::$(tail -c 3000 valley.txt | tr -d '\r' | tr '\n' '|')"; exit 1; fi
 
       - name: Build the UI examples (WinForms)
         if: runner.os == 'Windows'
         run: |
           L="dotnet compiler/bin/Release/net8.0/lust.dll"
-          $L build examples/ui/counter.lust
-          $L build examples/ui/pet.lust
+          ok=1
+          for f in counter pet stars; do $L build examples/ui/$f.lust >> build.txt 2>&1 || ok=0; done
+          cat build.txt
+          if [ $ok = 0 ]; then echo "::error title=ui build::$(grep -i 'error' build.txt | sort -u | head -c 4000 | tr -d '\r' | tr '\n' '|')"; exit 1; fi
           ls examples/ui/build
 
       - name: Run the UI examples, clicking every button by themselves
@@ -56,13 +71,18 @@ jobs:
           L="dotnet compiler/bin/Release/net8.0/lust.dll"
           $L run examples/ui/counter.lust > counter.txt 2>&1 || true
           $L run examples/ui/pet.lust > pet.txt 2>&1 || true
-          cat counter.txt pet.txt
+          $L run examples/ui/stars.lust > stars.txt 2>&1 || true
+          cat counter.txt pet.txt stars.txt
           # Show the output as notes on the run too, so it can be read without the full log.
           echo "::notice title=counter::$(head -c 3000 counter.txt | tr -d '\r' | tr '\n' '|')"
           echo "::notice title=pet::$(head -c 3000 pet.txt | tr -d '\r' | tr '\n' '|')"
+          echo "::notice title=stars::$(head -c 3000 stars.txt | tr -d '\r' | tr '\n' '|')"
           grep -q "Clicks: 3" counter.txt
           grep -q "Blob the pet" pet.txt
           grep -q "lived for" pet.txt
+          grep -q "ticked 3 times" stars.txt
+          grep -q "Caught: 0" stars.txt
+          grep -q "canvas: [1-9]" stars.txt
 
       - name: Build lust.exe for Windows
         if: runner.os == 'Linux'

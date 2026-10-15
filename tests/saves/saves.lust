@@ -1,0 +1,80 @@
+state season = [spring, summer, fall [early, late], winter];
+
+class Crop {
+    has {
+        string[name "corn"];
+        int[days 0];
+        Crop[next nothing];
+    }
+}
+
+class Seed like Crop {
+    has { float[quality 1.5]; }
+}
+
+object Farm {
+    has {
+        int[gold 100];
+        season is spring;
+        Crop array crops [];
+        int map prices ["corn" 3];
+        cArray(string itemName, int amount) bag [[1, "hoe", 1]];
+        Crop[favourite nothing];
+        string[motto "Grow \"big\"\nand strong"];
+        truth[open true];
+    }
+}
+
+save game = [Farm, day, best];
+
+int day = 1;
+Crop best = new Seed { name "wheat", quality 2.25 };
+
+is saved game? then { print("a save exists already"); } or { print("no save yet"); }
+
+Crop c = new Crop { name "carrot", days 2 };
+c.next = c;                       // points at itself
+Farm.crops:inject(c);
+Farm.crops:inject(c);             // the same crop twice
+Farm.crops:inject(best);
+Farm.favourite = best;
+Farm.season is fall.late;
+Farm.bag:inject(["seed", 5]);
+Farm.bag:remove(2);               // ids are never reused, even after saving
+Farm.prices["wheat"] = 7;
+day = 12;
+save game;
+print("saved");
+
+// Change everything, then load it back.
+Farm.gold = 0;
+Farm.season is winter;
+Farm.crops = [];
+Farm.prices = [];
+Farm.favourite = nothing;
+Farm.motto = "";
+Farm.open = not true;
+day = 99;
+best = nothing;
+
+load game;
+print(Farm.gold);
+print(Farm.season.text());
+print(#Farm.crops);
+is Farm.crops[0] Farm.crops[1]? then { print("still the same crop"); }
+is Farm.crops[0].next Farm.crops[0]? then { print("still points at itself"); }
+is Farm.favourite best? then { print("favourite is best"); }
+is best like Seed? then { print("best is still a seed"); }
+print(Farm.prices);
+print(Farm.bag);
+Farm.bag:inject(["rake", 1]);
+print(Farm.bag);
+print(Farm.motto);
+print(Farm.open);
+print(day);
+print(best);
+print(readText("words.txt").lines());
+writeText("out/log.txt", "day " + day.text());
+print(readText("out/log.txt"));
+
+end

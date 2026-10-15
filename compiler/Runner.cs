@@ -14,7 +14,7 @@ public static class Runner
     public sealed record Result(int ExitCode, string Stdout, string Stderr);
 
     /// Target the installed SDK's own .NET version: its files come with the SDK, so nothing is downloaded.
-    static string Tfm => tfm ??= FindTfm();
+    internal static string Tfm => tfm ??= FindTfm();
     static string? tfm;
 
     static string FindTfm()
@@ -29,7 +29,7 @@ public static class Runner
         return $"net{Environment.Version.Major}.0";
     }
 
-    /// Lust programs never use NuGet packages, so restore looks in an empty folder instead of
+    /// Without NuGet packages, restore looks in an empty folder instead of
     /// asking nuget.org. That keeps runs quick and lets them work offline.
     static string EmptyFeed
     {
@@ -41,7 +41,7 @@ public static class Runner
         }
     }
 
-    static string Dotnet
+    internal static string Dotnet
     {
         get
         {
@@ -85,8 +85,10 @@ public static class Runner
     }
 
     /// Writes the project. Returns its folder.
-    static string Prepare(SourceFile file, string csharp, bool ui)
+    static string Prepare(SourceFile file, string csharp, bool ui, IReadOnlyDictionary<string, string>? packages)
     {
+        var refs = packages == null || packages.Count == 0 ? "" :
+            "\n  <ItemGroup>\n" + string.Concat(packages.Select(p => $"    <PackageReference Include=\"{System.Security.SecurityElement.Escape(p.Key)}\" Version=\"{System.Security.SecurityElement.Escape(p.Value)}\" />\n")) + "  </ItemGroup>";
         var dir = WorkDir(file);
         Directory.CreateDirectory(dir);
         WriteIfChanged(System.IO.Path.Combine(dir, "app.csproj"), $"""
@@ -99,25 +101,26 @@ public static class Runner
                 <Nullable>disable</Nullable>
                 <ImplicitUsings>disable</ImplicitUsings>
                 <CheckForOverflowUnderflow>true</CheckForOverflowUnderflow>
-                <InvariantGlobalization>true</InvariantGlobalization>
+                <InvariantGlobalization>{(packages == null || packages.Count == 0 ? "true" : "false")}</InvariantGlobalization>
                 <RollForward>Major</RollForward>
                 <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
                 <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
                 <DebugType>portable</DebugType>
                 <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
-              </PropertyGroup>
+              </PropertyGroup>{refs}
             </Project>
 
             """);
         WriteIfChanged(System.IO.Path.Combine(dir, "Program.cs"), csharp);
         WriteIfChanged(System.IO.Path.Combine(dir, "LustRt.cs"), RuntimeSource());
+        WriteIfChanged(System.IO.Path.Combine(dir, "LustSave.cs"), RuntimeSource("LustSave.cs"));
         var uiFile = System.IO.Path.Combine(dir, "LustUi.cs");
         if (ui) WriteIfChanged(uiFile, RuntimeSource("LustUi.cs"));
         else if (File.Exists(uiFile)) File.Delete(uiFile);
         return dir;
     }
 
-    static (int code, string output) Capture(string exe, IEnumerable<string> args, string cwd)
+    internal static (int code, string output) Capture(string exe, IEnumerable<string> args, string cwd)
     {
         var psi = new ProcessStartInfo(exe) { WorkingDirectory = cwd, RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
         foreach (var a in args) psi.ArgumentList.Add(a);
@@ -136,10 +139,12 @@ public static class Runner
     /// and from the normal package sources if .NET turns out to need something after all.
     // `dotnet msbuild -restore` does the same as `dotnet build`, without the build command's own
     // check-in with nuget.org on every run.
-    static (int code, string output) DotnetBuild(string dir, params string[] extra)
+    static (int code, string output) DotnetBuild(string dir, bool packages, params string[] extra)
     {
         var proj = System.IO.Path.Combine(dir, "app.csproj");
         var common = new[] { "msbuild", proj, "-restore", "-nologo", "-v:q", "-clp:NoSummary" }.Concat(extra);
+        // With NuGet packages, restore has to ask NuGet (it keeps what it downloaded, so it's quick after the first time).
+        if (packages) return Capture(Dotnet, common, dir);
         var (code, output) = Capture(Dotnet, common.Append($"-p:RestoreSources={EmptyFeed}"), dir);
         if (code != 0 && (output.Contains("NU1101") || output.Contains("NU1102") || output.Contains("NETSDK1")))
             (code, output) = Capture(Dotnet, common, dir);
@@ -153,15 +158,17 @@ public static class Runner
         $"\nThe C# is in {dir}";
 
     /// Builds and runs. With capture, the program's output is collected instead of shown.
-    public static Result Run(SourceFile file, string csharp, bool capture, IDictionary<string, string>? env = null, string? input = null, bool ui = false)
+    public static Result Run(SourceFile file, string csharp, bool capture, IDictionary<string, string>? env = null, string? input = null, bool ui = false, IReadOnlyDictionary<string, string>? packages = null)
     {
-        var dir = Prepare(file, csharp, ui);
-        var (code, output) = DotnetBuild(dir, "-p:Configuration=Debug", "-p:UseAppHost=false");
+        var dir = Prepare(file, csharp, ui, packages);
+        var (code, output) = DotnetBuild(dir, packages?.Count > 0, "-p:Configuration=Debug", "-p:UseAppHost=false");
         if (code != 0) return new Result(3, "", BuildFailure(output, dir));
 
         var dll = System.IO.Path.Combine(dir, "bin", "Debug", Tfm + (ui ? "-windows" : ""), AppName(file) + ".dll");
         var psi = new ProcessStartInfo(Dotnet) { WorkingDirectory = Environment.CurrentDirectory, UseShellExecute = false, RedirectStandardOutput = capture, RedirectStandardError = capture, RedirectStandardInput = capture };
         psi.ArgumentList.Add(dll);
+        // Text files and pictures are found next to the .lust file.
+        psi.Environment["LUST_HOME"] = System.IO.Path.GetDirectoryName(file.Path);
         if (env != null) foreach (var (k, v) in env) psi.Environment[k] = v;
         using var proc = Process.Start(psi)!;
         if (!capture)
@@ -178,10 +185,10 @@ public static class Runner
     }
 
     /// Makes a program you can start without Lust, in a build folder next to the .lust file.
-    public static Result Build(SourceFile file, string csharp, string outDir, bool ui = false)
+    public static Result Build(SourceFile file, string csharp, string outDir, bool ui = false, IReadOnlyDictionary<string, string>? packages = null)
     {
-        var dir = Prepare(file, csharp, ui);
-        var (code, output) = DotnetBuild(dir, "-t:Publish", "-p:Configuration=Release", $"-p:PublishDir={outDir.TrimEnd('/', '\\')}{System.IO.Path.DirectorySeparatorChar}");
+        var dir = Prepare(file, csharp, ui, packages);
+        var (code, output) = DotnetBuild(dir, packages?.Count > 0, "-t:Publish", "-p:Configuration=Release", $"-p:PublishDir={outDir.TrimEnd('/', '\\')}{System.IO.Path.DirectorySeparatorChar}");
         return code == 0 ? new Result(0, "", "") : new Result(3, "", BuildFailure(output, dir));
     }
 }

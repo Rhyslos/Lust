@@ -17,6 +17,10 @@ public sealed class Checker
     {
         var c = new Checker(comp);
         foreach (var f in comp.Files) c.Collect(f);
+        // Saves are files named after the save, so two saves in one program can't share a name.
+        foreach (var group in comp.Files.SelectMany(f => f.OwnSaves).GroupBy(s => s.Name).Where(g => g.Count() > 1))
+            foreach (var later in group.Skip(1))
+                c.Error(later.Decl.NamePos, $"there's already a save called {later.Name} in {group.First().File.Source.Display}. Saves are kept in files named after them, so every save in a program needs its own name.");
         foreach (var f in comp.Files) c.CheckSends(f);
         foreach (var f in comp.Files) c.Connect(f);
         foreach (var f in comp.Files)
@@ -61,6 +65,14 @@ public sealed class Checker
             f.Classes[cd.Name] = sym;
             f.OwnClasses.Add(sym);
         }
+        foreach (var sd in ast.Saves)
+        {
+            if (f.Saves.TryGetValue(sd.Name, out var old)) { Error(sd.NamePos, $"there's already a save called {sd.Name}, on line {old.Decl.Pos.Line}."); continue; }
+            var sym = new SaveSym { Name = sd.Name, File = f, Decl = sd };
+            sd.Sym = sym;
+            f.Saves[sd.Name] = sym;
+            f.OwnSaves.Add(sym);
+        }
         foreach (var fd in ast.Funcs)
         {
             if (f.Funcs.TryGetValue(fd.Name, out var old)) { Error(fd.NamePos, $"there's already a function called {fd.Name}, on line {old.Decl.Pos.Line}."); continue; }
@@ -77,9 +89,10 @@ public sealed class Checker
         foreach (var send in f.Ast.Sends)
             foreach (var (name, pos) in send.Names)
             {
-                if (!f.Classes.ContainsKey(name) && !f.Funcs.ContainsKey(name) && !f.States.ContainsKey(name))
+                if (!f.Classes.ContainsKey(name) && !f.Funcs.ContainsKey(name) && !f.States.ContainsKey(name) && !f.Saves.ContainsKey(name))
                 {
-                    Error(pos, $"there's nothing called {name} in this file to send.{Suggest(name, f.Classes.Keys.Concat(f.Funcs.Keys).Concat(f.States.Keys))}");
+                    if (f.Ast.Stmts.OfType<VarDecl>().Any(v => v.Id == name)) { Error(pos, $"{name} is a variable. Only classes, objects, functions, states and saves can be sent; to share a value, keep it in an object."); continue; }
+                    Error(pos, $"there's nothing called {name} in this file to send.{Suggest(name, f.Classes.Keys.Concat(f.Funcs.Keys).Concat(f.States.Keys).Concat(f.Saves.Keys))}");
                     continue;
                 }
                 if (f.Sent.ContainsKey(name)) Error(pos, $"{name} is already sent, on line {f.Sent[name].Line}.");
@@ -91,12 +104,43 @@ public sealed class Checker
 
     void Connect(FileUnit f)
     {
+        foreach (var fetch in f.Ast.Fetches.Where(x => x.IsCs))
+        {
+            var (type, error) = CsLibs.Find(fetch.CsType, fetch.Package, fetch.Version);
+            if (type == null)
+            {
+                Error(fetch.ModulePos, error ?? $"C# has no type called {fetch.CsType}.");
+                f.Ast.BrokenNames.Add(fetch.Module);   // so its uses below aren't reported too
+                continue;
+            }
+            if (type.IsGenericTypeDefinition) { Error(fetch.ModulePos, $"{fetch.CsType} is a generic C# type, and Lust can't use those yet. Lust's own arrays and maps do the same jobs as List and Dictionary."); continue; }
+            var alias = fetch.Module;
+            if (f.CsTypes.TryGetValue(alias, out var had) && had != type) { Error(fetch.ModulePos, $"{alias} already means {had.FullName} here. Two C# types with the same name can't both be fetched into one file."); continue; }
+            if (f.Classes.ContainsKey(alias) || f.Funcs.ContainsKey(alias) || f.States.ContainsKey(alias)) { Error(fetch.ModulePos, $"{alias} already means something else in this file. Two things can't share a name."); continue; }
+            f.CsTypes[alias] = type;
+            if (fetch.Package != null)
+            {
+                lock (comp.Packages)
+                {
+                    if (comp.Packages.TryGetValue(fetch.Package, out var v) && v != fetch.Version) Error(fetch.ModulePos, $"{fetch.Package} is used with version {v} elsewhere. One program uses one version of a package.");
+                    else comp.Packages[fetch.Package] = fetch.Version!;
+                }
+            }
+        }
         foreach (var fetch in f.Ast.Fetches)
         {
-            var other = comp.FileFor(fetch.Module, f);
+            if (fetch.IsCs) continue;
+            var other = fetch.Unit;
             if (other == null) continue; // already reported
             if (f.Classes.TryGetValue(other.Module, out var clash) && clash.File == f)
                 Error(clash.Decl.Pos, $"{other.Module} is also the name of a file this one fetches from. Give the {clash.Kind} another name.");
+            // Things are called by the file's own name (farm.season), so two files called farm can't both come in.
+            if (f.ModuleFiles.TryGetValue(other.Module, out var same) && same != other)
+            {
+                Error(fetch.ModulePos, $"this file already fetches a different file called {other.Module}.lust. Two files with the same name can't both be fetched into one file.");
+                continue;
+            }
+            f.ModuleFiles[other.Module] = other;
             f.Modules.Add(other.Module);
             var names = fetch.Names?.Select(n => (n.Name, n.Pos)).ToList()
                 ?? other.Sent.Keys.Select(n => (n, fetch.ModulePos)).ToList();
@@ -107,7 +151,8 @@ public sealed class Checker
                 bool isClass = other.OwnClasses.Any(c => c.Name == name);
                 bool isFunc = other.OwnFuncs.Any(fn => fn.Name == name);
                 bool isState = other.OwnStates.Any(s => s.Name == name);
-                if (!isClass && !isFunc && !isState)
+                bool isSave = other.OwnSaves.Any(s => s.Name == name);
+                if (!isClass && !isFunc && !isState && !isSave)
                 {
                     Error(pos, $"{other.Source.Display} has nothing called {name}.{Suggest(name, other.Sent.Keys)}");
                     continue;
@@ -119,10 +164,15 @@ public sealed class Checker
                 }
                 if (fetch.Names != null)
                 {
-                    if (fetch.IsGet && !isFunc) { Error(pos, $"{name} is a {(isState ? "state" : other.Classes[name].Kind)}, so it's brought in with fetch: fetch {other.Module}:{name};"); continue; }
-                    if (!fetch.IsGet && isFunc) { Error(pos, $"{name} is a function, so it's brought in with get: get {other.Module}:{name};"); continue; }
+                    if (fetch.IsGet && !isFunc) { Error(pos, $"{name} is a {(isState ? "state" : isSave ? "save" : other.Classes[name].Kind)}, so it's brought in with fetch: fetch {fetch.Path}:{name};"); continue; }
+                    if (!fetch.IsGet && isFunc) { Error(pos, $"{name} is a function, so it's brought in with get: get {fetch.Path}:{name};"); continue; }
                 }
-                if (isClass) AddVisible(f.Classes, name, other.Classes[name], pos, f);
+                if (isSave)
+                {
+                    if (f.Saves.TryGetValue(name, out var mine) && mine != other.Saves[name]) Error(pos, $"{name} already means something else in {f.Source.Display}. Two things can't share a name.");
+                    else f.Saves[name] = other.Saves[name];
+                }
+                else if (isClass) AddVisible(f.Classes, name, other.Classes[name], pos, f);
                 else if (isFunc) AddVisible(f.Funcs, name, other.Funcs[name], pos, f);
                 else
                 {
@@ -160,6 +210,17 @@ public sealed class Checker
                 var elem = ResolveType(t.Elem!, f);
                 return elem == LType.Error ? LType.Error : ArrayType.Of(elem);
             }
+            case TypeKind.Map:
+            {
+                var elem = ResolveType(t.Elem!, f);
+                return elem == LType.Error ? LType.Error : MapType.Of(elem);
+            }
+            case TypeKind.Func:
+            {
+                var prms = t.Columns.Select(c => ResolveType(c.Type, f)).ToList();
+                var ret = t.Elem == null ? LType.None : ResolveType(t.Elem, f);
+                return prms.Contains(LType.Error) || ret == LType.Error ? LType.Error : FuncType.Of(prms, ret);
+            }
             case TypeKind.CArray:
             {
                 var cols = new List<(string, LType)>();
@@ -191,6 +252,13 @@ public sealed class Checker
             return cls.Type;
         }
         if (f.States.TryGetValue(t.Name, out var state)) return state.Type;
+        if (f.CsTypes.TryGetValue(t.Name, out var clr))
+        {
+            if (clr.IsAbstract && clr.IsSealed) { Error(t.Pos, $"{t.Name} is a static C# class, so there are no {t.Name} values. Use it directly: {t.Name}:Something(…)"); return LType.Error; }
+            var mapped = CsLibs.FromCs(clr);
+            if (mapped is not CsType) { Error(t.Pos, mapped == null ? $"Lust can't use {t.Name} values." : $"a {t.Name} is just {mapped.WithArticle} in Lust. Write {mapped.Name}."); return LType.Error; }
+            return mapped;
+        }
         Error(t.Pos, $"Lust doesn't have a type called {t.Name}.{Suggest(t.Name, f.Classes.Keys.Concat(f.States.Keys).Concat(new[] { "int", "float", "string", "truth" }))} The types are int, float, string, truth, arrays, cArrays, classes and states.");
         return LType.Error;
     }
@@ -317,6 +385,7 @@ public sealed class Checker
         public bool TopLevel;
         public List<Dictionary<string, Variable>> Scopes = new() { new() };
         public int LoopDepth;
+        public bool TypeAllowed;
     }
 
     void CheckBodies(FileUnit f)
@@ -325,6 +394,14 @@ public sealed class Checker
         var top = new Ctx { File = f, TopLevel = true };
         foreach (var s in f.Ast.Stmts) Stmt(s, top);
         foreach (var scope in top.Scopes) f.TopVars.UnionWith(scope.Keys);
+        f.TopScope = top.Scopes[0];
+        foreach (var save in f.OwnSaves) ResolveSave(save);
+        foreach (var (pos, save) in f.TopSaveUses)
+        {
+            var late = save.Items.FirstOrDefault(it => it.Var != null && it.Var.Pos.File == pos.File && it.Var.Pos.Line > pos.Line);
+            if (late.Var != null)
+                Error(pos, $"{save.Name} holds {late.Name}, which is only declared further down, on line {late.Var.Pos.Line}. Save and load after the variables are declared.");
+        }
 
         foreach (var cls in f.OwnClasses)
         {
@@ -338,11 +415,84 @@ public sealed class Checker
                 }
                 Expr(value, ctx, field.Type);
                 ExpectFits(value, field.Type, $"{field.Name} is {field.Type.WithArticle}");
-                if (!IsPlain(value)) Error(value.Pos, "a starting value in a has block must be a plain value, like 0, \"text\", true, nothing or []. Work things out in a method instead.");
+                if (!IsPlain(value)) Error(value.Pos, "a starting value in a has block must be a plain value, like 0, \"text\", true, nothing, [] or new DateTime(2026, 1, 1) for a C# value. Work things out in a method instead.");
             }
             foreach (var m in cls.OwnMethods) Body(m, cls);
         }
         foreach (var fn in f.OwnFuncs) Body(fn, null);
+    }
+
+    // ----- saves -----
+
+    void ResolveSave(SaveSym save)
+    {
+        var f = save.File;
+        var seen = new HashSet<string>();
+        foreach (var (name, pos) in save.Decl.Items)
+        {
+            if (!seen.Add(name)) { Error(pos, $"{name} is already in this save."); continue; }
+            if (f.Classes.TryGetValue(name, out var cls))
+            {
+                if (!cls.IsObject) { Error(pos, $"{name} is a class, a blueprint. A save holds the things made from it: keep them in a variable or an object, and save that."); continue; }
+                if (cls.File.IsNative) { Error(pos, $"{name} comes from ui and can't be saved."); continue; }
+                var problem = Unsavable(cls.Type, new HashSet<LType>(), name);
+                if (problem != null) { Error(pos, problem); continue; }
+                save.Items.Add((name, cls, null));
+                continue;
+            }
+            if (f.TopScope.TryGetValue(name, out var v))
+            {
+                if (!f.IsMain) { Error(pos, $"{name} is a variable at the top of {f.Source.Display}, and only the file you run has its top-level code run. A save in a fetched file can only hold objects."); continue; }
+                var problem = Unsavable(v.Type, new HashSet<LType>(), name);
+                if (problem != null) { Error(pos, problem); continue; }
+                v.Hoisted = true;
+                save.Items.Add((name, null, v));
+                continue;
+            }
+            if (f.TopVars.Contains(name)) { Error(pos, $"{name} is declared inside a block. A save can only hold variables declared at the very top of the file, outside any {{ }}."); continue; }
+            var names = f.Classes.Where(c => c.Value.IsObject).Select(c => c.Key).Concat(f.TopScope.Keys);
+            Error(pos, $"there's nothing called {name} to save. A save holds objects, and variables from the top of the file.{Suggest(name, names)}");
+        }
+    }
+
+    /// Why a value of this type can't go in a save, or null when it can. Things from ui (widgets)
+    /// are skipped when saving, so they're fine. `path` says where the value sits, like Farm.onDayEnd.
+    string? Unsavable(LType t, HashSet<LType> seen, string path)
+    {
+        string? Why(LType type, string where)
+        {
+            if (!seen.Add(type)) return null;
+            switch (type)
+            {
+                case FuncType: return $"{where} {(where.StartsWith("what's in") ? "holds functions" : "is a function")}, and functions belong to the program, not to a save.";
+                case CsType: return $"{where} holds {type.WithArticle}, and Lust only saves its own kinds of values.";
+                case ArrayType at: return Why(at.Elem, $"what's in {where}");
+                case MapType mt: return Why(mt.Elem, $"what's in {where}");
+                case CArrayType ct:
+                    foreach (var (col, colType) in ct.Columns)
+                        if (Why(colType, $"{where}'s column {col}") is string p) return p;
+                    return null;
+                case ClassType cls:
+                    if (cls.Sym.File.IsNative) return null;
+                    // Anything like this class could be in it, so their fields count too.
+                    foreach (var c in comp.Files.SelectMany(fl => fl.OwnClasses).Where(c => c.IsLike(cls.Sym)))
+                        foreach (var field in c.Fields)
+                            if (!field.Owner.File.IsNative && Why(field.Type, $"{c.Name}.{field.Name}") is string p) return p;
+                    return null;
+                default: return null;
+            }
+        }
+        var why = Why(t, path);
+        return why == null ? null : $"{path} can't be saved: {why}";
+    }
+
+    SaveSym? FindSave(string name, Pos pos, Ctx ctx, string word)
+    {
+        if (ctx.File.Saves.TryGetValue(name, out var save)) return save;
+        Error(pos, ctx.File.Saves.Count == 0
+            ? $"there's no save called {name}. Declare one at the top of the file, saying what it holds: save {name} = [Farm, player];"
+            : $"there's no save called {name}.{Suggest(name, ctx.File.Saves.Keys)}");
+        return null;
     }
 
     void Body(FuncSym fn, ClassSym? cls)
@@ -364,9 +514,10 @@ public sealed class Checker
     static bool IsPlain(Expr e) => e switch
     {
         IntLit or FloatLit or StrLit or TruthLit or NothingLit => true,
+        New { CsClr: not null } n => (n.Args ?? new()).All(IsPlain) && n.Inits.All(i => IsPlain(i.Value)),
         Unary { Op: UnOp.Not, Operand: TruthLit } => true,
         Name { Kind: NameKind.Option } => true,
-        ArrayLit a => a.Items.All(IsPlain),
+        ArrayLit a => a.Items.All(IsPlain) && (a.Keys?.All(IsPlain) ?? true),
         _ => e.Type == LType.Error,
     };
 
@@ -401,7 +552,8 @@ public sealed class Checker
     Variable Declare(Ctx ctx, string id, LType type, Pos pos, bool readOnly = false)
     {
         var existing = Lookup(ctx, id);
-        if (existing != null) Error(pos, $"{id} is already declared on line {existing.Pos.Line}. Pick another name, or leave out the type to change it: {id} = …;");
+        if (ctx.File.CsTypes.ContainsKey(id)) Error(pos, $"{id} is a C# type fetched in this file, so a variable can't use that name.");
+        else if (existing != null) Error(pos, $"{id} is already declared on line {existing.Pos.Line}. Pick another name, or leave out the type to change it: {id} = …;");
         else if (ctx.Class?.Field(id) != null && ctx.Func != null && !ctx.Func.Params.Any(p => p.Name == id))
             Error(pos, $"{ctx.Class.Name} has a field called {id}, so a variable here can't use that name.");
         var v = new Variable { Id = id, Type = type, Pos = pos, CsName = $"v_{id}_{++counter}", TopLevel = ctx.TopLevel, ReadOnly = readOnly };
@@ -464,13 +616,18 @@ public sealed class Checker
             case ExprStmt e:
             {
                 var t = Expr(e.Expr, ctx);
-                if (t != LType.None && t != LType.Error)
+                // C# methods often give back something nobody needs (sb:Append("x") gives back sb), so that's fine.
+                if (t != LType.None && t != LType.Error && e.Expr is not MethodCall { Kind: MethodKind.Cs })
                 {
                     var what = e.Expr is Call c ? $"{c.Callee}(…)" : e.Expr is MethodCall m ? $"{m.Method}(…)" : "this";
                     Error(e.Pos, $"{what} gives back {t.WithArticle}, but nothing uses it. Put it in a variable: {t.Name} x = …;");
                 }
                 break;
             }
+            case SaveStmt sv:
+                sv.Sym = FindSave(sv.Name, sv.NamePos, ctx, sv.IsLoad ? "load" : "save");
+                if (sv.Sym != null && ctx.TopLevel) ctx.File.TopSaveUses.Add((sv.Pos, sv.Sym));
+                break;
             case Wait w:
             {
                 var t = Expr(w.Seconds, ctx);
@@ -579,6 +736,16 @@ public sealed class Checker
                     Error(vars[0].Item4.Pos, $"{Describe(source)} holds {Plural(at.Elem)}, so write loop ({at.Elem.Name} {vars[0].Name} in {Describe(source)})");
                 DeclareAll();
                 break;
+            case MapType mt:
+            {
+                loop.Each = EachKind.Map;
+                var want = $"loop (string key, {mt.Elem.Name} value in {Describe(source)})";
+                if (vars.Count != 2) { Error(loop.Pos, $"a loop through a map names the key and the value: {want}"); DeclareAll(); break; }
+                if (vars[0].Type != LType.String && vars[0].Type != LType.Error) Error(vars[0].Item4.Pos, $"the first name is the key, which is text: {want}");
+                if (vars[1].Type != LType.Error && !LType.Fits(mt.Elem, vars[1].Type)) Error(vars[1].Item4.Pos, $"{Describe(source)} holds {Plural(mt.Elem)}: {want}");
+                DeclareAll();
+                break;
+            }
             case CArrayType ct:
             {
                 loop.Each = EachKind.CArray;
@@ -595,7 +762,7 @@ public sealed class Checker
                 DeclareAll();
                 break;
             default:
-                Error(source.Pos, $"loop ( … in …) goes through an array, a cArray or a state, but {Describe(source)} is {t.WithArticle}.");
+                Error(source.Pos, $"loop ( … in …) goes through an array, a cArray, a map or a state, but {Describe(source)} is {t.WithArticle}.");
                 DeclareAll();
                 break;
         }
@@ -631,6 +798,15 @@ public sealed class Checker
             case Name { Kind: NameKind.Option } n:
                 Error(target.Pos, $"{n.Id} is a state option; it can't be changed.");
                 return false;
+            case FieldGet { Kind: FieldKind.Cs, Cs: { } cm } cf:
+                if (!cm.CanSet) { Error(cf.FieldPos, $"{cf.Field} can only be read, not changed."); return false; }
+                // Changing a C# struct that's a copy (like list[0].X) would change nothing.
+                if (!cm.IsStatic && cf.Target.Type is CsType { Clr.IsValueType: true } && cf.Target is not Name { Kind: NameKind.Local or NameKind.Field })
+                {
+                    Error(cf.FieldPos, $"{Describe(cf.Target)} is a copy of a C# struct, so changing its {cf.Field} would change nothing. Put it in a variable, change that, and put it back.");
+                    return false;
+                }
+                return true;
             case FieldGet { Kind: FieldKind.Column, Field: "id" }:
                 Error(target.Pos, "a row's id can't be changed.");
                 return false;
@@ -676,8 +852,11 @@ public sealed class Checker
             _ when actual == LType.Float && wanted == LType.Int => " Use .int() to drop the part after the point.",
             _ when wanted == LType.String && (actual.IsNumber || actual == LType.Truth || actual is StateType) => " Use .text() to turn it into text.",
             _ when actual == LType.String && wanted.IsNumber => $" Use .{wanted.Name}() to turn text into a number.",
+            _ when actual == LType.Nothing && wanted is CsType { CanBeNothing: false } => $" A {wanted.Name} can't be nothing. Start it with new {wanted.Name}(…).",
             _ when actual == LType.Nothing => " Only things made from classes can be nothing.",
             _ when actual is ClassType ac && wanted is ClassType wc => $" A {ac.Name} isn't like a {wc.Name}.",
+            _ when actual is FuncType af && af.Return == wanted => " Add () to call it.",
+            _ when actual is FuncType && wanted is FuncType => " A function only fits where it takes and gives back exactly the same types.",
             _ => "",
         };
         Error(e.Pos, $"{subject}, but this is {actual.WithArticle}.{fix}");
@@ -688,6 +867,7 @@ public sealed class Checker
         Name n => n.Id,
         FieldGet f => $"{Describe(f.Target)}.{f.Field}",
         Index i => $"{Describe(i.Target)}[…]",
+        StrLit s when s.Value.Length < 20 => $"\"{s.Value}\"",
         _ => "this",
     };
 
@@ -695,8 +875,23 @@ public sealed class Checker
 
     LType Expr(Expr e, Ctx ctx, LType? expected = null)
     {
+        // A C# type's name (Math) only works right before : or . (Math:Sqrt, Math.PI).
+        bool typeAllowed = ctx.TypeAllowed;
+        ctx.TypeAllowed = false;
         e.Type = ExprInner(e, ctx, expected);
+        if (e.Type is CsStaticType st && !typeAllowed)
+        {
+            Error(e.Pos, $"{st.Name} is a C# type, not a value. Use what it has: {st.Name}:Something(…) or {st.Name}.Something");
+            e.Type = LType.Error;
+        }
         return e.Type;
+    }
+
+    /// Checks the thing before : or . — the one place a C# type's name is allowed on its own.
+    LType BeforeDot(Expr e, Ctx ctx)
+    {
+        ctx.TypeAllowed = true;
+        return Expr(e, ctx);
     }
 
     LType ExprInner(Expr e, Ctx ctx, LType? expected)
@@ -783,6 +978,31 @@ public sealed class Checker
                 return LType.Error;
             }
             case Call c: return CallType(c, ctx);
+            case CallValue cv:
+            {
+                var t = Expr(cv.Target, ctx);
+                if (t is FuncType ft) return CallFunctionValue(ft, cv.Args, "it", cv.Pos, ctx);
+                foreach (var a in cv.Args) Expr(a, ctx);
+                if (t != LType.Error) Error(cv.Pos, $"this is {t.WithArticle}, not a function, so it can't be called.");
+                return LType.Error;
+            }
+            case MethodRef mr:
+            {
+                var t = BeforeDot(mr.Target, ctx);
+                if (t == LType.Error) return t;
+                if (t is ClassType ct && ct.Sym.Methods.TryGetValue(mr.Method, out var meth)) { mr.Func = meth; return FuncOf(meth); }
+                if (t is ClassType ct2 && ct2.Sym.Field(mr.Method) != null)
+                {
+                    Error(mr.MethodPos, $"{mr.Method} is a field: {Describe(mr.Target)}.{mr.Method}");
+                    return LType.Error;
+                }
+                var clrOf = t switch { CsStaticType s0 => s0.Clr, CsType c0 => c0.Clr, _ when t == LType.String => typeof(string), _ when t == LType.Int => typeof(long), _ when t == LType.Float => typeof(double), _ when t == LType.Truth => typeof(bool), _ => null };
+                if (clrOf != null && CsLibs.Member(clrOf, mr.Method, t is CsStaticType) != null) { Error(mr.MethodPos, $"{mr.Method} is a property, so it's read with a dot: {Describe(mr.Target)}.{mr.Method}"); return LType.Error; }
+                if (clrOf != null && CsLibs.HasMethodNamed(clrOf, mr.Method)) { Error(mr.MethodPos, $"add () to call it: {Describe(mr.Target)}:{mr.Method}(…). A C# method can't be kept as a value."); return LType.Error; }
+                if (t is CsType or CsStaticType) { Error(mr.MethodPos, $"add () to call it: {Describe(mr.Target)}:{mr.Method}(…). A C# method can't be kept as a value."); return LType.Error; }
+                Error(mr.MethodPos, t is ClassType ct3 ? $"{ct3.Sym.Name} has no method called {mr.Method}.{Suggest(mr.Method, ct3.Sym.Methods.Keys)}" : $"{Describe(mr.Target)} is {t.WithArticle}, which has no methods.");
+                return LType.Error;
+            }
             case MethodCall mc: return MethodType(mc, ctx);
             case Conversion cv: return ConversionType(cv, ctx);
             case FieldGet fg:
@@ -805,22 +1025,32 @@ public sealed class Checker
             case Index ix:
             {
                 var t = Expr(ix.Target, ctx);
+                if (t is MapType mt)
+                {
+                    var mk = Expr(ix.Key, ctx, LType.String);
+                    if (mk != LType.String && mk != LType.Error)
+                        Error(ix.Key.Pos, $"a map's keys are text, but this is {mk.WithArticle}.{(mk.IsNumber ? " Use .text() to turn it into text." : "")}");
+                    return mt.Elem;
+                }
                 var k = Expr(ix.Key, ctx, LType.Int);
                 if (t == LType.Error) return t;
                 if (k != LType.Int && k != LType.Error) Error(ix.Key.Pos, $"{(t is CArrayType ? "a row's id" : "an item's number")} is an int, but this is {k.WithArticle}.");
                 if (t is ArrayType at) return at.Elem;
                 if (t is CArrayType ct) return ct.Row;
-                Error(ix.Pos, $"[ ] picks from an array or a cArray, but {Describe(ix.Target)} is {t.WithArticle}.");
+                Error(ix.Pos, $"[ ] picks from an array, a cArray or a map, but {Describe(ix.Target)} is {t.WithArticle}.");
                 return LType.Error;
             }
             case Length len:
             {
                 var t = Expr(len.Target, ctx);
-                if (t == LType.Error || t is ArrayType or CArrayType || t == LType.String) return LType.Int;
-                Error(len.Pos, $"# counts the items in an array or cArray, or the letters in text, but this is {t.WithArticle}.");
+                if (t == LType.Error || t is ArrayType or CArrayType or MapType || t == LType.String) return LType.Int;
+                Error(len.Pos, $"# counts the items in an array, cArray or map, or the letters in text, but this is {t.WithArticle}.");
                 return LType.Int;
             }
             case New nw: return NewType(nw, ctx);
+            case SavedExpr se:
+                se.Sym = FindSave(se.Name, se.NamePos, ctx, "saved");
+                return LType.Truth;
             case ArrayLit al: return ArrayLitType(al, ctx, expected);
         }
         return LType.Error;
@@ -866,7 +1096,9 @@ public sealed class Checker
     {
         if (Parser.Builtins.Contains(n.Id))
         {
-            Error(n.Pos, n.Id == "wait" ? "wait goes on its own line: wait 1;" : $"{n.Id} is something you call: {n.Id}(…)");
+            Error(n.Pos, n.Id == "wait" ? "wait goes on its own line: wait 1;"
+                : expected is FuncType ? $"{n.Id} is built into Lust, so it can't be kept as a value. Wrap it in your own function: do show(string s) {{ {n.Id}(s); }}"
+                : $"{n.Id} is something you call: {n.Id}(…)");
             return LType.Error;
         }
         var v = Lookup(ctx, n.Id);
@@ -883,6 +1115,7 @@ public sealed class Checker
         {
             n.Kind = NameKind.Option; n.State = est.Sym; return est;
         }
+        if (ctx.File.CsTypes.TryGetValue(n.Id, out var csClr)) { n.Kind = NameKind.CsType; return new CsStaticType(csClr); }
         var owners = VisibleStates(ctx.File).Where(s => s.Options.Contains(n.Id)).ToList();
         if (owners.Count == 1) { n.Kind = NameKind.Option; n.State = owners[0]; return owners[0].Type; }
         if (owners.Count > 1)
@@ -896,11 +1129,9 @@ public sealed class Checker
             Error(n.Pos, $"{n.Id} is inside {nested[..nested.LastIndexOf('.')]}, so write {nested}.");
             return LType.Error;
         }
-        if (ctx.File.Funcs.ContainsKey(n.Id) || (ctx.Class?.Methods.ContainsKey(n.Id) ?? false))
-        {
-            Error(n.Pos, $"{n.Id} is a function. Call it with (): {n.Id}(…)");
-            return LType.Error;
-        }
+        // A function or method on its own, without (), is the function itself, kept as a value.
+        if (ctx.Class != null && ctx.Class.Methods.TryGetValue(n.Id, out var meth)) { n.Kind = NameKind.Method; n.Func = meth; return FuncOf(meth); }
+        if (ctx.File.Funcs.TryGetValue(n.Id, out var fnv)) { n.Kind = NameKind.Function; n.Func = fnv; return FuncOf(fnv); }
         if (ctx.File.States.TryGetValue(n.Id, out var stype))
         {
             Error(n.Pos, $"{n.Id} is a state, a list of options. Use one of its options, like {stype.Options[0]}.");
@@ -934,13 +1165,15 @@ public sealed class Checker
                 : $"{mod.Id} is a file. Use the things it sent by their own names: {fg.Field}");
             return LType.Error;
         }
-        var t = Expr(fg.Target, ctx);
+        var t = BeforeDot(fg.Target, ctx);
         if (t == LType.Error) return t;
         if (Parser_Conversions.Contains(fg.Field) && !(t is ClassType cc && cc.Sym.Field(fg.Field) != null) && t is not RowType)
         {
             Error(fg.FieldPos, $"add () to call it: .{fg.Field}()");
             return LType.Error;
         }
+        if (t is CsStaticType or CsType || t == LType.String)
+            return CsFieldType(fg, t);
         switch (t)
         {
             case ClassType ct:
@@ -976,7 +1209,7 @@ public sealed class Checker
         }
     }
 
-    static readonly HashSet<string> Parser_Conversions = new() { "text", "int", "float", "isNumber" };
+    static readonly HashSet<string> Parser_Conversions = new() { "text", "int", "float", "isNumber", "lines" };
 
     LType ConversionType(Conversion cv, Ctx ctx)
     {
@@ -986,7 +1219,7 @@ public sealed class Checker
         {
             case "text":
                 if (t == LType.String) { Error(cv.MethodPos, "this is already text."); return t; }
-                if (t.IsNumber || t == LType.Truth || t is StateType) return LType.String;
+                if (t.IsNumber || t == LType.Truth || t is StateType || t is CsType) return LType.String;
                 break;
             case "int":
                 if (t == LType.Float || t == LType.String) return LType.Int;
@@ -998,6 +1231,9 @@ public sealed class Checker
                 break;
             case "isNumber":
                 if (t == LType.String) return LType.Truth;
+                break;
+            case "lines":
+                if (t == LType.String) return ArrayType.Of(LType.String);
                 break;
         }
         Error(cv.MethodPos, $".{cv.Method}() doesn't work on {t.WithArticle}.{(cv.Method == "text" && t is ClassType ? " print shows what's inside a class." : "")}");
@@ -1041,12 +1277,12 @@ public sealed class Checker
         }
     }
 
-    void Args(List<Expr> args, IReadOnlyList<(string Name, LType Type)> prms, string callee, Pos pos, Ctx ctx)
+    void Args(List<Expr> args, IReadOnlyList<(string Name, LType Type)> prms, string callee, Pos pos, Ctx ctx, bool unnamed = false)
     {
         if (args.Count != prms.Count)
         {
             foreach (var a in args) Expr(a, ctx);
-            var want = prms.Count == 0 ? "nothing" : string.Join(", ", prms.Select(p => $"{p.Type.Name} {p.Name}"));
+            var want = prms.Count == 0 ? "nothing" : string.Join(", ", prms.Select(p => unnamed ? p.Type.Name : $"{p.Type.Name} {p.Name}"));
             Error(pos, prms.Count == 0
                 ? $"{callee} takes nothing, but got {args.Count}. Leave the () empty."
                 : $"{callee} takes {(prms.Count == 1 ? "1 thing" : $"{prms.Count} things")} ({want}), but got {args.Count}.");
@@ -1057,6 +1293,18 @@ public sealed class Checker
             Expr(args[i], ctx, prms[i].Type);
             ExpectFits(args[i], prms[i].Type, $"{callee}'s {prms[i].Name} is {prms[i].Type.WithArticle}");
         }
+    }
+
+    static FuncType FuncOf(FuncSym fn) => FuncType.Of(fn.Params.Select(p => p.Type).ToList(), fn.Return);
+
+    static readonly string[] Ordinals = { "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth" };
+    static List<(string, LType)> Unnamed(FuncType ft) => ft.Params.Select((t, i) => (i < Ordinals.Length ? Ordinals[i] + " thing" : $"thing {i + 1}", t)).ToList();
+
+    /// Calls a function kept as a value. The checker has already worked out the target's type.
+    LType CallFunctionValue(FuncType ft, List<Expr> args, string callee, Pos pos, Ctx ctx)
+    {
+        Args(args, Unnamed(ft), callee, pos, ctx, unnamed: true);
+        return ft.Return;
     }
 
     LType CallType(Call c, Ctx ctx)
@@ -1094,6 +1342,19 @@ public sealed class Checker
                 foreach (var a in c.Args) Expr(a, ctx);
                 Error(c.Pos, "wait goes on its own line, without (): wait 1;");
                 return LType.None;
+            case "readText":
+                Args(c.Args, new[] { ("file", LType.String) }, "readText", c.Pos, ctx);
+                return LType.String;
+            case "writeText":
+                Args(c.Args, new[] { ("file", LType.String), ("words", LType.String) }, "writeText", c.Pos, ctx);
+                return LType.None;
+        }
+        // A variable, parameter or field that holds a function: call what it holds.
+        if (Lookup(ctx, c.Callee) is { Type: FuncType } || ctx.Class?.Field(c.Callee) is { Type: FuncType })
+        {
+            c.Value = new Name { Pos = c.Pos, Id = c.Callee };
+            var ft = (FuncType)Expr(c.Value, ctx);
+            return CallFunctionValue(ft, c.Args, c.Callee, c.Pos, ctx);
         }
         FuncSym? fn = null;
         if (ctx.Class != null && ctx.Class.Methods.TryGetValue(c.Callee, out var m)) fn = m;
@@ -1119,14 +1380,23 @@ public sealed class Checker
 
     LType MethodType(MethodCall mc, Ctx ctx)
     {
-        var t = Expr(mc.Target, ctx);
+        var t = BeforeDot(mc.Target, ctx);
         if (t == LType.Error) { foreach (var a in mc.Args) Expr(a, ctx); return t; }
         string who = Describe(mc.Target);
+        if (t is CsStaticType or CsType || t == LType.String || t == LType.Int || t == LType.Float || t == LType.Truth)
+            return CsMethodType(mc, t, ctx);
         switch (t)
         {
             case ClassType ct:
             {
-                if (!ct.Sym.Methods.TryGetValue(mc.Method, out var m))
+                if (!ct.Sym.Methods.TryGetValue(mc.Method, out var m) && ct.Sym.Field(mc.Method) is { Type: FuncType fieldFn } fnField)
+                {
+                    // bo:onHit(3) where onHit is a field holding a function
+                    mc.Kind = MethodKind.CallField;
+                    mc.Field = fnField;
+                    return CallFunctionValue(fieldFn, mc.Args, mc.Method, mc.MethodPos, ctx);
+                }
+                if (m == null)
                 {
                     foreach (var a in mc.Args) Expr(a, ctx);
                     var hint = ct.Sym.Field(mc.Method) != null ? $" {mc.Method} is a field: {who}.{mc.Method}" : Suggest(mc.Method, ct.Sym.Methods.Keys);
@@ -1152,6 +1422,25 @@ public sealed class Checker
                 }
                 foreach (var a in mc.Args) Expr(a, ctx);
                 Error(mc.MethodPos, $"arrays have inject and remove, not {mc.Method}.{(mc.Method is "add" or "push" or "append" ? $" Use {who}:inject(…)." : mc.Method is "length" or "count" or "size" ? $" To count items, use #{who}." : "")}");
+                return LType.Error;
+            case RowType rowT when rowT.Table.Column(mc.Method) is FuncType colFn:
+                // bag[1]:onUse() where onUse is a column holding a function
+                mc.Kind = MethodKind.CallColumn;
+                return CallFunctionValue(colFn, mc.Args, mc.Method, mc.MethodPos, ctx);
+            case MapType mapT:
+                switch (mc.Method)
+                {
+                    case "has":
+                        mc.Kind = MethodKind.MapHas;
+                        Args(mc.Args, new[] { ("key", LType.String) }, "has", mc.MethodPos, ctx);
+                        return LType.Truth;
+                    case "remove":
+                        mc.Kind = MethodKind.MapRemove;
+                        Args(mc.Args, new[] { ("key", LType.String) }, "remove", mc.MethodPos, ctx);
+                        return LType.None;
+                }
+                foreach (var a in mc.Args) Expr(a, ctx);
+                Error(mc.MethodPos, $"maps have has and remove, not {mc.Method}.{(mc.Method is "inject" or "add" or "set" or "put" ? $" To add or change a key, write {who}[\"key\"] = …;" : "")}");
                 return LType.Error;
             case CArrayType ct2:
                 switch (mc.Method)
@@ -1186,6 +1475,12 @@ public sealed class Checker
 
     LType NewType(New nw, Ctx ctx)
     {
+        if (ctx.File.CsTypes.TryGetValue(nw.Class, out var clr)) return CsNewType(nw, clr, ctx);
+        if (nw.Args != null)
+        {
+            foreach (var a in nw.Args) Expr(a, ctx);
+            Error(nw.ClassPos, $"Lust has no constructors. Fill in fields with braces: new {nw.Class} {{ name \"Bo\" }}");
+        }
         if (!ctx.File.Classes.TryGetValue(nw.Class, out var cls))
         {
             foreach (var i in nw.Inits) Expr(i.Value, ctx);
@@ -1218,6 +1513,49 @@ public sealed class Checker
 
     LType ArrayLitType(ArrayLit al, Ctx ctx, LType? expected)
     {
+        if (expected is MapType mt0 || (expected == null && al.Keys != null))
+        {
+            if (al.Keys == null && al.Items.Count > 0)
+            {
+                foreach (var item in al.Items) Expr(item, ctx);
+                Error(al.Items[0].Pos, $"a map's items are a key and a value, like [\"apple\" 3, \"seed\" 1].");
+                return expected ?? LType.Error;
+            }
+            var keys = al.Keys ?? new List<Expr>();
+            foreach (var k in keys)
+            {
+                var kt = Expr(k, ctx, LType.String);
+                if (kt != LType.String && kt != LType.Error) Error(k.Pos, $"a map's keys are text, but this is {kt.WithArticle}.{(kt.IsNumber ? " Use .text() to turn it into text." : "")}");
+            }
+            foreach (var group in keys.OfType<StrLit>().GroupBy(k => k.Value).Where(g => g.Count() > 1))
+                Error(group.Skip(1).First().Pos, $"\"{group.Key}\" is already a key in this map.");
+            if (expected is MapType mt)
+            {
+                foreach (var item in al.Items)
+                {
+                    Expr(item, ctx, mt.Elem);
+                    ExpectFits(item, mt.Elem, $"this map holds {Plural(mt.Elem)}");
+                }
+                return mt;
+            }
+            var vtypes = al.Items.Select(item => Expr(item, ctx)).ToList();
+            if (vtypes.Contains(LType.Error)) return LType.Error;
+            if (vtypes.Any(t => t == LType.None || t == LType.Nothing))
+            {
+                Error(al.Pos, "Lust can't tell what kind of map this is. Put it in a variable with a type first: int map prices = [\"apple\" 3];");
+                return LType.Error;
+            }
+            var velem = vtypes.All(t => t.IsNumber) && vtypes.Contains(LType.Float) ? LType.Float : vtypes[0];
+            foreach (var item in al.Items) ExpectFits(item, velem, $"this map holds {Plural(velem)}");
+            return MapType.Of(velem);
+        }
+        if (al.Keys != null)
+        {
+            foreach (var k in al.Keys) Expr(k, ctx);
+            foreach (var item in al.Items) Expr(item, ctx);
+            Error(al.Pos, expected is CArrayType ? "a cArray's rows are written in [ ] with commas, like [1, \"sword\", 1]." : $"this is written like a map (key value), but {(expected != null ? $"it should be {expected.WithArticle}" : "an array is wanted")}.");
+            return expected ?? LType.Error;
+        }
         if (expected is ArrayType at)
         {
             foreach (var item in al.Items)
@@ -1285,6 +1623,88 @@ public sealed class Checker
             Expr(item, ctx, table.Columns[i].Type);
             ExpectFits(item, table.Columns[i].Type, $"the column {table.Columns[i].Name} is {table.Columns[i].Type.WithArticle}");
         }
+    }
+
+    // ----- C# -----
+
+    LType CsFieldType(FieldGet fg, LType t)
+    {
+        bool statics = t is CsStaticType;
+        var clr = t switch { CsStaticType s => s.Clr, CsType c => c.Clr ?? typeof(object), _ => typeof(string) };
+        var member = CsLibs.Member(clr, fg.Field, statics);
+        if (member == null)
+        {
+            var hint = CsLibs.HasMethodNamed(clr, fg.Field) ? $" {fg.Field} is a method: {Describe(fg.Target)}:{fg.Field}(…)" : Suggest(fg.Field, CsLibs.MemberNames(clr, statics));
+            if (t == LType.String && member == null) { Error(fg.FieldPos, $"{Describe(fg.Target)} is a string, which has no field called {fg.Field}.{(fg.Field is "length" or "count" or "size" ? $" To count its letters, use #{Describe(fg.Target)}." : hint)}"); return LType.Error; }
+            Error(fg.FieldPos, $"{CsNames.Short(clr)} has no {(statics ? "static " : "")}property or field called {fg.Field}.{hint}");
+            return LType.Error;
+        }
+        var lt = CsLibs.FromCs(member.ValueType);
+        if (lt == null) { Error(fg.FieldPos, $"Lust can't use {fg.Field}: it's a {CsNames.Short(member.ValueType)}."); return LType.Error; }
+        fg.Kind = FieldKind.Cs;
+        fg.Cs = member;
+        return lt;
+    }
+
+    LType CsMethodType(MethodCall mc, LType t, Ctx ctx)
+    {
+        bool statics = t is CsStaticType;
+        var clr = t switch { CsStaticType s => s.Clr, CsType c => c.Clr ?? typeof(object), _ when t == LType.Int => typeof(long), _ when t == LType.Float => typeof(double), _ when t == LType.Truth => typeof(bool), _ => typeof(string) };
+        var args = mc.Args.Select(a => Expr(a, ctx)).ToList();
+        if (args.Contains(LType.Error)) return LType.Error;
+        var bad = mc.Args.FirstOrDefault(a => a.Type == LType.None);
+        if (bad != null) { Error(bad.Pos, "this doesn't give anything back."); return LType.Error; }
+        var name = CsNames.Short(clr);
+        var (call, error) = CsLibs.Pick(CsLibs.Methods(clr, mc.Method, statics), args, $"{name}:{mc.Method}");
+        if (call == null)
+        {
+            if (error != null) { Error(mc.MethodPos, error); return LType.Error; }
+            if (!statics && CsLibs.Methods(clr, mc.Method, true).Any())
+            {
+                Error(mc.MethodPos, t is CsType
+                    ? $"{mc.Method} belongs to {name} itself, not to one {name}: {name}:{mc.Method}(…)"
+                    : $"{mc.Method} belongs to C#'s {name} type itself. Fetch it first with fetch cs:{clr.FullName}; then use {name}:{mc.Method}(…)");
+                return LType.Error;
+            }
+            if (statics && CsLibs.Methods(clr, mc.Method, false).Any()) { Error(mc.MethodPos, $"{mc.Method} belongs to one {name}, not to {name} itself. Make one first: {name} x = new {name}; then x:{mc.Method}(…)"); return LType.Error; }
+            var hint = CsLibs.Member(clr, mc.Method, statics) != null ? $" {mc.Method} is a property: {Describe(mc.Target)}.{mc.Method}" : Suggest(mc.Method, CsLibs.MemberNames(clr, statics));
+            Error(mc.MethodPos, t is CsStaticType or CsType ? $"{name} has no {(statics ? "static " : "")}method called {mc.Method}.{hint}" : $"{Describe(mc.Target)} is {t.WithArticle}, which has no method called {mc.Method}.{hint}");
+            return LType.Error;
+        }
+        mc.Kind = MethodKind.Cs;
+        mc.Cs = call;
+        return CsLibs.FromCs(call.Returns)!;
+    }
+
+    LType CsNewType(New nw, System.Type clr, Ctx ctx)
+    {
+        nw.CsClr = clr;
+        var name = CsNames.Short(clr);
+        if (clr.IsAbstract) { Error(nw.ClassPos, clr.IsSealed ? $"{name} is a static C# class, so it can't be made. Use it directly: {name}:Something(…)" : $"{name} is abstract in C#, so it can't be made with new."); return LType.Error; }
+        var args = (nw.Args ?? new()).Select(a => Expr(a, ctx)).ToList();
+        if (args.Contains(LType.Error)) return LType.Error;
+        if (!(clr.IsValueType && args.Count == 0))
+        {
+            var (call, error) = CsLibs.Pick(clr.GetConstructors(), args, $"new {name}");
+            if (call == null) { Error(nw.ClassPos, error ?? $"{name} can't be made from Lust: it has no public constructor."); return LType.Error; }
+            nw.CsCtor = call;
+        }
+        foreach (var (field, pos, value) in nw.Inits)
+        {
+            var member = CsLibs.Member(clr, field, statics: false);
+            var vt = member == null ? null : CsLibs.FromCs(member.ValueType);
+            if (member == null || !member.CanSet || vt == null)
+            {
+                Expr(value, ctx);
+                Error(pos, member == null ? $"{name} has no property called {field}.{Suggest(field, CsLibs.MemberNames(clr, false))}" : $"{field} can't be set from Lust.");
+                continue;
+            }
+            Expr(value, ctx, vt);
+            if (CsLibs.Fit(value.Type, member.ValueType) == null) ExpectFits(value, vt, $"{field} is {vt.WithArticle}");
+            nw.CsInits.Add(member);
+        }
+        var result = CsLibs.FromCs(clr);
+        return result ?? LType.Error;
     }
 
     // ----- spelling suggestions -----

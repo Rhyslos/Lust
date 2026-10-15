@@ -1,0 +1,41 @@
+int map prices = ["apple" 3, "seed" 1];
+print(prices);
+print(prices["apple"]);
+prices["pear"] = 5;
+prices["apple"] = 4;
+print(#prices);
+is prices:has("seed")? then { print("has seed"); }
+prices:remove("seed");
+is prices:has("seed")? then { print("still seed"); } or { print("no seed"); }
+loop (string key, int value in prices) {
+    print(key + " costs " + value.text());
+}
+string map names = [];
+names["bo"] = "Bo the dog";
+print(names);
+float map mixed = ["a" 1, "b" 2.5];
+print(mixed);
+state mood = [happy, grumpy];
+mood map moods = ["bo" happy];
+moods["bo"] is grumpy;
+print(moods["bo"].text());
+
+class Shop {
+    has {
+        int map stock ["sword" 1];
+        int array map lists [];
+    }
+    method int count(string item) {
+        give either stock:has(item)? stock[item] or 0;
+    }
+}
+Shop s = new Shop;
+print(s:count("sword"));
+print(s:count("shield"));
+s.lists["a"] = [1, 2];
+print(s.lists["a"][1]);
+string array nested = ["x", "y"];
+print(nested);
+
+
+end

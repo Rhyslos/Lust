@@ -1,0 +1,14 @@
+int map prices = ["apple" 3, "seed" "one"];
+int map dupes = ["a" 1, "a" 2];
+int map wrongKey = [1 2];
+int map plain = [1, 2];
+int array mixed = ["a" 1];
+int map half = ["a" 1, 2];
+prices:inject("x");
+int n = prices[0];
+loop (string k in prices) { }
+loop (int k, int v in prices) { }
+map stuff = [];
+int x = #5;
+
+end

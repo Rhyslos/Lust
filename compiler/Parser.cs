@@ -29,10 +29,11 @@ public sealed class Parser
         "is", "then", "or", "either", "not", "true", "like",
         "loop", "stop", "skip", "in",
         "state", "send", "fetch", "get", "end",
-        "int", "float", "string", "truth", "array", "cArray",
+        "int", "float", "string", "truth", "array", "cArray", "map",
+        "save", "load", "saved",
     };
 
-    public static readonly HashSet<string> Builtins = new() { "print", "wait", "random", "ask" };
+    public static readonly HashSet<string> Builtins = new() { "print", "wait", "random", "ask", "readText", "writeText" };
 
     /// Words from other languages, and what to write in Lust instead.
     static readonly Dictionary<string, string> Hints = new()
@@ -226,10 +227,11 @@ public sealed class Parser
             switch (Cur.Text)
             {
                 case "class" or "object" when Cur.Kind == Tk.Ident: program.Classes.Add(ClassDeclaration()); return;
-                case "do" when Cur.Kind == Tk.Ident: program.Funcs.Add(FunctionDeclaration(isMethod: false)); return;
+                case "do" when Cur.Kind == Tk.Ident && !DoIsType(): program.Funcs.Add(FunctionDeclaration(isMethod: false)); return;
                 case "send" when Cur.Kind == Tk.Ident: program.Sends.Add(SendDeclaration()); return;
                 case "fetch" or "get" when Cur.Kind == Tk.Ident: program.Fetches.Add(FetchDeclaration()); return;
                 case "state" when Cur.Kind == Tk.Ident && IsStateDeclaration(): program.States.Add(StateDeclaration()); return;
+                case "save" when Cur.Kind == Tk.Ident && PeekAt(1).Kind == Tk.Ident && PeekAt(2).Kind == Tk.Assign: program.Saves.Add(SaveDeclaration()); return;
                 case "method" when Cur.Kind == Tk.Ident: throw Fail(Cur.Pos, "methods go inside a class or object. For a function on its own, use do.");
                 case "has" when Cur.Kind == Tk.Ident: throw Fail(Cur.Pos, "a has block goes inside a class or object.");
                 case "give" when Cur.Kind == Tk.Ident: throw Fail(Cur.Pos, "give only works inside a function or method.");
@@ -298,6 +300,28 @@ public sealed class Parser
         return (text, first.Pos);
     }
 
+    SaveDecl SaveDeclaration()
+    {
+        var start = Next().Pos; // save
+        var name = ExpectName("a name for the save");
+        Next(); // =
+        Expect(Tk.LBrack, $"list what the save holds in [ ], like save {name.Text} = [Farm, player];");
+        var decl = new SaveDecl { Pos = start, Name = name.Text, NamePos = name.Pos };
+        while (!At(Tk.RBrack))
+        {
+            if (!At(Tk.Ident)) throw Fail(MissingAt, $"a save holds objects and variables, by name: save {name.Text} = [Farm, player];");
+            var t = Next();
+            decl.Items.Add((t.Text, t.Pos));
+            if (At(Tk.Comma)) { Next(); continue; }
+            if (At(Tk.Dot)) throw Fail(Cur.Pos, $"a save holds whole objects and variables. Put {t.Text} itself in the list.");
+            if (!At(Tk.RBrack)) throw Fail(MissingAt, "expected , or ] here.");
+        }
+        Next();
+        if (decl.Items.Count == 0) diags.Add(start, $"the save {name.Text} holds nothing. List what goes in it: save {name.Text} = [Farm, player];");
+        EndStatement();
+        return decl;
+    }
+
     SendDecl SendDeclaration()
     {
         var decl = new SendDecl { Pos = Next().Pos };
@@ -316,8 +340,26 @@ public sealed class Parser
     {
         var word = Next();
         bool isGet = word.Text == "get";
+        if (!isGet && AtWord("cs") && PeekAt(1).Kind == Tk.Colon) return CsFetch(word);
+        // A path: dice, shared/dice, ../game/dice
+        var pathStart = Cur.Pos;
+        string path = "";
+        while (At(Tk.Dot) && PeekAt(1).Kind == Tk.Dot && PeekAt(2).Kind == Tk.Slash) { Next(); Next(); Next(); path += "../"; }
+        if (At(Tk.Dot) && PeekAt(1).Kind == Tk.Slash) throw Fail(Cur.Pos, $"a file in the same folder needs no ./ in front: {word.Text} {(PeekAt(2).Kind == Tk.Ident ? PeekAt(2).Text : "dice")};");
+        if (At(Tk.Dot)) throw Fail(Cur.Pos, $"to go up a folder, write ../ like {word.Text} ../shared/dice;");
         if (!At(Tk.Ident)) throw Fail(MissingAt, $"say which file to {word.Text} from, like {word.Text} dice:roll;");
         var module = Next();
+        path += module.Text;
+        while (At(Tk.Slash))
+        {
+            Next();
+            if (!At(Tk.Ident)) throw Fail(MissingAt, $"a folder path goes folder/file, like {word.Text} shared/dice;");
+            module = Next();
+            path += "/" + module.Text;
+        }
+        if (At(Tk.Dot) && PeekAt(1).Is("lust")) throw Fail(Cur.Pos, $"leave out .lust: {word.Text} {path};");
+        if ((At(Tk.Dot) || At(Tk.Minus)) && !Cur.SpaceBefore)
+            throw Fail(Cur.Pos, "folder and file names in a fetch can only have letters, numbers and _. Rename the folder or file, like my_file.");
         List<(string, Pos)>? names = null;
         if (At(Tk.Colon))
         {
@@ -346,7 +388,34 @@ public sealed class Parser
         }
         else if (isGet) throw Fail(MissingAt, $"get brings in one function, like get {module.Text}:roll; To bring in everything, use fetch {module.Text};");
         EndStatement();
-        return new FetchDecl { Pos = word.Pos, Module = module.Text, ModulePos = module.Pos, Names = names, IsGet = isGet };
+        return new FetchDecl { Pos = word.Pos, Module = module.Text, Path = path, ModulePos = path.Contains('/') ? pathStart : module.Pos, Names = names, IsGet = isGet };
+    }
+
+    /// fetch cs:System.Math;   fetch cs:Raylib_cs.Raylib from "Raylib-cs" 6.1.1;
+    FetchDecl CsFetch(Token word)
+    {
+        Next(); // cs
+        Next(); // :
+        if (!At(Tk.Ident)) throw Fail(MissingAt, "say which C# type, with its namespace: fetch cs:System.Math;");
+        var start = Cur.Pos;
+        var name = Next().Text;
+        while (At(Tk.Dot) && PeekAt(1).Kind == Tk.Ident) { Next(); name += "." + Next().Text; }
+        if (At(Tk.LBrack)) throw Fail(Cur.Pos, "fetch one C# type per line: fetch cs:System.Math;");
+        string? package = null, version = null;
+        if (AtWord("from"))
+        {
+            Next();
+            if (!At(Tk.String)) throw Fail(MissingAt, "after from comes the NuGet package's name in quotes, and its version: from \"Raylib-cs\" 6.1.1");
+            package = Next().StringValue;
+            // The version is written plainly (6.1.1), so it's put back together from the pieces.
+            var v = new System.Text.StringBuilder();
+            while (!At(Tk.Semi) && !At(Tk.Eof) && Cur.Pos.Line == Prev.Pos.Line && (v.Length == 0 || !Cur.SpaceBefore))
+                v.Append(Next().Text);
+            if (v.Length == 0) throw Fail(MissingAt, $"say which version of {package} to use, like from \"{package}\" 1.0.0");
+            version = v.ToString().Trim('"');
+        }
+        EndStatement();
+        return new FetchDecl { Pos = word.Pos, IsCs = true, CsType = name, ModulePos = start, Module = name[(name.LastIndexOf('.') + 1)..], Path = "cs", Package = package, Version = version };
     }
 
     ClassDecl ClassDeclaration()
@@ -480,7 +549,7 @@ public sealed class Parser
     {
         var word = Next();
         TypeRef? returns = null;
-        if (!(At(Tk.Ident) && PeekAt(1).Kind == Tk.LParen))
+        if (AtWord("do") || !(At(Tk.Ident) && PeekAt(1).Kind == Tk.LParen))
         {
             if (!At(Tk.Ident)) throw Fail(MissingAt, $"expected a name, like {word.Text} greet() {{ }}");
             if (AtWord("void")) throw Fail(Cur.Pos, Hints["void"]);
@@ -515,13 +584,32 @@ public sealed class Parser
         if (Cur.Kind != Tk.Ident) return false;
         var t = Cur.Text;
         if (LType.Primitive(t) != null || t == "cArray") return true;
-        if (PeekAt(1).Is("array")) return true;
+        if (t == "do") return DoIsType();
+        if (PeekAt(1).Is("array") || PeekAt(1).Is("map")) return true;
         if (t == "state") return PeekAt(1).Kind == Tk.Ident && !PeekAt(1).Is("is");
         if (Reserved.Contains(t)) return false;
         if (Hints.ContainsKey(t) && !(PeekAt(1).Kind == Tk.Ident && PeekAt(2).Kind is Tk.Assign or Tk.Semi)) return false;
         if (PeekAt(1).Kind == Tk.Ident && !Reserved.Contains(PeekAt(1).Text) && PeekAt(2).Kind is Tk.Assign or Tk.Semi) return true;
         if (PeekAt(1).Kind == Tk.Dot && PeekAt(2).Kind == Tk.Ident && PeekAt(3).Kind == Tk.Ident && !Reserved.Contains(PeekAt(3).Text) && PeekAt(4).Kind == Tk.Assign) return true;
-        if (PeekAt(1).Kind == Tk.Dot && PeekAt(2).Kind == Tk.Ident && PeekAt(3).Is("array")) return true;
+        if (PeekAt(1).Kind == Tk.Dot && PeekAt(2).Kind == Tk.Ident && (PeekAt(3).Is("array") || PeekAt(3).Is("map"))) return true;
+        return false;
+    }
+
+    /// After do: a function type (do int(int) f = …;) rather than a function (do int double(int n) { })?
+    /// A function's ( ) is followed by its { body }.
+    bool DoIsType()
+    {
+        // A function's line reaches its { body }; a variable's reaches = or ; first.
+        int depth = 0;
+        for (int i = p + 1; i < toks.Count; i++)
+        {
+            var k = toks[i].Kind;
+            if (k is Tk.LParen or Tk.LBrack) depth++;
+            else if (k is Tk.RParen or Tk.RBrack) depth--;
+            else if (k == Tk.Eof) return false;
+            else if (depth <= 0 && k is Tk.Assign or Tk.Semi) return true;
+            else if (depth <= 0 && k == Tk.LBrace) return false;
+        }
         return false;
     }
 
@@ -529,7 +617,27 @@ public sealed class Parser
     {
         var t = Cur;
         TypeRef type;
-        if (AtWord("cArray"))
+        if (AtWord("do"))
+        {
+            // do(int, string) takes an int and a string; do int(int) also gives back an int.
+            Next();
+            TypeRef? ret = null;
+            if (!At(Tk.LParen)) ret = Type();
+            Expect(Tk.LParen, "a function type lists what it takes in ( ), like do(int) or do int(int, int)");
+            var prms = new List<ParamDecl>();
+            while (!At(Tk.RParen))
+            {
+                var pt = Type();
+                // A name is allowed, to say what it's for: do(int amount)
+                if (At(Tk.Ident) && PeekAt(1).Kind is Tk.Comma or Tk.RParen) Next();
+                prms.Add(new ParamDecl(pt, "", pt.Pos));
+                if (At(Tk.Comma)) { Next(); continue; }
+                if (!At(Tk.RParen)) throw Fail(MissingAt, "expected , or ) here.");
+            }
+            Next();
+            type = new TypeRef { Pos = t.Pos, Kind = TypeKind.Func, Elem = ret, Columns = prms };
+        }
+        else if (AtWord("cArray"))
         {
             Next();
             Expect(Tk.LParen, "a cArray lists its columns: cArray(string itemName, int amount)");
@@ -559,10 +667,10 @@ public sealed class Parser
             if (At(Tk.Dot) && PeekAt(1).Kind == Tk.Ident) { Next(); module = t.Text; name = Next().Text; }
             type = new TypeRef { Pos = t.Pos, Kind = TypeKind.Named, Name = name, Module = module };
         }
-        while (AtWord("array"))
+        while (AtWord("array") || AtWord("map"))
         {
-            Next();
-            type = new TypeRef { Pos = t.Pos, Kind = TypeKind.Array, Elem = type };
+            var kind = Next().Text == "map" ? TypeKind.Map : TypeKind.Array;
+            type = new TypeRef { Pos = t.Pos, Kind = kind, Elem = type };
         }
         return type;
     }
@@ -627,10 +735,22 @@ public sealed class Parser
             case "then": throw Fail(t.Pos, "then comes after a question: is hp 0? then { }");
             case "or": throw Fail(t.Pos, "or goes right after the } of a question: } or { }");
             case "class" or "object": throw Fail(t.Pos, $"a {t.Text} goes at the top level of a file, not inside a block.");
-            case "do": throw Fail(t.Pos, "a function can't go inside another one. Put do at the top level of the file.");
+            case "do" when !DoIsType(): throw Fail(t.Pos, "a function can't go inside another one. Put do at the top level of the file.");
             case "method": throw Fail(t.Pos, "a method can't go inside another one. Put it directly inside its class.");
             case "send" or "fetch" or "get": throw Fail(t.Pos, $"{t.Text} goes at the top level of a file.");
             case "has": throw Fail(t.Pos, "a has block goes inside a class or object.");
+            case "save" or "load":
+            {
+                Next();
+                if (!At(Tk.Ident)) throw Fail(MissingAt, $"say which save: {t.Text} game;");
+                var n = Next();
+                if (t.Text == "save" && At(Tk.Assign)) throw Fail(t.Pos, "a save is declared at the top level of a file, not inside a block.");
+                if (At(Tk.LParen) || At(Tk.Dot) || At(Tk.Colon) || At(Tk.Ident) || At(Tk.String))
+                    throw Fail(Cur.Pos, $"{t.Text} takes the name of a save, declared at the top of the file: save {n.Text} = [Farm, player]; then {t.Text} {n.Text};");
+                EndStatement();
+                return new SaveStmt { Pos = t.Pos, Name = n.Text, NamePos = n.Pos, IsLoad = t.Text == "load" };
+            }
+            case "map" or "array": throw Fail(t.Pos, $"say what the {t.Text} holds first, like int {t.Text} {(PeekAt(1).Kind == Tk.Ident ? PeekAt(1).Text : "list")} = [];");
             case "state" when IsStateDeclaration(): throw Fail(t.Pos, "a state is declared at the top level of a file.");
         }
         if (LooksLikeDeclaration()) return VarDeclStmt();
@@ -658,7 +778,8 @@ public sealed class Parser
             EndStatement();
             return new StateSet { Pos = t.Pos, Target = target, Option = opt.Text, OptionPos = opt.Pos };
         }
-        if (target is not (Call or MethodCall))
+        if (target is MethodRef mr) throw Fail(mr.MethodPos, $"add () to call it: {Snippet(mr.Target)}:{mr.Method}()");
+        if (target is not (Call or MethodCall or CallValue))
             throw Fail(t.Pos, "this line doesn't do anything. A line can declare, change a variable, call something, ask a question or loop.");
         EndStatement();
         return new ExprStmt { Pos = t.Pos, Expr = target };
@@ -681,7 +802,7 @@ public sealed class Parser
         return new VarDecl { Pos = start.Pos, TypeRef = type, Id = nameTok.Text, IdPos = nameTok.Pos, Init = init };
     }
 
-    static string Example(TypeRef type) => type.Kind != TypeKind.Named ? "list = []" : type.Name switch
+    static string Example(TypeRef type) => type.Kind == TypeKind.Func ? "f = greet" : type.Kind != TypeKind.Named ? "list = []" : type.Name switch
     {
         "int" => "lives = 3",
         "float" => "speed = 1.5",
@@ -781,7 +902,7 @@ public sealed class Parser
     static bool StartsValue(Token t) => t.Kind switch
     {
         Tk.Int or Tk.Float or Tk.String or Tk.LParen or Tk.Hash or Tk.LBrack => true,
-        Tk.Ident => (!Reserved.Contains(t.Text) && t.Text != "and") || t.Text is "true" or "nothing" or "either" or "new",
+        Tk.Ident => (!Reserved.Contains(t.Text) && t.Text != "and") || t.Text is "true" or "nothing" or "either" or "new" or "saved",
         _ => false,
     };
 
@@ -927,11 +1048,16 @@ public sealed class Parser
         return new Binary { Pos = left.Pos, OpPos = opTok.Pos, Op = op.Value, Left = left, Right = right };
     }
 
+    // While reading the first value of a list item: ["a" -1] is a key and -1, not "a" minus 1.
+    bool listKey;
+    bool NegativeValueNext => At(Tk.Minus) && Cur.SpaceBefore && !PeekAt(1).SpaceBefore && PeekAt(1).Kind is Tk.Int or Tk.Float;
+
     Expr Sum()
     {
         var left = Product();
         while (At(Tk.Plus) || At(Tk.Minus))
         {
+            if (listKey && NegativeValueNext) break;
             var op = Next();
             left = new Binary { Pos = left.Pos, OpPos = op.Pos, Op = op.Kind == Tk.Plus ? BinOp.Add : BinOp.Sub, Left = left, Right = Product() };
         }
@@ -977,7 +1103,7 @@ public sealed class Parser
         return Postfix();
     }
 
-    static readonly HashSet<string> Conversions = new() { "text", "int", "float", "isNumber" };
+    static readonly HashSet<string> Conversions = new() { "text", "int", "float", "isNumber", "lines" };
 
     Expr Postfix(Expr? start = null)
     {
@@ -994,7 +1120,7 @@ public sealed class Parser
                     if (!Conversions.Contains(m.Text))
                         throw Fail(m.Pos, e is Name or FieldGet
                             ? $"methods are called with : instead of a dot: {Snippet(e)}:{m.Text}(…)"
-                            : $"Lust doesn't have .{m.Text}(). The built-in ones are .text(), .int(), .float() and .isNumber().");
+                            : $"Lust doesn't have .{m.Text}(). The built-in ones are .text(), .int(), .float(), .isNumber() and .lines().");
                     Next();
                     if (!At(Tk.RParen)) throw Fail(Cur.Pos, $".{m.Text}() doesn't take anything between its ().");
                     Next();
@@ -1009,7 +1135,12 @@ public sealed class Parser
                 Next();
                 if (!At(Tk.Ident)) throw Fail(MissingAt, "expected a method name after :, like bo:bark()");
                 var m = Next();
-                if (!At(Tk.LParen)) throw Fail(MissingAt, $"add () to call it: {Snippet(e)}:{m.Text}()");
+                if (!At(Tk.LParen))
+                {
+                    // bo:bark without (): the method itself, to call later.
+                    e = new MethodRef { Pos = e.Pos, Target = e, Method = m.Text, MethodPos = m.Pos };
+                    continue;
+                }
                 var args = Arguments(m.Text);
                 e = new MethodCall { Pos = e.Pos, Target = e, Method = m.Text, MethodPos = m.Pos, Args = args };
                 continue;
@@ -1017,7 +1148,8 @@ public sealed class Parser
             if (At(Tk.LBrack) && (!Cur.SpaceBefore || !noSpacedCall))
             {
                 var open = Next();
-                bool saved = noSpacedCall;
+                bool saved = noSpacedCall, savedKey = listKey;
+        listKey = false;
                 noSpacedCall = false;
                 Expr key;
                 try
@@ -1026,8 +1158,14 @@ public sealed class Parser
                     key = Expression();
                     Expect(Tk.RBrack, "expected ] here.");
                 }
-                finally { noSpacedCall = saved; }
+                finally { noSpacedCall = saved; listKey = savedKey; }
                 e = new Index { Pos = e.Pos, Target = e, Key = key };
+                continue;
+            }
+            if (At(Tk.LParen) && !Cur.SpaceBefore && e is Index or CallValue or Call or MethodCall)
+            {
+                // handlers[0](5): call the function kept there
+                e = new CallValue { Pos = e.Pos, Target = e, Args = Arguments("it") };
                 continue;
             }
             return e;
@@ -1038,7 +1176,8 @@ public sealed class Parser
     {
         Next(); // (
         var args = new List<Expr>();
-        bool saved = noSpacedCall;
+        bool saved = noSpacedCall, savedKey = listKey;
+        listKey = false;
         noSpacedCall = false;
         try
         {
@@ -1049,7 +1188,7 @@ public sealed class Parser
             }
             Expect(Tk.RParen, $"expected ) to close {callee}(.");
         }
-        finally { noSpacedCall = saved; }
+        finally { noSpacedCall = saved; listKey = savedKey; }
         return args;
     }
 
@@ -1064,7 +1203,8 @@ public sealed class Parser
             case Tk.LParen:
             {
                 Next();
-                bool saved = noSpacedCall;
+                bool saved = noSpacedCall, savedKey = listKey;
+        listKey = false;
                 noSpacedCall = false;
                 try
                 {
@@ -1073,25 +1213,38 @@ public sealed class Parser
                     Expect(Tk.RParen, "expected ) here.");
                     return e;
                 }
-                finally { noSpacedCall = saved; }
+                finally { noSpacedCall = saved; listKey = savedKey; }
             }
             case Tk.LBrack:
             {
                 Next();
                 var lit = new ArrayLit { Pos = t.Pos };
-                bool saved = noSpacedCall;
-                noSpacedCall = false;
+                bool saved = noSpacedCall, savedKey = listKey;
+        listKey = false;
+                // ["apple" 3]: two values side by side are a map's key and value, so "apple" [1] isn't picking from "apple".
+                noSpacedCall = true;
                 try
                 {
                     while (!At(Tk.RBrack))
                     {
-                        lit.Items.Add(Expression());
+                        listKey = true;
+                        Expr item;
+                        try { item = Expression(); } finally { listKey = false; }
+                        if (StartsValue(Cur) && !At(Tk.LBrack) || At(Tk.LBrack) && Cur.SpaceBefore || NegativeValueNext)
+                        {
+                            if (lit.Keys == null && lit.Items.Count > 0) throw Fail(Cur.Pos, "this looks like a map's key and value, but the items before it are plain. Write every item as key value, like [\"apple\" 3, \"seed\" 1].");
+                            lit.Keys ??= new();
+                            lit.Keys.Add(item);
+                            item = Expression();
+                        }
+                        else if (lit.Keys != null) throw Fail(MissingAt, $"in a map every item is a key and a value, like \"apple\" 3.");
+                        lit.Items.Add(item);
                         if (At(Tk.Comma)) { Next(); continue; }
                         if (!At(Tk.RBrack)) throw Fail(MissingAt, "expected , or ] here.");
                     }
                     Next();
                 }
-                finally { noSpacedCall = saved; }
+                finally { noSpacedCall = saved; listKey = savedKey; }
                 return lit;
             }
             case Tk.Eof: throw Fail(Prev.End, "the file stops in the middle of this line.");
@@ -1103,6 +1256,13 @@ public sealed class Parser
         if (t.Text == "nothing") { Next(); return new NothingLit { Pos = t.Pos }; }
         if (t.Text == "either") return EitherExpr();
         if (t.Text == "new") return NewExpr();
+        if (t.Text == "saved")
+        {
+            Next();
+            if (!At(Tk.Ident)) throw Fail(MissingAt, "say which save: is saved game?");
+            var n = Next();
+            return new SavedExpr { Pos = t.Pos, Name = n.Text, NamePos = n.Pos };
+        }
         if (t.Text is "false" or "null" || (t.Text is "self" or "this" && PeekAt(1).Kind == Tk.Dot)) throw Fail(t.Pos, Hints[t.Text]);
         if (t.Text == "state") { Next(); return new Name { Pos = t.Pos, Id = "state" }; }
         if (Reserved.Contains(t.Text)) throw Fail(t.Pos, $"expected a value here, but found the word {t.Text}.");
@@ -1118,11 +1278,13 @@ public sealed class Parser
         var start = Next().Pos; // new
         if (!At(Tk.Ident)) throw Fail(MissingAt, "say what to make: new Player");
         var cls = Next();
-        var e = new New { Pos = start, Class = cls.Text, ClassPos = cls.Pos };
-        if (At(Tk.LParen)) throw Fail(Cur.Pos, $"Lust has no constructors. Fill in fields with braces: new {cls.Text} {{ name \"Bo\" }}");
+        // new Random(42): only C# types take arguments; the checker says so for Lust classes.
+        var args = At(Tk.LParen) ? Arguments(cls.Text) : null;
+        var e = new New { Pos = start, Class = cls.Text, ClassPos = cls.Pos, Args = args };
         if (!At(Tk.LBrace)) return e;
         Next();
-        bool saved = noSpacedCall;
+        bool saved = noSpacedCall, savedKey = listKey;
+        listKey = false;
         noSpacedCall = false;
         try
         {
@@ -1139,7 +1301,7 @@ public sealed class Parser
             }
             Next();
         }
-        finally { noSpacedCall = saved; }
+        finally { noSpacedCall = saved; listKey = savedKey; }
         return e;
     }
 

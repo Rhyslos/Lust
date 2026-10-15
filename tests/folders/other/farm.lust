@@ -1,0 +1,3 @@
+class Barn { }
+send Barn;
+end

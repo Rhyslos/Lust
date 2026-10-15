@@ -1,0 +1,21 @@
+fetch cs:System.Math;
+fetch cs:System.Int32;
+fetch cs:System.DateTime;
+
+print(Math);
+string e = either true? Math or Math;
+int Math = 3;
+save h = [s];
+save h;
+string s = "x";
+int n = Int32:TryParse("5");
+int m = 5:Parse("1");
+class H { has { DateTime[d nothing]; DateTime[ok new DateTime(2026, 1, 1)]; } }
+do int(int) f;
+cArray(do() f2, string n2) jobs = [];
+save j = [jobs];
+string q = "hi";
+int len = q:Length;
+int map neg = ["a" - 1];
+
+end

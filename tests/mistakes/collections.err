@@ -4,11 +4,11 @@ collections.lust:4:7  arrays have inject and remove, not add. Use names:inject(�
 collections.lust:5:14  scores is an int array, which has no fields. To count items, use #scores.
 collections.lust:6:14  an item's number is an int, but this is a float.
 collections.lust:7:14  an item's number is an int, but this is a string.
-collections.lust:9:7  [ ] picks from an array or a cArray, but x is an int.
+collections.lust:9:7  [ ] picks from an array, a cArray or a map, but x is an int.
 collections.lust:10:7  scores holds ints, so write loop (int s in scores)
 collections.lust:11:1  a loop through an array takes one name: loop (int x in scores)
 collections.lust:12:7  say what type n is: loop (int n in …)
-collections.lust:13:16  loop ( … in …) goes through an array, a cArray or a state, but x is an int.
+collections.lust:13:16  loop ( … in …) goes through an array, a cArray, a map or a state, but x is an int.
 collections.lust:14:7  Lust can't tell what kind of array [] is here. Put it in a variable with a type first: int array scores = [];
 collections.lust:16:45  the column itemName is a string, but this is an int. Use .text() to turn it into text.
 collections.lust:16:48  the column amount is an int, but this is a string. Use .int() to turn text into a number.

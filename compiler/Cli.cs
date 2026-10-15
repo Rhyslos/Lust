@@ -3,10 +3,10 @@ namespace Lust;
 /// The `lust` command.
 public static class Cli
 {
-    const string Version = "0.4.1";
+    const string Version = "0.5.0";
 
     const string Usage = """
-        Lust 0.4.1
+        Lust 0.5.0
 
           lust run <file.lust>      check the file, then run it
           lust check <file.lust>    only check it, and list any mistakes
@@ -142,7 +142,7 @@ public static class Cli
             Console.Error.WriteLine($"{program.Main.Source.Display} fetches ui, and windows only open on Windows. lust check still works here.");
             return 2;
         }
-        var result = Runner.Run(program.Main.Source, Emitter.Emit(program), capture: false, ui: program.UsesUi);
+        var result = Runner.Run(program.Main.Source, Emitter.Emit(program), capture: false, ui: program.UsesUi, packages: program.Packages);
         if (result.Stderr.Length > 0) Console.Error.WriteLine(result.Stderr);
         return result.ExitCode;
     }
@@ -170,7 +170,7 @@ public static class Cli
         if (program == null) return 1;
         var outDir = Path.Combine(Path.GetDirectoryName(program.Main.Source.Path)!, "build");
         Console.WriteLine($"Building {program.Main.Source.Display}…");
-        var result = Runner.Build(program.Main.Source, Emitter.Emit(program), outDir, program.UsesUi);
+        var result = Runner.Build(program.Main.Source, Emitter.Emit(program), outDir, program.UsesUi, program.Packages);
         if (result.ExitCode != 0) { Console.Error.WriteLine(result.Stderr); return result.ExitCode; }
         var exe = Runner.AppName(program.Main.Source) + (OperatingSystem.IsWindows() ? ".exe" : "");
         Console.WriteLine($"Done: {Path.Combine(DisplayName(outDir), exe)}");

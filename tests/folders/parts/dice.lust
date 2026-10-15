@@ -1,0 +1,14 @@
+fetch ../helper:Helper;
+
+do int roll(int low, int high) {
+    give Helper:pick(low, high);
+}
+
+do int double(int n) {
+    give n * 2;
+}
+
+send roll;
+send double;
+
+end

@@ -1,0 +1,12 @@
+maps.lust:1:37  this map holds ints, but this is a string. Use .int() to turn text into a number.
+maps.lust:2:25  "a" is already a key in this map.
+maps.lust:3:21  a map's keys are text, but this is an int. Use .text() to turn it into text.
+maps.lust:4:18  a map's items are a key and a value, like ["apple" 3, "seed" 1].
+maps.lust:5:19  this is written like a map (key value), but it should be an int array.
+maps.lust:6:25  in a map every item is a key and a value, like "apple" 3.
+maps.lust:7:8  maps have has and remove, not inject. To add or change a key, write prices["key"] = …;
+maps.lust:8:16  a map's keys are text, but this is an int. Use .text() to turn it into text.
+maps.lust:9:1  a loop through a map names the key and the value: loop (string key, int value in prices)
+maps.lust:10:7  the first name is the key, which is text: loop (string key, int value in prices)
+maps.lust:11:1  say what the map holds first, like int map stuff = [];
+maps.lust:12:9  # counts the items in an array, cArray or map, or the letters in text, but this is an int.

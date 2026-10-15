@@ -64,6 +64,58 @@ public sealed class LustArray<T> : IEnumerable<T>
     public override string ToString() => "[" + string.Join(", ", items.Select(x => LustRt.Show(x))) + "]";
 }
 
+/// A map: values found by a text key. Keys stay in the order they were first added.
+public sealed class LustMap<T>
+{
+    readonly Dictionary<string, T> byKey = new();
+    readonly List<string> order = new();
+
+    public static LustMap<T> Of(params (string Key, T Value)[] pairs)
+    {
+        var m = new LustMap<T>();
+        foreach (var (k, v) in pairs)
+        {
+            if (m.byKey.ContainsKey(k)) throw new LustError($"the map has \"{k}\" twice.");
+            m.Set(k, v);
+        }
+        return m;
+    }
+
+    public long Count => order.Count;
+
+    static string Quote(string k) => k == null ? "nothing" : "\"" + k + "\"";
+
+    public T Get(string key)
+    {
+        if (key != null && byKey.TryGetValue(key, out var v)) return v;
+        if (order.Count == 0) throw new LustError($"there's no {Quote(key)} in the map. The map is empty.");
+        var keys = order.Count <= 8 ? string.Join(", ", order.Select(Quote)) : string.Join(", ", order.Take(8).Select(Quote)) + $" and {order.Count - 8} more";
+        throw new LustError($"there's no {Quote(key)} in the map. The keys are {keys}. Check first with :has({Quote(key)}).");
+    }
+
+    /// Changes the value for a key, or adds the key when it's new.
+    public void Set(string key, T value)
+    {
+        if (key == null) throw new LustError("a map's key can't be nothing.");
+        if (!byKey.ContainsKey(key)) order.Add(key);
+        byKey[key] = value;
+    }
+
+    public bool Has(string key) => key != null && byKey.ContainsKey(key);
+
+    public void Remove(string key)
+    {
+        Get(key);
+        byKey.Remove(key);
+        order.Remove(key);
+    }
+
+    /// Loops go through a copy, so changing the map inside the loop is safe.
+    public KeyValuePair<string, T>[] Snapshot() => order.Select(k => new KeyValuePair<string, T>(k, byKey[k])).ToArray();
+
+    public override string ToString() => "[" + string.Join(", ", order.Select(k => LustRt.Show(k) + " " + LustRt.Show(byKey[k]))) + "]";
+}
+
 /// One row of a cArray. The compiler makes a class for each kind of row, with its columns.
 public abstract class LustRow
 {
@@ -85,6 +137,9 @@ public sealed class LustCArray<R> where R : LustRow
     }
 
     public long Count => order.Count;
+
+    /// The id the next new row gets. Saves keep it, so ids stay unused after loading too.
+    internal long NextId { get => nextId; set => nextId = value; }
 
     public R Get(long id)
     {
@@ -113,6 +168,30 @@ public sealed class LustCArray<R> where R : LustRow
     public bool Has(long id) => byId.ContainsKey(id);
     public R[] Snapshot() => order.ToArray();
     public override string ToString() => "[" + string.Join(", ", order.Select(r => r.ToString())) + "]";
+}
+
+/// Helpers for calling C#.
+public static class LustCs
+{
+    public static string Str(string s) => s ?? "";
+
+    public static long FromULong(ulong v) =>
+        v <= long.MaxValue ? (long)v : throw new LustError($"{v} is too big for an int.");
+
+    public static char Char(string s)
+    {
+        if (s == null || s.Length != 1) throw new LustError($"C# wants one letter here, but got \"{s}\".");
+        return s[0];
+    }
+
+    public static TOut[] ToArray<TIn, TOut>(LustArray<TIn> a, Func<TIn, TOut> convert)
+    {
+        if (a == null) throw new NullReferenceException();
+        return a.Snapshot().Select(convert).ToArray();
+    }
+
+    public static LustArray<TOut> FromList<TIn, TOut>(IEnumerable<TIn> items, Func<TIn, TOut> convert) =>
+        items == null ? new LustArray<TOut>() : LustArray<TOut>.Of(items.Select(convert).ToArray());
 }
 
 public static class LustRt
@@ -153,6 +232,13 @@ public static class LustRt
         return x == y || x.StartsWith(y + ".");
     }
 
+    /// A function kept in a variable or field, checked before it's called.
+    public static T Fn<T>(T f, string name = null) where T : Delegate =>
+        f ?? throw new LustError(name == null ? "this function is nothing, so it can't be called." : $"{name} is nothing, so it can't be called. Check first: is {name} nothing?");
+
+    /// Something whose method is about to be kept as a value: it must not be nothing.
+    public static T Use<T>(T x) where T : class => x ?? throw new NullReferenceException();
+
     public static long Div(long a, long b) { if (b == 0) throw new DivideByZeroException(); return checked(a / b); }
     public static long Mod(long a, long b) { if (b == 0) throw new DivideByZeroException(); return a % b; }
     public static long Same(long v) => v;
@@ -181,6 +267,7 @@ public static class LustRt
         double d => Text(d),
         bool b => Text(b),
         Enum e => OptionName(e),
+        Delegate => "a function",
         _ => v.ToString(),
     };
 
@@ -188,7 +275,7 @@ public static class LustRt
     /// things made from classes show just their class, so print doesn't go in circles.
     public static string Show(object v) => v switch
     {
-        string s => "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n") + "\"",
+        string s => "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\t", "\\t").Replace("\r", "\\r") + "\"",
         LustObject o => o.LustName,
         _ => Text(v),
     };
@@ -231,6 +318,52 @@ public static class LustRt
             Console.Out.Flush();
         }
         return Console.ReadLine() ?? "";
+    }
+
+    // ----- text files -----
+
+    /// Where text files and pictures are looked for: the .lust file's folder while running with lust,
+    /// and the program's own folder once it's built.
+    public static string Home
+    {
+        get
+        {
+            var home = Environment.GetEnvironmentVariable("LUST_HOME");
+            return string.IsNullOrEmpty(home) ? AppContext.BaseDirectory : home;
+        }
+    }
+
+    public static string FullPath(string file)
+    {
+        if (string.IsNullOrWhiteSpace(file)) throw new LustError("the file's name is empty.");
+        return System.IO.Path.GetFullPath(System.IO.Path.Combine(Home, file));
+    }
+
+    public static string ReadText(string file)
+    {
+        var path = FullPath(file);
+        if (!System.IO.File.Exists(path)) throw new LustError($"there's no file called {file} in {System.IO.Path.GetDirectoryName(path)}.");
+        try { return System.IO.File.ReadAllText(path).Replace("\r\n", "\n"); }
+        catch (Exception e) when (e is System.IO.IOException or UnauthorizedAccessException) { throw new LustError($"couldn't read {file}: {e.Message}"); }
+    }
+
+    public static void WriteText(string file, string words)
+    {
+        var path = FullPath(file);
+        try
+        {
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path));
+            System.IO.File.WriteAllText(path, words ?? "");
+        }
+        catch (Exception e) when (e is System.IO.IOException or UnauthorizedAccessException) { throw new LustError($"couldn't write {file}: {e.Message}"); }
+    }
+
+    /// Text cut into its lines. A last empty line (from text that ends with a new line) is left out.
+    public static LustArray<string> Lines(string s)
+    {
+        var parts = (s ?? "").Replace("\r\n", "\n").Split('\n');
+        int n = parts.Length > 0 && parts[^1] == "" ? parts.Length - 1 : parts.Length;
+        return LustArray<string>.Of(parts.Take(n).ToArray());
     }
 
     public static void Wait(double seconds)

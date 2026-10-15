@@ -1,0 +1,2 @@
+badname.lust:1:7  folder and file names in a fetch can only have letters, numbers and _. Rename the folder or file, like my_file.
+badname.lust:2:11  folder and file names in a fetch can only have letters, numbers and _. Rename the folder or file, like my_file.

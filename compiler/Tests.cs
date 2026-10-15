@@ -62,7 +62,12 @@ public static class Tests
         if (program.UsesUi) return File.Exists(outFile) ? "UI programs can't be run as tests (they open windows). Test their mistakes instead." : "";
         var inFile = Path.ChangeExtension(path, ".in");
         var input = File.Exists(inFile) ? File.ReadAllText(inFile) : null;
-        var result = Runner.Run(program.Main.Source, Emitter.Emit(program), capture: true, new Dictionary<string, string> { ["LUST_SEED"] = "1" }, input);
+        // Each test gets its own empty folder for saves.
+        var saves = Path.Combine(Path.GetTempPath(), "lust", "test-saves", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(saves);
+        Runner.Result result;
+        try { result = Runner.Run(program.Main.Source, Emitter.Emit(program), capture: true, new Dictionary<string, string> { ["LUST_SEED"] = "1", ["LUST_SAVES"] = saves }, input, packages: program.Packages); }
+        finally { try { Directory.Delete(saves, true); } catch { } }
         if (result.ExitCode == 3) return result.Stderr;
         if (File.Exists(errFile))
         {

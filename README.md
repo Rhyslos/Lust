@@ -2,7 +2,7 @@
 
 # Lust
 
-A small, strict, slightly silly programming language for things that have a state, carry stuff, and change over time. Think text adventures, RPG systems and little simulations.
+A small, strict, slightly silly programming language for things that have a state, carry stuff, and change over time. Think text adventures, RPG systems, little simulations, and small Windows games and apps.
 
 ```
 state = [idle, fighting, knocked_out];
@@ -38,6 +38,8 @@ end
 - **`state` is built in.** Every file can have one, and things just *are* in a state: `state is fighting;`.
 - **cArrays.** A connected array is a tiny table with ids: perfect for inventories and shops.
 - **One loop.** `loop` does forever, repeat, while and for-each.
+- **Saves built in.** `save game = [Farm, player];`, then `save game;` and `load game;`. Save files are readable (and cheatable).
+- **C# when you need it.** `fetch cs:System.Random;` brings in anything from .NET, or from a NuGet package.
 - **Strict and friendly.** Types first, `;` everywhere, every file ends with `end`, and mistakes are caught before the program runs, with errors that say what to do.
 - **`true` and `not true`.** There is no `false`.
 
@@ -56,6 +58,8 @@ Or, without building first:
 ```
 dotnet run --project compiler -- run examples/valley/main.lust
 ```
+
+Lust also runs inside [Ledger](https://github.com/Rhyslos/Ledger): F5 runs a `.lust` file, and mistakes show as you save.
 
 `lust.exe` is a command-line program: run it from PowerShell or Command Prompt, or drop a `.lust` file onto it. Double-clicking it on its own just shows the help.
 
@@ -89,20 +93,20 @@ shop.lust:21  there's no row with id 7. The ids are 1, 2, 3.
 | --- | --- |
 | [`examples/hello.lust`](examples/hello.lust) | variables, questions, loops, `random`, `wait` |
 | [`examples/player.lust`](examples/player.lust) | classes, an object, a cArray inventory, states, `get` from [`dice.lust`](examples/dice.lust) |
-| [`examples/valley/`](examples/valley) | **Lust Valley**, a small farming game in three files: buy seeds, water, sleep, harvest, sell. Uses `like`, states, cArrays, arrays, `ask` and `fetch`. |
+| [`examples/valley/`](examples/valley) | **Lust Valley**, a small farming game in three files: buy seeds, water, sleep, harvest, sell. Sleeping saves the game. Uses `like`, states, cArrays, arrays, `ask`, `fetch` and `save`. |
 | [`examples/ui/counter.lust`](examples/ui/counter.lust) | the smallest window: a label and a button (Windows) |
 | [`examples/ui/pet.lust`](examples/ui/pet.lust) | **a virtual pet** in a window: name it, feed it, play, and turn off the lights to sleep. Screens switch with a state, and its mood uses states inside states (Windows) |
+| [`examples/ui/stars.lust`](examples/ui/stars.lust) | **Catch the stars**: a little arcade game with a canvas, a timer, the arrow keys and colours (Windows) |
 
 ## Status
 
-Everything in [LUST.md](LUST.md) works: types, questions, `either`, `loop`, classes, objects, `like`, `do` and `give`, arrays, cArrays, states (including states inside states), `send` / `fetch` / `get`, `ask` for typed input, and windows with buttons through `fetch ui;`. The test programs run on Linux and Windows on every push, and on Windows the UI examples open their windows and click every button by themselves.
+Lust 0.5.0. Everything in [LUST.md](LUST.md) works: types, questions, `either`, `loop`, classes, objects, `like`, `do` and `give`, functions as values, arrays, cArrays, maps, states (including states inside states), `send` / `fetch` / `get` across folders, saves, text files, C# libraries and NuGet packages, `ask` for typed input, and windows through `fetch ui;` with buttons, pictures, a canvas to draw on, a timer and keys. The test programs run on Linux and Windows on every push, and on Windows the UI examples open their windows and click every button by themselves.
 
 What's next:
 
-1. Running `.lust` files and seeing their mistakes inside [Ledger](https://github.com/Rhyslos/Ledger).
-2. The ideas under "Still open" in the rulebook, like functions as values and calling C# libraries.
-3. More for windows: pictures, colours, and a timer for things that move.
-4. A small 2D game engine, written in Lust.
+1. The ideas under "Still open" in the rulebook, like functions written in place and generic C# types.
+2. Sound, and more widgets.
+3. A small 2D game engine, written in Lust.
 
 ## The name
 
