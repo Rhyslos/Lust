@@ -102,11 +102,7 @@ shop.lust:21  there's no row with id 7. The ids are 1, 2, 3.
 
 Lust 0.5.0. Everything in [LUST.md](LUST.md) works: types, questions, `either`, `loop`, classes, objects, `like`, `do` and `give`, functions as values, arrays, cArrays, maps, states (including states inside states), `send` / `fetch` / `get` across folders, saves, text files, C# libraries and NuGet packages, `ask` for typed input, and windows through `fetch ui;` with buttons, pictures, a canvas to draw on, a timer and keys. The test programs run on Linux and Windows on every push, and on Windows the UI examples open their windows and click every button by themselves.
 
-What's next:
-
-1. The ideas under "Still open" in the rulebook, like functions written in place and generic C# types.
-2. Sound, and more widgets.
-3. A small 2D game engine, written in Lust.
+What might come next is collected in **[IDEAS.md](IDEAS.md)**: states that react, sound, more widgets, a small 2D game engine, and projects to build in Lust.
 
 ## The name
 
