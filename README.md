@@ -45,22 +45,24 @@ The full rules are in **[LUST.md](LUST.md)**. Examples are in [`examples/`](exam
 
 ## Try it
 
-You need the [.NET SDK](https://dotnet.microsoft.com/download), version 8 or newer. On Windows, double-click **`build.cmd`**. It makes `bin\lust.exe`. Then:
+You need the [.NET SDK](https://dotnet.microsoft.com/download), version 8 or newer. On Windows, double-click **`build.cmd`**. It makes `bin\lust.exe`. Then play the example game:
 
 ```
-bin\lust run examples\hello.lust
+bin\lust run examples\valley\main.lust
 ```
 
 Or, without building first:
 
 ```
-dotnet run --project compiler -- run examples/hello.lust
+dotnet run --project compiler -- run examples/valley/main.lust
 ```
+
+Every push also builds a ready-made `lust.exe`: open the **Actions** tab, click the latest **Test** run, and download **lust-windows**.
 
 | Command | Does |
 | --- | --- |
-| `lust run file.lust` | checks the file, then runs it (`lust file.lust` works too) |
-| `lust check file.lust` | only checks it, and lists any mistakes |
+| `lust run file.lust` | checks the file (and every file it fetches), then runs it. `lust file.lust` works too |
+| `lust check file.lust` | only checks, and lists any mistakes |
 | `lust build file.lust` | makes a program you can start without Lust, in a `build` folder |
 | `lust cs file.lust` | shows the C# Lust writes |
 | `lust test tests` | runs the test programs |
@@ -73,19 +75,29 @@ oops.lust:3:16  missing ; at the end of this line.
 oops.lust:8:1  Lust asks questions instead of if: is hp 0? then { }
 ```
 
-Every push runs the tests on GitHub, and the run's **lust-windows** artifact is a ready-made `lust.exe`.
+Mistakes that only show up while running stop the program with the line they happened on:
+
+```
+shop.lust:21  there's no row with id 7. The ids are 1, 2, 3.
+```
+
+## Examples
+
+| File | Shows |
+| --- | --- |
+| [`examples/hello.lust`](examples/hello.lust) | variables, questions, loops, `random`, `wait` |
+| [`examples/player.lust`](examples/player.lust) | classes, an object, a cArray inventory, states, `get` from [`dice.lust`](examples/dice.lust) |
+| [`examples/valley/`](examples/valley) | **Lust Valley**, a small farming game in three files: buy seeds, water, sleep, harvest, sell. Uses `like`, states, cArrays, arrays, `ask` and `fetch`. |
 
 ## Status
 
-1. ~~The rulebook~~ ([LUST.md](LUST.md))
-2. The compiler: `.lust` → C# → .NET, with friendly errors ([`compiler/`](compiler))
-   - ~~Milestone 1: variables, math, text, `print`, `random`, `wait`, mistakes and crash messages~~
-   - ~~Milestone 2: `is … ? then … or`, `either`, `truth`, `loop`, `stop`, `skip`~~
-   - Milestone 3: `class`, `object`, `has`, `new`, `method`, `do`, `give`
-   - Milestone 4: arrays, cArrays, `state`
-   - Milestone 5: `send`, `fetch`, `get`. Then `examples/player.lust` runs.
-3. Running and errors inside [Ledger](https://github.com/Rhyslos/Ledger), which already highlights `.lust` files.
-4. A small 2D game engine, written in Lust.
+Everything in [LUST.md](LUST.md) works: types, questions, `either`, `loop`, classes, objects, `like`, `do` and `give`, arrays, cArrays, main and named states, `send` / `fetch` / `get`, and `ask` for typed input. 41 test programs check it on every push.
+
+What's next:
+
+1. Running `.lust` files and seeing their mistakes inside [Ledger](https://github.com/Rhyslos/Ledger).
+2. The ideas under "Still open" in the rulebook, like functions as values and calling C# libraries.
+3. A small 2D game engine, written in Lust.
 
 ## The name
 

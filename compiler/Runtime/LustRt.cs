@@ -121,7 +121,15 @@ public static class LustRt
 
     public static string Text(long v) => v.ToString(CultureInfo.InvariantCulture);
     public static string Text(bool v) => v ? "true" : "not true";
-    public static string Text(Enum v) => v.ToString();
+    public static string Text(Enum v) => OptionName(v);
+    static string OptionName(Enum v) { var s = v.ToString(); return s.StartsWith("o_") ? s.Substring(2) : s; }
+
+    public static long Div(long a, long b) { if (b == 0) throw new DivideByZeroException(); return checked(a / b); }
+    public static long Mod(long a, long b) { if (b == 0) throw new DivideByZeroException(); return a % b; }
+    public static long Same(long v) => v;
+
+    /// How many letters, counting an emoji or an accented letter as one.
+    public static long Letters(string s) => new StringInfo(s).LengthInTextElements;
 
     /// Floats always show a point, so 3.0 doesn't look like the int 3.
     public static string Text(double v)
@@ -130,7 +138,9 @@ public static class LustRt
         if (double.IsPositiveInfinity(v)) return "infinity";
         if (double.IsNegativeInfinity(v)) return "-infinity";
         var s = v.ToString("R", CultureInfo.InvariantCulture);
-        return s.Contains('.') || s.Contains('E') ? s : s + ".0";
+        int e = s.IndexOf('E');
+        if (e >= 0) return s.Substring(0, e).Contains('.') ? s : s.Substring(0, e) + ".0" + s.Substring(e);
+        return s.Contains('.') ? s : s + ".0";
     }
 
     /// Anything, the way print shows it.
@@ -141,7 +151,7 @@ public static class LustRt
         long l => Text(l),
         double d => Text(d),
         bool b => Text(b),
-        Enum e => e.ToString(),
+        Enum e => OptionName(e),
         _ => v.ToString(),
     };
 
@@ -161,19 +171,19 @@ public static class LustRt
         return (long)Math.Truncate(v);
     }
 
-    public static bool IsNumber(string s) => double.TryParse(s?.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out _);
+    public static bool IsNumber(string s) => double.TryParse(s?.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var d) && double.IsFinite(d);
 
     public static long ParseInt(string s)
     {
         var t = s?.Trim() ?? "";
         if (long.TryParse(t, NumberStyles.Integer, CultureInfo.InvariantCulture, out var v)) return v;
-        if (double.TryParse(t, NumberStyles.Float, CultureInfo.InvariantCulture, out var d)) return Int(d);
+        if (double.TryParse(t, NumberStyles.Float, CultureInfo.InvariantCulture, out var d) && double.IsFinite(d)) return Int(d);
         throw new LustError($"\"{s}\" isn't a number. Check with .isNumber() first.");
     }
 
     public static double ParseFloat(string s)
     {
-        if (double.TryParse(s?.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var v)) return v;
+        if (double.TryParse(s?.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) && double.IsFinite(v)) return v;
         throw new LustError($"\"{s}\" isn't a number. Check with .isNumber() first.");
     }
 
@@ -198,6 +208,24 @@ public static class LustRt
     {
         if (double.IsNaN(seconds) || seconds < 0) throw new LustError($"can't wait {Text(seconds)} seconds.");
         Thread.Sleep(TimeSpan.FromSeconds(seconds));
+    }
+
+    // Calls deep inside each other. Endless recursion becomes a Lust message instead of a crash.
+    [ThreadStatic] static int depth;
+    public static void Enter()
+    {
+        if (++depth > 20000) { depth = 0; throw new LustError("a function kept calling itself and never stopped (over 20000 calls deep)."); }
+    }
+    public static void Leave() => depth--;
+
+    /// Runs the program on a thread with plenty of room for deep calls.
+    public static void Start(Action run)
+    {
+        Exception failure = null;
+        var t = new Thread(() => { try { run(); } catch (Exception e) { failure = e; } }, 512 * 1024 * 1024);
+        t.Start();
+        t.Join();
+        if (failure != null) Fail(failure);
     }
 
     /// Reports a mistake that happened while running, at the Lust line it came from, then stops.

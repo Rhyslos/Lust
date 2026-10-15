@@ -78,7 +78,18 @@ public sealed class Parser
     /// Hints about types and declarations: skipped when the word is being called, as in double(3).
     static readonly HashSet<string> TypeHints = new() { "bool", "boolean", "double", "str", "void", "var", "let", "struct", "static", "enum", "import", "export", "extends", "inherits" };
 
-    bool HintApplies(Token t) => Hints.ContainsKey(t.Text) && !(TypeHints.Contains(t.Text) && PeekAt(1).Kind is Tk.LParen or Tk.Dot or Tk.Colon or Tk.Assign or Tk.LBrack);
+    /// Words from other languages that are followed by ( in their own language: if (…), while (…).
+    static readonly HashSet<string> ParenHints = new() { "if", "while", "for", "foreach", "switch", "match", "elif", "elseif" };
+
+    /// At the start of a line: is this word being used the other language's way, rather than as a name?
+    bool HintApplies(Token t)
+    {
+        if (!Hints.ContainsKey(t.Text)) return false;
+        var next = PeekAt(1).Kind;
+        if (next is Tk.Assign or Tk.Dot or Tk.Colon or Tk.LBrack or Tk.Semi) return t.Text is "self" or "this" && next == Tk.Dot;
+        if (next == Tk.LParen) return ParenHints.Contains(t.Text);
+        return true;
+    }
 
     // ----- token helpers -----
 
@@ -468,9 +479,11 @@ public sealed class Parser
         if (LType.Primitive(t) != null || t == "cArray") return true;
         if (PeekAt(1).Is("array")) return true;
         if (t == "state") return PeekAt(1).Kind == Tk.Ident && !PeekAt(1).Is("is");
-        if (Reserved.Contains(t) || Hints.ContainsKey(t)) return false;
+        if (Reserved.Contains(t)) return false;
+        if (Hints.ContainsKey(t) && !(PeekAt(1).Kind == Tk.Ident && PeekAt(2).Kind is Tk.Assign or Tk.Semi)) return false;
         if (PeekAt(1).Kind == Tk.Ident && !Reserved.Contains(PeekAt(1).Text) && PeekAt(2).Kind is Tk.Assign or Tk.Semi) return true;
         if (PeekAt(1).Kind == Tk.Dot && PeekAt(2).Kind == Tk.Ident && PeekAt(3).Kind == Tk.Ident && !Reserved.Contains(PeekAt(3).Text) && PeekAt(4).Kind == Tk.Assign) return true;
+        if (PeekAt(1).Kind == Tk.Dot && PeekAt(2).Kind == Tk.Ident && PeekAt(3).Is("array")) return true;
         return false;
     }
 
@@ -518,6 +531,7 @@ public sealed class Parser
 
     void CheckName(Token t)
     {
+        if (t.Text is "false" or "null") throw Fail(t.Pos, Hints[t.Text]);
         if (Reserved.Contains(t.Text)) throw Fail(t.Pos, $"{t.Text} is one of Lust's own words, so it can't be a name.");
         if (Builtins.Contains(t.Text)) throw Fail(t.Pos, $"{t.Text} is built into Lust, so it can't be a name.");
     }
@@ -704,6 +718,7 @@ public sealed class Parser
             var cls = Next();
             return new IsLike { Pos = left.Pos, Value = left, Class = cls.Text, ClassPos = cls.Pos, Negated = negated };
         }
+        if (At(Tk.Assign)) throw Fail(Cur.Pos, $"questions don't use =. Put the two things side by side: is {Snippet(left)} 3?");
         if (AtWord("not"))
         {
             Next();
@@ -892,6 +907,14 @@ public sealed class Parser
 
     Expr Negate()
     {
+        if (At(Tk.Minus) && PeekAt(1).Kind is Tk.Int or Tk.Float && !PeekAt(1).SpaceBefore && PeekAt(2).Kind is Tk.Dot or Tk.Colon)
+        {
+            // -2.5.int(): the minus belongs to the number.
+            var minus = Next();
+            var num = Next();
+            Expr lit = num.Kind == Tk.Int ? new IntLit { Pos = minus.Pos, Value = -num.IntValue } : new FloatLit { Pos = minus.Pos, Value = -num.FloatValue, Text = "-" + num.Text };
+            return Postfix(lit);
+        }
         if (At(Tk.Minus))
         {
             var t = Next();
@@ -911,9 +934,9 @@ public sealed class Parser
 
     static readonly HashSet<string> Conversions = new() { "text", "int", "float", "isNumber" };
 
-    Expr Postfix()
+    Expr Postfix(Expr? start = null)
     {
-        var e = Primary();
+        var e = start ?? Primary();
         while (true)
         {
             if (At(Tk.Dot))
@@ -1000,7 +1023,8 @@ public sealed class Parser
                 noSpacedCall = false;
                 try
                 {
-                    var e = Expression();
+                    // A whole check fits in ( ), so questions can group: is a && (b 1 || c 2)?
+                    var e = AtWord("either") ? EitherExpr() : Check();
                     Expect(Tk.RParen, "expected ) here.");
                     return e;
                 }
@@ -1034,7 +1058,7 @@ public sealed class Parser
         if (t.Text == "nothing") { Next(); return new NothingLit { Pos = t.Pos }; }
         if (t.Text == "either") return EitherExpr();
         if (t.Text == "new") return NewExpr();
-        if (ValueHints.Contains(t.Text) || (Hints.ContainsKey(t.Text) && !TypeHints.Contains(t.Text) && PeekAt(1).Kind != Tk.LParen)) throw Fail(t.Pos, Hints[t.Text]);
+        if (t.Text is "false" or "null" || (t.Text is "self" or "this" && PeekAt(1).Kind == Tk.Dot)) throw Fail(t.Pos, Hints[t.Text]);
         if (t.Text == "state") { Next(); return new Name { Pos = t.Pos, Id = "state" }; }
         if (Reserved.Contains(t.Text)) throw Fail(t.Pos, $"expected a value here, but found the word {t.Text}.");
 

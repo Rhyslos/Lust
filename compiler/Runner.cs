@@ -65,7 +65,11 @@ public static class Runner
     public static string AppName(SourceFile file)
     {
         var name = new string(file.Module.Where(c => char.IsLetterOrDigit(c) || c is '_' or '-').ToArray());
-        return name.Length == 0 ? "program" : name;
+        if (name.Length == 0) return "program";
+        // Names .NET uses for itself would load the wrong program.
+        bool taken = name.StartsWith("System", StringComparison.OrdinalIgnoreCase) || name.StartsWith("Microsoft", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("mscorlib", StringComparison.OrdinalIgnoreCase) || name.Equals("netstandard", StringComparison.OrdinalIgnoreCase) || name.Equals("WindowsBase", StringComparison.OrdinalIgnoreCase);
+        return taken ? name + "-program" : name;
     }
 
     static string WorkDir(SourceFile file)

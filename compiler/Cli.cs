@@ -18,7 +18,17 @@ public static class Cli
         lust <file.lust> is the same as lust run <file.lust>.
         """;
 
+    // Very long expressions nest deeply, so Lust runs on a thread with a big stack.
     public static int Main(string[] args)
+    {
+        int code = 0;
+        var t = new Thread(() => code = MainInner(args), 256 * 1024 * 1024);
+        t.Start();
+        t.Join();
+        return code;
+    }
+
+    static int MainInner(string[] args)
     {
         Console.OutputEncoding = System.Text.Encoding.UTF8;
         try

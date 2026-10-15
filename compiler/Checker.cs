@@ -95,6 +95,8 @@ public sealed class Checker
         {
             var other = comp.FileFor(fetch.Module, f);
             if (other == null) continue; // already reported
+            if (f.Classes.TryGetValue(other.Module, out var clash) && clash.File == f)
+                Error(clash.Decl.Pos, $"{other.Module} is also the name of a file this one fetches from. Give the {clash.Kind} another name.");
             f.Modules.Add(other.Module);
             var names = fetch.Names?.Select(n => (n.Name, n.Pos)).ToList()
                 ?? other.Sent.Keys.Select(n => (n, fetch.ModulePos)).ToList();
@@ -233,6 +235,11 @@ public sealed class Checker
             if (fd.IsState)
             {
                 var key = fd.Type.Module != null ? $"{fd.Type.Module}.{fd.Type.Name}" : fd.Type.Name;
+                if (key == "state" && !f.States.ContainsKey("state"))
+                {
+                    var fetchedMain = f.States.Keys.Where(k => k.EndsWith(".state")).ToList();
+                    if (fetchedMain.Count == 1) key = fetchedMain[0];
+                }
                 if (!f.States.TryGetValue(key, out var st))
                 {
                     Error(fd.Pos, fd.Type.Name == "state" && fd.Type.Module == null
@@ -247,9 +254,12 @@ public sealed class Checker
             var inherited = cls.Field(fd.Name);
             if (inherited != null)
             {
-                if (inherited.Type != type && type != LType.Error)
-                    Error(fd.Pos, $"{cls.Parent!.Name} already has {fd.Name} as {inherited.Type.WithArticle}. A class that's like it can change its starting value, but not its type.");
                 fd.Sym = inherited;
+                if (inherited.Type != type && type != LType.Error)
+                {
+                    Error(fd.Pos, $"{cls.Parent!.Name} already has {fd.Name} as {inherited.Type.WithArticle}. A class that's like it can change its starting value, but not its type.");
+                    continue;
+                }
             }
             else
             {
@@ -270,8 +280,8 @@ public sealed class Checker
             Signature(sym, cls);
             if (cls.Methods.TryGetValue(md.Name, out var parentMethod))
             {
-                if (parentMethod.Signature != sym.Signature || !parentMethod.Params.Select(p => p.Type).SequenceEqual(sym.Params.Select(p => p.Type)) || parentMethod.Return != sym.Return)
-                    Error(md.NamePos, $"{md.Name} replaces {cls.Parent!.Name}'s {md.Name}, so it must look the same: method {parentMethod.Signature}");
+                if (!parentMethod.Params.Select(p => p.Type).SequenceEqual(sym.Params.Select(p => p.Type)) || parentMethod.Return != sym.Return)
+                    Error(md.NamePos, $"{md.Name} replaces {cls.Parent!.Name}'s {md.Name}, so it must take and give back the same types: method {parentMethod.Signature}");
                 sym.IsOverride = true;
             }
             cls.Methods[md.Name] = sym;
@@ -595,7 +605,6 @@ public sealed class Checker
     {
         var t = Expr(target, ctx);
         if (t == LType.Error) return t;
-        if (t is StateType) { Error(target.Pos, $"change a state with is, like {Describe(target)} is …;"); return LType.Error; }
         if (!CheckWritable(target)) return LType.Error;
         return t;
     }
@@ -710,8 +719,18 @@ public sealed class Checker
             case Binary b: return BinaryType(b, ctx);
             case Same s:
             {
-                var l = Expr(s.Left, ctx);
-                var r = Expr(s.Right, ctx, l == LType.Error || l == LType.Nothing ? null : l);
+                LType l, r;
+                if (AmbiguousOption(s.Left, ctx))
+                {
+                    // `is idle s?`: work out the right side first, so the option knows which state it's from.
+                    r = Expr(s.Right, ctx);
+                    l = Expr(s.Left, ctx, r == LType.Error ? null : r);
+                }
+                else
+                {
+                    l = Expr(s.Left, ctx);
+                    r = Expr(s.Right, ctx, l == LType.Error || l == LType.Nothing ? null : l);
+                }
                 if (l == LType.Error || r == LType.Error) return LType.Truth;
                 if (l == LType.None || r == LType.None) { Error(s.Pos, "one side of this question doesn't give a value."); return LType.Truth; }
                 if (LType.Fits(l, r) || LType.Fits(r, l) || (l.IsNumber && r.IsNumber)) return LType.Truth;
@@ -737,8 +756,17 @@ public sealed class Checker
             case Either ei:
             {
                 ExpectTruth(ei.Check, "either", ctx);
-                var y = Expr(ei.Yes, ctx, expected);
-                var n = Expr(ei.No, ctx, expected ?? (y == LType.Error || y == LType.Nothing ? null : y));
+                LType y, n;
+                if (expected == null && AmbiguousOption(ei.Yes, ctx))
+                {
+                    n = Expr(ei.No, ctx);
+                    y = Expr(ei.Yes, ctx, n == LType.Error || n == LType.Nothing ? null : n);
+                }
+                else
+                {
+                    y = Expr(ei.Yes, ctx, expected);
+                    n = Expr(ei.No, ctx, expected ?? (y == LType.Error || y == LType.Nothing ? null : y));
+                }
                 if (y == LType.Error || n == LType.Error) return y == LType.Error ? n : y;
                 if (y == n) return y;
                 if (y.IsNumber && n.IsNumber) return LType.Float;
@@ -774,6 +802,11 @@ public sealed class Checker
         }
         return LType.Error;
     }
+
+    /// Is this a bare option name that belongs to more than one state here?
+    bool AmbiguousOption(Expr e, Ctx ctx) =>
+        e is Name n && Lookup(ctx, n.Id) == null && ctx.Class?.Field(n.Id) == null && !ctx.File.Classes.ContainsKey(n.Id) &&
+        VisibleStates(ctx.File).Count(st => st.Options.Contains(n.Id)) > 1;
 
     /// A plain name that means nothing here at all (not a variable, field, object, option, function or file).
     bool Unknown(Name n, Ctx ctx) =>
@@ -1157,14 +1190,20 @@ public sealed class Checker
             Error(al.Pos, "Lust can't tell what kind of array [] is here. Put it in a variable with a type first: int array scores = [];");
             return LType.Error;
         }
-        var first = Expr(al.Items[0], ctx);
-        if (first == LType.Error || first == LType.None || first == LType.Nothing) { foreach (var item in al.Items.Skip(1)) Expr(item, ctx); return LType.Error; }
-        foreach (var item in al.Items.Skip(1))
+        var types = al.Items.Select(item => Expr(item, ctx)).ToList();
+        if (types.Contains(LType.Error)) return LType.Error;
+        if (types.Any(t => t == LType.None || t == LType.Nothing))
         {
-            Expr(item, ctx, first);
-            ExpectFits(item, first, $"this array holds {Plural(first)}");
+            var bad = al.Items[types.FindIndex(t => t == LType.None || t == LType.Nothing)];
+            Error(bad.Pos, bad.Type == LType.None
+                ? "this doesn't give anything back, so it can't go in an array."
+                : "Lust can't tell what kind of array this is. Put it in a variable with a type first: Dog array dogs = [nothing];");
+            return LType.Error;
         }
-        return ArrayType.Of(first);
+        // An int and a float together give a float.
+        var elem = types.All(t => t.IsNumber) && types.Contains(LType.Float) ? LType.Float : types[0];
+        foreach (var item in al.Items) ExpectFits(item, elem, $"this array holds {Plural(elem)}");
+        return ArrayType.Of(elem);
     }
 
     void Row(ArrayLit row, CArrayType table, Ctx ctx)

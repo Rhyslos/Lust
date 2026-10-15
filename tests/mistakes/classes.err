@@ -8,8 +8,7 @@ classes.lust:16:5  count must give back an int at the end. Add give …; before 
 classes.lust:18:22  Dog has a field called hp, so a parameter can't use that name. Try newHp.
 classes.lust:19:13  Dog has a field called age, so a variable here can't use that name.
 classes.lust:25:16  Dog already has hp as an int. A class that's like it can change its starting value, but not its type.
-classes.lust:25:19  hp is an int, but this is a string. Use .int() to turn text into a number.
-classes.lust:28:16  bark replaces Dog's bark, so it must look the same: method bark()
+classes.lust:28:16  bark replaces Dog's bark, so it must take and give back the same types: method bark()
 classes.lust:33:18  Loop1 ends up being like itself. A chain of like can't go in a circle.
 classes.lust:36:16  Game is an object. Only a class can be built on with like.
 classes.lust:38:25  Dog has no field called wings.

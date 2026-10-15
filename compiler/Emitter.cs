@@ -42,7 +42,7 @@ public sealed class Emitter
 
         foreach (var f in comp.Files)
             foreach (var s in f.OwnStates)
-                Line($"public enum {s.CsName} {{ {string.Join(", ", s.Options.Select(o => "@" + o))} }}");
+                Line($"public enum {s.CsName} {{ {string.Join(", ", s.Options.Select(o => "o_" + o))} }}");
 
         foreach (var t in comp.CArrays.OrderBy(t => t.Number)) Row(t);
 
@@ -77,8 +77,7 @@ public sealed class Emitter
         Line("Console.OutputEncoding = System.Text.Encoding.UTF8;");
         foreach (var f in comp.Files)
             Line($"LustRt.Name({CsString(LinePath(f.Source))}, {CsString(f.Source.Display)});");
-        Line("try { Run(); }");
-        Line("catch (Exception e) { LustRt.Fail(e); }");
+        Line("LustRt.Start(Run);");
         indent--;
         Line("}");
         Line("");
@@ -109,8 +108,9 @@ public sealed class Emitter
         Line("{");
         indent++;
         foreach (var (col, type) in t.Columns) Line($"public {type.Cs} c_{col};");
-        var prms = string.Join("", t.Columns.Select(c => $", {c.Type.Cs} {c.Name}"));
-        Line($"public {name}(bool hasId, long id{prms}) : base(hasId, id) {{ {string.Join(" ", t.Columns.Select(c => $"c_{c.Name} = {c.Name};"))} }}");
+        // Positional parameter names, so no column name can clash with C# or with each other.
+        var prms = string.Join("", t.Columns.Select((c, i) => $", {c.Type.Cs} a{i}"));
+        Line($"public {name}(bool hasId_, long id_{prms}) : base(hasId_, id_) {{ {string.Join(" ", t.Columns.Select((c, i) => $"c_{c.Name} = a{i};"))} }}");
         Line($"public override string ToString() => \"[\" + id{string.Join("", t.Columns.Select(c => $" + \", \" + LustRt.Show(c_{c.Name})"))} + \"]\";");
         indent--;
         Line("}");
@@ -161,7 +161,14 @@ public sealed class Emitter
         var prms = string.Join(", ", fn.ParamVars.Select(v => $"{v.Type.Cs} {v.CsName}"));
         Line($"{head}({prms})");
         currentFunc = fn;
+        Line("{");
+        indent++;
+        Line("LustRt.Enter();");
+        Line("try");
         Block(d.Body);
+        Line("finally { LustRt.Leave(); }");
+        indent--;
+        Line("}");
         currentFunc = null;
         Raw("#line default");
     }
@@ -183,7 +190,8 @@ public sealed class Emitter
                 break;
             case StateSet ss:
                 At(ss.Pos);
-                Line($"{Expr(ss.Target)} = {ss.State!.CsName}.@{ss.Option};");
+                if (ss.Target is Index six) Line($"{Expr(six.Target)}.Set({Expr(six.Key)}, {ss.State!.CsName}.o_{ss.Option});");
+                else Line($"{Expr(ss.Target)} = {ss.State!.CsName}.o_{ss.Option};");
                 break;
             case ExprStmt e:
                 At(e.Pos);
@@ -317,10 +325,16 @@ public sealed class Emitter
                     NameKind.Local => n.Var!.CsName,
                     NameKind.Field => n.Field!.CsName,
                     NameKind.Object => $"{n.Object!.CsName}.Instance",
-                    NameKind.Option => $"{n.State!.CsName}.@{n.Id}",
+                    NameKind.Option => $"{n.State!.CsName}.o_{n.Id}",
                     _ => throw new InvalidOperationException("unresolved name " + n.Id),
                 };
             case Unary u: return u.Op == UnOp.Neg ? $"(-{Expr(u.Operand)})" : $"(!{Expr(u.Operand)})";
+            case Binary { Op: BinOp.Div or BinOp.Mod } bi when bi.Left.Type == LType.Int && bi.Right.Type == LType.Int:
+                // Through the runtime, so 1 / 0 is a "divided by zero" while running, not a C# build error.
+                return $"LustRt.{(bi.Op == BinOp.Div ? "Div" : "Mod")}({Expr(bi.Left)}, {Expr(bi.Right)})";
+            case Binary { Op: BinOp.Add or BinOp.Sub or BinOp.Mul } bc when bc.Type == LType.Int && IsConstant(bc):
+                // Numbers only: C# would work it out while building and refuse an overflow, so hide them.
+                return $"({Expr(bc.Left)} {(bc.Op == BinOp.Add ? "+" : bc.Op == BinOp.Sub ? "-" : "*")} LustRt.Same({Expr(bc.Right)}))";
             case Binary b:
             {
                 string op = b.Op switch
@@ -387,7 +401,7 @@ public sealed class Emitter
                 };
             case Index ix: return $"{Expr(ix.Target)}.Get({Expr(ix.Key)})";
             case Length len:
-                return len.Target.Type == LType.String ? $"((long){Expr(len.Target)}.Length)" : $"{Expr(len.Target)}.Count";
+                return len.Target.Type == LType.String ? $"LustRt.Letters({Expr(len.Target)})" : $"{Expr(len.Target)}.Count";
             case New nw:
             {
                 if (nw.Inits.Count == 0) return $"new {nw.Sym!.CsName}()";
@@ -405,6 +419,14 @@ public sealed class Emitter
         }
         throw new InvalidOperationException("can't write " + e.GetType().Name);
     }
+
+    static bool IsConstant(Expr e) => e switch
+    {
+        IntLit or FloatLit => true,
+        Unary u => IsConstant(u.Operand),
+        Binary b => IsConstant(b.Left) && IsConstant(b.Right),
+        _ => false,
+    };
 
     string RowLit(ArrayLit al, CArrayType table)
     {

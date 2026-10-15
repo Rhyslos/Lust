@@ -111,6 +111,8 @@ is hungry true && bo.state sleepy? then {
 
 - `then { }` runs when the answer is yes. `or is …? then { }` asks another question. A last `or { }` catches everything else. Both `or` parts are optional.
 - Comparing two different types (`is hp "zero"?`) is an error.
+- Things made from classes, arrays and cArrays are the same only when they're the very same thing, not when they hold the same values. To check if an array is empty, ask `is #scores 0?`.
+- Parts of a check can be grouped with `( )`: `is ready && (hp 0 || state fighting)?`
 - A negative number right after the first value reads as subtraction, so write `is x (-1)?`.
 
 ### either
@@ -202,11 +204,11 @@ class Farm {
 }
 ```
 
-- Change it with `is`: `season is summer;` inside a method, or `farm.season is summer;` from outside.
+- Change it with `is`: `season is summer;` inside a method, or `farm.season is summer;` from outside. To copy a state from somewhere else, use `=`: `farm.season = nextSeason(farm.season);`.
 - Ask about it in a question: `is farm.season winter?`.
 - `farm.season.text()` gives the option's name as text, like `"winter"`.
 - `loop (season s in season) { }` goes through every option, in the order written. For the main state: `loop (state s in state) { }`.
-- A state can also be a variable's type: `season today = spring;`. It's changed with `is` too: `today is fall;`.
+- A state can also be a variable's type: `season today = spring;`. It's changed with `is` too: `today is fall;`, or with `=` from another state value.
 - A class or object can have each state once at most.
 - Two states in the same file may share an option name. Lust always knows which state is meant from what it's compared with.
 - From another file, after `fetch farm:season;`, the type is called `farm.season` (and the main state `farm.state`). The option names work as they are.
@@ -292,7 +294,7 @@ Wizard merlin = new Wizard { name "Merlin" };
 
 - A Wizard gets every field, state and method that Player has.
 - Its `has` block adds new fields. Listing one Player already has, with the same type, only changes its starting value.
-- A method with the same name as one of Player's replaces it for wizards. It must take the same parameters and give back the same type.
+- A method with the same name as one of Player's replaces it for wizards. It must take the same types of parameters (their names can differ) and give back the same type.
 - A Wizard can go anywhere a Player is expected: a `Player` variable, a `Player array`, a `Player` parameter. Methods called on it use the Wizard's version.
 - Ask what something really is with `is`: `is hero like Wizard? then { … }`.
 - A class is like one other class at most. An object can be like a class too: `object Boss like Wizard { … }`.

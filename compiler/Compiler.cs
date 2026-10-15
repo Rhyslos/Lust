@@ -63,16 +63,8 @@ public sealed class Compilation
                 queue.Enqueue(c.Add(System.IO.Path.GetFullPath(other), display, isMain: false));
             }
         }
-        // C#-safe, unique module names.
-        var used = new HashSet<string>();
-        foreach (var f in c.Files)
-        {
-            var name = new string(f.Module.Select(ch => char.IsLetterOrDigit(ch) ? ch : '_').ToArray());
-            if (name.Length == 0 || char.IsDigit(name[0])) name = "_" + name;
-            var unique = name;
-            for (int i = 2; !used.Add(unique); i++) unique = name + i;
-            f.CsModule = unique;
-        }
+        // Files are numbered in C# (C_F2_Player), so names from different files can never collide.
+        for (int i = 0; i < c.Files.Count; i++) c.Files[i].CsModule = $"F{i + 1}";
         Checker.Check(c);
         return c;
     }
