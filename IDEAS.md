@@ -143,7 +143,7 @@ class Todo {
 object Api like Server {
     has {
         int[port 8080];
-        Todo array[todos];
+        Todo array[todos []];
     }
 
     route get "/todos" {
