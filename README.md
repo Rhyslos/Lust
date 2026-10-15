@@ -57,6 +57,8 @@ Or, without building first:
 dotnet run --project compiler -- run examples/valley/main.lust
 ```
 
+`lust.exe` is a command-line program: run it from PowerShell or Command Prompt, or drop a `.lust` file onto it. Double-clicking it on its own just shows the help.
+
 Every push also builds a ready-made `lust.exe`: open the **Actions** tab, click the latest **Test** run, and download **lust-windows**.
 
 | Command | Does |
