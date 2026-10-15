@@ -512,11 +512,14 @@ public sealed class Parser
         }
         if (!At(Tk.Ident)) throw Fail(Cur.Pos, "a has block holds fields, like int[hp 20, gold 0];");
         if (Hints.TryGetValue(Cur.Text, out var hint)) throw Fail(Cur.Pos, hint);
+        if (AtWord("array") || AtWord("map"))
+            throw Fail(Cur.Pos, $"say what the {Cur.Text} holds, and give it a name: string {Cur.Text} bag [];");
         var type = Type();
         if (At(Tk.LBrack))
         {
             // int[hp 20, gold 0,];
             Next();
+            if (At(Tk.RBrack)) throw Fail(Cur.Pos, $"name the fields inside the [ ], each with its starting value: {type}[name {ExampleValue(type)}];");
             while (!At(Tk.RBrack))
             {
                 var nameTok = ExpectName("a field name, like hp 20");
