@@ -269,3 +269,14 @@ public sealed class CsType : LType
         }
     }
 }
+
+/// A save: `save game = [Farm, player];`
+public sealed class SaveSym
+{
+    public string Name { get; init; } = "";
+    public FileUnit File { get; init; } = null!;
+    public SaveDecl Decl { get; init; } = null!;
+    /// What it holds, in order: an object, or a variable from the top of the file.
+    public List<(string Name, ClassSym? Object, Variable? Var)> Items { get; } = new();
+    public string CsName => $"LustSaves.s_{File.CsModule}_{Name}";
+}

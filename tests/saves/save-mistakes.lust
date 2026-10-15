@@ -1,0 +1,25 @@
+class Dog {
+    has {
+        do() [onBark nothing];
+    }
+}
+object Kennel {
+    has { Dog array dogs []; }
+}
+object Settings {
+    has { int[volume 5]; }
+}
+save game = [Kennel, Settings, Dog, nope, Settings, inner];
+save settings = [Settings];
+save settings = [Settings];
+save empty = [];
+
+is true? then { int inner = 1; }
+save game;
+load gamee;
+truth s = saved gaem;
+save game = [Settings];
+load game();
+do f() { save settings; }
+
+end

@@ -61,6 +61,14 @@ public sealed class Checker
             f.Classes[cd.Name] = sym;
             f.OwnClasses.Add(sym);
         }
+        foreach (var sd in ast.Saves)
+        {
+            if (f.Saves.TryGetValue(sd.Name, out var old)) { Error(sd.NamePos, $"there's already a save called {sd.Name}, on line {old.Decl.Pos.Line}."); continue; }
+            var sym = new SaveSym { Name = sd.Name, File = f, Decl = sd };
+            sd.Sym = sym;
+            f.Saves[sd.Name] = sym;
+            f.OwnSaves.Add(sym);
+        }
         foreach (var fd in ast.Funcs)
         {
             if (f.Funcs.TryGetValue(fd.Name, out var old)) { Error(fd.NamePos, $"there's already a function called {fd.Name}, on line {old.Decl.Pos.Line}."); continue; }
@@ -77,9 +85,9 @@ public sealed class Checker
         foreach (var send in f.Ast.Sends)
             foreach (var (name, pos) in send.Names)
             {
-                if (!f.Classes.ContainsKey(name) && !f.Funcs.ContainsKey(name) && !f.States.ContainsKey(name))
+                if (!f.Classes.ContainsKey(name) && !f.Funcs.ContainsKey(name) && !f.States.ContainsKey(name) && !f.Saves.ContainsKey(name))
                 {
-                    Error(pos, $"there's nothing called {name} in this file to send.{Suggest(name, f.Classes.Keys.Concat(f.Funcs.Keys).Concat(f.States.Keys))}");
+                    Error(pos, $"there's nothing called {name} in this file to send.{Suggest(name, f.Classes.Keys.Concat(f.Funcs.Keys).Concat(f.States.Keys).Concat(f.Saves.Keys))}");
                     continue;
                 }
                 if (f.Sent.ContainsKey(name)) Error(pos, $"{name} is already sent, on line {f.Sent[name].Line}.");
@@ -115,7 +123,8 @@ public sealed class Checker
                 bool isClass = other.OwnClasses.Any(c => c.Name == name);
                 bool isFunc = other.OwnFuncs.Any(fn => fn.Name == name);
                 bool isState = other.OwnStates.Any(s => s.Name == name);
-                if (!isClass && !isFunc && !isState)
+                bool isSave = other.OwnSaves.Any(s => s.Name == name);
+                if (!isClass && !isFunc && !isState && !isSave)
                 {
                     Error(pos, $"{other.Source.Display} has nothing called {name}.{Suggest(name, other.Sent.Keys)}");
                     continue;
@@ -127,10 +136,15 @@ public sealed class Checker
                 }
                 if (fetch.Names != null)
                 {
-                    if (fetch.IsGet && !isFunc) { Error(pos, $"{name} is a {(isState ? "state" : other.Classes[name].Kind)}, so it's brought in with fetch: fetch {fetch.Path}:{name};"); continue; }
+                    if (fetch.IsGet && !isFunc) { Error(pos, $"{name} is a {(isState ? "state" : isSave ? "save" : other.Classes[name].Kind)}, so it's brought in with fetch: fetch {fetch.Path}:{name};"); continue; }
                     if (!fetch.IsGet && isFunc) { Error(pos, $"{name} is a function, so it's brought in with get: get {fetch.Path}:{name};"); continue; }
                 }
-                if (isClass) AddVisible(f.Classes, name, other.Classes[name], pos, f);
+                if (isSave)
+                {
+                    if (f.Saves.TryGetValue(name, out var mine) && mine != other.Saves[name]) Error(pos, $"{name} already means something else in {f.Source.Display}. Two things can't share a name.");
+                    else f.Saves[name] = other.Saves[name];
+                }
+                else if (isClass) AddVisible(f.Classes, name, other.Classes[name], pos, f);
                 else if (isFunc) AddVisible(f.Funcs, name, other.Funcs[name], pos, f);
                 else
                 {
@@ -344,6 +358,8 @@ public sealed class Checker
         var top = new Ctx { File = f, TopLevel = true };
         foreach (var s in f.Ast.Stmts) Stmt(s, top);
         foreach (var scope in top.Scopes) f.TopVars.UnionWith(scope.Keys);
+        f.TopScope = top.Scopes[0];
+        foreach (var save in f.OwnSaves) ResolveSave(save);
 
         foreach (var cls in f.OwnClasses)
         {
@@ -362,6 +378,79 @@ public sealed class Checker
             foreach (var m in cls.OwnMethods) Body(m, cls);
         }
         foreach (var fn in f.OwnFuncs) Body(fn, null);
+    }
+
+    // ----- saves -----
+
+    void ResolveSave(SaveSym save)
+    {
+        var f = save.File;
+        var seen = new HashSet<string>();
+        foreach (var (name, pos) in save.Decl.Items)
+        {
+            if (!seen.Add(name)) { Error(pos, $"{name} is already in this save."); continue; }
+            if (f.Classes.TryGetValue(name, out var cls))
+            {
+                if (!cls.IsObject) { Error(pos, $"{name} is a class, a blueprint. A save holds the things made from it: keep them in a variable or an object, and save that."); continue; }
+                if (cls.File.IsNative) { Error(pos, $"{name} comes from ui and can't be saved."); continue; }
+                var problem = Unsavable(cls.Type, new HashSet<LType>(), name);
+                if (problem != null) { Error(pos, problem); continue; }
+                save.Items.Add((name, cls, null));
+                continue;
+            }
+            if (f.TopScope.TryGetValue(name, out var v))
+            {
+                if (!f.IsMain) { Error(pos, $"{name} is a variable at the top of {f.Source.Display}, and only the file you run has its top-level code run. A save in a fetched file can only hold objects."); continue; }
+                var problem = Unsavable(v.Type, new HashSet<LType>(), name);
+                if (problem != null) { Error(pos, problem); continue; }
+                v.Hoisted = true;
+                save.Items.Add((name, null, v));
+                continue;
+            }
+            if (f.TopVars.Contains(name)) { Error(pos, $"{name} is declared inside a block. A save can only hold variables declared at the very top of the file, outside any {{ }}."); continue; }
+            var names = f.Classes.Where(c => c.Value.IsObject).Select(c => c.Key).Concat(f.TopScope.Keys);
+            Error(pos, $"there's nothing called {name} to save. A save holds objects, and variables from the top of the file.{Suggest(name, names)}");
+        }
+    }
+
+    /// Why a value of this type can't go in a save, or null when it can. Things from ui (widgets)
+    /// are skipped when saving, so they're fine. `path` says where the value sits, like Farm.onDayEnd.
+    string? Unsavable(LType t, HashSet<LType> seen, string path)
+    {
+        string? Why(LType type, string where)
+        {
+            if (!seen.Add(type)) return null;
+            switch (type)
+            {
+                case FuncType: return $"{where} is a function, and functions belong to the program, not to a save.";
+                case CsType: return $"{where} holds {type.WithArticle}, and Lust only saves its own kinds of values.";
+                case ArrayType at: return Why(at.Elem, where);
+                case MapType mt: return Why(mt.Elem, where);
+                case CArrayType ct:
+                    foreach (var (_, colType) in ct.Columns)
+                        if (Why(colType, where) is string p) return p;
+                    return null;
+                case ClassType cls:
+                    if (cls.Sym.File.IsNative) return null;
+                    // Anything like this class could be in it, so their fields count too.
+                    foreach (var c in comp.Files.SelectMany(fl => fl.OwnClasses).Where(c => c.IsLike(cls.Sym)))
+                        foreach (var field in c.Fields)
+                            if (!field.Owner.File.IsNative && Why(field.Type, $"{c.Name}.{field.Name}") is string p) return p;
+                    return null;
+                default: return null;
+            }
+        }
+        var why = Why(t, path);
+        return why == null ? null : $"{path} can't be saved: {why}";
+    }
+
+    SaveSym? FindSave(string name, Pos pos, Ctx ctx, string word)
+    {
+        if (ctx.File.Saves.TryGetValue(name, out var save)) return save;
+        Error(pos, ctx.File.Saves.Count == 0
+            ? $"there's no save called {name}. Declare one at the top of the file, saying what it holds: save {name} = [Farm, player];"
+            : $"there's no save called {name}.{Suggest(name, ctx.File.Saves.Keys)}");
+        return null;
     }
 
     void Body(FuncSym fn, ClassSym? cls)
@@ -490,6 +579,9 @@ public sealed class Checker
                 }
                 break;
             }
+            case SaveStmt sv:
+                sv.Sym = FindSave(sv.Name, sv.NamePos, ctx, sv.IsLoad ? "load" : "save");
+                break;
             case Wait w:
             {
                 var t = Expr(w.Seconds, ctx);
@@ -881,6 +973,9 @@ public sealed class Checker
                 return LType.Int;
             }
             case New nw: return NewType(nw, ctx);
+            case SavedExpr se:
+                se.Sym = FindSave(se.Name, se.NamePos, ctx, "saved");
+                return LType.Truth;
             case ArrayLit al: return ArrayLitType(al, ctx, expected);
         }
         return LType.Error;
@@ -1036,7 +1131,7 @@ public sealed class Checker
         }
     }
 
-    static readonly HashSet<string> Parser_Conversions = new() { "text", "int", "float", "isNumber" };
+    static readonly HashSet<string> Parser_Conversions = new() { "text", "int", "float", "isNumber", "lines" };
 
     LType ConversionType(Conversion cv, Ctx ctx)
     {
@@ -1058,6 +1153,9 @@ public sealed class Checker
                 break;
             case "isNumber":
                 if (t == LType.String) return LType.Truth;
+                break;
+            case "lines":
+                if (t == LType.String) return ArrayType.Of(LType.String);
                 break;
         }
         Error(cv.MethodPos, $".{cv.Method}() doesn't work on {t.WithArticle}.{(cv.Method == "text" && t is ClassType ? " print shows what's inside a class." : "")}");
@@ -1165,6 +1263,12 @@ public sealed class Checker
             case "wait":
                 foreach (var a in c.Args) Expr(a, ctx);
                 Error(c.Pos, "wait goes on its own line, without (): wait 1;");
+                return LType.None;
+            case "readText":
+                Args(c.Args, new[] { ("file", LType.String) }, "readText", c.Pos, ctx);
+                return LType.String;
+            case "writeText":
+                Args(c.Args, new[] { ("file", LType.String), ("words", LType.String) }, "writeText", c.Pos, ctx);
                 return LType.None;
         }
         // A variable, parameter or field that holds a function: call what it holds.

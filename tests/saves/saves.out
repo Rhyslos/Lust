@@ -1,0 +1,19 @@
+no save yet
+saved
+100
+fall.late
+3
+still the same crop
+still points at itself
+favourite is best
+best is still a seed
+["corn" 3, "wheat" 7]
+[[1, "hoe", 1]]
+[[1, "hoe", 1], [3, "rake", 1]]
+Grow "big"
+and strong
+true
+12
+Seed { name "wheat", days 0, next nothing, quality 2.25 }
+["apple", "banana", "cherry"]
+day 12

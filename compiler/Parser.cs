@@ -33,7 +33,7 @@ public sealed class Parser
         "save", "load", "saved",
     };
 
-    public static readonly HashSet<string> Builtins = new() { "print", "wait", "random", "ask" };
+    public static readonly HashSet<string> Builtins = new() { "print", "wait", "random", "ask", "readText", "writeText" };
 
     /// Words from other languages, and what to write in Lust instead.
     static readonly Dictionary<string, string> Hints = new()
@@ -231,6 +231,7 @@ public sealed class Parser
                 case "send" when Cur.Kind == Tk.Ident: program.Sends.Add(SendDeclaration()); return;
                 case "fetch" or "get" when Cur.Kind == Tk.Ident: program.Fetches.Add(FetchDeclaration()); return;
                 case "state" when Cur.Kind == Tk.Ident && IsStateDeclaration(): program.States.Add(StateDeclaration()); return;
+                case "save" when Cur.Kind == Tk.Ident && PeekAt(1).Kind == Tk.Ident && PeekAt(2).Kind == Tk.Assign: program.Saves.Add(SaveDeclaration()); return;
                 case "method" when Cur.Kind == Tk.Ident: throw Fail(Cur.Pos, "methods go inside a class or object. For a function on its own, use do.");
                 case "has" when Cur.Kind == Tk.Ident: throw Fail(Cur.Pos, "a has block goes inside a class or object.");
                 case "give" when Cur.Kind == Tk.Ident: throw Fail(Cur.Pos, "give only works inside a function or method.");
@@ -297,6 +298,28 @@ public sealed class Parser
         var text = first.Text;
         while (At(Tk.Dot) && PeekAt(1).Kind == Tk.Ident) { Next(); text += "." + Next().Text; }
         return (text, first.Pos);
+    }
+
+    SaveDecl SaveDeclaration()
+    {
+        var start = Next().Pos; // save
+        var name = ExpectName("a name for the save");
+        Next(); // =
+        Expect(Tk.LBrack, $"list what the save holds in [ ], like save {name.Text} = [Farm, player];");
+        var decl = new SaveDecl { Pos = start, Name = name.Text, NamePos = name.Pos };
+        while (!At(Tk.RBrack))
+        {
+            if (!At(Tk.Ident)) throw Fail(MissingAt, $"a save holds objects and variables, by name: save {name.Text} = [Farm, player];");
+            var t = Next();
+            decl.Items.Add((t.Text, t.Pos));
+            if (At(Tk.Comma)) { Next(); continue; }
+            if (At(Tk.Dot)) throw Fail(Cur.Pos, $"a save holds whole objects and variables. Put {t.Text} itself in the list.");
+            if (!At(Tk.RBrack)) throw Fail(MissingAt, "expected , or ] here.");
+        }
+        Next();
+        if (decl.Items.Count == 0) diags.Add(start, $"the save {name.Text} holds nothing. List what goes in it: save {name.Text} = [Farm, player];");
+        EndStatement();
+        return decl;
     }
 
     SendDecl SendDeclaration()
@@ -713,6 +736,17 @@ public sealed class Parser
             case "method": throw Fail(t.Pos, "a method can't go inside another one. Put it directly inside its class.");
             case "send" or "fetch" or "get": throw Fail(t.Pos, $"{t.Text} goes at the top level of a file.");
             case "has": throw Fail(t.Pos, "a has block goes inside a class or object.");
+            case "save" or "load":
+            {
+                Next();
+                if (!At(Tk.Ident)) throw Fail(MissingAt, $"say which save: {t.Text} game;");
+                var n = Next();
+                if (t.Text == "save" && At(Tk.Assign)) throw Fail(t.Pos, "a save is declared at the top level of a file, not inside a block.");
+                if (At(Tk.LParen) || At(Tk.Dot) || At(Tk.Colon) || At(Tk.Ident) || At(Tk.String))
+                    throw Fail(Cur.Pos, $"{t.Text} takes the name of a save, declared at the top of the file: save {n.Text} = [Farm, player]; then {t.Text} {n.Text};");
+                EndStatement();
+                return new SaveStmt { Pos = t.Pos, Name = n.Text, NamePos = n.Pos, IsLoad = t.Text == "load" };
+            }
             case "map" or "array": throw Fail(t.Pos, $"say what the {t.Text} holds first, like int {t.Text} {(PeekAt(1).Kind == Tk.Ident ? PeekAt(1).Text : "list")} = [];");
             case "state" when IsStateDeclaration(): throw Fail(t.Pos, "a state is declared at the top level of a file.");
         }
@@ -865,7 +899,7 @@ public sealed class Parser
     static bool StartsValue(Token t) => t.Kind switch
     {
         Tk.Int or Tk.Float or Tk.String or Tk.LParen or Tk.Hash or Tk.LBrack => true,
-        Tk.Ident => (!Reserved.Contains(t.Text) && t.Text != "and") || t.Text is "true" or "nothing" or "either" or "new",
+        Tk.Ident => (!Reserved.Contains(t.Text) && t.Text != "and") || t.Text is "true" or "nothing" or "either" or "new" or "saved",
         _ => false,
     };
 
@@ -1061,7 +1095,7 @@ public sealed class Parser
         return Postfix();
     }
 
-    static readonly HashSet<string> Conversions = new() { "text", "int", "float", "isNumber" };
+    static readonly HashSet<string> Conversions = new() { "text", "int", "float", "isNumber", "lines" };
 
     Expr Postfix(Expr? start = null)
     {
@@ -1078,7 +1112,7 @@ public sealed class Parser
                     if (!Conversions.Contains(m.Text))
                         throw Fail(m.Pos, e is Name or FieldGet
                             ? $"methods are called with : instead of a dot: {Snippet(e)}:{m.Text}(…)"
-                            : $"Lust doesn't have .{m.Text}(). The built-in ones are .text(), .int(), .float() and .isNumber().");
+                            : $"Lust doesn't have .{m.Text}(). The built-in ones are .text(), .int(), .float(), .isNumber() and .lines().");
                     Next();
                     if (!At(Tk.RParen)) throw Fail(Cur.Pos, $".{m.Text}() doesn't take anything between its ().");
                     Next();
@@ -1208,6 +1242,13 @@ public sealed class Parser
         if (t.Text == "nothing") { Next(); return new NothingLit { Pos = t.Pos }; }
         if (t.Text == "either") return EitherExpr();
         if (t.Text == "new") return NewExpr();
+        if (t.Text == "saved")
+        {
+            Next();
+            if (!At(Tk.Ident)) throw Fail(MissingAt, "say which save: is saved game?");
+            var n = Next();
+            return new SavedExpr { Pos = t.Pos, Name = n.Text, NamePos = n.Pos };
+        }
         if (t.Text is "false" or "null" || (t.Text is "self" or "this" && PeekAt(1).Kind == Tk.Dot)) throw Fail(t.Pos, Hints[t.Text]);
         if (t.Text == "state") { Next(); return new Name { Pos = t.Pos, Id = "state" }; }
         if (Reserved.Contains(t.Text)) throw Fail(t.Pos, $"expected a value here, but found the word {t.Text}.");

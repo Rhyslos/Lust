@@ -21,6 +21,10 @@ public sealed class FileUnit
     public List<ClassSym> OwnClasses { get; } = new();
     public List<FuncSym> OwnFuncs { get; } = new();
     public List<StateSym> OwnStates { get; } = new();
+    public Dictionary<string, SaveSym> Saves { get; } = new();
+    public List<SaveSym> OwnSaves { get; } = new();
+    /// The variables declared at the very top of the file (not inside a block), by name.
+    public Dictionary<string, Variable> TopScope { get; set; } = new();
     public Dictionary<string, Pos> Sent { get; } = new();
     public HashSet<string> TopVars { get; } = new();
 }

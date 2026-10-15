@@ -79,6 +79,32 @@ public sealed class SendDecl : Node
     public List<(string Name, Pos Pos)> Names { get; } = new();
 }
 
+/// `save game = [Farm, Player, bag];`: what a save holds.
+public sealed class SaveDecl : Node
+{
+    public string Name { get; init; } = "";
+    public Pos NamePos { get; init; }
+    public List<(string Name, Pos Pos)> Items { get; } = new();
+    public SaveSym? Sym { get; set; }
+}
+
+/// `save game;` and `load game;`
+public sealed class SaveStmt : Stmt
+{
+    public string Name { get; init; } = "";
+    public Pos NamePos { get; init; }
+    public bool IsLoad { get; init; }
+    public SaveSym? Sym { get; set; }
+}
+
+/// `saved game`: has it been saved before?
+public sealed class SavedExpr : Expr
+{
+    public string Name { get; init; } = "";
+    public Pos NamePos { get; init; }
+    public SaveSym? Sym { get; set; }
+}
+
 /// `fetch dog:Dog;`, `fetch dog:[A, B];`, `fetch dog;`, `get dice:roll;`
 public sealed class FetchDecl : Node
 {
@@ -325,6 +351,7 @@ public sealed class Program
     public List<StateDecl> States { get; } = new();
     public List<SendDecl> Sends { get; } = new();
     public List<FetchDecl> Fetches { get; } = new();
+    public List<SaveDecl> Saves { get; } = new();
     public HashSet<string> BrokenNames { get; } = new();
 }
 
@@ -337,4 +364,6 @@ public sealed class Variable
     public string CsName { get; init; } = "";
     public bool TopLevel { get; init; }
     public bool ReadOnly { get; init; }   // a loop's current item
+    /// Kept in a save, so it lives as a static field (LustProgram.v_x_3) that the save can reach.
+    public bool Hoisted { get; set; }
 }

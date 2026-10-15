@@ -67,17 +67,49 @@ public sealed class Emitter
             Line("");
         }
 
+        var saves = comp.Files.Where(f => !f.IsNative).SelectMany(f => f.OwnSaves).ToList();
+        if (saves.Count > 0)
+        {
+            Line("static class LustSaves");
+            Line("{");
+            indent++;
+            foreach (var save in saves)
+            {
+                var items = save.Items.Select(it => it.Object != null
+                    ? $"new LustSave.Obj({CsString(it.Name)}, () => {it.Object.CsName}.Instance)"
+                    : $"new LustSave.Var({CsString(it.Name)}, typeof({it.Var!.Type.Cs}), () => (object)LustProgram.{it.Var.CsName}, v => LustProgram.{it.Var.CsName} = ({it.Var.Type.Cs})v)");
+                Line($"internal static readonly LustSave s_{save.File.CsModule}_{save.Name} = new LustSave({CsString(save.Name)}{string.Concat(items.Select(i => ", " + i))});");
+            }
+            indent--;
+            Line("}");
+            Line("");
+        }
+
         file = comp.Main.Source;
         cls = null;
         Line("static class LustProgram");
         Line("{");
         indent++;
+        // Variables kept in a save live here, so the save can reach them from anywhere.
+        foreach (var v in comp.Main.TopScope.Values.Where(v => v.Hoisted))
+            Line($"internal static {v.Type.Cs} {v.CsName};");
         Line("static void Main()");
         Line("{");
         indent++;
         Line("Console.OutputEncoding = System.Text.Encoding.UTF8;");
         foreach (var f in comp.Files.Where(f => !f.IsNative))
             Line($"LustRt.Name({CsString(LinePath(f.Source))}, {CsString(f.Source.Display)});");
+        if (saves.Count > 0)
+        {
+            Line($"LustSave.Program = {CsString(ProgramName())};");
+            // Class names in save files: Dog, or farm.Dog when two files both have a Dog.
+            var all = comp.Files.Where(f => !f.IsNative).SelectMany(f => f.OwnClasses).ToList();
+            foreach (var c in all)
+            {
+                bool clash = all.Count(o => o.Name == c.Name) > 1;
+                Line($"LustSave.Name(typeof({c.CsName}), {CsString(clash ? $"{c.File.Module}.{c.Name}" : c.Name)});");
+            }
+        }
         Line("LustRt.Start(Run);");
         indent--;
         Line("}");
@@ -91,6 +123,19 @@ public sealed class Emitter
         Line("}");
         indent--;
         Line("}");
+    }
+
+    /// The program's name, for its folder of saves: the file's name, or its folder's when the file is main.lust.
+    string ProgramName()
+    {
+        var path = comp.Main.Source.Path;
+        var name = comp.Main.Module;
+        if (name.Equals("main", StringComparison.OrdinalIgnoreCase))
+        {
+            var folder = System.IO.Path.GetFileName(System.IO.Path.GetDirectoryName(path));
+            if (!string.IsNullOrEmpty(folder)) name = folder;
+        }
+        return new string(name.Where(ch => !System.IO.Path.GetInvalidFileNameChars().Contains(ch)).ToArray());
     }
 
     void Line(string text) => sb.Append(' ', indent * 4).Append(text).Append('\n');
@@ -182,7 +227,12 @@ public sealed class Emitter
         {
             case VarDecl d:
                 At(d.Pos);
-                Line($"{d.Var!.Type.Cs} {d.Var.CsName} = {Coerce(d.Init, d.Var.Type)};");
+                if (d.Var!.Hoisted) Line($"LustProgram.{d.Var.CsName} = {Coerce(d.Init, d.Var.Type)};");
+                else Line($"{d.Var.Type.Cs} {d.Var.CsName} = {Coerce(d.Init, d.Var.Type)};");
+                break;
+            case SaveStmt sv:
+                At(sv.Pos);
+                Line($"{sv.Sym!.CsName}.{(sv.IsLoad ? "Load" : "Save")}();");
                 break;
             case Assign a:
                 At(a.Pos);
@@ -336,7 +386,7 @@ public sealed class Emitter
             case Name n:
                 return n.Kind switch
                 {
-                    NameKind.Local => n.Var!.CsName,
+                    NameKind.Local => n.Var!.Hoisted ? "LustProgram." + n.Var.CsName : n.Var.CsName,
                     NameKind.Field => n.Field!.CsName,
                     NameKind.Object => $"{n.Object!.CsName}.Instance",
                     NameKind.Option => Option(n.State!, n.Id),
@@ -391,6 +441,8 @@ public sealed class Emitter
                 {
                     "print" => $"LustRt.Print({Expr(c.Args[0])})",
                     "random" => $"LustRt.Random({Expr(c.Args[0])}, {Expr(c.Args[1])})",
+                    "readText" => $"LustRt.ReadText({Expr(c.Args[0])})",
+                    "writeText" => $"LustRt.WriteText({Expr(c.Args[0])}, {Expr(c.Args[1])})",
                     "ask" => $"LustRt.Ask({(c.Args.Count == 1 ? Expr(c.Args[0]) : "\"\"")})",
                     _ => $"{(c.Func!.Owner != null ? "m_" + c.Func.Name : c.Func.CsName)}({Arguments(c.Args, c.Func)})",
                 };
@@ -420,6 +472,7 @@ public sealed class Emitter
                     "text" => $"LustRt.Text({target})",
                     "int" => fromText ? $"LustRt.ParseInt({target})" : $"LustRt.Int({target})",
                     "float" => fromText ? $"LustRt.ParseFloat({target})" : $"((double){target})",
+                    "lines" => $"LustRt.Lines({target})",
                     _ => $"LustRt.IsNumber({target})",
                 };
             }
@@ -440,6 +493,7 @@ public sealed class Emitter
                 var inits = nw.Inits.Select((init, i) => $"{nw.InitFields[i].CsName} = {Coerce(init.Value, nw.InitFields[i].Type)}");
                 return $"new {nw.Sym!.CsName} {{ {string.Join(", ", inits)} }}";
             }
+            case SavedExpr se: return $"{se.Sym!.CsName}.Exists()";
             case ArrayLit al:
                 return al.Type switch
                 {

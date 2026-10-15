@@ -18,6 +18,7 @@
     <Compile Remove="Runtime/**" />
     <EmbeddedResource Include="Runtime/LustRt.cs" LogicalName="LustRt.cs" />
     <EmbeddedResource Include="Runtime/LustUi.cs" LogicalName="LustUi.cs" />
+    <EmbeddedResource Include="Runtime/LustSave.cs" LogicalName="LustSave.cs" />
     <EmbeddedResource Include="Runtime/ui.lust" LogicalName="ui.lust" />
   </ItemGroup>
 

@@ -111,6 +111,7 @@ public static class Runner
             """);
         WriteIfChanged(System.IO.Path.Combine(dir, "Program.cs"), csharp);
         WriteIfChanged(System.IO.Path.Combine(dir, "LustRt.cs"), RuntimeSource());
+        WriteIfChanged(System.IO.Path.Combine(dir, "LustSave.cs"), RuntimeSource("LustSave.cs"));
         var uiFile = System.IO.Path.Combine(dir, "LustUi.cs");
         if (ui) WriteIfChanged(uiFile, RuntimeSource("LustUi.cs"));
         else if (File.Exists(uiFile)) File.Delete(uiFile);
@@ -162,6 +163,8 @@ public static class Runner
         var dll = System.IO.Path.Combine(dir, "bin", "Debug", Tfm + (ui ? "-windows" : ""), AppName(file) + ".dll");
         var psi = new ProcessStartInfo(Dotnet) { WorkingDirectory = Environment.CurrentDirectory, UseShellExecute = false, RedirectStandardOutput = capture, RedirectStandardError = capture, RedirectStandardInput = capture };
         psi.ArgumentList.Add(dll);
+        // Text files and pictures are found next to the .lust file.
+        psi.Environment["LUST_HOME"] = System.IO.Path.GetDirectoryName(file.Path);
         if (env != null) foreach (var (k, v) in env) psi.Environment[k] = v;
         using var proc = Process.Start(psi)!;
         if (!capture)

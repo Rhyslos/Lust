@@ -138,6 +138,9 @@ public sealed class LustCArray<R> where R : LustRow
 
     public long Count => order.Count;
 
+    /// The id the next new row gets. Saves keep it, so ids stay unused after loading too.
+    internal long NextId { get => nextId; set => nextId = value; }
+
     public R Get(long id)
     {
         if (byId.TryGetValue(id, out var row)) return row;
@@ -291,6 +294,52 @@ public static class LustRt
             Console.Out.Flush();
         }
         return Console.ReadLine() ?? "";
+    }
+
+    // ----- text files -----
+
+    /// Where text files and pictures are looked for: the .lust file's folder while running with lust,
+    /// and the program's own folder once it's built.
+    public static string Home
+    {
+        get
+        {
+            var home = Environment.GetEnvironmentVariable("LUST_HOME");
+            return string.IsNullOrEmpty(home) ? AppContext.BaseDirectory : home;
+        }
+    }
+
+    public static string FullPath(string file)
+    {
+        if (string.IsNullOrWhiteSpace(file)) throw new LustError("the file's name is empty.");
+        return System.IO.Path.GetFullPath(System.IO.Path.Combine(Home, file));
+    }
+
+    public static string ReadText(string file)
+    {
+        var path = FullPath(file);
+        if (!System.IO.File.Exists(path)) throw new LustError($"there's no file called {file} in {System.IO.Path.GetDirectoryName(path)}.");
+        try { return System.IO.File.ReadAllText(path).Replace("\r\n", "\n"); }
+        catch (Exception e) when (e is System.IO.IOException or UnauthorizedAccessException) { throw new LustError($"couldn't read {file}: {e.Message}"); }
+    }
+
+    public static void WriteText(string file, string words)
+    {
+        var path = FullPath(file);
+        try
+        {
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path));
+            System.IO.File.WriteAllText(path, words ?? "");
+        }
+        catch (Exception e) when (e is System.IO.IOException or UnauthorizedAccessException) { throw new LustError($"couldn't write {file}: {e.Message}"); }
+    }
+
+    /// Text cut into its lines. A last empty line (from text that ends with a new line) is left out.
+    public static LustArray<string> Lines(string s)
+    {
+        var parts = (s ?? "").Replace("\r\n", "\n").Split('\n');
+        int n = parts.Length > 0 && parts[^1] == "" ? parts.Length - 1 : parts.Length;
+        return LustArray<string>.Of(parts.Take(n).ToArray());
     }
 
     public static void Wait(double seconds)
