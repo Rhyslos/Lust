@@ -63,6 +63,37 @@ Talked through and liked, but the exact syntax still needs working out:
 
   Adding and removing rows works like any cArray, and the file is kept up to date by itself.
 
+### Hooks: functions kept as values
+
+Decided. `hook` replaces `do` as the type of a function kept in a variable, field, array or map, so `do` only ever means "declare a function". `new hook { }` makes one right where it's needed.
+
+```
+hook int(int n) triple = new hook {
+    give n * 3;
+};
+
+class Shop {
+    has {
+        hook(string item, int price) [onSell nothing];
+        hook() [onClose nothing];
+    }
+}
+
+Shop.onSell = new hook {
+    print("Sold " + item + " for " + price.text());
+};
+
+hook int roll = new hook { give random(1, 6); };   // takes nothing: no ( )
+hook int(int) f = double;                           // an existing function works as before
+```
+
+- **The type is written once, where the hook is declared**, names included. `new hook { }` is just the body: its values and what it gives back come from where it's going, since once declared it can't be anything else.
+- **Names in a hook's type now matter.** Today they're allowed and ignored (`do(string who)` is the same as `do(string)`). With hooks, they're the names the body uses. A type without names (`hook(string)`) still works for existing functions, but a `new hook` for it asks for them: "name what the hook takes, like hook(string item)".
+- **A `new hook` can see the variables around it**, unlike a `do` function. So `loop (Loaf l in shelf) { l.onBurn = new hook { print(l.name + " is burning!"); }; }` works.
+- **No two things with one name:** a name from the hook's type can't be a variable that already exists where the `new hook` is written.
+- **`hook` becomes a reserved word.**
+- This also settles "functions written in place" from LUST.md's still-open list, and lets a button say what it does on the spot: `button.onClick = new hook { … };`.
+
 ### States that react
 
 The biggest idea: states that do things, not just hold a value. Sketches only:
@@ -83,7 +114,6 @@ Each object gets its own `tick()`, and `wait` pauses just that object while the 
 ### Smaller additions
 
 - **Vector maths with operators:** `pos + vel * dt` instead of method calls. Needed for games.
-- **Functions written in place** (lambdas): `do(int n) { print(n); }` as a value, for events and callbacks.
 - **C# events:** hooking a Lust function to "the song finished" or "the button was clicked".
 - **Catching errors**, so one broken enemy or file doesn't end the whole program.
 - **Interfaces and generics:** last, if ever.
