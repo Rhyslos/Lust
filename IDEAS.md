@@ -15,12 +15,13 @@ The order we'd build things in, so Lust grows into something real without biting
 
 1. **Native programs:** `lust build --native`. Small, and useful straight away.
 2. **`fetch web;`:** servers with routes and JSON. Useful straight away, and it's familiar ground.
-3. **`view { }`:** describing screens Compose-style, with Tailwind-style `[ ]` styles, drawn by Lust itself in a window.
-4. **The same views on the web,** over a live connection.
-5. **The 2D engine,** on the same drawing layer as the views, then a sprite-placing editor written in Lust.
-6. **Our own machine code (LLVM),** only if .NET is ever what's holding Lust back.
+3. **LustScript:** Lust turned into Lua, to run inside other programs: Garry's Mod and Aventail first.
+4. **`view { }`:** describing screens Compose-style, with Tailwind-style `[ ]` styles, drawn by Lust itself in a window.
+5. **The same views on the web,** over a live connection.
+6. **The 2D engine,** on the same drawing layer as the views, then a sprite-placing editor written in Lust.
+7. **Our own machine code (LLVM),** only if .NET is ever what's holding Lust back.
 
-`view { }` is the heart of it: one way of describing screens serves desktop windows, web pages and the engine's editor. It's worth designing carefully before any of steps 3 to 5 are built.
+`view { }` is the heart of it: one way of describing screens serves desktop windows, web pages and the engine's editor. It's worth designing carefully before any of steps 4 to 6 are built.
 
 ## The language
 
@@ -195,6 +196,58 @@ With LustQL, `todos` can live in a SQLite file, and that's a real backend.
 **Then views in the browser.** A `view { }` can become HTML just as well as a window, and the `[ ]` styles map almost word for word to CSS. The Lust code stays on the server, and the browser shows the page over a live connection (the way Blazor Server and Phoenix LiveView work). A click changes state on the server, and only what changed is sent back. No JavaScript, and no separate API to keep in step. Making a window app into a web app would be one line: `like WebApp` instead of `like App`.
 
 **Maybe, later:** Lust running inside the browser through WebAssembly. It works with .NET, but costs several megabytes of download before anything shows, so it's only worth it for apps that must work offline.
+
+## LustScript: Lust inside other programs
+
+**One language, two outputs.** Lust compiles through C# into programs of its own. LustScript is the same Lust turned into Lua, so it can run inside programs that already speak Lua. Same parser, same checker, same rules and friendly errors: only the last step, writing the output, differs. The syntax must never split into two languages.
+
+- **What's left out:** the parts that need .NET: `fetch cs:`, `ui` and saves to AppData. Lust says so when a LustScript file uses them.
+- **What comes in:** whatever the host program offers, as a library: `fetch gmod;`, `fetch aventail;`.
+- **Choosing the output:** the same `.lust` files, with `lust build --lua`. No new file extension.
+- **The Lua it writes:** plain Lua 5.1, which Garry's Mod (LuaJIT) runs and Luau mostly accepts. Classes become tables, states become names, cArrays become lists, and a small Lua library handles `print`, `.text()`, cArray ids and the like. Lua 5.1 has no separate whole numbers, so ints are checked strictly by Lust and are plain numbers in Lua, which is exact up to about 9 quadrillion.
+- **The compiler ships as one native file** (step 1 of the plan), so a host program can run it without .NET.
+
+**First homes:**
+
+- **Garry's Mod:** addons written in Lust, Rhy's Library systems included.
+
+  ```
+  fetch gmod;
+
+  object MedKit like Hook {
+      has {
+          int[healAmount 25];
+      }
+
+      method playerUse(Player p) {
+          is p.health < p.maxHealth? then {
+              p.health = p.health + healAmount;
+              p:chat("Healed for " + healAmount.text());
+          }
+      }
+  }
+  ```
+
+- **Aventail:** scripts for its Phase 9 scripting, next to plain Lua. Aventail stays Lua-first, so nobody has to learn Lust to script it, but LustScript fits naturally: a command's `has` block is exactly its list of settings, so each field shows up in the Attributes panel with its starting value. The scripts run in Aventail's Luau sandbox, with its limits and undo, like any Lua script.
+
+  ```
+  fetch aventail;
+
+  object RoundEverything like Command {
+      has {
+          string[title "Round every edge"];
+          float[radius 0.05];
+      }
+
+      method run() {
+          loop (Mesh m in Scene:selected()) {
+              m:bevel(m:edges(), radius);
+          }
+      }
+  }
+  ```
+
+- **Later:** Halberd's Lua plugins, or any other program with Lua inside.
 
 ## Machine code
 
