@@ -1,0 +1,4 @@
+// A ui.lust of your own would hide Lust's windows and buttons.
+class Thing { }
+send Thing;
+end

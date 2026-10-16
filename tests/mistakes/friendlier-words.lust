@@ -1,0 +1,22 @@
+// Mistakes whose messages used to point the wrong way.
+class Dog {
+    has {
+        string[name "Rex"];
+        int age = 3;
+    }
+
+    method bark() {
+        print(self.name);
+    }
+}
+
+do greet { print("hi"); }
+
+int x = 1;
+x is 2;
+truth t = true;
+int n = either t 1 or 2;
+float a = 2.5e3;
+float b = 1e300;
+
+end

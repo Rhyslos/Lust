@@ -1,0 +1,3 @@
+class Dog { has { int[hp 1]; } }
+send Dog;
+end

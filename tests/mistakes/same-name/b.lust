@@ -1,0 +1,4 @@
+class Dog { has { int[hp 2]; } }
+class Kennel { has { Dog[d nothing]; } }
+send Kennel;
+end

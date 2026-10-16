@@ -1,0 +1,1 @@
+main.lust:4:9  x is a Dog, but this is a Dog. These are two different classes called Dog: one from b.lust and one from a.lust. Give one of them another name.

@@ -69,14 +69,18 @@ public sealed class Compilation
                     c.Diags.Add(f.ModulePos, $"{unit.Source.Display} can't {f.Word} from itself.");
                     continue;
                 }
-                var known = c.Files.FirstOrDefault(u => !u.IsNative && u.Source.Path.Equals(other, PathCase));
-                if (known != null) { f.Unit = known; continue; }
-                if (!File.Exists(other) && f.Path == "ui")
+                // fetch ui always means Lust's built-in UI. A ui.lust of your own would quietly
+                // hide Window, Button and the rest, so it's a mistake instead.
+                if (f.Path == "ui")
                 {
+                    if (File.Exists(other))
+                        c.Diags.Add(f.ModulePos, $"fetch ui brings in Lust's built-in windows and buttons, but there's also a ui.lust next to {System.IO.Path.GetFileName(unit.Source.Path)}. Give that file another name.");
                     f.Unit = c.Files.FirstOrDefault(u => u.IsNative && u.Module == "ui");
                     if (f.Unit == null) queue.Enqueue(f.Unit = c.AddBuiltIn("ui"));
                     continue;
                 }
+                var known = c.Files.FirstOrDefault(u => !u.IsNative && u.Source.Path.Equals(other, PathCase));
+                if (known != null) { f.Unit = known; continue; }
                 if (!File.Exists(other))
                 {
                     var here = System.IO.Path.GetFileName(unit.Source.Path);

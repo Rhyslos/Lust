@@ -1,0 +1,28 @@
+// A C# struct kept in a field can be changed from outside too, not just inside a method.
+fetch cs:System.Numerics.Vector2;
+
+class Body {
+    has {
+        Vector2[pos new Vector2(0.0, 0.0)];
+    }
+
+    method move() {
+        pos.X = pos.X + 1.0;
+    }
+}
+
+object World {
+    has {
+        Body[hero nothing];
+    }
+}
+
+Body b = new Body;
+b:move();
+b.pos.X = b.pos.X + 3.0;
+print(b.pos.X);
+World.hero = b;
+World.hero.pos.Y = 7.0;
+print(b.pos.Y);
+
+end

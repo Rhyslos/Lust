@@ -282,7 +282,8 @@ public static class LustRt
 
     public static long Int(double v)
     {
-        if (double.IsNaN(v) || double.IsInfinity(v) || v >= 9.2233720368547758E18 || v < -9.2233720368547758E18)
+        if (double.IsNaN(v)) throw new LustError("this float isn't a number (it came from something like 0.0 / 0), so it can't be an int.");
+        if (double.IsInfinity(v) || v >= 9.2233720368547758E18 || v < -9.2233720368547758E18)
             throw new LustError($"{Text(v)} is too big to be an int.");
         return (long)Math.Truncate(v);
     }
@@ -369,6 +370,7 @@ public static class LustRt
     public static void Wait(double seconds)
     {
         if (double.IsNaN(seconds) || seconds < 0) throw new LustError($"can't wait {Text(seconds)} seconds.");
+        if (seconds > 24 * 24 * 3600) throw new LustError($"can't wait {Text(seconds)} seconds; the longest wait is 24 days.");
         Thread.Sleep(TimeSpan.FromSeconds(seconds));
     }
 

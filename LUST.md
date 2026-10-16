@@ -66,6 +66,8 @@ lives = lives - 1;
 - A variable must be declared before it's used.
 - A variable declared inside `{ }` only exists inside those braces. Once the block ends, the name is free again.
 - A name can't be declared again while it still exists, not even inside an inner block. `int hp = 1;` followed by `loop 2 { int hp = 2; }` is a mistake, because it's never clear which `hp` is meant.
+- A variable (or a parameter, or a loop's item) can't take a name that already means something in the file: a function, a class or object, a state, or a state's option. `int idle = 3;` next to `state = [idle, busy];` is a mistake.
+- One expression can have up to 2000 parts and brackets 300 deep. Past that, split it into steps with a variable for each part.
 
 ### nothing
 
@@ -307,7 +309,7 @@ Dog bo = new Dog { name "Bo", hp 12 };
 Dog rex = new Dog;
 ```
 
-The braces fill in fields, in the same style as `has`. Anything not mentioned keeps its starting value. There are no constructors. `new` on an object (`new Game`) is an error.
+The braces fill in fields, in the same style as `has`, so a state can be written either way: `new Dog { state fighting }` or `new Dog { state is fighting }`. Anything not mentioned keeps its starting value. There are no constructors. `new` on an object (`new Game`) is an error.
 
 ### Using them
 
@@ -498,7 +500,7 @@ print(NumberToWordsExtension:ToWords(42));  // forty-two
 
 ## Windows and buttons (ui)
 
-`fetch ui;` brings in Lust's built-in UI file, for programs with a window. These only run on Windows (they use WinForms underneath), but `lust check` works anywhere.
+`fetch ui;` brings in Lust's built-in UI file, for programs with a window. It always means the built-in one, so a file of your own can't be called `ui.lust` next to a file that fetches `ui`. These only run on Windows (they use WinForms underneath), but `lust check` works anywhere.
 
 ```
 fetch ui;
@@ -592,7 +594,7 @@ Text files are found next to the `.lust` file you run, or next to the program on
 
 ### wait
 
-`wait` pauses only the code that's running it. In a plain program only one thing runs at a time, so it pauses the whole program. Once the game engine runs many objects side by side, a `wait` inside one object's code pauses just that object while the rest carry on.
+`wait` can pause for up to 24 days. `wait` pauses only the code that's running it. In a plain program only one thing runs at a time, so it pauses the whole program. Once the game engine runs many objects side by side, a `wait` inside one object's code pauses just that object while the rest carry on.
 
 ## Errors
 

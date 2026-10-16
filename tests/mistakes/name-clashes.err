@@ -1,0 +1,6 @@
+name-clashes.lust:5:5  there's already a function called dbl, so a variable can't use that name. Pick another one.
+name-clashes.lust:6:5  there's already a class called Dog, so a variable can't use that name. Pick another one.
+name-clashes.lust:7:5  there's already an object called Game, so a variable can't use that name. Pick another one.
+name-clashes.lust:8:5  idle is an option of this file's state, so a variable can't use that name. Pick another one.
+name-clashes.lust:9:13  busy is an option of this file's state, so a variable can't use that name. Pick another one.
+name-clashes.lust:10:14  there's already a function called f, so a variable can't use that name. Pick another one.
