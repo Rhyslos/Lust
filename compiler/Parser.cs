@@ -93,6 +93,14 @@ public sealed class Parser
         return true;
     }
 
+    /// The hint for a word from another language. For self.name and this.name it names the field.
+    string HintFor(Token t)
+    {
+        if (t.Text is "self" or "this" && PeekAt(1).Kind == Tk.Dot && PeekAt(2).Kind == Tk.Ident)
+            return $"inside a method, use a field's name on its own: {PeekAt(2).Text}, not {t.Text}.{PeekAt(2).Text}.";
+        return Hints[t.Text];
+    }
+
     // ----- token helpers -----
 
     Token Cur => toks[p];
@@ -345,7 +353,13 @@ public sealed class Parser
         var pathStart = Cur.Pos;
         string path = "";
         while (At(Tk.Dot) && PeekAt(1).Kind == Tk.Dot && PeekAt(2).Kind == Tk.Slash) { Next(); Next(); Next(); path += "../"; }
-        if (At(Tk.Dot) && PeekAt(1).Kind == Tk.Slash) throw Fail(Cur.Pos, $"a file in the same folder needs no ./ in front: {word.Text} {(PeekAt(2).Kind == Tk.Ident ? PeekAt(2).Text : "dice")};");
+        if (At(Tk.Dot) && PeekAt(1).Kind == Tk.Slash)
+        {
+            // fetch ./game/shared/dice; → fetch game/shared/dice;
+            var wanted = new System.Text.StringBuilder();
+            for (int n = 2; PeekAt(n).Kind is Tk.Ident or Tk.Slash && PeekAt(n).Pos.Line == Cur.Pos.Line; n++) wanted.Append(PeekAt(n).Text);
+            throw Fail(Cur.Pos, $"paths start from this file's folder, so they need no ./ in front: {word.Text} {(wanted.Length > 0 ? wanted.ToString() : "dice")};");
+        }
         if (At(Tk.Dot)) throw Fail(Cur.Pos, $"to go up a folder, write ../ like {word.Text} ../shared/dice;");
         if (!At(Tk.Ident)) throw Fail(MissingAt, $"say which file to {word.Text} from, like {word.Text} dice:roll;");
         var module = Next();
@@ -536,7 +550,14 @@ public sealed class Parser
         }
         // string array bag [];   cArray(string itemName, int amount) loot [];
         var fieldName = ExpectName("a field name");
-        if (At(Tk.Assign)) throw Fail(Cur.Pos, $"no = in a has block. Write the name and then its starting value: {fieldName.Text} {ExampleValue(type)}");
+        if (At(Tk.Assign))
+        {
+            // int age = 3; written like a variable. Show the has block's own way, with their value.
+            var given = PeekAt(1).Kind is Tk.Int or Tk.Float or Tk.String || PeekAt(1).Is("true") || PeekAt(1).Is("nothing") ? PeekAt(1).Text : ExampleValue(type);
+            throw Fail(Cur.Pos, LType.Primitive(type.ToString()) != null || !type.ToString().Contains(' ')
+                ? $"in a has block, fields go in [ ] with their starting value, and no =: {type}[{fieldName.Text} {given}];"
+                : $"no = in a has block. Write the name and then its starting value: {type} {fieldName.Text} {ExampleValue(type)};");
+        }
         if (At(Tk.Semi)) throw Fail(MissingAt, $"give {fieldName.Text} a starting value: {type} {fieldName.Text} {ExampleValue(type)};");
         var dflt = Expression();
         decl.Fields.Add(new FieldDecl { Pos = fieldName.Pos, Type = type, Name = fieldName.Text, Default = dflt });
@@ -557,6 +578,8 @@ public sealed class Parser
             if (!At(Tk.Ident)) throw Fail(MissingAt, $"expected a name, like {word.Text} greet() {{ }}");
             if (AtWord("void")) throw Fail(Cur.Pos, Hints["void"]);
             returns = Type();
+            // do greet { }: that was the name, and the ( ) are missing.
+            if (At(Tk.LBrace)) throw Fail(MissingAt, $"expected ( after {returns}, even when it takes nothing: {word.Text} {returns}() {{ }}");
         }
         if (!At(Tk.Ident)) throw Fail(MissingAt, $"expected a name, like {word.Text} {(returns != null ? returns + " " : "")}greet() {{ }}");
         var nameTok = Next();
@@ -709,6 +732,8 @@ public sealed class Parser
 
     Stmt StatementInner()
     {
+        exprParts = 0;
+        exprDepth = 0;
         var t = Cur;
         if (t.Kind == Tk.LBrace) throw Fail(t.Pos, "a { } block needs a loop or a question in front of it.");
         if (t.Kind == Tk.Semi) throw Fail(t.Pos, "there's a ; here with nothing before it.");
@@ -757,7 +782,7 @@ public sealed class Parser
             case "state" when IsStateDeclaration(): throw Fail(t.Pos, "a state is declared at the top level of a file.");
         }
         if (LooksLikeDeclaration()) return VarDeclStmt();
-        if (HintApplies(t)) { diags.Add(t.Pos, Hints[t.Text]); throw new ParseStop(); }
+        if (HintApplies(t)) { diags.Add(t.Pos, HintFor(t)); throw new ParseStop(); }
 
         var target = Postfix();
         if (At(Tk.Assign))
@@ -776,6 +801,9 @@ public sealed class Parser
         if (AtWord("is") && Cur.Pos.Line == Prev.Pos.Line)
         {
             Next();
+            // x is 2; is a value, not a state's option: that's what = is for.
+            if (!At(Tk.Ident) && StartsValue(Cur) || AtWord("true") || AtWord("nothing") || AtWord("not") && PeekAt(1).Is("true"))
+                throw Fail(t.Pos, $"is sets a state to one of its options. To change a value, use =: {Snippet(target)} = {(AtWord("not") ? "not true" : Cur.Text)};");
             var opt = OptionPath($"say which option: {Snippet(target)} is idle;");
             if (At(Tk.LParen)) throw Fail(Cur.Pos, $"is sets a state to one of its options by name. To set it from a function, use =: {Snippet(target)} = {opt.Text}(…);");
             EndStatement();
@@ -853,6 +881,7 @@ public sealed class Parser
         while (At(Tk.OrOr))
         {
             var op = Next();
+            CountPart();
             var right = CheckAnd();
             left = new Binary { Pos = left.Pos, OpPos = op.Pos, Op = BinOp.Or, Left = left, Right = right };
         }
@@ -865,6 +894,7 @@ public sealed class Parser
         while (At(Tk.AndAnd))
         {
             var op = Next();
+            CountPart();
             var right = CheckPart();
             left = new Binary { Pos = left.Pos, OpPos = op.Pos, Op = BinOp.And, Left = left, Right = right };
         }
@@ -988,17 +1018,36 @@ public sealed class Parser
 
     // ----- expressions -----
 
+    // Huge expressions (thousands of parts, or brackets hundreds deep) would overflow the
+    // compiler's stack later on, so they get a friendly mistake here instead.
+    const int MaxExprParts = 2000, MaxExprDepth = 300;
+    const string ExprTooBig = "this is too much for one expression. Split it into smaller steps, with a variable for each part.";
+    int exprDepth, exprParts;
+    void CountPart() { if (++exprParts > MaxExprParts) throw Fail(Cur.Pos, ExprTooBig); }
+    void EnterBrackets() { if (++exprDepth > MaxExprDepth) { exprDepth = 0; throw Fail(Cur.Pos, ExprTooBig); } }
+    void LeaveBrackets() { if (exprDepth > 0) exprDepth--; }
+
     public Expr Expression()
     {
-        if (AtWord("either")) return EitherExpr();
-        return OrExpr();
+        if (exprDepth == 0) exprParts = 0;
+        if (++exprDepth > MaxExprDepth) { exprDepth = 0; throw Fail(Cur.Pos, ExprTooBig); }
+        try
+        {
+            if (AtWord("either")) return EitherExpr();
+            return OrExpr();
+        }
+        finally { if (exprDepth > 0) exprDepth--; }
     }
 
     Expr EitherExpr()
     {
         var start = Next().Pos;
         var check = Check();
-        if (!At(Tk.Question)) throw Fail(MissingAt, AtWord("and") || AtWord("or") ? QuestionEndMessage("") : "either needs a question ending with ?: either hp > 0? \"up\" or \"down\"");
+        if (!At(Tk.Question)) throw Fail(MissingAt,
+            AtWord("and") ? QuestionEndMessage("")
+            // either t 1 or 2: the ? was left out, so the "or" belongs to either.
+            : AtWord("or") ? "either's question ends with ? before the answers: either hp > 0? \"up\" or \"down\""
+            : "either needs a question ending with ?: either hp > 0? \"up\" or \"down\"");
         Next();
         var yes = Expression();
         if (!AtWord("or")) throw Fail(MissingAt, "either needs an or: either hp > 0? \"up\" or \"down\"");
@@ -1013,6 +1062,7 @@ public sealed class Parser
         while (At(Tk.OrOr))
         {
             var op = Next();
+            CountPart();
             left = new Binary { Pos = left.Pos, OpPos = op.Pos, Op = BinOp.Or, Left = left, Right = AndExpr() };
         }
         return left;
@@ -1024,6 +1074,7 @@ public sealed class Parser
         while (At(Tk.AndAnd))
         {
             var op = Next();
+            CountPart();
             left = new Binary { Pos = left.Pos, OpPos = op.Pos, Op = BinOp.And, Left = left, Right = NotExpr() };
         }
         return left;
@@ -1034,6 +1085,7 @@ public sealed class Parser
         if (AtWord("not"))
         {
             var t = Next();
+            CountPart();
             return new Unary { Pos = t.Pos, Op = UnOp.Not, Operand = NotExpr() };
         }
         return Compare();
@@ -1062,6 +1114,7 @@ public sealed class Parser
         {
             if (listKey && NegativeValueNext) break;
             var op = Next();
+            CountPart();
             left = new Binary { Pos = left.Pos, OpPos = op.Pos, Op = op.Kind == Tk.Plus ? BinOp.Add : BinOp.Sub, Left = left, Right = Product() };
         }
         return left;
@@ -1073,6 +1126,7 @@ public sealed class Parser
         while (At(Tk.Star) || At(Tk.Slash) || At(Tk.Percent))
         {
             var op = Next();
+            CountPart();
             var kind = op.Kind switch { Tk.Star => BinOp.Mul, Tk.Slash => BinOp.Div, _ => BinOp.Mod };
             left = new Binary { Pos = left.Pos, OpPos = op.Pos, Op = kind, Left = left, Right = Negate() };
         }
@@ -1092,6 +1146,7 @@ public sealed class Parser
         if (At(Tk.Minus))
         {
             var t = Next();
+            CountPart();
             var operand = Negate();
             // -3 is just the number -3.
             if (operand is IntLit i) return new IntLit { Pos = t.Pos, Value = -i.Value };
@@ -1209,6 +1264,7 @@ public sealed class Parser
                 bool saved = noSpacedCall, savedKey = listKey;
         listKey = false;
                 noSpacedCall = false;
+                EnterBrackets();
                 try
                 {
                     // A whole check fits in ( ), so questions can group: is a && (b 1 || c 2)?
@@ -1216,7 +1272,7 @@ public sealed class Parser
                     Expect(Tk.RParen, "expected ) here.");
                     return e;
                 }
-                finally { noSpacedCall = saved; listKey = savedKey; }
+                finally { noSpacedCall = saved; listKey = savedKey; LeaveBrackets(); }
             }
             case Tk.LBrack:
             {
@@ -1266,7 +1322,7 @@ public sealed class Parser
             var n = Next();
             return new SavedExpr { Pos = t.Pos, Name = n.Text, NamePos = n.Pos };
         }
-        if (t.Text is "false" or "null" || (t.Text is "self" or "this" && PeekAt(1).Kind == Tk.Dot)) throw Fail(t.Pos, Hints[t.Text]);
+        if (t.Text is "false" or "null" || (t.Text is "self" or "this" && PeekAt(1).Kind == Tk.Dot)) throw Fail(t.Pos, HintFor(t));
         if (t.Text == "state") { Next(); return new Name { Pos = t.Pos, Id = "state" }; }
         if (Reserved.Contains(t.Text)) throw Fail(t.Pos, $"expected a value here, but found the word {t.Text}.");
 
@@ -1297,6 +1353,8 @@ public sealed class Parser
                 var f = Next();
                 if (At(Tk.Assign)) throw Fail(Cur.Pos, $"no = inside new {{ }}. Write the field and its value: {f.Text} …");
                 if (At(Tk.Comma) || At(Tk.RBrace)) throw Fail(MissingAt, $"give {f.Text} a value: new {cls.Text} {{ {f.Text} … }}");
+                // new Dog { state is fighting }, the way a has block writes a state, works too.
+                if (AtWord("is")) Next();
                 var value = Expression();
                 e.Inits.Add((f.Text, f.Pos, value));
                 if (At(Tk.Comma)) { Next(); continue; }

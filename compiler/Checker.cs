@@ -58,7 +58,7 @@ public sealed class Checker
         }
         foreach (var cd in ast.Classes)
         {
-            if (f.Classes.TryGetValue(cd.Name, out var old)) { Error(cd.Pos, $"there's already a {old.Kind} called {cd.Name}, on line {old.Decl.Pos.Line}."); continue; }
+            if (f.Classes.TryGetValue(cd.Name, out var old)) { Error(cd.Pos, $"there's already {AnA(old.Kind)} called {cd.Name}, on line {old.Decl.Pos.Line}."); continue; }
             if (f.States.ContainsKey(cd.Name)) { Error(cd.Pos, $"there's already a state called {cd.Name}."); continue; }
             var sym = new ClassSym { Name = cd.Name, File = f, Decl = cd };
             cd.Sym = sym;
@@ -76,7 +76,7 @@ public sealed class Checker
         foreach (var fd in ast.Funcs)
         {
             if (f.Funcs.TryGetValue(fd.Name, out var old)) { Error(fd.NamePos, $"there's already a function called {fd.Name}, on line {old.Decl.Pos.Line}."); continue; }
-            if (f.Classes.TryGetValue(fd.Name, out var cls)) { Error(fd.NamePos, $"there's already a {cls.Kind} called {fd.Name}."); continue; }
+            if (f.Classes.TryGetValue(fd.Name, out var cls)) { Error(fd.NamePos, $"there's already {AnA(cls.Kind)} called {fd.Name}."); continue; }
             var sym = new FuncSym { Name = fd.Name, File = f, Decl = fd };
             fd.Sym = sym;
             f.Funcs[fd.Name] = sym;
@@ -259,6 +259,7 @@ public sealed class Checker
             if (mapped is not CsType) { Error(t.Pos, mapped == null ? $"Lust can't use {t.Name} values." : $"a {t.Name} is just {mapped.WithArticle} in Lust. Write {mapped.Name}."); return LType.Error; }
             return mapped;
         }
+        if (UiHint(t.Name) is { } uiT) { Error(t.Pos, uiT); return LType.Error; }
         Error(t.Pos, $"Lust doesn't have a type called {t.Name}.{Suggest(t.Name, f.Classes.Keys.Concat(f.States.Keys).Concat(new[] { "int", "float", "string", "truth" }))} The types are int, float, string, truth, arrays, cArrays, classes and states.");
         return LType.Error;
     }
@@ -280,7 +281,7 @@ public sealed class Checker
         if (decl.Parent != null)
         {
             if (!f.Classes.TryGetValue(decl.Parent, out var parent))
-                Error(decl.ParentPos, $"there's no class called {decl.Parent}.{Suggest(decl.Parent, f.Classes.Keys)}");
+                Error(decl.ParentPos, UiHint(decl.Parent) ?? $"there's no class called {decl.Parent}.{Suggest(decl.Parent, f.Classes.Keys)}");
             else if (parent.IsObject)
                 Error(decl.ParentPos, $"{decl.Parent} is an object. Only a class can be built on with like.");
             else
@@ -553,6 +554,7 @@ public sealed class Checker
     {
         var existing = Lookup(ctx, id);
         if (ctx.File.CsTypes.ContainsKey(id)) Error(pos, $"{id} is a C# type fetched in this file, so a variable can't use that name.");
+        else if (NameTakenBy(ctx.File, id) is string taken) Error(pos, $"{taken}, so a variable can't use that name. Pick another one.");
         else if (existing != null) Error(pos, $"{id} is already declared on line {existing.Pos.Line}. Pick another name, or leave out the type to change it: {id} = …;");
         else if (ctx.Class?.Field(id) != null && ctx.Func != null && !ctx.Func.Params.Any(p => p.Name == id))
             Error(pos, $"{ctx.Class.Name} has a field called {id}, so a variable here can't use that name.");
@@ -560,6 +562,20 @@ public sealed class Checker
         if (existing == null) ctx.Scopes[^1][id] = v;
         return v;
     }
+
+    /// What else a name already means in this file, if anything: a function, a class or object,
+    /// a state, or a state's option. Variables can't reuse these names, or one would hide the other.
+    static string? NameTakenBy(FileUnit f, string id)
+    {
+        if (f.Funcs.ContainsKey(id)) return $"there's already a function called {id}";
+        if (f.Classes.TryGetValue(id, out var cls)) return $"there's already {AnA(cls.Kind)} called {id}";
+        if (f.States.ContainsKey(id)) return $"there's already a state called {id}";
+        var owner = VisibleStates(f).FirstOrDefault(st => st.Options.Any(o => o == id || o.EndsWith("." + id)));
+        if (owner != null) return $"{id} is an option of {(owner.Display == "state" ? "this file's state" : owner.Display)}";
+        return null;
+    }
+
+    static string AnA(string word) => ("aeiou".Contains(char.ToLowerInvariant(word[0])) ? "an " : "a ") + word;
 
     void InScope(Ctx ctx, Action body)
     {
@@ -600,6 +616,14 @@ public sealed class Checker
             }
             case StateSet ss:
             {
+                // state is idle; outside any class: the state is the list of options itself, and
+                // nothing here is in it yet. Something has to hold the current option.
+                if (ss.Target is Name sn && ctx.Class == null && Lookup(ctx, sn.Id) == null && ctx.File.States.TryGetValue(sn.Id, out var listed))
+                {
+                    var kind = sn.Id == "state" ? "state" : sn.Id;
+                    Error(ss.Pos, $"{sn.Id} is the list of options itself, so there's nothing to set here. Something has to be in it: a class or object, with {kind} is {listed.Options[0]}; in its has block, or a variable, like {kind} now = {listed.Options[0]};");
+                    break;
+                }
                 var t = Expr(ss.Target, ctx);
                 if (t == LType.Error) break;
                 if (t is not StateType st)
@@ -801,7 +825,7 @@ public sealed class Checker
             case FieldGet { Kind: FieldKind.Cs, Cs: { } cm } cf:
                 if (!cm.CanSet) { Error(cf.FieldPos, $"{cf.Field} can only be read, not changed."); return false; }
                 // Changing a C# struct that's a copy (like list[0].X) would change nothing.
-                if (!cm.IsStatic && cf.Target.Type is CsType { Clr.IsValueType: true } && cf.Target is not Name { Kind: NameKind.Local or NameKind.Field })
+                if (!cm.IsStatic && cf.Target.Type is CsType { Clr.IsValueType: true } && cf.Target is not (Name { Kind: NameKind.Local or NameKind.Field } or FieldGet { Kind: FieldKind.Field }))
                 {
                     Error(cf.FieldPos, $"{Describe(cf.Target)} is a copy of a C# struct, so changing its {cf.Field} would change nothing. Put it in a variable, change that, and put it back.");
                     return false;
@@ -854,6 +878,11 @@ public sealed class Checker
             _ when actual == LType.String && wanted.IsNumber => $" Use .{wanted.Name}() to turn text into a number.",
             _ when actual == LType.Nothing && wanted is CsType { CanBeNothing: false } => $" A {wanted.Name} can't be nothing. Start it with new {wanted.Name}(…).",
             _ when actual == LType.Nothing => " Only things made from classes can be nothing.",
+            // Two different things with the same name, from different files.
+            _ when actual is ClassType sc && wanted is ClassType wsc && sc.Name == wsc.Name =>
+                $" These are two different classes called {sc.Name}: one from {sc.Sym.File.Source.Display} and one from {wsc.Sym.File.Source.Display}. Give one of them another name.",
+            _ when actual is StateType ss && wanted is StateType ws && ss.Sym.Name == ws.Sym.Name =>
+                $" These are two different states called {ss.Sym.Name}: one from {ss.Sym.File.Source.Display} and one from {ws.Sym.File.Source.Display}. Give one of them another name.",
             _ when actual is ClassType ac && wanted is ClassType wc => $" A {ac.Name} isn't like a {wc.Name}.",
             _ when actual is FuncType af && af.Return == wanted => " Add () to call it.",
             _ when actual is FuncType && wanted is FuncType => " A function only fits where it takes and gives back exactly the same types.",
@@ -921,6 +950,13 @@ public sealed class Checker
             case Binary b: return BinaryType(b, ctx);
             case Same s:
             {
+                // is scores []? compares with a brand new empty list, so it's never true.
+                if (s.Right is ArrayLit { Items.Count: 0 } || s.Left is ArrayLit { Items.Count: 0 })
+                {
+                    var other = s.Right is ArrayLit ? s.Left : s.Right;
+                    Error(s.Pos, $"this asks whether {Describe(other)} is that one new, empty list, which it never is. To ask whether it's empty: is #{Describe(other)} {(s.Negated ? "not " : "")}0?");
+                    return LType.Truth;
+                }
                 LType l, r;
                 if (AmbiguousOption(s.Left, ctx))
                 {
@@ -1484,7 +1520,7 @@ public sealed class Checker
         if (!ctx.File.Classes.TryGetValue(nw.Class, out var cls))
         {
             foreach (var i in nw.Inits) Expr(i.Value, ctx);
-            Error(nw.ClassPos, $"there's no class called {nw.Class}.{Suggest(nw.Class, ctx.File.Classes.Keys)}");
+            Error(nw.ClassPos, UiHint(nw.Class) ?? $"there's no class called {nw.Class}.{Suggest(nw.Class, ctx.File.Classes.Keys)}");
             return LType.Error;
         }
         nw.Sym = cls;
@@ -1708,6 +1744,11 @@ public sealed class Checker
     }
 
     // ----- spelling suggestions -----
+
+    /// Window, Button and the rest come from fetch ui;. Used when one of them isn't known here.
+    static readonly HashSet<string> UiClasses = new() { "Window", "Widget", "Label", "Button", "Input", "Toggle", "Picture", "Canvas", "Row" };
+    static string? UiHint(string name) =>
+        UiClasses.Contains(name) ? $"{name} comes from Lust's windows and buttons. Add fetch ui; at the top of the file." : null;
 
     static string Suggest(string name, IEnumerable<string> candidates)
     {

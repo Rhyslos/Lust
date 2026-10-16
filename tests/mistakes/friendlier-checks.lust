@@ -1,0 +1,16 @@
+// Mistakes the checker now explains better.
+state = [idle, busy];
+state season = [spring, fall];
+
+state is idle;
+season is fall;
+
+object App like Window { }
+
+int array scores = [];
+is scores []? then { print("empty"); }
+
+object Cat { }
+class Cat { }
+
+end

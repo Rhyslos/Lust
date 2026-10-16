@@ -69,10 +69,32 @@ public static class Lexer
                 while (j < s.Length && s[j] >= '0' && s[j] <= '9') j++;
                 bool isFloat = j + 1 < s.Length && s[j] == '.' && s[j + 1] >= '0' && s[j + 1] <= '9';
                 if (isFloat) { j++; while (j < s.Length && s[j] >= '0' && s[j] <= '9') j++; }
+                // 2.5e3: Lust writes numbers out in full. Read the whole thing, then say how it's written.
+                if (j < s.Length && s[j] is 'e' or 'E')
+                {
+                    int ex = j + 1;
+                    if (ex < s.Length && s[ex] is '+' or '-') ex++;
+                    if (ex < s.Length && char.IsAsciiDigit(s[ex]))
+                    {
+                        while (ex < s.Length && char.IsAsciiDigit(s[ex])) ex++;
+                        var full = double.Parse(s.AsSpan(i, ex - i), CultureInfo.InvariantCulture);
+                        diags.AddSymbol(pos, Math.Abs(full) < 1e15 && Math.Abs(full) >= 0.0001
+                            ? $"Lust writes numbers out in full, without e: {full.ToString(full == Math.Floor(full) ? "0.0" : "0.####", CultureInfo.InvariantCulture)}"
+                            : "Lust writes numbers out in full, without e, and this one is too big or too small to write.");
+                        tokens.Add(new Token(Tk.Float, s.Substring(i, ex - i), pos, space) { FloatValue = full });
+                        Advance(ex - i);
+                        space = false;
+                        continue;
+                    }
+                }
                 string text = s.Substring(i, j - i);
                 if (j < s.Length && (char.IsLetter(s[j]) || s[j] == '_'))
                 {
-                    diags.AddSymbol(pos, $"a name can't start with a number.");
+                    // fetch 2d;: a file's name is used in the code, so it has to start with a letter too.
+                    bool inFetch = tokens.Count > 0 && (tokens[^1].Kind == Tk.Slash || tokens[^1].Kind == Tk.Ident && tokens[^1].Text is "fetch" or "get");
+                    diags.AddSymbol(pos, inFetch
+                        ? "a file that's fetched needs a name that starts with a letter, since the name is used in your code. Rename it, like d2.lust."
+                        : "a name can't start with a number.");
                 }
                 if (isFloat)
                 {

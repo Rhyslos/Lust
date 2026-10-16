@@ -1,0 +1,11 @@
+do int dbl(int n) { give n * 2; }
+class Dog { has { int[hp 1]; } }
+object Game { has { int[x 0]; } }
+state = [idle, busy];
+int dbl = 5;
+int Dog = 1;
+int Game = 2;
+int idle = 3;
+loop (state busy in state) { print(busy.text()); }
+do int f(int f) { give f; }
+end

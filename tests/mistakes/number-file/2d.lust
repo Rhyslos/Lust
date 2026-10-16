@@ -1,0 +1,3 @@
+do int two() { give 2; }
+send two;
+end

@@ -1,0 +1,5 @@
+friendlier-checks.lust:5:1  state is the list of options itself, so there's nothing to set here. Something has to be in it: a class or object, with state is idle; in its has block, or a variable, like state now = idle;
+friendlier-checks.lust:6:1  season is the list of options itself, so there's nothing to set here. Something has to be in it: a class or object, with season is spring; in its has block, or a variable, like season now = spring;
+friendlier-checks.lust:8:17  Window comes from Lust's windows and buttons. Add fetch ui; at the top of the file.
+friendlier-checks.lust:11:4  this asks whether scores is that one new, empty list, which it never is. To ask whether it's empty: is #scores 0?
+friendlier-checks.lust:14:1  there's already an object called Cat, on line 13.
