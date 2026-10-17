@@ -1,6 +1,6 @@
 # Ideas for later
 
-Things we've talked about but aren't building yet. Nothing here is decided: each idea gets designed together before it's built, the way saves were. The rules that are real live in [LUST.md](LUST.md).
+Lust's long-term plan: everything we've talked about but haven't built yet. Some ideas are decided in direction (marked as such), but each one still gets designed together in detail before it's built, the way saves were. The rules that are real today live in [LUST.md](LUST.md).
 
 ## What Lust is aiming for
 
@@ -22,6 +22,27 @@ The order we'd build things in, so Lust grows into something real without biting
 7. **Our own machine code (LLVM),** only if .NET is ever what's holding Lust back.
 
 `view { }` is the heart of it: one way of describing screens serves desktop windows, web pages and the engine's editor. It's worth designing carefully before any of steps 4 to 6 are built.
+
+The smaller language additions below (hooks, `with`, `{ }` in text, `when`, LustQL, `+=`) can slot in between any of these steps.
+
+## How big it is
+
+Rough estimates, measured against today's Lust: about 5,500 lines of compiler plus 2,000 lines of runtime, so 7,500 in all.
+
+| Plan | Rough size | How hard |
+| --- | --- | --- |
+| Native builds | 100–300 lines | Small: one pull request |
+| Language additions (hooks, `with`, `{ }` in text, `when`, `+=`, `assemble`) | 1,500–2,500 lines together | Medium: each is small, `assemble` needs the most design |
+| LustQL | 800–1,500 lines | Medium: SQLite does the hard part |
+| `fetch web;` | 1,000–2,000 lines | Medium: ASP.NET does the hard part |
+| LustScript | 1,500–2,000 lines, plus 500–1,500 per host program | Medium to large |
+| `view { }` and Lust drawing its own UI | 2,000 for the language, 10,000–20,000+ for the renderer | The big one: text editing, scrolling, fonts and high-DPI take the time |
+| Views on the web | 3,000–5,000 lines | Large |
+| 2D engine and sprite editor | 3,000–6,000, plus 2,000–5,000 for the editor (in Lust) | Large, and reuses the renderer |
+| Ledger tooling (autocomplete, hover, stepping through Lust) | 2,000–4,000 lines | Medium |
+| Our own machine code (LLVM) | 20,000+ lines | Huge: a second compiler. Only if ever needed |
+
+Without LLVM that's roughly 30,000–50,000 lines, 4 to 7 times today's Lust. The pace is set less by writing code than by designing each feature, testing it on Windows and reviewing it. As a guide: native builds and the small additions take a few sessions each, LustQL, `fetch web;` and LustScript a week or two of sessions each, and the renderer months of on-and-off work.
 
 ## The language
 
@@ -155,6 +176,7 @@ end
 - Styles go in `[ ]`, the same brackets as `int[hp 20]`: short words like `gap 12`, `pad 24`, `blue`, `round`. A style can be named once and reused: `style card = [pad 16, round, shadow];`.
 - Questions and `loop` work inside a view. Switching screens is just a question, and a list is a `loop` inside a `column`.
 - Lust draws the views itself (with SDL or Skia underneath) instead of using WinForms. WinForms is boxy, Windows-only and can't be built natively. The same drawing layer becomes the 2D engine's.
+- **To decide before building:** draw everything ourselves, or build `view { }` on an existing toolkit like **Avalonia** (a mature .NET UI library for Windows, macOS and Linux). You'd write exactly the same `view { }` and `[ ]` styles either way. Avalonia would handle text boxes, fonts and scrolling, cutting the biggest item in the plan from 10,000–20,000 lines to perhaps 3,000–5,000. The cost is less control over the look, and the 2D engine would need a drawing layer of its own.
 - The current `ui` keeps working until views can do everything it does.
 
 ## The web: fetch web;
@@ -174,7 +196,7 @@ class Todo {
 object Api like Server {
     has {
         int[port 8080];
-        Todo array[todos];
+        Todo array[todos []];
     }
 
     route get "/todos" {
