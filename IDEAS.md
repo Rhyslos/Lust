@@ -72,7 +72,7 @@ Talked through and liked, but the exact syntax still needs working out:
   }
   ```
 
-  This and "States that react" below both want the word `when`, so one of them needs to give way.
+  This and "States that react" below both want the word `when`, so one of them needs to give way. Left open for now: the language may get a bigger redesign first.
 - **LustQL: a cArray that lives in SQLite.** Practical, not a second language to learn:
 
   ```
@@ -176,7 +176,7 @@ end
 - Styles go in `[ ]`, the same brackets as `int[hp 20]`: short words like `gap 12`, `pad 24`, `blue`, `round`. A style can be named once and reused: `style card = [pad 16, round, shadow];`.
 - Questions and `loop` work inside a view. Switching screens is just a question, and a list is a `loop` inside a `column`.
 - Lust draws the views itself (with SDL or Skia underneath) instead of using WinForms. WinForms is boxy, Windows-only and can't be built natively. The same drawing layer becomes the 2D engine's.
-- **To decide before building:** draw everything ourselves, or build `view { }` on an existing toolkit like **Avalonia** (a mature .NET UI library for Windows, macOS and Linux). You'd write exactly the same `view { }` and `[ ]` styles either way. Avalonia would handle text boxes, fonts and scrolling, cutting the biggest item in the plan from 10,000–20,000 lines to perhaps 3,000–5,000. The cost is less control over the look, and the 2D engine would need a drawing layer of its own.
+- **Decided: we build our own.** Lust draws everything itself: layout, text boxes, fonts, scrolling. No existing UI toolkit underneath. It's the biggest item in the plan, but it gives full control over how Lust apps look and feel, and the same drawing layer powers the 2D engine.
 - The current `ui` keeps working until views can do everything it does.
 
 ## The web: fetch web;
