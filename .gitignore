@@ -1,6 +1,2 @@
-bin/
-obj/
-build/
-*.user
-.vs/
-tests/saves/out/
+/target
+*.lua.out

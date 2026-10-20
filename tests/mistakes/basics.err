@@ -1,0 +1,10 @@
+basics.lsc:1:14  missing ; at the end of this line.
+basics.lsc:3:1  Lust asks questions instead of if: is hp == 0? then { }
+basics.lsc:4:10  questions compare with ==, not =: is hp == 0?
+basics.lsc:5:11  age is an int, but this is a string. Use .int() to turn text into a number.
+basics.lsc:6:23  can't add an int to a string. Use lives.text() to turn it into text.
+basics.lsc:7:7  there's nothing called nobody here. Declare it first, like int nobody = 0;
+basics.lsc:8:1  put the type first: int lives = 3;
+basics.lsc:9:5  lives is already declared on line 1. Pick another name, or leave out the type to change it: lives = …;
+
+8 mistakes. Nothing was run.

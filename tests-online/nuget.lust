@@ -1,9 +1,0 @@
-// Needs the internet: NuGet packages are downloaded the first time. Run with: lust test tests-online
-fetch cs:Humanizer.NumberToWordsExtension from "Humanizer.Core" 2.14.1;
-fetch cs:Humanizer.InflectorExtensions from "Humanizer.Core" 2.14.1;
-
-print(NumberToWordsExtension:ToWords(42));
-print(InflectorExtensions:Pluralize("cat"));
-print(InflectorExtensions:Titleize("lust valley"));
-
-end

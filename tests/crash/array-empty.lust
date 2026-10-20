@@ -1,4 +1,0 @@
-string array names = [];
-names:remove(0);
-
-end

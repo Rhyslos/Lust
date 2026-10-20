@@ -1,9 +1,0 @@
-other-languages.lust:1:1  Lust calls it truth: truth alive = true;
-other-languages.lust:2:1  Lust asks questions instead of if: is hp 0? then { }
-other-languages.lust:2:7  Lust has no ==. To check if two things are the same, ask: is a b?
-other-languages.lust:2:29  Lust uses or instead of else: } or { }
-other-languages.lust:3:1  Lust has one loop: loop (hp > 0) { }
-other-languages.lust:4:1  Lust uses give to hand back a value.
-other-languages.lust:5:1  put the type first, like int lives = 3;
-other-languages.lust:6:1  Lust makes functions with do.
-other-languages.lust:7:7  Lust calls it nothing.

@@ -1,7 +1,0 @@
-friendlier-words.lust:5:17  in a has block, fields go in [ ] with their starting value, and no =: int[age 3];
-friendlier-words.lust:9:15  inside a method, use a field's name on its own: name, not self.name.
-friendlier-words.lust:13:10  expected ( after greet, even when it takes nothing: do greet() { }
-friendlier-words.lust:16:1  is sets a state to one of its options. To change a value, use =: x = 2;
-friendlier-words.lust:18:20  either's question ends with ? before the answers: either hp > 0? "up" or "down"
-friendlier-words.lust:19:11  Lust writes numbers out in full, without e: 2500.0
-friendlier-words.lust:20:11  Lust writes numbers out in full, without e, and this one is too big or too small to write.

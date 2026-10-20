@@ -1,3 +1,0 @@
-text-and-numbers.lust:2:15  can't add an int to a string. Use age.text() to turn age into text.
-text-and-numbers.lust:4:9  + works on numbers, but this has a truth.
-text-and-numbers.lust:5:11  can't add an int to a string. Use (…).text() to turn it into text.

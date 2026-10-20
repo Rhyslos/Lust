@@ -1,8 +1,0 @@
-// Endless recursion stops with a message instead of crashing.
-do int f(int n) {
-    give f(n + 1);
-}
-
-print(f(0));
-
-end

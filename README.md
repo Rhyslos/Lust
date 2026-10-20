@@ -2,108 +2,100 @@
 
 # Lust
 
-A small, strict, slightly silly programming language for things that have a state, carry stuff, and change over time. Think text adventures, RPG systems, little simulations, and small Windows games and apps.
+A small, strict language for apps, games, tools and scripting. Checks are written as questions, states are built in, and every file ends with `end`.
 
 ```
-state = [idle, fighting, knocked_out];
+state Mood = [Cheerful, Grumpy];
 
 class Player {
     has {
-        string[name "Hero"];
-        int[hp 20];
-        state is idle;
+        string name = "Hero";
+        int hp = 20;
+        Mood mood = Mood.Cheerful;
     }
 
     method hurt(int damage) {
         hp = hp - damage;
 
         is hp <= 0? then {
-            state is knocked_out;
             print(name + " is knocked out!");
-        } or {
-            print(name + " has " + hp.text() + " hp left");
+        } or is hp < 10? then {
+            mood = Mood.Grumpy;
+            print(name + " has " + hp.text() + " hp left.");
         }
     }
 }
 
-Player ada = new Player { name "Ada" };
-ada:hurt(7);
+Player ada = new Player { name = "Ada" };
+ada:hurt(12);
 
 end
 ```
 
-## What makes it Lust
+## Lust 2
 
-- **Checks are questions.** No `if`, no `==`: `is hp 0? then { } or { }`, plus the one-liner `either alive? "ready" or "napping"`.
-- **`state` is built in.** Every file can have one, and things just *are* in a state: `state is fighting;`.
-- **cArrays.** A connected array is a tiny table with ids: perfect for inventories and shops.
-- **One loop.** `loop` does forever, repeat, while and for-each.
-- **Saves built in.** `save game = [Farm, player];`, then `save game;` and `load game;`. Save files are readable (and cheatable).
-- **C# when you need it.** `fetch cs:System.Random;` brings in anything from .NET, or from a NuGet package.
-- **Strict and friendly.** Types first, `;` everywhere, every file ends with `end`, and mistakes are caught before the program runs, with errors that say what to do.
-- **`true` and `not true`.** There is no `false`.
+This is **Lust 2**, a fresh start written in Rust. One language, two outputs:
 
-The full rules are in **[LUST.md](LUST.md)**. Examples are in [`examples/`](examples).
+| Output | Files | For |
+| --- | --- | --- |
+| Rust, compiled to real programs | `.lust` | apps, tools and servers on Windows, macOS and Linux *(coming next)* |
+| LustScript, turned into Lua | `.lsc` | scripting and modding inside other programs, like Garry's Mod, Aventail and Halberd |
+
+**What works today (alpha 1):** LustScript. Every `.lsc` file is checked before it runs, with mistakes explained in plain words, then turned into plain Lua 5.1 that Garry's Mod (LuaJIT) and Luau can run. `lust run` runs a file straight away, with Lua built into `lust` itself, so nothing else needs installing.
+
+The full rules are in **[LUST.md](LUST.md)**, and the long-term plan is in [IDEAS.md](IDEAS.md). Lust 1, the version that compiled to C#, lives on the [`v1`](https://github.com/Rhyslos/Lust/tree/v1) branch.
 
 ## Try it
 
-You need the [.NET SDK](https://dotnet.microsoft.com/download), version 8 or newer. On Windows, double-click **`build.cmd`**. It makes `bin\lust.exe`. Then play the example game:
+You need [Rust](https://rustup.rs). Then:
 
 ```
-bin\lust run examples\valley\main.lust
+cargo build --release
+target/release/lust run tests/run/player.lsc
 ```
-
-Or, without building first:
-
-```
-dotnet run --project compiler -- run examples/valley/main.lust
-```
-
-Lust also runs inside [Ledger](https://github.com/Rhyslos/Ledger): F5 runs a `.lust` file, and mistakes show as you save.
-
-`lust.exe` is a command-line program: run it from PowerShell or Command Prompt, or drop a `.lust` file onto it. Double-clicking it on its own just shows the help.
-
-Every push also builds a ready-made `lust.exe`: open the **Actions** tab, click the latest **Test** run, and download **lust-windows**.
 
 | Command | Does |
 | --- | --- |
-| `lust run file.lust` | checks the file (and every file it fetches), then runs it. `lust file.lust` works too |
-| `lust check file.lust` | only checks, and lists any mistakes |
-| `lust build file.lust` | makes a program you can start without Lust, in a `build` folder |
-| `lust cs file.lust` | shows the C# Lust writes |
-| `lust test tests` | runs the test programs (see Testing in the rulebook) |
+| `lust run file.lsc` | checks the file, then runs it. `lust file.lsc` works too |
+| `lust check file.lsc` | only checks, and lists any mistakes |
+| `lust lua file.lsc` | shows the Lua it turns into |
+| `lust build file.lsc` | writes that Lua next to it, as `file.lua`, ready for Garry's Mod or any Lua host |
+| `lust test tests` | runs the test programs |
 
-Mistakes come out as `file:line:column  message`, all at once, before anything runs:
-
-```
-oops.lust:2:15  can't add an int to a string. Use age.text() to turn age into text.
-oops.lust:3:16  missing ; at the end of this line.
-oops.lust:8:1  Lust asks questions instead of if: is hp 0? then { }
-```
-
-Mistakes that only show up while running stop the program with the line they happened on:
+Mistakes come out all at once, before anything runs:
 
 ```
-shop.lust:21  there's no row with id 7. The ids are 1, 2, 3.
+basics.lsc:3:1  Lust asks questions instead of if: is hp == 0? then { }
+basics.lsc:6:23  can't add an int to a string. Use lives.text() to turn it into text.
+classes.lsc:18:19  Dog has no field called nam. Did you mean name?
 ```
 
-## Examples
+Mistakes that only show up while running point at the Lust line, not the Lua one:
 
-| File | Shows |
-| --- | --- |
-| [`examples/hello.lust`](examples/hello.lust) | variables, questions, loops, `random`, `wait` |
-| [`examples/player.lust`](examples/player.lust) | classes, an object, a cArray inventory, states, `get` from [`dice.lust`](examples/dice.lust) |
-| [`examples/valley/`](examples/valley) | **Lust Valley**, a small farming game in three files: buy seeds, water, sleep, harvest, sell. Sleeping saves the game. Uses `like`, states, cArrays, arrays, `ask`, `fetch` and `save`. |
-| [`examples/ui/counter.lust`](examples/ui/counter.lust) | the smallest window: a label and a button (Windows) |
-| [`examples/ui/pet.lust`](examples/ui/pet.lust) | **a virtual pet** in a window: name it, feed it, play, and turn off the lights to sleep. Screens switch with a state, and its mood uses states inside states (Windows) |
-| [`examples/ui/stars.lust`](examples/ui/stars.lust) | **Catch the stars**: a little arcade game with a canvas, a timer, the arrow keys and colours (Windows) |
+```
+missing-row.lsc:2  there's no row with id 7. The ids are 1, 2.
+```
 
-## Status
+Every push builds a ready-made `lust.exe`: open the **Actions** tab, click the latest **Test** run, and download **lust-windows**.
 
-Lust 0.5.0. Everything in [LUST.md](LUST.md) works: types, questions, `either`, `loop`, classes, objects, `like`, `do` and `give`, functions as values, arrays, cArrays, maps, states (including states inside states), `send` / `fetch` / `get` across folders, saves, text files, C# libraries and NuGet packages, `ask` for typed input, and windows through `fetch ui;` with buttons, pictures, a canvas to draw on, a timer and keys. The test programs run on Linux and Windows on every push, and on Windows the UI examples open their windows and click every button by themselves.
+## Writing Lua inside LustScript
 
-What might come next is collected in **[IDEAS.md](IDEAS.md)**: states that react, sound, more widgets, a small 2D game engine, and projects to build in Lust.
+Anything Lust doesn't cover yet can be written in Lua directly:
+
+```
+fetch lua;
+
+method shout(string words) {
+    lua {
+        print(string.upper(words) .. "!")
+    };
+}
+
+shout("hello");
+
+end
+```
 
 ## The name
 
-Lust started as "Rust + Lua", then turned out to be mostly C# with a Lua accent. The name stuck because it's funny. It may get a new one before anyone else sees it.
+Lust started as "Rust + Lua". Then it spent a year mostly being C#. Now it really is Rust and Lua.

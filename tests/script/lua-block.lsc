@@ -1,0 +1,10 @@
+fetch lua;
+
+method shout(string words) {
+    lua {
+        print(string.upper(words) .. "!")
+    };
+}
+
+shout("hello from lua");
+end

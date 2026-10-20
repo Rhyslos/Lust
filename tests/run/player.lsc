@@ -1,0 +1,174 @@
+-- A player, in Lust v2.
+state Mood = [Cheerful, Grumpy, Sleepy];
+state Action = [Idle, Fighting [Attacking, Blocking], KnockedOut];
+
+method int dice(int sides) {
+    return random(1, sides);
+}
+
+method int doubleIt(int n) {
+    return n * 2;
+}
+
+method greet(string who) {
+    print("Hello, " + who + "!");
+}
+
+class Player {
+    has {
+        string name = "Hero";
+        int hp = 20;
+        int maxHp = 20;
+        int level = 1;
+        float speed = 1.5;
+        truth alive = true;
+        state is Action.Idle;
+        Mood mood = Mood.Cheerful;
+        Player friend = nothing;
+        string array titles = [];
+        cArray(string itemName, int amount) bag = [
+            [1, "Sword", 1],
+            [2, "Apple", 3]
+        ];
+        int map skills = ["sneak" 2, "cook" 1];
+        hook(string who) onLevelUp = nothing;
+    }
+
+    method hurt(int damage) {
+        hp = hp - damage;
+        is hp <= 0? then {
+            hp = 0;
+            alive = false;
+            state is Action.KnockedOut;
+            print(name + " is knocked out!");
+        } or is hp < maxHp / 2? then {
+            mood = Mood.Grumpy;
+            print(name + " has " + hp.text() + " hp left.");
+        } or {
+            print(name + " shrugs it off: " + hp.text() + " hp.");
+        }
+    }
+
+    method int attack() {
+        state is Action.Fighting.Attacking;
+        return level + dice(6);
+    }
+
+    method levelUp() {
+        level = level + 1;
+        titles:inject("Level " + level.text());
+        is onLevelUp !== nothing? then {
+            onLevelUp(name);
+        }
+    }
+
+    method string status() {
+        string feeling = either mood == Mood.Cheerful? "happy" or "not so happy";
+        return name + " (level " + level.text() + ", " + feeling + ", " + state.text() + ")";
+    }
+}
+
+class Wizard like Player {
+    has {
+        int mana = 30;
+        int hp = 15;
+    }
+
+    method int attack() {
+        mana = mana - 5;
+        return mana / 5 + dice(4);
+    }
+}
+
+object Game {
+    has {
+        int day = 1;
+    }
+
+    method nextDay() {
+        day = day + 1;
+    }
+}
+
+Player ada = new Player { name = "Ada" };
+Wizard merlin = new Wizard { name = "Merlin", mood = Mood.Grumpy };
+
+greet(ada.name);
+ada.friend = merlin;
+ada.onLevelUp = greet;
+ada:hurt(4);
+ada:levelUp();
+print(ada:status());
+print(ada.friend:status());
+
+is ada.friend like Wizard? then {
+    print("Ada's friend can do magic.");
+}
+is not ada.alive || ada.hp > 10? then {
+    print("Ada is fine.");
+}
+
+int hit = ada:attack();
+is ada.state == Action.Fighting? then {
+    print("Ada is fighting.");
+}
+print(ada.state);
+
+print(7 / 2);
+print(7.float() / 2);
+print(-7 % 3);
+print(#"héllo");
+print(doubleIt(21));
+
+hook int(int n) triple = new hook {
+    return n * 3;
+};
+print(triple(5));
+hook int(int) twice = doubleIt;
+print(twice(4));
+
+loop 2 {
+    Game:nextDay();
+}
+print("Day " + Game.day.text());
+
+int tries = 0;
+loop {
+    tries = tries + 1;
+    is tries == 3? then { stop; }
+}
+print(tries);
+
+int array scores = [10, 20, 30];
+loop (int s in scores) {
+    is s == 20? then { skip; }
+    print(s);
+}
+scores:inject(40);
+scores:remove(0);
+print(scores);
+print(#scores);
+
+ada.bag:inject(["Map", 1]);
+ada.bag[2].amount = ada.bag[2].amount - 1;
+loop (int id, string itemName, int amount in ada.bag) {
+    print(id.text() + ". " + itemName + " x" + amount.text());
+}
+print(ada.bag:has(3));
+
+ada.skills["fish"] = 4;
+loop (string skill, int points in ada.skills) {
+    print(skill + ": " + points.text());
+}
+
+loop (Mood m in Mood) {
+    print(m);
+}
+
+try {
+    print(scores[9]);
+} error (string message) {
+    print("Caught: " + message);
+}
+
+end

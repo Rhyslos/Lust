@@ -1,1 +1,0 @@
-main.lust:1:7  paths start from this file's folder, so they need no ./ in front: fetch game/shared/dice;

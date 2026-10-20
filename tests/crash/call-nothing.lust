@@ -1,9 +1,0 @@
-class Button {
-    has {
-        do() [onClick nothing];
-    }
-}
-Button b = new Button;
-b:onClick();
-
-end

@@ -1,4 +1,0 @@
-float w = 1.0 / 0.0;
-print("waiting");
-wait w;
-end

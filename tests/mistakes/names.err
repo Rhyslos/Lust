@@ -1,4 +1,0 @@
-names.lust:1:1  there's nothing called lives yet. Declare it first, with its type: int lives = …;
-names.lust:2:7  there's nothing called score here. Declare it first, like int score = 0;
-names.lust:4:5  hp is already declared on line 3. Pick another name, or leave out the type to change it: hp = …;
-names.lust:5:14  hp is already declared on line 3. Pick another name, or leave out the type to change it: hp = …;

@@ -1,3 +1,0 @@
-fetch ui;
-object App like Window { method build() { } }
-end

@@ -1,1 +1,0 @@
-map-missing-key.lust:2  there's no "banana" in the map. The keys are "apple". Check first with :has("banana").
