@@ -1,5 +1,0 @@
-fetch a:Dog;
-fetch b:Kennel;
-Kennel k = new Kennel;
-Dog x = k.d;
-end

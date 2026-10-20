@@ -1,9 +1,0 @@
-files-mistakes.lust:2:12  farm.lust doesn't send secret. Add send secret; to farm.lust.
-files-mistakes.lust:3:10  Crop is a class, so it's brought in with fetch: fetch farm:Crop;
-files-mistakes.lust:4:12  harvestTime is a function, so it's brought in with get: get farm:harvestTime;
-files-mistakes.lust:5:12  farm.lust has nothing called Tractor.
-files-mistakes.lust:6:7  there's no file called nowhere.lust next to files-mistakes.lust.
-files-mistakes.lust:7:9  get brings in one function, like get farm:roll; To bring in everything, use fetch farm;
-files-mistakes.lust:10:1  fetch lines go at the top of the file, before anything else.
-files-mistakes.lust:11:1  Barn is an object, not a type. Use it directly by name: Barn.something
-files-mistakes.lust:12:7  farm is a file. Use the things it sent by their own names.

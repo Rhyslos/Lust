@@ -1,5 +1,0 @@
-types.lust:1:10  hp is an int, but this is a string. Use .int() to turn text into a number.
-types.lust:2:15  name is a string, but this is an int. Use .text() to turn it into text.
-types.lust:4:9  n is an int, but this is a float. Use .int() to drop the part after the point.
-types.lust:5:11  t is a truth, but this is an int.
-types.lust:6:6  hp is an int, but this is a float. Use .int() to drop the part after the point.

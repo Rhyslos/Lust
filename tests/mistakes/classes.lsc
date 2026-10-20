@@ -1,0 +1,24 @@
+state Mood = [Happy, Grumpy];
+class Dog {
+    has {
+        string name = "Rex";
+        int hp = 10;
+        Mood mood = Mood.Happy;
+    }
+
+    method bark() {
+        print(self.name);
+    }
+
+    method int age() {
+        print("no return");
+    }
+}
+class cat { }
+Dog d = new Dog { nam = "Bo" };
+d:fly();
+d.mood = Mood.Sad;
+int MAX_HP = 5;
+Dog e = Dog;
+print(d.hp.text);
+end

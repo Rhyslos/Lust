@@ -1,4 +1,0 @@
-get v1.2/tools:twice;
-get sub/my-file:twice;
-
-end

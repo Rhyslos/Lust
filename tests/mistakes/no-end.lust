@@ -1,2 +1,0 @@
-int hp = 3;
-print(hp);

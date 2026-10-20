@@ -1,5 +1,0 @@
-string answer = "twelve";
-print(answer.isNumber());
-int n = answer.int();
-
-end

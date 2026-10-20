@@ -1,5 +1,0 @@
-cArray(string itemName) bag = [];
-bag:inject([1, "sword"]);
-bag:inject([1, "map"]);
-
-end

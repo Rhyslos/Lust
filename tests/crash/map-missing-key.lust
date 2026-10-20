@@ -1,4 +1,0 @@
-int map prices = ["apple" 3];
-print(prices["banana"]);
-
-end

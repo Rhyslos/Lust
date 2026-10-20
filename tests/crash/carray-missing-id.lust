@@ -1,4 +1,0 @@
-cArray(string itemName) bag = [[1, "sword"], [5, "map"]];
-print(bag[2].itemName);
-
-end

@@ -1,0 +1,10 @@
+int lives = 3
+string name = "Ada";
+if lives == 3 { print("x"); }
+is lives = 3? then { print("x"); }
+int age = "old";
+string line = "Age: " + lives;
+print(nobody);
+var x = 5;
+int lives = 4;
+end

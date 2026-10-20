@@ -1,0 +1,9 @@
+class Dog {
+    has {
+        string name = "Rex";
+    }
+}
+Dog d = nothing;
+print("before");
+print(d.name);
+end

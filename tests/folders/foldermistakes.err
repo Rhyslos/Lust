@@ -1,7 +1,0 @@
-foldermistakes.lust:2:7  this file already fetches a different file called farm.lust. Two files with the same name can't both be fetched into one file.
-foldermistakes.lust:3:7  there's no file parts/nope.lust, looking from the folder foldermistakes.lust is in.
-foldermistakes.lust:4:7  there's no folder nofolder, looking from the folder foldermistakes.lust is in.
-foldermistakes.lust:5:7  paths start from this file's folder, so they need no ./ in front: fetch dice;
-foldermistakes.lust:6:17  leave out .lust: fetch parts/dice;
-foldermistakes.lust:7:7  foldermistakes.lust can't fetch from itself.
-foldermistakes.lust:8:18  roll is a function, so it's brought in with get: get parts/dice:roll;

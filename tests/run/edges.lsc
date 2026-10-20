@@ -1,0 +1,51 @@
+class Loaf {
+    has {
+        string name = "bread";
+        hook() onBurn = nothing;
+    }
+}
+
+method int factorial(int n) {
+    is n <= 1? then {
+        return 1;
+    }
+    return n * factorial(n - 1);
+}
+
+Loaf array shelf = [new Loaf { name = "rye" }, new Loaf { name = "spelt" }];
+loop (Loaf l in shelf) {
+    l.onBurn = new hook {
+        print(l.name + " is burning!");
+    };
+}
+shelf[1]:onBurn();
+
+int found = 0;
+loop (int n in [1, 2, 3, 4, 5, 6]) {
+    is n % 2 == 0? then {
+        skip;
+    }
+    is n == 5? then {
+        found = n;
+        stop;
+    }
+    print(n);
+}
+print(found);
+
+print(factorial(10));
+
+int repeat = 3;
+string local = "lua words are fine";
+print(repeat);
+print(local);
+
+Loaf nobody = nothing;
+Loaf pick = either nobody === nothing? new Loaf { name = "fresh" } or nobody;
+print(pick.name);
+
+string map empty = [];
+print(#empty);
+print(1.0 / 3.0);
+print(2.5 * 2);
+end

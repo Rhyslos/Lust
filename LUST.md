@@ -1,37 +1,71 @@
-# The Lust rulebook
+# The Lust v2 Rulebook
 
-Lust is a small, strict language for describing things that have a state, carry stuff, and change over time. It has C#'s skeleton, a Lua accent, and checks written as questions:
+Lust is a small, strict language for apps, games and tools. It reads like a calm mix of C# structure and Lua's lightness. Checks are written as questions, states are built in and own their memory, and every file ends with `end`.
 
-```
-is hp <= 0? then {
-    state is knocked_out;
-}
-```
+This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-This file is the source of truth. The compiler follows it, and when the two disagree, one of them gets fixed.
-
-**Contents:** [Files](#files) · [Types and variables](#types-and-variables) · [Truth and checks](#truth-and-checks) · [Math and text](#math-and-text) · [Arrays](#arrays) · [cArrays](#carrays) · [Maps](#maps) · [state](#state) · [Classes and objects](#classes-and-objects) · [Functions](#functions-do) · [Loops](#loops) · [Sharing between files](#sharing-between-files) · [Saving and loading](#saving-and-loading) · [C# libraries](#c-libraries) · [Windows and buttons](#windows-and-buttons-ui) · [Built-ins](#built-ins) · [Errors](#errors) · [Testing](#testing) · [How Lust runs](#how-lust-runs) · [Reserved words](#reserved-words) · [Still open](#still-open)
+> **What works today (2.0 alpha 1):** LustScript. `.lsc` files are checked and turned into Lua, and `lust run` runs them (and `.lust` files too, through Lua for now). Built so far: types, questions, `either`, maths and text, arrays, maps, cArrays, states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks and the built-ins. Not yet: sharing between files (`pass`/`fetch`/`get`), `node`, `assembly`, `keep`, saves, `view`, `schema`/`route`, LustQL and real programs through Rust. Lust v1 lives on the `v1` branch.
 
 ---
 
-## Files
+## 1. What Lust is aiming for
 
-- A Lust file ends in `.lust`.
-- Every statement ends with `;`.
-- Every file ends with the word `end`. Nothing may come after it except blank lines and comments.
-- Comments start with `//` and run to the end of the line. There are no block comments.
-- Inside a file, the order is: `fetch` and `get` lines first, then everything else.
+- **Easy to scan.** You should be able to look at a file and find where things happen. Familiar symbols (`==`, `&&`, `return`) where they help reading, Lust's own words where they make things clearer.
+- **Strict and friendly.** Mistakes are caught before the program runs, with messages that say what to do.
+- **State-driven.** States describe what things are doing, and they own memory: what's made inside a state is freed when the state ends.
+- **Two outputs from one language:**
+
+| Output | Files | Used for |
+| --- | --- | --- |
+| Rust, compiled to real machine code | `.lust` | Programs, apps and servers, on Windows, macOS and Linux |
+| LustScript, turned into Lua | `.lsc` | Scripting and modding inside other programs (Garry's Mod, Aventail, Halberd) |
+
+Plus **LustQL** (`.lql`) for stored data **(to design)**.
+
+**Why Rust:** Lust writes readable Rust, and Rust's compiler does the rest: real machine code through LLVM, every desktop platform, and WebAssembly if it's ever wanted. Rust's libraries (crates) give Lust its standard library: files, HTTP, JSON, SQLite, sound, and windows and graphics through winit and wgpu. Lust checks everything itself, so nobody ever sees a Rust error. Programs need Rust installed to build, the way v1 needs .NET.
+
+**The web:** Lust is for servers (`route`, `schema`). Pages in the browser stay HTML, CSS and JavaScript. Lust in the browser through WebAssembly is possible later, but not planned.
+
+There is no .NET in v2, so no `fetch cs:`.
+
+---
+
+## 2. Files
+
+- **Extensions:** `.lust` for programs, `.lsc` for LustScript, `.lql` for LustQL.
+- **Every project has a `main.lust`** at its root, where the program starts.
+- **Every statement ends with `;`.**
+- **Every file ends with `end`** on its last line. Only blank lines and comments may follow.
+- **Order inside a file:** imports (`fetch`, `get`), then states and nodes, then classes, objects, assemblies, schemas and methods, then `pass`, then the code that runs.
+- **Dashes are not allowed** in names, file names or folder names: `my_file.lust`, `myFile.lust`, never `my-file.lust`.
+
+### Comments
 
 ```
-// hello.lust
-print("Hello!");
-
-end
+-- a comment, the Lua way
+// also a comment
+--[[ a block comment,
+     over several lines ]]
 ```
 
-## Types and variables
+Because `--` starts a comment, subtracting a negative number needs a space: `a - -b`.
 
-A variable is declared with its type first, and must be given a value:
+---
+
+## 3. Naming
+
+- **PascalCase for kinds of things:** classes, objects, states, schemas, assemblies, nodes. `Player`, `GameState`, `LootSpawner`.
+- **camelCase for everything else:** variables, fields, methods, hooks, files and folders. `currentHp`, `takeDamage()`, `main.lust`, `entities/player.lust`.
+- So `Player player = new Player;` reads clearly: the capital is the kind, the small letter is the thing.
+- Map keys are text, so any text is fine: `"max_hp"`, `"item-id"`.
+- ALL_CAPS names are not allowed.
+- **Every word Lust uses is reserved** and can't be a name (see section 20).
+
+---
+
+## 4. Types and variables
+
+A variable is declared with its type, its name and a value:
 
 ```
 int lives = 3;
@@ -45,610 +79,504 @@ truth alive = true;
 | `int` | whole numbers | `0`, `42`, `-7` |
 | `float` | numbers with a point | `1.5`, `0.25` |
 | `string` | text, in double quotes | `"Ada"`, `"line\n"` |
-| `truth` | yes or no | `true`, `not true` |
-| a class name | one thing made from a class | `Player`, `Dog` |
+| `truth` | yes or no | `true`, `false`, `not true` |
+| a class name | one thing made from a class | `Player`, `Weapon` |
 | `T array` | a list of `T` | `int array` |
-| `cArray(...)` | a connected array | see [cArrays](#carrays) |
-| `T map` | values found by a text key | `int map`, see [Maps](#maps) |
-| `state` | this file's state | see [state](#state) |
-| `do int(int)` | a function, kept as a value | see [Functions as values](#functions-as-values) |
-| a C# type | a value from a C# library | `Random`, see [C# libraries](#c-libraries) |
+| `cArray(...)` | a small table with ids | `cArray(string itemName, int amount)` |
+| `T map` | values found by a text key | `int map` |
+| a state's name | one of that state's options | `GameState` |
+| a schema's name | a data shape for the web | `UserPayload` |
+| `hook ...` | a method kept as a value | `hook int(int n)` |
 
-Changing a variable uses `=`:
+- A variable keeps its type forever.
+- An `int` fits where a `float` goes. The other way needs `.int()`.
+- A variable declared inside `{ }` only exists inside those braces.
+- A name can't be declared twice while it still exists.
+- **`nothing`** means "no thing here yet". Only class-typed values can be `nothing`. Using a field or method on `nothing` stops the program with an error naming the line.
 
-```
-lives = lives - 1;
-```
+---
 
-**Strict rules:**
-- A variable keeps its type forever. `lives = "many";` is an error.
-- An `int` fits where a `float` goes: `float speed = 2;` makes `speed` `2.0`. The other way round needs `.int()`.
-- A variable must be declared before it's used.
-- A variable declared inside `{ }` only exists inside those braces. Once the block ends, the name is free again.
-- A name can't be declared again while it still exists, not even inside an inner block. `int hp = 1;` followed by `loop 2 { int hp = 2; }` is a mistake, because it's never clear which `hp` is meant.
-- A variable (or a parameter, or a loop's item) can't take a name that already means something in the file: a function, a class or object, a state, or a state's option. `int idle = 3;` next to `state = [idle, busy];` is a mistake.
-- One expression can have up to 2000 parts and brackets 300 deep. Past that, split it into steps with a variable for each part.
+## 5. Truth and questions
 
-### nothing
+- Truth values are `true` and `false`. `not` flips one: `not alive`, `not true`.
+- The Lust way to write a negative check is with `not`: `is not alive?`.
 
-`nothing` means "no thing here yet". Only class-typed values can be `nothing`:
+### Questions
+
+Lust has no `if`. A check is a question that starts with `is` and ends with `?`:
 
 ```
-Player friend = nothing;    // fine
-int score = nothing;        // error: an int always has a number
-```
-
-Using a field or method on `nothing` (`friend.name` when `friend` is `nothing`) stops the program with an error that names the line.
-
-## Truth and checks
-
-There is no `false`. The two truth values are `true` and `not true`. `not` flips any truth: `not alive`.
-
-### is … ? then … or
-
-Lust has no `if`. Decisions are questions that start with `is` and end with `?`:
-
-```
-is hp 0? then {
-    print("out cold");
+is hp == 0? then {
+    print("Out cold");
 } or is hp < 5? then {
-    print("barely standing");
+    print("Barely standing");
 } or {
-    print("fine");
+    print("Fine");
 }
 ```
 
-Inside a question, a **check** is one of:
+### Comparing
 
-| Check | Means | Example |
-| --- | --- | --- |
-| `a b` | a equals b | `is name "Bo"?` |
-| `a not b` | a does not equal b | `is alive not true?` |
-| `a < b`, `a > b`, `a <= b`, `a >= b` | comparing numbers | `is hp <= 0?` |
-| a truth on its own | that truth is true | `is alive?` |
+| Write | Means |
+| --- | --- |
+| `a == b` | same value |
+| `a != b` | different values |
+| `a === b` | the very same thing (the same object, not just an equal copy) |
+| `a !== b` | not the very same thing |
+| `<  >  <=  >=` | comparisons for numbers |
 
-Checks join with `&&` (both) and `||` (either one):
-
-```
-is hungry true && bo.state sleepy? then {
-    print("snack, then nap");
-}
-```
-
-- `then { }` runs when the answer is yes. `or is …? then { }` asks another question. A last `or { }` catches everything else. Both `or` parts are optional.
-- Comparing two different types (`is hp "zero"?`) is an error.
-- Things made from classes, arrays and cArrays are the same only when they're the very same thing, not when they hold the same values. To check if an array is empty, ask `is #scores 0?`.
-- Parts of a check can be grouped with `( )`: `is ready && (hp 0 || state fighting)?`
-- A negative number right after the first value reads as subtraction, so write `is x (-1)?`.
+- For numbers, text and truth values, `===` means the same as `==`. It matters for things made from classes: two players with the same name are `==` only if you compare their fields, but `===` asks whether they are one and the same player.
+- Comparing different types (`"1" == 1`) is a mistake caught before running. Lust never converts types quietly.
+- Join checks with `&&` and `||`. Group with `( )`.
 
 ### either
 
-`either` is the one-line version that gives back a value:
+A question that gives back one of two values:
 
 ```
 string mood = either hp > 10? "happy" or "grumpy";
-int bonus = either bo.state angry? 10 or 0;
 ```
 
-Both sides must be the same type, except that an `int` and a `float` mix into a `float`: `either hungry? 1 or 1.5` gives `1.0` or `1.5`.
+---
 
-### Truth values outside questions
+## 6. Maths and text
 
-`<`, `>`, `<=` and `>=` give a truth anywhere, so `truth low = hp < 5;` works. "Equals" only exists inside a question: `truth same = either a b? true or not true;`.
+- `+ - * / %` work on `int` and `float`. `( )` groups.
+- `int / int` gives an `int`: `7 / 2` is `3`. Use `7.float() / 2` for `3.5`.
+- `+` joins text. Anything else must be turned into text first: `"Score: " + score.text()`.
 
-## Math and text
+| Method | Does |
+| --- | --- |
+| `.text()` | anything as text |
+| `.int()` | a float or text as a whole number |
+| `.float()` | an int or text as a float |
+| `.isNumber()` | `true` when text is a number |
+| `.lines()` | text cut into its lines |
 
-- `+ - * / %` work on `int` and `float`. Parentheses `( )` group: `(a + b) * 2`.
-- An `int` and a `float` together give a `float`. A `float` never quietly becomes an `int`; use `.int()`, which drops the part after the point.
-- `int / int` gives an `int` (`7 / 2` is `3`). Use `7.float() / 2` for `3.5`.
-- An `int` that gets too big, or dividing an `int` by zero, stops the program with an error naming the line. Dividing a `float` by zero isn't a mistake: it gives `infinity` (or `-infinity`), and the program carries on.
-- `+` also joins two strings. Joining a string with anything else is an error: turn it into text first with `.text()`.
+---
 
-```
-print("Lives: " + lives.text());   // fine
-print("Lives: " + lives);          // error: can't add an int to a string
-```
+## 7. Arrays, cArrays and maps
 
-## Arrays
+### Arrays
 
 ```
 int array scores = [10, 20, 30];
-string array names = [];
 ```
 
-- Arrays start at **0**: `scores[0]` is `10`.
-- `#scores` is how many items there are. `#` on text counts its letters: `#"hello"` is `5`.
-- `scores:inject(40);` adds to the end. `scores:remove(0);` removes the item at that position.
-- `scores[1] = 25;` replaces an item.
-- Every item must match the type. Reading past the end stops the program with an error naming the line.
-- A loop goes through a copy of the array, so injecting or removing inside the loop is safe.
-- `#` reads the whole thing after it, `.text()` included: `#scores.text()` means `#(scores.text())`. Write `(#scores).text()` for the count as text.
+- Counted from 0: `scores[0]`.
+- `#scores` is how many items. `#"Hello"` is how many letters.
+- `scores:inject(40);` adds to the end. `scores:remove(0);` removes by position.
 
-## cArrays
+### cArrays
 
-A connected array is a small table. You name the columns once, then add rows. Every row also gets an `id`, an `int` that is the key you look rows up by.
+A small table. Every row gets an `id`, starting at 1:
 
 ```
 cArray(string itemName, int amount) bag = [
-    [1, "sword", 1],
-    [2, "apple", 3]
+    [1, "Sword", 1],
+    [2, "Apple", 5]
 ];
 ```
 
-- `id` is never written in the column list. It's always there, always an `int`, and always unique inside one cArray. Two cArrays can both have an id 1.
-- `bag[2]` is the row whose id is 2 (not the third row). `bag[2].itemName` reads a column and `bag[2].amount = 5;` changes one.
-- `bag:inject(["map", 1]);` adds a row with a new id: one more than the biggest id the cArray has ever had, starting at 1. Ids are never reused, even after a row is removed. `bag:inject([10, "map", 1]);` picks the id yourself.
-- `bag:remove(2);` removes the row with id 2. `bag:has(2)` is a truth.
-- `#bag` is how many rows there are.
-- An id that's already used, or looking up one that isn't there, is an error.
-- Looping visits rows in the order they were added. Name the id first, then every column:
+- `bag[1]` is the row with id 1. `bag[1].amount` reads a column.
+- `bag:inject(["Map", 1]);` adds a row with the next id. Ids are never reused.
+- `bag:remove(id);` and `bag:has(id)`.
 
-```
-loop (int id, string itemName, int amount in bag) {
-    print(id.text() + ": " + itemName);
-}
-```
-
-## Maps
-
-A map finds values by a text key. It's written like a has block: each key, then its value.
+### Maps
 
 ```
 int map prices = ["apple" 3, "seed" 1];
-string map names = [];
 ```
 
-- `prices["apple"]` reads a value. Reading a key that isn't there stops the program with an error naming the line, so check first with `prices:has("pear")`.
-- `prices["pear"] = 5;` changes a value, or adds the key when it's new.
-- `prices:remove("seed");` removes a key. `#prices` is how many keys there are.
-- Keys are always text. Values can be any one type: `Dog map`, `int array map`, a state.
-- A negative value goes right after its key: `["cold" -5]`.
-- Looping goes through the keys in the order they were first added. Name the key, then the value:
+- `prices["apple"]` reads, `prices["pear"] = 5;` adds or changes, `prices:has("pear")` checks.
+- `prices:remove("seed");` removes a key.
+
+---
+
+## 8. States and memory
+
+A state is a list of options, and options can hold options of their own:
 
 ```
-loop (string item, int price in prices) {
-    print(item + " costs " + price.text());
+state GameState = [
+    MainMenu,
+    ActiveGame [
+        Exploration,
+        Combat
+    ]
+];
+```
+
+- Change it with `is`: `state is GameState.ActiveGame.Combat;`
+- A question about an option includes everything inside it: during `Combat`, `is state == GameState.ActiveGame?` is yes.
+
+### States own memory
+
+Things made while a state is active belong to that state, and are freed the moment the state ends. There's no garbage collector, and nothing to free by hand.
+
+**The safety rule:** something made inside a state can't be stored anywhere that lives longer than the state. Lust catches this before the program runs:
+
+```
+// during Combat
+Item sword = new Item { name = "Sword" };
+player.bag:inject(sword);      -- mistake: the sword is freed when Combat ends, but the bag lives on
+```
+
+**To keep it, say so.** `keep` moves it out of the state's memory, into the place that will hold it:
+
+```
+keep sword in player.bag;      -- the sword now lives as long as the bag
+```
+
+This rule may be reworked as the design matures **(to design)**.
+
+---
+
+## 9. node and assembly
+
+### node: a short-lived group
+
+A node bundles things that live and die together, like a room in a game. Leaving or closing the node frees everything inside it:
+
+```
+node RoomOne {
+    state is Active;
+    Player guard = new Player { name = "Guard" };
 }
 ```
 
-## state
+How nodes and state memory work together is **(to design)**.
 
-A state is a list of options something can be in. Each file can have one **main state**, and any number of **named states** for when one isn't enough. They go at the top level of the file.
+### assembly: a factory
 
-```
-state = [idle, walking, fighting, knocked_out];   // the main state
-state season = [spring, summer, fall, winter];     // named states
-state weather = [sunny, rainy, stormy];
-```
-
-A class or object that has a state says which option it starts in, in its `has` block. The main state is written `state is …`, and a named one uses its name:
+An assembly makes ready-filled things without constructors:
 
 ```
-class Farm {
-    has {
-        state is idle;
-        season is spring;
-        weather is sunny;
+assembly LootSpawner {
+    create Item {
+        name = "Potion";
+        value = 50;
     }
 }
+
+Item drop = LootSpawner:create(Item);
 ```
 
-- Change it with `is`: `season is summer;` inside a method, or `farm.season is summer;` from outside. To copy a state from somewhere else, use `=`: `farm.season = nextSeason(farm.season);`, or `state = other.state;` for the main state.
-- Ask about it in a question: `is farm.season winter?`.
-- `farm.season.text()` gives the option's name as text, like `"winter"`.
-- `loop (season s in season) { }` goes through every option, in the order written. For the main state: `loop (state s in state) { }`.
-- A state can also be a variable's type: `season today = spring;`. It's changed with `is` too: `today is fall;`, or with `=` from another state value.
-- A class or object can have each state once at most.
-- Two states in the same file may share an option name. Lust always knows which state is meant from what it's compared with.
-- From another file, after `fetch farm:season;`, the type is called `farm.season`, or just `season` when this file has no state of its own with that name. Another file's main state is always `farm.state`. The option names work as they are.
+The exact shape of `create` (several recipes per assembly, choosing between them, collections) is **(to design)**.
 
-### States inside states
+---
 
-An option can hold options of its own, in [ ] right after it. That's handy for anything with a broad mode and finer details, like an enemy's brain or an app's screens:
-
-```
-state = [idle, walking, fighting [attacking, blocking, fleeing [running, hiding]]];
-```
-
-- An option inside another is named with a dot: `state is fighting.blocking;`, `state is fighting.fleeing.hiding;`.
-- A question about an option is also yes for everything inside it: when the state is `fighting.blocking`, both `is state fighting?` and `is state fighting.blocking?` are yes, and `is state fighting.attacking?` is no. In general, `is a b?` with states asks "is a the same as b, or inside it?"
-- `fighting` on its own is an option too, for when the details don't matter yet.
-- `.text()` and `print` show the full name: `fighting.blocking`.
-- `loop (state s in state)` goes through every option, inside ones included, in the order written.
-- An option inside another always needs its full name. Writing `blocking` alone is a mistake, because the same name could sit inside two options.
-
-## Classes and objects
-
-A **class** is a blueprint: you make as many things from it as you like. An **object** is one ready-made thing, used directly by its name.
+## 10. Classes, objects and like
 
 ```
 class Dog {
     has {
-        string[name "Rex"];
-        int[hp 10, age 3,];
-        truth[hungry not true];
-        Dog[friend nothing];
-        state is happy;
+        string name = "Rex";
+        int hp = 10;
+        state is Happy;
     }
 
     method bark() {
-        print(name + " says woof");
+        print(name + " says woof!");
     }
 }
 
-object Game {
-    has {
-        int[score 0];
-    }
+Dog pet = new Dog { name = "Bo" };
+pet:bark();
+```
 
-    method addPoints(int amount) {
-        score = score + amount;
-    }
+- **Fields are written like variables**, all inside one `has { }` block. The same style is used everywhere: `has`, `new`, `create` and `schema`.
+- `new` makes a thing. The braces set fields; anything not mentioned keeps its starting value.
+- `.` reads a field, `:` calls a method.
+- An **object** is one ready-made thing, used by its name: `object Game { … }`, `Game:start();`.
+- **`like`** builds on another class: `class Wizard like Player { … }`. A Wizard fits anywhere a Player does, and its methods replace Player's of the same name.
+- Ask what something really is: `is hero like Wizard?`.
+
+---
+
+## 11. Methods and hooks
+
+Everything callable is a `method`, inside a class or object or on its own:
+
+```
+method int doubleIt(int value) {
+    return value * 2;
+}
+
+method greet(string who) {
+    print("Hello, " + who);
 }
 ```
 
-### The has block
-
-Fields live in one `has { }` block at the top of the class or object. Fields of the same type are grouped in brackets, each name followed by its starting value, with no `=`. A trailing comma is fine.
-
-```
-has {
-    int[hp 20, gold 0, level 1,];
-    string array bag [];
-    cArray(string itemName, int amount) loot [];
-    state is idle;
-}
-```
-
-Starting values are plain values only: a number, text, `true`, `not true`, `nothing`, `[]`, rows for a cArray, or a C# value made from plain values (`new DateTime(2026, 1, 1)`). Any calculating happens in methods.
-
-### Making things
-
-```
-Dog bo = new Dog { name "Bo", hp 12 };
-Dog rex = new Dog;
-```
-
-The braces fill in fields, in the same style as `has`, so a state can be written either way: `new Dog { state fighting }` or `new Dog { state is fighting }`. Anything not mentioned keeps its starting value. There are no constructors. `new` on an object (`new Game`) is an error.
-
-### Using them
-
-- Fields use `.`: `bo.hp`, `bo.hp = 5;`, `Game.score`.
-- Methods use `:`: `bo:bark();`, `Game:addPoints(10);`.
-- Inside a method, the thing's own fields and methods are used by name alone: `hp`, `bark()`. There is no `self`.
-
-### like: building on another class
-
-`like` makes a class that starts as a copy of another one and adds to it:
-
-```
-class Wizard like Player {
-    has {
-        int[mana 50];
-        int[hp 15];          // Player has hp too: this changes its starting value
-    }
-
-    method int attack() {    // replaces Player's attack for wizards
-        give mana / 10 + random(1, 6);
-    }
-}
-
-Wizard merlin = new Wizard { name "Merlin" };
-```
-
-- A Wizard gets every field, state and method that Player has.
-- Its `has` block adds new fields. Listing one Player already has, with the same type, only changes its starting value.
-- A method with the same name as one of Player's replaces it for wizards. It must take the same types of parameters (their names can differ) and give back the same type.
-- A Wizard can go anywhere a Player is expected: a `Player` variable, a `Player array`, a `Player` parameter. Methods called on it use the Wizard's version.
-- Ask what something really is with `is`: `is hero like Wizard? then { … }`.
-- A class is like one other class at most. An object can be like a class too: `object Boss like Wizard { … }`.
-
-## Functions (do)
-
-`do` makes a function that doesn't belong to anything. `method` makes one inside a class or object. Both work the same way:
-
-```
-do greet(string who) {
-    print("Hello " + who);
-}
-
-do int double(int n) {
-    give n * 2;
-}
-```
-
-- The return type goes before the name, and is left out when nothing comes back. There is no `void`.
-- `give` hands a value back and ends the function. A function with a return type must `give` on every path; one without may only use `give;` on its own to leave early.
+- The return type comes first, and is left out when nothing comes back.
+- `return` gives back a value and ends the method. A plain `return;` leaves early.
 - Parameters are typed: `(int a, string b)`.
-- `do` and `method` can't go inside another function or method. Every function sits at the top level of its file, and every method directly inside its class or object.
-- Functions and methods can't see variables declared at the top of a file. They work with their parameters, their own fields, objects and other functions. To share a value between functions, keep it in an object.
-- Inside a method, a bare call like `bark()` means the class's own method when there is one, and a `do` function otherwise.
-- A parameter or variable inside a method can't use the name of one of its class's fields, since fields are used by name alone.
 
-### Functions as values
+### Hooks: methods kept as values
 
-A function can be kept in a variable, a field, an array or a map, and passed to another function, for events like "when the day ends, run this". The type says what the function takes, and what it gives back when it gives something:
+`hook` is the type of a method kept in a variable, field, array or map. The names in a hook's type are the names its body uses.
 
 ```
-do int(int) f = double;           // takes an int, gives back an int
-do(string) say = greet;           // takes a string, gives back nothing
-do() later = bo:bark;             // a method of one thing: later() makes bo bark
+hook int(int n) triple = new hook {
+    return n * 3;
+};
 
-print(f(5));                      // 10
-later();
+hook int(int) f = doubleIt;            -- an existing method works too
 
-do int twice(do int(int) step, int x) {
-    give step(step(x));
+class Shop {
+    has {
+        hook(string item, int price) onSell = nothing;
+    }
 }
-print(twice(double, 3));          // 12
+
+Shop.onSell = new hook {
+    print("Sold " + item + " for " + price.text());
+};
 ```
 
-- A function's name without `()` is the function itself. A method is written `thing:method` without `()`, and stays tied to that thing. Inside a method, the class's own methods work by name alone: `bark`.
-- Call what a variable or parameter holds like a function: `f(5)`. A field that holds one is called like a method: `bo:onBark("hi")`, or `onBark("hi")` inside the class. From an array: `jobs[0]()`, and from a cArray's column: `bag[1]:onUse()`.
-- Parameter names may be written for clarity, and are ignored: `do(string who)` is the same type as `do(string)`.
-- A function only fits where it takes and gives back exactly the same types.
-- A function value can be `nothing`, which suits events nobody has filled in yet: `do() [onDayEnd nothing];` in a has block. Calling `nothing` stops the program with an error, so check first: `is onDayEnd nothing?`.
-- `is a b?` asks whether two function values are the same function (for a method, of the same thing).
-- Built-ins like `print` can't be kept as values. Wrap them: `do show(string s) { print(s); }`.
+- `new hook { }` is just the body. What it takes and gives back comes from where it's going.
+- A `new hook` can see the variables around it.
+- A hook kept in a variable is called like a method on its own: `triple(5)`. One kept in a field is called with `:`, like a method: `shop:onSell("bread", 3);`, or `onSell("bread", 3);` inside the class.
+- Calling a hook that's `nothing` stops the program, so check first: `is shop.onSell !== nothing?`.
 
-## Loops
+---
 
-`loop` is the only loop:
+## 12. Loops
 
-```
-loop { }                          // forever, until stop
-loop 3 { }                        // three times
-loop (hp > 0) { }                 // while that's true
-loop (cmd not "quit") { }         // the check works like a question's
-loop (int n in scores) { }        // each item of an array
-loop (int id, string itemName, int amount in bag) { }   // each row of a cArray
-loop (string key, int value in prices) { }              // each key of a map
-loop (state s in state) { }       // each option of a state
-```
-
-The check in `loop ( )` works exactly like a question's, so `a b`, `a not b`, `&&` and `||` all work there.
-
-`stop;` leaves the loop. `skip;` jumps to the next round.
-
-## Sharing between files
-
-Everything in a file is private until it's sent:
+`loop` does every kind of repeating:
 
 ```
-// player.lust
-send Player;
-send heal;
-send state;
+loop { … }                                      -- forever, until stop
+loop 3 { … }                                    -- three times
+loop (hp > 0) { … }                             -- while true
+loop (int score in scores) { … }                -- each item of an array
+loop (int id, string item, int qty in bag) { … } -- each row of a cArray
+loop (string key, int value in prices) { … }    -- each key of a map
+loop (GameState s in GameState) { … }           -- each option of a state
 ```
 
-Another file brings things in with `fetch` (big things: classes, objects, state) and `get` (single functions). `:` means "belongs to": file name on the left, thing on the right.
+- `stop;` leaves the loop. `skip;` jumps to the next round.
+
+---
+
+## 13. Sharing between files
+
+Everything in a file is private until it's passed:
 
 ```
-fetch player:Player;
-fetch player:[Player, Party];
-fetch player;                  // everything player.lust sends
-get dice:roll;
-get dice:[roll, flip];
+pass Player;
+pass GameState;
 ```
 
-Files can sit in folders. The path starts from the folder of the file doing the fetching, with `/` between folders and `../` to go up one:
+Another file brings things in with `fetch` (classes, objects, states) and `get` (single methods). The path is in quotes, from the project's root, without `.lust`:
 
 ```
-// game/main.lust
-fetch world/farm:[Farm, season];     // game/world/farm.lust
-get shared/dice:roll;                // game/shared/dice.lust
-
-// tests/farm_test.lust
-fetch ../game/world/farm;            // up out of tests, into game/world
+fetch "system/gameState":GameState;
+fetch "entities/player":[Player, Party];
+get "helpers/mathUtils":clamp;
 ```
 
-- `fetch` and `get` lines come before anything else in the file.
-- `fetch farm;` looks for `farm.lust` right next to this file. Leave out `.lust`, and don't start with `./`.
-- Things from a file are named by the file's own name, whatever folder it's in: after `fetch world/farm:season;` the state is `farm.season`. So one file can't fetch two different files that are both called `farm.lust`.
-- Fetching something the other file doesn't send is an error.
-- `fetch farm;` brings in everything `farm.lust` sends, functions included.
-- Only the file you run has its top-level code run. A fetched file only lends its classes, objects, functions and state, so test code at the bottom of `player.lust` doesn't run when `main.lust` fetches it.
+---
 
-## Saving and loading
-
-A save keeps things between runs of a program. Declare it at the top level of a file, listing what it holds, like declaring a state:
+## 14. Saving and loading
 
 ```
-save game = [Farm, Player, day];      // objects, and variables from the top of the file
+save gameSession = [Farm, player, currentDay];
 
-save game;                            // writes them all
-load game;                            // puts them all back
-is saved game? then { load game; }    // has it been saved before?
+is saved gameSession? then {
+    load gameSession;
+}
+
+save gameSession;
 ```
 
-- Everything inside is saved: every field, array, map, cArray and state, and every thing they point to. Two fields that held the same thing still hold the same thing after loading, and the cArray ids that were used stay used.
-- `load` puts the values back into those same objects and variables. Load after the variables are declared, or their declaration replaces what was loaded.
-- A save can hold objects, and variables declared at the very top of the file you run. Things made from classes go in through them: in a variable, an array, an object's field.
-- Functions and C# values can't be saved; Lust says so before running. Window parts (labels, buttons, canvases) are skipped, since `build()` makes them again.
-- There can be several saves, saved and loaded separately: `save settings = [Options];` next to `save game = …`. A save can be sent and fetched like a class: `send game;`.
-- Saves live in your user folder, in AppData\Roaming\Lust\(program)\(save).save on Windows. The program's name is its file's name, or its folder's name when the file is called main.lust.
-- A save is text that looks like Lust, so you can open it and change things (the gold, say). Loading is strict: when the save doesn't match the program exactly, for example after adding a field to a class, `load` stops the program with an error that says what's different, and changes nothing. Loading a save that doesn't exist is an error too, so ask `is saved game?` first.
+- A save lists what it holds once, then `save` and `load` do the rest.
+- Save files are readable text. Loading is strict: if the save doesn't match the program, nothing changes and Lust says why.
 
-## C# libraries
+---
 
-`fetch cs:` brings in a type from C#, by its full name. After that, it's used by its short name:
+## 15. Errors
 
 ```
-fetch cs:System.Math;
-fetch cs:System.Random;
-fetch cs:System.Text.StringBuilder;
-fetch cs:Humanizer.NumberToWordsExtension from "Humanizer.Core" 2.14.1;   // from a NuGet package
-
-float root = Math:Sqrt(2.0);                // static methods use :, like Lust's
-print(Math.PI);                             // properties and fields use .
-Random dice = new Random(42);               // C# types can take values in ( ) when they're made
-int roll = dice:Next(1, 7);
-StringBuilder sb = new StringBuilder { Capacity 100 };
-sb:Append("Hello");
-print(NumberToWordsExtension:ToWords(42));  // forty-two
+try {
+    writeText("config.json", data);
+} error (string message) {
+    print("That didn't work: " + message);
+}
 ```
 
-- Any public type from .NET works: `System.IO.File`, `System.DateTime`, `System.Text.RegularExpressions.Regex` and so on. A type from a NuGet package names the package and version after `from`; it's downloaded the first time, so that needs the internet.
-- Values become Lust's own as they come and go. C# whole numbers are `int`, `double`, `float` and `decimal` are `float`, `string` and `char` are `string`, `bool` is `truth`, and lists and arrays become Lust arrays (a copy). Anything else is a C# value, which Lust keeps and passes back as it is. Its type is written by its short name: `Random dice`, `Random array dice`.
-- When a method has several versions, Lust picks the one that fits the values best. Methods that take any number of values (`String:Format("{0} and {1}", a, b)`) take them one by one.
-- Lust's own values have C# methods too: `"a,b,c":Split(",")` gives a string array, `"lust":ToUpper()`, `3.14159:ToString("F2")`, and `name.Length` reads a C# property.
-- A C# type's name on its own isn't a value: it's always followed by `:` or `.`.
-- What a C# method gives back can be left unused (`sb:Append("x");`), unlike a Lust function's.
-- `is a b?` compares C# values the C# way, so two equal dates are the same. `x.text()` gives a C# value as text.
-- Not yet: generic types (List, Dictionary; use Lust's arrays and maps), events, `out` parameters, and C# methods kept as values.
-- When C# stops the program (say, a file that can't be opened), the error shows C#'s message at the Lust line.
+- `try` runs the block. If something goes wrong inside it, the program carries on in `error` instead of stopping.
+- Without `try`, an error stops the program with the file, line and a plain message.
 
-## Windows and buttons (ui)
+---
 
-`fetch ui;` brings in Lust's built-in UI file, for programs with a window. It always means the built-in one, so a file of your own can't be called `ui.lust` next to a file that fetches `ui`. These only run on Windows (they use WinForms underneath), but `lust check` works anywhere.
+## 16. LustScript (.lsc)
+
+LustScript is Lust turned into Lua, for running inside programs that already speak Lua. It's the same language with the same rules and checks. Only the output differs.
+
+- The host program offers its own library: `fetch gmod;`, `fetch aventail;`.
+- `fetch lua;` allows raw Lua inside a `lua { }` block, for anything the library doesn't cover:
+
+```
+fetch lua;
+
+method registerHook() {
+    lua {
+        hook.Add("PlayerSpawn", "lust_spawn", function(ply)
+            ply:ChatPrint("Welcome!")
+        end)
+    };
+}
+```
+
+- Lua has no separate whole numbers, so `int` is checked strictly by Lust and becomes a plain number in Lua.
+
+---
+
+## 17. Screens: view { }
+
+Screens are described Compose-style, with Tailwind-style styles in `[ ]`. Change a field or a state and the screen redraws itself. Lust draws everything itself, with no toolkit underneath.
 
 ```
 fetch ui;
 
-object App like Window {
+state Clock = [Stopped, Running, Paused];
+
+object Timer like App {
     has {
-        string[title "Counter"];
-        int[width 300, height 160];
-        int[clicks 0];
-        Label[count nothing];
+        int secondsLeft = 1500;
+        state is Clock.Stopped;
     }
 
-    method build() {
-        count = new Label { text "No clicks yet." };
-        add(count);
-        add(new PlusButton { text "Click me" });
-    }
-}
-
-class PlusButton like Button {
-    method clicked() {
-        App.clicks = App.clicks + 1;
-        App.count.text = "Clicks: " + App.clicks.text();
+    view {
+        column [center, gap 12, pad 24] {
+            text time() [size 28, weight 500];
+            row [gap 8] {
+                button "Start" [blue, round] { state is Clock.Running; }
+                button "Pause" [subtle] { state is Clock.Paused; }
+            }
+            is state == Clock.Paused? then { text "Paused" [muted]; }
+        }
     }
 }
 
-App:open();
+Timer:open();
+```
+
+- Buttons say what they do in their own block.
+- Styles are short words: `gap 12`, `pad 24`, `blue`, `round`. Name one to reuse it: `style card = [pad 16, round, shadow];`.
+- Questions and loops work inside a view.
+- Views are for desktop apps. Web pages stay HTML, CSS and JavaScript.
+
+---
+
+## 18. Web: schema and route
+
+### schema: the shape of data
+
+A schema describes data coming in and going out. A field with no value must be filled in; a field with a value is optional:
+
+```
+schema UserPayload {
+    has {
+        string username;
+        int age = 0;
+    }
+}
+```
+
+### route: answering requests
+
+```
+route "/api/v1" {
+    get "/user/:id" => getUser;
+    post "/user" => createUser;
+}
+
+pass route;
+```
+
+How handlers receive a schema and send one back is **(to design)**.
+
+---
+
+## 19. Built-ins and testing
+
+| Built-in | Does |
+| --- | --- |
+| `print(x);` | shows `x` on its own line |
+| `wait seconds;` | pauses |
+| `random(low, high)` | a whole number from `low` to `high` |
+| `ask(question)` | shows a question and gives back what's typed |
+| `readText(file)` | a whole text file |
+| `writeText(file, text);` | writes a text file |
+
+**Testing:** `lust test <folder>` runs every program that has an expected result next to it: `.out` for what it prints, `.err` for the mistakes it should report, `.in` for what's typed in.
+
+---
+
+## 20. A complete file
+
+```
+-- main.lust
+fetch "system/gameState":GameState;
+fetch "entities/player":Player;
+
+state AppState = [
+    Booting,
+    Running
+];
+
+method start() {
+    print("Starting up...");
+
+    Player hero = new Player { name = "Ada", hp = 100 };
+
+    is hero.hp > 0? then {
+        print("Ready: " + hero.name);
+    } or {
+        print("Knocked out");
+    }
+}
+
+pass AppState;
+
+start();
 
 end
 ```
 
-What `ui` sends:
+---
 
-| Class | Has | Methods |
-| --- | --- | --- |
-| `Window` | `title`, `width`, `height`, `background` | `build()` (yours to fill in), `open()`, `add(Widget w)`, `label(string words)`, `rebuild()`, `alert(string message)`, `close()`, and for things that move: `tick()` and `keyPressed(string key)` (yours), `startTimer(float seconds)`, `stopTimer()`, `isKeyDown(string key)` |
-| `Widget` | `text`, `enabled`, `visible`, `color`, `background`, `textSize` | everything below is like Widget |
-| `Label` | | text on its own |
-| `Button` | | `clicked()`: make your own button like Button and fill this in |
-| `Input` | | a box to type in; what's typed is in its `text` |
-| `Toggle` | `on` | a tick box; `toggled()` runs when it's ticked or unticked |
-| `Row` | | `add(Widget w)`: puts widgets side by side |
-| `Picture` | `file`, `width`, `height` | a picture from a file (png, jpg, gif, bmp); a width or height of 0 means its own size |
-| `Canvas` | `width`, `height` | somewhere to draw: `rect(x, y, w, h, paint)`, `circle(x, y, radius, paint)`, `line(x1, y1, x2, y2, paint)`, `write(x, y, words, paint)`, `picture(file, x, y)`, `clear()`, and `clicked(int x, int y)` (yours) |
-
-- Make your window `like Window`, usually as an object, and put what it shows in `build()`. `open()` shows it, and the program waits there until the window is closed.
-- Widgets go top to bottom in the order they're added. A `Row` puts its widgets side by side.
-- Your buttons and toggles say what they do by being `like Button` or `like Toggle` and filling in `clicked()` or `toggled()`.
-- To change what's on screen, change fields: `App.count.text = "…";`, `button.enabled = not true;`. After every click, Lust shows the new values. Keep a widget in a field when you want to change it later.
-- Before a click runs, what was typed into `Input`s and ticked in `Toggle`s is already in their `text` and `on`.
-- `rebuild()` empties the window and runs `build()` again. With a state, that switches screens:
-
-```
-state screen = [naming, playing];
-…
-method build() {
-    is screen naming? then { … } or { … }
-}
-…
-Pet.screen is playing;
-Pet:rebuild();
-```
-
-- `alert("…")` shows a message in a box. A mistake while the window is open shows in a box too, since the window closes.
-- **Colours** are names like `"red"`, `"gold"` or `"skyblue"` (any colour name Windows knows), or codes like `"#ff3355"`. `""` means the usual colour. `color` is a widget's text colour, `background` what's behind it, and `textSize` its text size (0 is the usual size).
-- **Pictures** and files on a canvas are found next to the `.lust` file, or next to the `.exe` once it's built, so copy them there.
-- **Drawing:** a canvas keeps everything drawn on it until `clear()`. x and y count from its top left corner. A game usually clears and draws everything again in each `tick()`.
-- **Things that move:** `startTimer(0.05)` makes `tick()` run on its own every 0.05 seconds, until `stopTimer()`. After every tick, Lust shows the new values, just like after a click.
-- **Keys:** `keyPressed(key)` runs when a key goes down, and `isKeyDown(key)` says whether one is held right now, which suits movement in `tick()`. Keys are named `"A"` to `"Z"`, `"0"` to `"9"`, `"Space"`, `"Enter"`, `"Escape"`, `"Tab"`, `"Backspace"`, `"Left"`, `"Right"`, `"Up"`, `"Down"`, `"Shift"`, `"Control"`, `"Alt"` and `"F1"` to `"F12"`.
-
-[`examples/ui/stars.lust`](examples/ui/stars.lust) is a small game with all of these.
-
-## Built-ins
-
-| Built-in | Does |
-| --- | --- |
-| `print(x);` | shows `x` on its own line. Takes any type: a thing made from a class shows like its has block (`Dog { name "Rex", hp 10 }`), an array as `[1, 2, 3]`, and `nothing` as `nothing`. |
-| `wait seconds;` | pauses, then carries on (see below). Takes an `int` or `float`. |
-| `random(low, high)` | a whole number from `low` to `high`, both included |
-| `x.text()` | `x` as text. Works on `int`, `float`, `truth` and state options. A float always shows its point (`3.0`), and a truth shows as `true` or `not true`. |
-| `x.int()` | a `float` with the part after the point dropped |
-| `x.float()` | an `int` as a `float` |
-| `ask(question)` | shows the question, waits for a line to be typed, and gives it back as a `string`. Gives back `""` when there's nothing more to read. |
-| `text.int()`, `text.float()` | text turned into a number, like `"42".int()`. `"3.5".int()` drops the part after the point and gives `3`. Text that isn't a number stops the program, so check first with `.isNumber()`. |
-| `text.isNumber()` | `true` when the text is a number |
-| `text.lines()` | the text cut into its lines, as a `string array` |
-| `readText(file)` | the whole text file, as a `string` |
-| `writeText(file, words)` | writes the text into the file, replacing what was there (and making its folder if needed) |
-
-Text files are found next to the `.lust` file you run, or next to the program once it's built with `lust build`. A full path like `C:\notes\todo.txt` works too. Reading a file that isn't there stops the program with an error.
-
-### wait
-
-`wait` can pause for up to 24 days. `wait` pauses only the code that's running it. In a plain program only one thing runs at a time, so it pauses the whole program. Once the game engine runs many objects side by side, a `wait` inside one object's code pauses just that object while the rest carry on.
-
-## Errors
-
-Lust finds as many mistakes as it can before the program starts, and says where and why:
-
-```
-player.lust:14:22  can't add an int to a string. Use hp.text() to turn hp into text.
-player.lust:31:5  missing ; at the end of this line.
-main.lust:3:12  player.lust doesn't send Party. Add send Party; to player.lust.
-```
-
-Mistakes only visible while running (a missing cArray id, reading past the end of an array, using `nothing`) stop the program with a message in the same style.
-
-Functions can call each other (and themselves) up to 200000 deep. Past that, Lust stops the program, since that almost always means a function calls itself with no way to stop.
-
-## Testing
-
-`lust test <folder>` runs every `.lust` file in a folder that has an expected result next to it:
-
-- `name.out`: what it should print.
-- `name.err`: the mistakes Lust should report, or the error it should stop with.
-- `name.in`: what's typed in while it runs, for `ask`.
-
-Folders inside the folder are searched too, and a `.lust` file with no expected result is a helper that other tests fetch. During `lust test`, `random` gives the same numbers every time (the runs are seeded), so tests that use it stay repeatable, and every test starts with no saves. Programs that fetch `ui` can't run as tests, but their mistakes can be checked with a `.err` file.
-
-## How Lust runs
-
-Lust is compiled. `lust run main.lust` reads `main.lust` and everything it fetches, checks the rules above, turns the result into C#, and runs it with .NET. `lust build main.lust` makes an `.exe` instead, in a `build` folder next to the file.
-
-You need the .NET SDK (version 8 or newer) installed. The compiler lives in [`compiler/`](compiler), and `lust cs main.lust` shows the C# it writes.
-
-## Reserved words
+## 21. Reserved words
 
 These can't be used as names:
 
 ```
-class object has method do give new nothing
-is then or either not true like
-loop stop skip in
-state send fetch get end
-int float string truth array cArray map
-save load saved
+class      object     node       assembly   create     has
+method     hook       return     like       new        nothing
+schema     route      view       style      keep       pass
+fetch      get        lua        is         then       or
+either     not        true       false      loop       stop
+skip       in         try        error      state      save
+load       saved      end        int        float      string
+truth      array      cArray     map
 ```
 
-`print`, `wait`, `random`, `ask`, `readText` and `writeText` are built-ins and can't be used as names.
+The built-ins can't be used as names either:
 
-## Still open
+```
+print      wait       random     ask        readText   writeText
+```
 
-Decisions for later, so nobody guesses:
+---
 
-- `+=` and friends (`hp += 5;`). Left out for now.
-- Fetching a single method, as in `fetch dog:Dog[bark]`.
-- Whether `nothing` is allowed for arrays and cArrays.
-- Calling the original version of a method from the one that replaces it (with `like`).
-- Functions written right where they're used (lambdas), like `do(int n) { print(n); }` as a value.
-- Generic C# types (List, Dictionary), C# events, and keeping C# methods as values.
-- Sound, and more widgets (lists, sliders, menus).
+## 22. Still to design
+
+- **State memory:** whether the `keep` rule is enough, and how nodes and states share memory.
+- **assembly:** several recipes, choosing between them, and making collections.
+- **LustQL (`.lql`):** what a stored-data file looks like.
+- **Web:** how route handlers take and give schemas.
+- **The standard library:** which Rust crates Lust wraps for files, networking, JSON, dates and sound, and how they look from Lust.
+- **Memory in Rust:** how state arenas and `keep` turn into Rust that satisfies Rust's ownership rules (likely arenas with handles).
+- **From v1:** whether `with x { }`, `{ }` inside text and the word `when` come along.
