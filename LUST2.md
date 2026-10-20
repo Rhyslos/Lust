@@ -11,17 +11,20 @@ This is the single source of truth for Lust v2. It replaces the two earlier v2 d
 - **Easy to scan.** You should be able to look at a file and find where things happen. Familiar symbols (`==`, `&&`, `return`) where they help reading, Lust's own words where they make things clearer.
 - **Strict and friendly.** Mistakes are caught before the program runs, with messages that say what to do.
 - **State-driven.** States describe what things are doing, and they own memory: what's made inside a state is freed when the state ends.
-- **Three outputs from one language:**
+- **Two outputs from one language:**
 
 | Output | Files | Used for |
 | --- | --- | --- |
-| Native machine code, through LLVM | `.lust` | Programs and apps |
-| WebAssembly | `.lust` | Running in the browser |
-| LustScript, turned into Lua | `.lsc` | Scripting and modding inside other programs (Garry's Mod, Aventail) |
+| Rust, compiled to real machine code | `.lust` | Programs, apps and servers, on Windows, macOS and Linux |
+| LustScript, turned into Lua | `.lsc` | Scripting and modding inside other programs (Garry's Mod, Aventail, Halberd) |
 
 Plus **LustQL** (`.lql`) for stored data **(to design)**.
 
-There is no .NET in v2, so no `fetch cs:`. A library for that may come much later.
+**Why Rust:** Lust writes readable Rust, and Rust's compiler does the rest: real machine code through LLVM, every desktop platform, and WebAssembly if it's ever wanted. Rust's libraries (crates) give Lust its standard library: files, HTTP, JSON, SQLite, sound, and windows and graphics through winit and wgpu. Lust checks everything itself, so nobody ever sees a Rust error. Programs need Rust installed to build, the way v1 needs .NET.
+
+**The web:** Lust is for servers (`route`, `schema`). Pages in the browser stay HTML, CSS and JavaScript. Lust in the browser through WebAssembly is possible later, but not planned.
+
+There is no .NET in v2, so no `fetch cs:`.
 
 ---
 
@@ -460,7 +463,7 @@ Timer:open();
 - Buttons say what they do in their own block.
 - Styles are short words: `gap 12`, `pad 24`, `blue`, `round`. Name one to reuse it: `style card = [pad 16, round, shadow];`.
 - Questions and loops work inside a view.
-- On the web, the same view becomes a page **(to design)**.
+- Views are for desktop apps. Web pages stay HTML, CSS and JavaScript.
 
 ---
 
@@ -570,6 +573,7 @@ print      wait       random     ask        readText   writeText
 - **State memory:** whether the `keep` rule is enough, and how nodes and states share memory.
 - **assembly:** several recipes, choosing between them, and making collections.
 - **LustQL (`.lql`):** what a stored-data file looks like.
-- **Web:** how route handlers take and give schemas, and how a `view` becomes a web page.
-- **The standard library:** without .NET, Lust needs its own files, networking, JSON, dates and sound, or links to C libraries through LLVM.
+- **Web:** how route handlers take and give schemas.
+- **The standard library:** which Rust crates Lust wraps for files, networking, JSON, dates and sound, and how they look from Lust.
+- **Memory in Rust:** how state arenas and `keep` turn into Rust that satisfies Rust's ownership rules (likely arenas with handles).
 - **From v1:** whether `with x { }`, `{ }` inside text and the word `when` come along.
