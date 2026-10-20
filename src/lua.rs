@@ -642,7 +642,16 @@ impl<'a> W<'a> {
                 let inner = std::mem::replace(&mut self.buf, saved_buf);
                 self.loops = saved_loops;
                 let pad = "  ".repeat(self.indent);
-                format!("function({})\n{inner}{pad}end", params.join(", "))
+                let names = self.info.hook_params.get(&e.id).cloned().unwrap_or_default();
+                let copies: Vec<String> = crate::rust::captures(body, &names, self.info).iter().map(|c| lname(c)).collect();
+                let f = format!("function({})\n{inner}{pad}end", params.join(", "));
+                if copies.is_empty() {
+                    f
+                } else {
+                    // The hook keeps the values as they were when it was made.
+                    let c = copies.join(", ");
+                    format!("(function({c}) return {f} end)({c})")
+                }
             }
             ExprKind::Like(inner, class, _) => {
                 let c = self.expr(inner);

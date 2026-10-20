@@ -62,6 +62,8 @@ pub struct Info {
     pub options: HashMap<usize, (usize, String)>,
     /// The names a `new hook { }` gives its values.
     pub hook_params: HashMap<usize, Vec<String>>,
+    /// Declared types: a variable's, keyed by its value; a called local hook's, keyed by the call.
+    pub decl_types: HashMap<usize, Ty>,
     pub states: Vec<StateInfo>,
     pub classes: Vec<ClassInfo>,
     pub methods: HashMap<String, MethodSig>,
@@ -123,6 +125,8 @@ struct Ctx {
     scopes: Vec<HashMap<String, Local>>,
     in_try: bool,
     in_hook: bool,
+    /// Inside a `new hook { }`: the scopes from this index on belong to the hook.
+    hook_base: usize,
 }
 
 pub struct Checker<'a> {
@@ -334,6 +338,7 @@ impl<'a> Checker<'a> {
                             scopes: vec![HashMap::new()],
                             in_try: false,
                             in_hook: false,
+                            hook_base: 0,
                         };
                         let d = f.default.as_ref().unwrap();
                         match self.expr(d, &mut ctx, None) {
@@ -414,6 +419,7 @@ impl<'a> Checker<'a> {
                             scopes: vec![HashMap::new()],
                             in_try: false,
                             in_hook: false,
+                            hook_base: 0,
                         };
                         let got = self.expr(d, &mut ctx, Some(&want));
                         self.expect_fits(d, &got, &want, &format!("{} is {}", f.name, self.a(&want)));
@@ -437,6 +443,7 @@ impl<'a> Checker<'a> {
             scopes: vec![HashMap::new()],
             in_try: false,
             in_hook: false,
+            hook_base: 0,
         };
         self.block_in(&prog.body, &mut top, true);
         for (k, v) in &top.scopes[0] {
@@ -580,6 +587,7 @@ impl<'a> Checker<'a> {
             scopes: vec![HashMap::new()],
             in_try: false,
             in_hook: false,
+            hook_base: 0,
         };
         for (p, (_, ty)) in m.params.iter().zip(&sig.params) {
             if let Some(c) = class {
@@ -675,10 +683,24 @@ impl<'a> Checker<'a> {
                 let want = self.resolve(ty);
                 let got = self.expr(value, ctx, Some(&want));
                 self.expect_fits(value, &got, &want, &format!("{name} is {}", self.a(&want)));
+                self.info.decl_types.insert(value.id, want.clone());
                 self.declare(ctx, name, want, *pos, false);
             }
             Stmt::Assign { target, value, pos } => {
                 let want = self.expr(target, ctx, None);
+                if ctx.in_hook {
+                    if let ExprKind::Name(n) = &target.kind {
+                        let outer = ctx
+                            .scopes
+                            .iter()
+                            .position(|s| s.contains_key(n))
+                            .map(|i| i < ctx.hook_base)
+                            .unwrap_or(false);
+                        if outer {
+                            self.err(*pos, format!("a hook can read the variables around it, but not change them. To change {n} from a hook, keep it in an object's field."));
+                        }
+                    }
+                }
                 self.writable(target, ctx, *pos);
                 let got = self.expr(value, ctx, Some(&want));
                 self.expect_fits(value, &got, &want, &format!("{} is {}", describe(target), self.a(&want)));
@@ -1173,6 +1195,7 @@ impl<'a> Checker<'a> {
                 inner.in_try = false;
                 inner.in_hook = true;
                 inner.scopes.push(HashMap::new());
+                inner.hook_base = inner.scopes.len() - 1;
                 for (n, (t, _)) in names.iter().zip(&sig.params) {
                     if self.lookup(ctx, n).is_some() {
                         self.err(
@@ -1506,6 +1529,7 @@ impl<'a> Checker<'a> {
         if let Some(l) = self.lookup(ctx, name) {
             if let Ty::Hook(sig) = &l.ty {
                 self.info.calls.insert(e.id, CallRes::LocalHook);
+                self.info.decl_types.insert(e.id, l.ty.clone());
                 let params = Self::hook_params(sig);
                 self.args(args, &params, name, e.pos, ctx);
                 return sig.ret.clone();

@@ -1,0 +1,54 @@
+cat says ... on 4 legs
+robin says tweet on 2 legs
+pingu says squawk on 2 legs
+true
+false
+Bird
+nothing
+false
+6
+tick 1
+tick 2
+tick 3
+30
+pingu says squawk on 2 legs
+nothing
+true
+6765
+-3
+1
+0.3
+infinity
+1e+20
+3.5
+2.0
+43
+3.5
+false
+-2
+1.0
+3
+["one", "two", "three"]
+3
+true
+true
+false
+On.Dim
+Off
+On
+On.Dim
+On.Bright
+[[1, 2], [3, 4]]
+["cake" 3.0]
+false
+[[5, "Bo", false], [6, "Cy", true]]
+5 Bo false
+6 Cy true
+3
+there's no key "bread" in this map. Check first with :has("bread").
+there's no row with id 9. The ids are 5, 6.
+this is nothing, so it has no fields or methods. Check first: is it !== nothing?
+dividing a whole number by zero doesn't work.
+"abc" isn't a number. Check first with .isNumber().
+methods called each other too deeply. That usually means one calls itself with no way to stop.
+still going

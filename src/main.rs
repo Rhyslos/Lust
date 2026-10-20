@@ -7,6 +7,7 @@ mod lexer;
 mod lua;
 mod parser;
 mod run;
+mod rust;
 mod tests;
 mod types;
 
@@ -19,16 +20,21 @@ const USAGE: &str = "Lust 2 (alpha)
 
   lust run <file>      check a .lust or .lsc file, then run it
   lust check <file>    only check it, and list any mistakes
-  lust lua <file>      show the Lua a .lsc file turns into
-  lust build <file>    write the Lua next to a .lsc file, as file.lua
+  lust lua <file>      show the Lua a file turns into
+  lust rust <file>     show the Rust a .lust file turns into
+  lust build <file>    .lust: build a real program next to it (needs Rust installed)
+                       .lsc: write the Lua next to it, as file.lua
   lust test <folder>   run the test programs in a folder
   lust version         show which Lust this is
 
 lust <file> is the same as lust run <file>.
-For now, .lust files run through Lua too. Real programs, through Rust, come next.";
+lust run is quick to start, so it runs .lust files through Lua too.
+lust build makes the real, fast program.";
 
 pub struct Compiled {
     pub out: lua::Output,
+    /// The Rust version, for .lust files.
+    pub rust: Option<String>,
 }
 
 /// Reads, checks and writes one file. Mistakes are printed, and give None.
@@ -62,8 +68,10 @@ pub fn compile(path: &Path, quiet: bool) -> Option<Compiled> {
         }
         return None;
     }
+    let rust = (!is_script).then(|| rust::write(&prog, &info, &display));
     Some(Compiled {
         out: lua::write(&prog, &info),
+        rust,
     })
 }
 
@@ -103,24 +111,39 @@ fn main() -> ExitCode {
             }
             None => ExitCode::from(1),
         },
-        "build" => {
-            if path.extension().map(|e| e == "lust").unwrap_or(false) {
-                eprintln!("building .lust programs (through Rust) isn't ready yet. For now: lust run {display}");
-                return ExitCode::from(1);
+        "rust" => match compile(path, false) {
+            Some(Compiled { rust: Some(r), .. }) => {
+                print!("{r}");
+                ExitCode::SUCCESS
             }
-            match compile(path, false) {
-                Some(c) => {
-                    let out = path.with_extension("lua");
-                    if let Err(e) = std::fs::write(&out, &c.out.code) {
-                        eprintln!("couldn't write {}: {e}", out.display());
-                        return ExitCode::from(1);
-                    }
-                    println!("Wrote {}.", out.file_name().unwrap().to_string_lossy());
+            Some(_) => {
+                eprintln!("{display} is LustScript, which turns into Lua. Try: lust lua {display}");
+                ExitCode::from(1)
+            }
+            None => ExitCode::from(1),
+        },
+        "build" => match compile(path, false) {
+            Some(Compiled { rust: Some(r), .. }) => match build_native(path, &r) {
+                Ok(exe) => {
+                    println!("Built {}.", exe.file_name().unwrap().to_string_lossy());
                     ExitCode::SUCCESS
                 }
-                None => ExitCode::from(1),
+                Err(e) => {
+                    eprintln!("{e}");
+                    ExitCode::from(1)
+                }
+            },
+            Some(c) => {
+                let out = path.with_extension("lua");
+                if let Err(e) = std::fs::write(&out, &c.out.code) {
+                    eprintln!("couldn't write {}: {e}", out.display());
+                    return ExitCode::from(1);
+                }
+                println!("Wrote {}.", out.file_name().unwrap().to_string_lossy());
+                ExitCode::SUCCESS
             }
-        }
+            None => ExitCode::from(1),
+        },
         "run" => match compile(path, false) {
             Some(c) => run::run(&c.out, &display),
             None => ExitCode::from(1),
@@ -129,5 +152,43 @@ fn main() -> ExitCode {
             eprintln!("lust doesn't know the command {other}.\n\n{USAGE}");
             ExitCode::from(2)
         }
+    }
+}
+
+/// Turns the Rust for a program into a real program next to the .lust file, with rustc.
+pub fn build_native(path: &Path, rust: &str) -> Result<std::path::PathBuf, String> {
+    let stem = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
+    let dir = std::env::temp_dir().join("lust-build");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("couldn't make a build folder: {e}"))?;
+    let src = dir.join(format!("{stem}-{}.rs", std::process::id()));
+    std::fs::write(&src, rust).map_err(|e| format!("couldn't write {}: {e}", src.display()))?;
+    let exe = path.with_extension(std::env::consts::EXE_EXTENSION);
+    let result = std::process::Command::new("rustc")
+        .args([
+            "--edition",
+            "2021",
+            "-O",
+            "-C",
+            "overflow-checks=on",
+            "--crate-name",
+            "lust_program",
+            "-o",
+        ])
+        .arg(&exe)
+        .arg(&src)
+        .output();
+    let _ = std::fs::remove_file(&src);
+    match result {
+        Err(_) => Err("building needs Rust, and it isn't installed. Get it from https://rustup.rs, then try again.".into()),
+        Ok(o) if !o.status.success() => {
+            let keep = dir.join(format!("{stem}.rs"));
+            let _ = std::fs::write(&keep, rust);
+            Err(format!(
+                "Lust made Rust that doesn't build. That's a bug in Lust, not your program.\nThe Rust is in {}. Rust said:\n{}",
+                keep.display(),
+                String::from_utf8_lossy(&o.stderr)
+            ))
+        }
+        Ok(_) => Ok(exe),
     }
 }

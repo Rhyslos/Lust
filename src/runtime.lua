@@ -302,9 +302,19 @@ function L.wait(s)
 end
 
 -- try … error (string message): just the message, without Lua's file and line.
+-- Lua's own messages are turned into plain words, the same ones lust run shows.
 function L.errtext(e)
-  local s = tostring(e)
-  return (s:gsub("^[^:]*:%d+: ", ""))
+  local s = (tostring(e):gsub("^[^:]*:%d+: ", ""))
+  if s:find("attempt to index") and s:find("nil value") then
+    return "this is nothing, so it has no fields or methods. Check first: is it !== nothing?"
+  end
+  if s:find("attempt to call") and s:find("nil value") then
+    return "this hook is nothing, so it can't be called. Check first: is it !== nothing?"
+  end
+  if s:find("stack overflow") then
+    return "methods called each other too deeply. That usually means one calls itself with no way to stop."
+  end
+  return s
 end
 
 return L

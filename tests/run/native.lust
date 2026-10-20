@@ -1,0 +1,194 @@
+-- Things that are easy to get wrong when Lust turns into Rust.
+-- Every line has to print the same through Lua and through Rust.
+state Light = [Off, On [Dim, Bright]];
+
+class Animal {
+    has {
+        string name = "animal";
+        int legs = 4;
+    }
+
+    method string sound() {
+        return "...";
+    }
+
+    method string describe() {
+        return name + " says " + sound() + " on " + legs.text() + " legs";
+    }
+}
+
+class Bird like Animal {
+    has {
+        int legs = 2;
+        truth flies = true;
+    }
+
+    method string sound() {
+        return "tweet";
+    }
+}
+
+class Penguin like Bird {
+    method string sound() {
+        return "squawk";
+    }
+}
+
+class Counter {
+    has {
+        int count = 0;
+        hook() onTick = nothing;
+    }
+
+    method tick() {
+        count = count + 1;
+        is onTick !== nothing? then {
+            onTick();
+        }
+    }
+
+    method hook int() reader() {
+        return new hook {
+            return count * 10;
+        };
+    }
+}
+
+method int fib(int n) {
+    is n < 2? then {
+        return n;
+    }
+    return fib(n - 1) + fib(n - 2);
+}
+
+method int forever(int n) {
+    return 1 + forever(n + 1);
+}
+
+-- Classes and families
+Animal array zoo = [new Animal { name = "cat" }, new Bird { name = "robin" }, new Penguin { name = "pingu" }];
+loop (Animal a in zoo) {
+    print(a:describe());
+}
+print(zoo[2] like Bird);
+print(zoo[0] like Bird);
+print(zoo[1]);
+Animal none = nothing;
+print(none);
+print(none like Animal);
+
+-- Hooks: copies of what's around them, things inside objects, methods as values
+int base = 5;
+hook int(int x) addBase = new hook {
+    return x + base;
+};
+base = 100;
+print(addBase(1));
+
+Counter c = new Counter {};
+c.onTick = new hook {
+    print("tick " + c.count.text());
+};
+c:tick();
+c:tick();
+hook int() peek = c:reader();
+c:tick();
+print(peek());
+hook string() say = zoo[2]:describe;
+print(say());
+hook() nobody = nothing;
+print(nobody);
+print(say === say);
+
+-- Numbers
+print(fib(20));
+print(-7 / 2);
+print(7 % -3);
+print(0.1 + 0.2);
+print(1.0 / 0.0);
+print(100000000000000000000.0);
+print(3 + 0.5);
+float f = 2;
+print(f);
+print("42".int() + 1);
+print(" 3.5 ".float());
+print("4x".isNumber());
+print(-2.7.int());
+print(either base > 10? 1 or 2.5);
+
+-- Text
+print(#"日本語");
+string array parts = "one\ntwo\nthree".lines();
+print(parts);
+print(#parts);
+print("a" + "b" == "ab");
+
+-- States
+Light l = Light.On.Dim;
+print(l == Light.On);
+print(l == Light.Off);
+print(l);
+loop (Light x in Light) {
+    print(x);
+}
+
+-- Lists of lists, maps and cArrays
+int array array grid = [[1, 2], [3]];
+grid[1]:inject(4);
+print(grid);
+float map prices = ["tea" 1.5, "cake" 3];
+prices:remove("tea");
+print(prices);
+print(prices:has("tea"));
+cArray(string who, truth here) people = [["Ana", true], [5, "Bo", false]];
+people:inject(["Cy", true]);
+people:remove(1);
+print(people);
+loop (int id, string who, truth here in people) {
+    print(id.text() + " " + who + " " + here.text());
+}
+
+-- Loops
+int n = 0;
+loop (n < 3) {
+    n = n + 1;
+}
+print(n);
+loop 0 {
+    print("never");
+}
+
+-- Errors that get caught
+try {
+    print(prices["bread"]);
+} error (string e) {
+    print(e);
+}
+try {
+    print(people[9].who);
+} error (string e) {
+    print(e);
+}
+try {
+    print(none.name);
+} error (string e) {
+    print(e);
+}
+try {
+    int zero = 0;
+    print(1 / zero);
+} error (string e) {
+    print(e);
+}
+try {
+    print("abc".int());
+} error (string e) {
+    print(e);
+}
+try {
+    print(forever(0));
+} error (string e) {
+    print(e);
+}
+print("still going");
+end

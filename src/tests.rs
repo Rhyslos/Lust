@@ -5,6 +5,9 @@
 //!   name.in    what's typed in while it runs, for ask
 //!
 //! A program with neither .out nor .err is a helper, and is skipped.
+//!
+//! A .lust program without mistakes runs twice: through Lua, then built for real
+//! through Rust. Both have to give the same result.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
@@ -41,41 +44,22 @@ pub fn run_folder(folder: &Path) -> ExitCode {
         let rel = f.strip_prefix(folder).unwrap_or(f).display().to_string();
         let dir = f.parent().unwrap();
         let name = f.file_name().unwrap();
-        let input = f.with_extension("in");
         let mut cmd = Command::new(&exe);
-        cmd.arg("run").arg(name).current_dir(dir).env("LUST_SEED", "1");
-        cmd.stdin(if input.exists() {
-            Stdio::from(std::fs::File::open(&input).unwrap())
-        } else {
-            Stdio::null()
-        });
-        let result = cmd.output().expect("running lust");
-        let stdout = clean(&String::from_utf8_lossy(&result.stdout));
-        let stderr = clean(&String::from_utf8_lossy(&result.stderr));
-        let mut problems = Vec::new();
-        if let Ok(want) = std::fs::read_to_string(f.with_extension("out")) {
-            if clean(&want) != stdout {
-                problems.push(format!(
-                    "it should print:\n{}\nbut printed:\n{}",
-                    indent(&clean(&want)),
-                    indent(&stdout)
-                ));
-            }
-        }
-        match std::fs::read_to_string(f.with_extension("err")) {
-            Ok(want) => {
-                if clean(&want) != stderr {
-                    problems.push(format!(
-                        "the mistakes should be:\n{}\nbut were:\n{}",
-                        indent(&clean(&want)),
-                        indent(&stderr)
-                    ));
+        cmd.arg("run").arg(name).current_dir(dir);
+        let mut problems = compare(f, cmd);
+        let native = f.extension().map(|e| e == "lust").unwrap_or(false) && crate::compile(f, true).is_some();
+        if native {
+            match crate::compile(f, true).and_then(|c| c.rust).map(|r| crate::build_native(f, &r)) {
+                Some(Ok(built)) => {
+                    let mut cmd = Command::new(std::fs::canonicalize(&built).unwrap_or(built.clone()));
+                    cmd.current_dir(dir);
+                    for p in compare(f, cmd) {
+                        problems.push(format!("built with Rust, {p}"));
+                    }
+                    let _ = std::fs::remove_file(&built);
                 }
-            }
-            Err(_) => {
-                if !result.status.success() {
-                    problems.push(format!("it stopped with:\n{}", indent(&stderr)));
-                }
+                Some(Err(e)) => problems.push(format!("it didn't build with Rust:\n{}", indent(&e))),
+                None => {}
             }
         }
         if problems.is_empty() {
@@ -96,6 +80,47 @@ pub fn run_folder(folder: &Path) -> ExitCode {
         println!("{failed} of {} tests failed.", files.len());
         ExitCode::from(1)
     }
+}
+
+/// Runs one command for a test file and lists how its output differs from what's expected.
+fn compare(f: &Path, mut cmd: Command) -> Vec<String> {
+    let input = f.with_extension("in");
+    cmd.env("LUST_SEED", "1");
+    cmd.stdin(if input.exists() {
+        Stdio::from(std::fs::File::open(&input).unwrap())
+    } else {
+        Stdio::null()
+    });
+    let result = cmd.output().expect("running a test");
+    let stdout = clean(&String::from_utf8_lossy(&result.stdout));
+    let stderr = clean(&String::from_utf8_lossy(&result.stderr));
+    let mut problems = Vec::new();
+    if let Ok(want) = std::fs::read_to_string(f.with_extension("out")) {
+        if clean(&want) != stdout {
+            problems.push(format!(
+                "it should print:\n{}\nbut printed:\n{}",
+                indent(&clean(&want)),
+                indent(&stdout)
+            ));
+        }
+    }
+    match std::fs::read_to_string(f.with_extension("err")) {
+        Ok(want) => {
+            if clean(&want) != stderr {
+                problems.push(format!(
+                    "the mistakes should be:\n{}\nbut were:\n{}",
+                    indent(&clean(&want)),
+                    indent(&stderr)
+                ));
+            }
+        }
+        Err(_) => {
+            if !result.status.success() {
+                problems.push(format!("it stopped with:\n{}", indent(&stderr)));
+            }
+        }
+    }
+    problems
 }
 
 fn indent(s: &str) -> String {
