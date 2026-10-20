@@ -1,0 +1,12 @@
+method int down(int n) {
+    return 1 + down(n + 1);
+}
+
+hook() later = nothing;
+try {
+    later();
+} error (string e) {
+    print(e);
+}
+print(down(0));
+end

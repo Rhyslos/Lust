@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (2.0 alpha 1):** LustScript. `.lsc` files are checked and turned into Lua, and `lust run` runs them (and `.lust` files too, through Lua for now). Built so far: types, questions, `either`, maths and text, arrays, maps, cArrays, states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks and the built-ins. Not yet: sharing between files (`pass`/`fetch`/`get`), `node`, `assembly`, `keep`, saves, `view`, `schema`/`route`, LustQL and real programs through Rust. Lust v1 lives on the `v1` branch.
+> **What works today (2.0 alpha 2):** both outputs. `.lsc` files are checked and turned into Lua. `.lust` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cArrays, states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks and the built-ins. Not yet: sharing between files (`pass`/`fetch`/`get`), `node`, `assembly`, `keep`, saves, `view`, `schema`/`route`, and LustQL. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -335,7 +335,7 @@ Shop.onSell = new hook {
 ```
 
 - `new hook { }` is just the body. What it takes and gives back comes from where it's going.
-- A `new hook` can see the variables around it.
+- A `new hook` can read the variables around it. It keeps their values as they were when the hook was made, and it can't change them (keep a value in an object's field to share changes: objects are shared, not copied).
 - A hook kept in a variable is called like a method on its own: `triple(5)`. One kept in a field is called with `:`, like a method: `shop:onSell("bread", 3);`, or `onSell("bread", 3);` inside the class.
 - Calling a hook that's `nothing` stops the program, so check first: `is shop.onSell !== nothing?`.
 
