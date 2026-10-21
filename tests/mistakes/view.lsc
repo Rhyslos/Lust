@@ -1,0 +1,29 @@
+style card = [pad 8, round];
+
+assembly Board {
+    has {
+        int count = 0;
+    }
+
+    view [title "Board"] {
+        column [card, glow] {
+            text count;
+            button "Add" [blue] {
+                count = count + 1;
+            }
+            slider [pad 2];
+            texty "hi";
+        }
+    }
+}
+
+assembly Plain {
+    has {
+        int n = 0;
+    }
+}
+
+text "outside";
+Plain:open();
+Board:open();
+end

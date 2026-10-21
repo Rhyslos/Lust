@@ -22,6 +22,7 @@ enum Kind {
     Method,
     Assembly,
     Database,
+    Style,
 }
 
 impl Kind {
@@ -33,6 +34,7 @@ impl Kind {
             Kind::Method => "a method",
             Kind::Assembly => "an assembly",
             Kind::Database => "a database",
+            Kind::Style => "a style",
         }
     }
 }
@@ -261,6 +263,7 @@ fn declarations(p: &Program) -> HashMap<String, Kind> {
             Item::Assembly(a) => d.insert(a.name.clone(), Kind::Assembly),
             Item::Database(b) => d.insert(b.name.clone(), Kind::Database),
             Item::Route(_) => None,
+            Item::Style(s) => d.insert(s.name.clone(), Kind::Style),
         };
     }
     d
@@ -296,6 +299,12 @@ fn value_names(p: &Program, out: &mut HashSet<String>) {
                     stmts(body, out);
                     stmts(handler, out);
                 }
+                Stmt::Element { children, action, .. } => {
+                    stmts(children, out);
+                    if let Some(a) = action {
+                        stmts(a, out);
+                    }
+                }
                 _ => {}
             }
         }
@@ -316,9 +325,12 @@ fn value_names(p: &Program, out: &mut HashSet<String>) {
                     out.insert(m.name.clone());
                     method(m, out);
                 }
+                if let Some(v) = &c.view {
+                    stmts(&v.body, out);
+                }
             }
             Item::Method(m) => method(m, out),
-            Item::State(_) | Item::Assembly(_) | Item::Database(_) | Item::Route(_) => {}
+            Item::State(_) | Item::Assembly(_) | Item::Database(_) | Item::Route(_) | Item::Style(_) => {}
         }
     }
     stmts(&p.body, out);
@@ -381,10 +393,18 @@ impl<'a> Renamer<'a> {
                 for m in &mut c.methods {
                     self.method(m);
                 }
+                if let Some(v) = &mut c.view {
+                    self.styles(&mut v.settings);
+                    self.stmts(&mut v.body);
+                }
             }
             Item::Method(m) => {
                 self.name(&mut m.name, m.pos, false);
                 self.method(m);
+            }
+            Item::Style(s) => {
+                self.name(&mut s.name, s.pos, false);
+                self.styles(&mut s.items);
             }
             Item::Route(r) => {
                 for (_, _, handler, pos) in &mut r.routes {
@@ -403,6 +423,20 @@ impl<'a> Renamer<'a> {
                     self.name(class, *pos, false);
                     self.expr(made);
                 }
+            }
+        }
+    }
+
+    /// Styles: values may use names, and a style's own name may be a named style.
+    fn styles(&mut self, items: &mut [StyleItem]) {
+        for it in items {
+            if let Some(inner) = self.visible.get(it.name.as_str()) {
+                it.name = inner.clone();
+            }
+            match &mut it.value {
+                StyleValue::Expr(e) => self.expr(e),
+                StyleValue::Nested(n) => self.styles(n),
+                _ => {}
             }
         }
     }
@@ -499,6 +533,22 @@ impl<'a> Renamer<'a> {
                 self.expr(value);
                 if let Some(i) = into {
                     self.expr(i);
+                }
+            }
+            Stmt::Element {
+                arg,
+                style,
+                children,
+                action,
+                ..
+            } => {
+                if let Some(a) = arg {
+                    self.expr(a);
+                }
+                self.styles(style);
+                self.stmts(children);
+                if let Some(a) = action {
+                    self.stmts(a);
                 }
             }
             _ => {}

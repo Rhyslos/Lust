@@ -1063,6 +1063,15 @@ function L.web_serve(port)
   if e then error(e, 2) end
 end
 
+-- ----- views: lust draws them, from the tables a view makes -----
+
+function L.view_open(class)
+  if not host or not host.ui_open then needs("A view") end
+  local o = L.new(class)
+  local e = host.ui_open(o:__settings(), function() return o:__view() end)
+  if e then error(e, 0) end
+end
+
 -- ----- saves: readable JSON files, name.save -----
 
 function L.save_exists(name)

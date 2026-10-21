@@ -144,6 +144,38 @@ pub enum Item {
     Assembly(AssemblyDecl),
     Database(DatabaseDecl),
     Route(RouteDecl),
+    /// style card = [pad 16, round, shadow];
+    Style(StyleDecl),
+}
+
+pub struct StyleDecl {
+    pub name: String,
+    pub pos: Pos,
+    pub items: Vec<StyleItem>,
+}
+
+/// One word in a view's [ ]: `center`, `gap 12`, `width fill`, `hover:[ … ]`.
+#[derive(Clone)]
+pub struct StyleItem {
+    pub name: String,
+    pub pos: Pos,
+    pub value: StyleValue,
+}
+
+#[derive(Clone)]
+pub enum StyleValue {
+    Flag,
+    /// A plain word: `fill`, `blue`.
+    Word(String),
+    Expr(Expr),
+    Nested(Vec<StyleItem>),
+}
+
+/// view [title "To do", width 420] { … }
+pub struct ViewDecl {
+    pub pos: Pos,
+    pub settings: Vec<StyleItem>,
+    pub body: Vec<Stmt>,
 }
 
 /// route "/api/v1" { get "/user/:id" => getUser; }
@@ -193,6 +225,8 @@ pub struct ClassDecl {
     pub is_node: bool,
     /// A schema is the shape of data coming in and going out. Fields with no value must be filled in.
     pub is_schema: bool,
+    /// An assembly with fields, methods or a view: a piece of screen, or a factory with memory.
+    pub view: Option<ViewDecl>,
     pub parent: Option<(String, Pos)>,
     pub fields: Vec<FieldDecl>,
     pub methods: Vec<MethodDecl>,
@@ -274,6 +308,17 @@ pub enum Stmt {
     Save(String, Pos),
     /// load gameSession;
     Load(String, Pos),
+    /// A piece of a view: column [gap 8] { … }, text "Hi" [muted];, button "Go" { … }
+    Element {
+        kind: String,
+        arg: Option<Expr>,
+        style: Vec<StyleItem>,
+        /// What's inside a column, row, stack or scroll.
+        children: Vec<Stmt>,
+        /// What a button (or an input, after a change) does.
+        action: Option<Vec<Stmt>>,
+        pos: Pos,
+    },
     /// keep sword in player.bag; or keep sword;
     Keep {
         value: Expr,
@@ -293,7 +338,8 @@ impl Stmt {
             | Stmt::Try { pos, .. }
             | Stmt::Lua { pos, .. }
             | Stmt::Keep { pos, .. }
-            | Stmt::SaveDecl { pos, .. } => *pos,
+            | Stmt::SaveDecl { pos, .. }
+            | Stmt::Element { pos, .. } => *pos,
             Stmt::Save(_, p) | Stmt::Load(_, p) => *p,
             Stmt::Stop(p) | Stmt::Skip(p) | Stmt::Return(_, p) => *p,
             Stmt::Expr(e) => e.pos,

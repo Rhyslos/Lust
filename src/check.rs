@@ -57,6 +57,7 @@ pub struct ClassInfo {
     pub is_node: bool,
     #[allow(dead_code)]
     pub is_schema: bool,
+    pub has_view: bool,
     /// A schema's fields with no starting value: they must always be filled in.
     pub required: Vec<String>,
     pub parent: Option<usize>,
@@ -110,6 +111,10 @@ pub struct Info {
     pub table_ops: HashMap<usize, &'static str>,
     /// Every route the program answers.
     pub routes: Vec<RouteInfo>,
+    /// Named styles: style card = [ … ];
+    pub styles: std::collections::HashSet<String>,
+    /// App:open(), by expression: the assembly whose view opens.
+    pub view_opens: HashMap<usize, usize>,
     /// Saves, by name: what each one holds.
     pub saves: HashMap<String, Vec<(String, SaveItem)>>,
     pub states: Vec<StateInfo>,
@@ -198,6 +203,8 @@ struct Ctx {
     hook_base: usize,
     /// Variables holding things this method made while its object is in a state.
     made: std::collections::HashSet<String>,
+    /// Inside a view, where pieces of the screen may go.
+    in_view: bool,
 }
 
 pub struct Checker<'a> {
@@ -325,6 +332,7 @@ impl<'a> Checker<'a> {
                         is_object: c.is_object,
                         is_node: c.is_node,
                         is_schema: c.is_schema,
+                        has_view: c.view.is_some(),
                         required: vec![],
                         parent: None,
                         fields: vec![],
@@ -338,6 +346,17 @@ impl<'a> Checker<'a> {
                     self.info.assemblies.insert(a.name.clone(), vec![]);
                 }
                 Item::Route(_) => {}
+                Item::Style(st) => {
+                    if self.info.styles.contains(&st.name) {
+                        self.err(st.pos, format!("there's already a style called {}.", st.name));
+                    } else if crate::native_ui::COLOURS.contains(&st.name.as_str()) {
+                        self.err(
+                            st.pos,
+                            format!("{} is one of Lust's colours, so a style can't use that name.", st.name),
+                        );
+                    }
+                    self.info.styles.insert(st.name.clone());
+                }
                 Item::Database(d) => {
                     if self.name_taken(&d.name, d.pos) {
                         continue;
@@ -476,6 +495,7 @@ impl<'a> Checker<'a> {
                             in_hook: false,
                             hook_base: 0,
                             made: Default::default(),
+                            in_view: false,
                         };
                         let d = f.default.as_ref().unwrap();
                         match self.expr(d, &mut ctx, None) {
@@ -587,6 +607,7 @@ impl<'a> Checker<'a> {
                     in_hook: false,
                     hook_base: 0,
                     made: Default::default(),
+                    in_view: false,
                 };
                 if let Ty::Class(c) = self.expr(e, &mut ctx, None) {
                     if made.iter().any(|(x, _)| *x == c) {
@@ -619,6 +640,7 @@ impl<'a> Checker<'a> {
                             in_hook: false,
                             hook_base: 0,
                             made: Default::default(),
+                            in_view: false,
                         };
                         let got = self.expr(d, &mut ctx, Some(&want));
                         self.expect_fits(d, &got, &want, &format!("{} is {}", f.name, self.a(&want)));
@@ -708,6 +730,7 @@ impl<'a> Checker<'a> {
             in_hook: false,
             hook_base: 0,
             made: Default::default(),
+            in_view: false,
         };
         self.block_in(&prog.body, &mut top, true);
         for (k, v) in &top.scopes[0] {
@@ -721,6 +744,23 @@ impl<'a> Checker<'a> {
                     for m in &c.methods {
                         self.method_body(m, ci);
                     }
+                    if let (Some(v), Some(ci)) = (&c.view, ci) {
+                        self.view_body(v, ci);
+                    }
+                }
+                Item::Style(st) => {
+                    let mut ctx = Ctx {
+                        class: None,
+                        ret: None,
+                        scopes: vec![HashMap::new()],
+                        in_try: false,
+                        in_hook: false,
+                        hook_base: 0,
+                        made: Default::default(),
+                        in_view: false,
+                    };
+                    self.eval_styles(&st.items, &mut ctx);
+                    self.check_styles(&st.items, "style");
                 }
                 _ => {}
             }
@@ -863,6 +903,187 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// A view's body: checked like a method of its assembly, where pieces of the screen may go.
+    fn view_body(&mut self, v: &ViewDecl, class: usize) {
+        let mut ctx = Ctx {
+            class: Some(class),
+            ret: None,
+            scopes: vec![HashMap::new()],
+            in_try: false,
+            in_hook: false,
+            hook_base: 0,
+            made: Default::default(),
+            in_view: true,
+        };
+        self.eval_styles(&v.settings, &mut ctx);
+        self.check_styles(&v.settings, "view");
+        self.block_in(&v.body, &mut ctx, true);
+    }
+
+    /// One piece of a view.
+    #[allow(clippy::too_many_arguments)]
+    fn element(
+        &mut self,
+        kind: &str,
+        arg: &Option<Expr>,
+        style: &[StyleItem],
+        children: &[Stmt],
+        action: &Option<Vec<Stmt>>,
+        pos: Pos,
+        ctx: &mut Ctx,
+    ) {
+        if !ctx.in_view {
+            self.err(pos, format!("{kind} is a piece of a screen, so it goes inside a view {{ }}."));
+            return;
+        }
+        if matches!(kind, "scroll" | "input" | "checkbox" | "slider" | "image") {
+            self.err(pos, format!("{kind} isn't built yet: it comes in one of the next steps of views."));
+            return;
+        }
+        match (kind, arg) {
+            ("text" | "button", Some(a)) => {
+                let t = self.expr(a, ctx, Some(&Ty::Str));
+                if t != Ty::Str && t != Ty::Error {
+                    let fix = if matches!(t, Ty::Int | Ty::Float | Ty::Truth) {
+                        format!(" Use {}.text() to turn it into text.", describe(a))
+                    } else {
+                        String::new()
+                    };
+                    self.err(a.pos, format!("{kind} shows text, but this is {}.{fix}", self.a(&t)));
+                }
+            }
+            ("text", None) => self.err(pos, "text needs something to show: text \"Hello\";"),
+            ("button", None) => self.err(pos, "a button needs its words: button \"Start\" { … }"),
+            (_, Some(a)) => self.err(
+                a.pos,
+                format!(
+                    "a {kind} doesn't take a value, only [styles]{}.",
+                    if kind == "space" { "" } else { " and what's inside it" }
+                ),
+            ),
+            _ => {}
+        }
+        self.eval_styles(style, ctx);
+        self.check_styles(style, kind);
+        if !children.is_empty() {
+            ctx.scopes.push(HashMap::new());
+            for s in children {
+                self.stmt(s, ctx);
+            }
+            ctx.scopes.pop();
+        }
+        if let Some(a) = action {
+            if kind != "button" {
+                self.err(pos, format!("a {kind} doesn't do anything when clicked, so it has no {{ }}."));
+            }
+            let was = std::mem::replace(&mut ctx.in_view, false);
+            ctx.scopes.push(HashMap::new());
+            for s in a {
+                self.stmt(s, ctx);
+            }
+            ctx.scopes.pop();
+            ctx.in_view = was;
+        }
+    }
+
+    /// Works out the values in [ ], which can use fields and variables like any expression.
+    fn eval_styles(&mut self, items: &[StyleItem], ctx: &mut Ctx) {
+        for it in items {
+            match &it.value {
+                StyleValue::Expr(e) => {
+                    self.expr(e, ctx, None);
+                }
+                StyleValue::Nested(n) => self.eval_styles(n, ctx),
+                _ => {}
+            }
+        }
+    }
+
+    /// The words in a view's [ ]. `kind` is the piece they're on, or "view" for the window's own.
+    fn check_styles(&mut self, items: &[StyleItem], kind: &str) {
+        const NUMS: &[&str] = &["pad", "padX", "padY", "gap", "size", "weight"];
+        const FLAGS: &[&str] = &[
+            "small", "large", "bold", "muted", "strike", "shadow", "center", "left", "right", "subtle",
+        ];
+        const COLOURED: &[&str] = &["color", "background"];
+        let window = kind == "view";
+        for it in items {
+            let n = it.name.as_str();
+            let named = self.info.styles.contains(n);
+            let colour_word = crate::native_ui::COLOURS.contains(&n);
+            let ok_word = |w: &str| crate::native_ui::colour(w).is_some();
+            let number = |me: &mut Self, v: &StyleValue, what: &str| match v {
+                StyleValue::Expr(e) => {
+                    let t = me.info.ty(e);
+                    if !matches!(t, Ty::Int | Ty::Float | Ty::Error) {
+                        me.err(e.pos, format!("{n} takes a number, like {what}. This is {}.", me.a(&t)));
+                    }
+                }
+                _ => me.err(it.pos, format!("{n} takes a number, like {what}.")),
+            };
+            match (n, &it.value) {
+                ("title", StyleValue::Expr(_)) if window => {}
+                ("width" | "height", StyleValue::Expr(_)) if window => {}
+                ("width" | "height", StyleValue::Expr(_) | StyleValue::Word(_)) => {
+                    if let StyleValue::Word(w) = &it.value {
+                        if w != "fill" {
+                            self.err(it.pos, format!("{n} is a number, or fill: {n} 200, {n} fill."));
+                        }
+                    }
+                }
+                ("width" | "height", StyleValue::Flag) => {}
+                ("background", _) if window || !window => match &it.value {
+                    StyleValue::Word(w) if ok_word(w) => {}
+                    StyleValue::Expr(_) => {}
+                    _ => self.err(it.pos, format!("{n} takes a colour: {n} blue, or {n} \"#2f9e44\".")),
+                },
+                (n2, v) if NUMS.contains(&n2) && !window => match v {
+                    StyleValue::Flag if matches!(n2, "pad" | "gap") => {}
+                    other => number(self, other, &format!("{n2} 12")),
+                },
+                ("round", StyleValue::Flag | StyleValue::Expr(_)) if !window => {}
+                ("border", StyleValue::Flag) if !window => {}
+                ("border", StyleValue::Word(w)) if !window && ok_word(w) => {}
+                ("border", StyleValue::Expr(_)) if !window => {}
+                (c, v) if COLOURED.contains(&c) && !window => match v {
+                    StyleValue::Word(w) if ok_word(w) => {}
+                    StyleValue::Expr(_) => {}
+                    _ => self.err(it.pos, format!("{c} takes a colour: {c} blue, or {c} \"#2f9e44\".")),
+                },
+                ("hover", StyleValue::Nested(inner)) if !window => {
+                    let inner = inner.clone();
+                    self.check_styles(&inner, kind);
+                }
+                (f, StyleValue::Flag) if !window && (FLAGS.contains(&f) || colour_word || named) => {}
+                _ => {
+                    let mut known: Vec<String> = if window {
+                        vec!["title".into(), "width".into(), "height".into(), "background".into()]
+                    } else {
+                        NUMS.iter()
+                            .chain(FLAGS)
+                            .chain(COLOURED)
+                            .chain(["width", "height", "round", "border", "hover"].iter())
+                            .map(|s| s.to_string())
+                            .collect()
+                    };
+                    if !window {
+                        known.extend(self.info.styles.iter().cloned());
+                    }
+                    let s = suggest(n, known.clone());
+                    if window {
+                        self.err(it.pos, format!("a window's view has title, width, height and background.{s}"));
+                    } else if FLAGS.contains(&n) || colour_word || named {
+                        self.err(it.pos, format!("{n} is a word on its own, without a value."));
+                    } else {
+                        self.err(it.pos, format!("Lust has no style called {n}.{s}"));
+                    }
+                }
+            }
+            // Values are worked out like any expression, in the view's own place.
+            let _ = (&it.value, n);
+        }
+    }
+
     fn method_body(&mut self, m: &MethodDecl, class: Option<usize>) {
         let sig = match class {
             Some(c) => self.info.classes[c].methods.get(&m.name).cloned(),
@@ -877,6 +1098,7 @@ impl<'a> Checker<'a> {
             in_hook: false,
             hook_base: 0,
             made: Default::default(),
+            in_view: false,
         };
         for (p, (_, ty)) in m.params.iter().zip(&sig.params) {
             if let Some(c) = class {
@@ -1187,6 +1409,14 @@ impl<'a> Checker<'a> {
                 ctx.scopes.pop();
             }
             Stmt::Lua { .. } => {}
+            Stmt::Element {
+                kind,
+                arg,
+                style,
+                children,
+                action,
+                pos,
+            } => self.element(kind, arg, style, children, action, *pos, ctx),
             Stmt::SaveDecl { name, items, pos } => {
                 let top = ctx.class.is_none() && ctx.ret.is_none() && !ctx.in_hook;
                 if !top {
@@ -2565,6 +2795,23 @@ impl<'a> Checker<'a> {
         if let ExprKind::Name(n) = &target.kind {
             if crate::stdlib::OBJECTS.contains(&n.as_str()) {
                 return self.object_call(e, n, m, args, mpos, ctx, expected);
+            }
+            if let Some(&c) = self.info.class_index.get(n) {
+                if self.info.classes[c].has_view && m == "open" {
+                    if !args.is_empty() {
+                        self.err(mpos, "open takes nothing in its ( ): App:open();");
+                    }
+                    self.info.view_opens.insert(e.id, c);
+                    self.info.calls.insert(e.id, CallRes::Builtin);
+                    return Ty::Void;
+                }
+                if m == "open" && !self.info.classes[c].is_node {
+                    self.err(
+                        mpos,
+                        format!("{n} has no view, so it can't open a window. Give it one: view [title \"{n}\"] {{ … }}"),
+                    );
+                    return Ty::Error;
+                }
             }
             if let Some(recipes) = self.info.assemblies.get(n).cloned() {
                 return self.create_call(e, n, &recipes, m, args, mpos);

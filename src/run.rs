@@ -29,6 +29,19 @@ fn host(lua: &Lua) -> mlua::Result<()> {
     h.set("mkdir", lua.create_function(|_, p: String| Ok(rt::fs_mkdir(&p).err()))?)?;
     h.set("now", lua.create_function(|_, ()| Ok(rt::time_now()))?)?;
     h.set(
+        "ui_open",
+        lua.create_function(|_, (settings, view): (mlua::Table, mlua::Function)| {
+            let s = ui_styles(&settings)?;
+            let mut build = || -> Result<(crate::native_ui::Node, Vec<crate::native_ui::Action>), String> {
+                let t: mlua::Table = view.call(()).map_err(|e| raw_error(&e))?;
+                let mut actions = Vec::new();
+                let n = ui_node(&t, &mut actions).map_err(|e| raw_error(&e))?;
+                Ok((n, actions))
+            };
+            Ok(crate::native_ui::show(&s, &mut build).err())
+        })?,
+    )?;
+    h.set(
         "http",
         lua.create_function(|_, (url, body): (String, Option<String>)| {
             Ok(match crate::native_net::fetch(&url, body.as_deref()) {
@@ -159,6 +172,53 @@ fn host(lua: &Lua) -> mlua::Result<()> {
     )?;
     h.set("clock", lua.create_function(move |_, ()| Ok(started.elapsed().as_secs_f64()))?)?;
     lua.globals().set("LUST_HOST", h)
+}
+
+/// A Lua error's own message, like "lust:12: something went wrong", without Lua's extras.
+fn raw_error(e: &mlua::Error) -> String {
+    match e {
+        mlua::Error::RuntimeError(s) => s.lines().next().unwrap_or("").to_string(),
+        mlua::Error::CallbackError { cause, .. } => raw_error(cause),
+        other => other.to_string().lines().next().unwrap_or("").to_string(),
+    }
+}
+
+/// A style list from Lua: { {"gap", 12}, {"center", true}, {"hover", { … }} }.
+fn ui_styles(t: &mlua::Table) -> mlua::Result<Vec<(String, crate::native_ui::SV)>> {
+    use crate::native_ui::SV;
+    let mut out = Vec::new();
+    for pair in t.sequence_values::<mlua::Table>() {
+        let pair = pair?;
+        let name: String = pair.get(1)?;
+        let v = match pair.get::<mlua::Value>(2)? {
+            mlua::Value::Number(n) => SV::Num(n),
+            mlua::Value::Integer(i) => SV::Num(i as f64),
+            mlua::Value::String(s) => SV::Text(s.to_str()?.to_string()),
+            mlua::Value::Table(n) => SV::Nested(ui_styles(&n)?),
+            _ => SV::Flag,
+        };
+        out.push((name, v));
+    }
+    Ok(out)
+}
+
+/// A view's tree of tables, turned into nodes. Buttons' functions become actions.
+fn ui_node(t: &mlua::Table, actions: &mut Vec<crate::native_ui::Action>) -> mlua::Result<crate::native_ui::Node> {
+    let mut n = crate::native_ui::Node::new(&t.get::<String>("k")?);
+    n.text = t.get::<Option<String>>("t")?.unwrap_or_default();
+    if let Some(s) = t.get::<Option<mlua::Table>>("s")? {
+        n.style = ui_styles(&s)?;
+    }
+    if let Some(f) = t.get::<Option<mlua::Function>>("f")? {
+        actions.push(Box::new(move || f.call::<()>(()).map_err(|e| raw_error(&e))));
+        n.action = Some(actions.len() - 1);
+    }
+    if let Some(c) = t.get::<Option<mlua::Table>>("c")? {
+        for child in c.sequence_values::<mlua::Table>() {
+            n.children.push(ui_node(&child?, actions)?);
+        }
+    }
+    Ok(n)
 }
 
 pub fn run(out: &Output, files: &[String]) -> ExitCode {

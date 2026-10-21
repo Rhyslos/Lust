@@ -1,0 +1,29 @@
+window "Counter" 360x260
+  column 0,0 360x135
+    text "Clicked 0 times" 91,24 179x30
+    row 97,66 166x33
+      button "Add one" 97,66 89x33
+      button "Reset" 194,66 69x33
+    row 180,111 0x0
+window "Counter" 360x260
+  column 0,0 360x194
+    text "Clicked 3 times" 91,24 179x30
+    row 97,66 166x33
+      button "Add one" 97,66 89x33
+      button "Reset" 194,66 69x33
+    text "That's a lot of clicks!" 107,111 147x19
+    row 122,142 116x28
+      text "one" 122,142 36x28
+      text "one" 162,142 36x28
+      text "one" 202,142 36x28
+window "Counter" 360x260
+  column 0,0 360x163
+    text "Clicked 0 times" 91,24 179x30
+    row 97,66 166x33
+      button "Add one" 97,66 89x33
+      button "Reset" 194,66 69x33
+    row 122,111 116x28
+      text "one" 122,111 36x28
+      text "one" 162,111 36x28
+      text "one" 202,111 36x28
+(there's no button "Nope" to click)

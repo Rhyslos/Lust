@@ -64,11 +64,21 @@ fn payload_text(p: &(dyn std::any::Any + Send)) -> String {
 }
 
 /// Runs the program on a thread with a big stack, and turns failures into Lust messages.
+/// macOS only opens windows from the main thread, so programs with views run there.
 pub fn main(program: fn(), files: &'static [&'static str]) {
     std::panic::set_hook(Box::new(|_| {}));
+    if cfg!(target_os = "macos") && UI_PROGRAM {
+        std::process::exit(run_program(program, files));
+    }
     let t = std::thread::Builder::new()
         .stack_size(512 * 1024 * 1024)
-        .spawn(move || {
+        .spawn(move || run_program(program, files))
+        .expect("starting the program");
+    let code = t.join().unwrap_or(1);
+    std::process::exit(code);
+}
+
+fn run_program(program: fn(), files: &'static [&'static str]) -> i32 {
             match std::panic::catch_unwind(|| {
                 started();
                 program()
@@ -90,10 +100,6 @@ pub fn main(program: fn(), files: &'static [&'static str]) {
                     1
                 }
             }
-        })
-        .expect("starting the program");
-    let code = t.join().unwrap_or(1);
-    std::process::exit(code);
 }
 
 /// try { … } error (string message) { … }: the message, if something failed.

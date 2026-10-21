@@ -86,6 +86,7 @@ pub fn run_folder(folder: &Path) -> ExitCode {
 fn compare(f: &Path, mut cmd: Command) -> Vec<String> {
     let input = f.with_extension("in");
     cmd.env("LUST_SEED", "1");
+    cmd.env("LUST_VIEW_TEST", "1");
     cmd.stdin(if input.exists() {
         Stdio::from(std::fs::File::open(&input).unwrap())
     } else {
