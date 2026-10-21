@@ -10,8 +10,8 @@ The order Lust gets built in. Each step makes Lust more useful on its own, and n
 | ✅ | **2. Sharing between files:** `pass`, `fetch`, `get` | Done (alpha 4) |
 | ✅ | **3. A basic standard library:** files and folders, time, maths, text tools, JSON | Done (alpha 5) |
 | 🏁 | *Lust is a complete tool for console programs and Garry's Mod scripts.* | Reached |
-| | **4. `keep`:** the memory rule for states | Next |
-| | **5. `node` and `assembly`** | |
+| ✅ | **4. `keep`:** things made in a state end with it, unless they're kept | Done (alpha 6) |
+| | **5. `node` and `assembly`** | Next |
 | | **6. LustQL, then saves on top of it** | |
 | | 🏁 *Programs keep their data.* | |
 | | **7. Servers:** `schema` and `route`, if they're still wanted by then | |

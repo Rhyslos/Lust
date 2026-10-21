@@ -231,6 +231,12 @@ pub enum Stmt {
         code: String,
         pos: Pos,
     },
+    /// keep sword in player.bag; or keep sword;
+    Keep {
+        value: Expr,
+        into: Option<Expr>,
+        pos: Pos,
+    },
 }
 
 impl Stmt {
@@ -242,7 +248,8 @@ impl Stmt {
             | Stmt::If { pos, .. }
             | Stmt::Loop { pos, .. }
             | Stmt::Try { pos, .. }
-            | Stmt::Lua { pos, .. } => *pos,
+            | Stmt::Lua { pos, .. }
+            | Stmt::Keep { pos, .. } => *pos,
             Stmt::Stop(p) | Stmt::Skip(p) | Stmt::Return(_, p) => *p,
             Stmt::Expr(e) => e.pos,
         }

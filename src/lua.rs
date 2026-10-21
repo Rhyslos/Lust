@@ -351,6 +351,24 @@ impl<'a> W<'a> {
                 self.indent -= 1;
                 self.line(ln, "end");
             }
+            Stmt::Keep { value, into, .. } => {
+                let v = self.expr(value);
+                let k = self.fresh("kept");
+                self.line(ln, "do");
+                self.indent += 1;
+                self.line(ln, &format!("local {k} = {v}"));
+                self.line(ln, &format!("_L.keep({k})"));
+                if let Some(into) = into {
+                    if matches!(self.info.ty(into), Ty::Array(_)) {
+                        let t = self.expr(into);
+                        self.line(ln, &format!("_L.ainject({t}, {k})"));
+                    } else {
+                        self.assign(ln, into, k.clone());
+                    }
+                }
+                self.indent -= 1;
+                self.line(ln, "end");
+            }
             Stmt::Lua { code, pos } => {
                 let mut l = pos.line;
                 for raw in code.lines() {
@@ -369,6 +387,15 @@ impl<'a> W<'a> {
     }
 
     fn assign(&mut self, ln: u32, target: &Expr, value: String) {
+        if let Some(owner) = self.info.state_owner(target, self.class) {
+            // An object's own state: things made in the old one may end.
+            let o = match owner {
+                Some(t) => self.expr(t),
+                None => "self".into(),
+            };
+            self.line(ln, &format!("_L.setstate({o}, {value})"));
+            return;
+        }
         match &target.kind {
             ExprKind::Index(t, i) => {
                 let tc = self.expr(t);
@@ -639,7 +666,12 @@ impl<'a> W<'a> {
                     parts.push(lua_string(&lname(f)));
                     parts.push(self.expr(v));
                 }
-                format!("_L.new({})", parts.join(", "))
+                let made = format!("_L.new({})", parts.join(", "));
+                match self.class {
+                    // Made in a method while its object is in a state: it belongs to that state.
+                    Some(c) if self.info.stateful(c) => format!("_L.own(self, {made})"),
+                    _ => made,
+                }
             }
             ExprKind::NewHook(body) => {
                 let params: Vec<String> = self

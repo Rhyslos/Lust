@@ -110,9 +110,16 @@ pub fn attempt(f: impl FnOnce()) -> Option<String> {
 
 // ----- things and hooks that may be nothing -----
 
-pub fn obj<T: ?Sized>(o: &Option<Rc<T>>) -> Rc<T> {
+pub fn obj<T: HasClass>(o: &Option<Rc<RefCell<T>>>) -> Rc<RefCell<T>> {
     match o {
-        Some(r) => r.clone(),
+        Some(r) => {
+            if let Ok(b) = r.try_borrow() {
+                if let Some(m) = b.ended() {
+                    fail(m.to_string());
+                }
+            }
+            r.clone()
+        }
         None => fail("this is nothing, so it has no fields or methods. Check first: is it !== nothing?".into()),
     }
 }
@@ -134,12 +141,122 @@ pub fn same<T: ?Sized>(a: &Option<Rc<T>>, b: &Option<Rc<T>>) -> bool {
 
 pub trait HasClass {
     fn class_id(&self) -> u32;
+    /// Why it's gone, once it has ended with the state it was made in.
+    fn ended(&self) -> Option<&str>;
+}
+
+/// Things that can end: their fields are let go, and using them says why.
+pub trait Endable {
+    fn end(&mut self, msg: String);
+}
+
+// ----- things made in a state end with it -----
+
+struct Owned {
+    owner: usize,
+    state: &'static str,
+    thing: usize,
+    owner_alive: Box<dyn Fn() -> bool>,
+    /// Ends the thing. False when it's already gone.
+    end: Box<dyn Fn(&str) -> bool>,
+}
+
+thread_local! {
+    static OWNED: RefCell<Vec<Owned>> = RefCell::new(Vec::new());
+}
+
+fn addr<T>(r: &Rc<T>) -> usize {
+    Rc::as_ptr(r) as *const u8 as usize
+}
+
+pub fn ended_msg(state: &str) -> String {
+    format!(
+        "this was made during {state}, and ended with it. To hold onto something made in a state, keep it, like keep sword in player.bag;"
+    )
+}
+
+/// Something made in a method of an object that's in a state: it belongs to that state.
+pub fn own<O: 'static, T: Endable + 'static>(
+    owner: &Rc<RefCell<O>>,
+    state: &'static str,
+    thing: Option<Rc<RefCell<T>>>,
+) -> Option<Rc<RefCell<T>>> {
+    if let Some(t) = &thing {
+        let wo = Rc::downgrade(owner);
+        let wt = Rc::downgrade(t);
+        let entry = Owned {
+            owner: addr(owner),
+            state,
+            thing: addr(t),
+            owner_alive: Box::new(move || wo.strong_count() > 0),
+            end: Box::new(move |msg| match wt.upgrade() {
+                Some(t) => match t.try_borrow_mut() {
+                    Ok(mut b) => {
+                        b.end(msg.to_string());
+                        true
+                    }
+                    Err(_) => false,
+                },
+                None => false,
+            }),
+        };
+        OWNED.with(|o| {
+            let mut o = o.borrow_mut();
+            // Now and then, forget things that are gone anyway.
+            if o.len() >= 256 && o.len().is_power_of_two() {
+                o.retain(|x| (x.owner_alive)());
+            }
+            o.push(entry);
+        });
+    }
+    thing
+}
+
+fn take_owned(pick: impl Fn(&Owned) -> bool) -> Vec<Owned> {
+    OWNED.with(|o| {
+        let mut o = o.borrow_mut();
+        let all = std::mem::take(&mut *o);
+        let (picked, rest): (Vec<Owned>, Vec<Owned>) = all.into_iter().partition(|x| pick(x));
+        *o = rest;
+        picked
+    })
+}
+
+fn end_owned_by(owner: usize, msg: &str) {
+    for x in take_owned(|x| x.owner == owner && (x.owner_alive)()) {
+        if (x.end)(msg) {
+            end_owned_by(x.thing, msg);
+        }
+    }
+}
+
+/// An object's state changed: what it made in an option that's over now ends.
+pub fn set_state<O>(owner: &Rc<RefCell<O>>, new: &'static str) {
+    let a = addr(owner);
+    let over = take_owned(|x| x.owner == a && !sin(new, x.state) && (x.owner_alive)());
+    for x in over {
+        let msg = ended_msg(x.state);
+        if (x.end)(&msg) {
+            end_owned_by(x.thing, &msg);
+        }
+    }
+}
+
+/// keep: it no longer belongs to the state it was made in.
+pub fn keep<T>(t: &Option<Rc<RefCell<T>>>) {
+    if let Some(t) = t {
+        let a = addr(t);
+        take_owned(|x| x.thing == a);
+    }
 }
 
 pub fn like<T: HasClass>(o: &Option<Rc<RefCell<T>>>, ids: &[u32]) -> bool {
     match o {
         None => false,
-        Some(r) => ids.contains(&r.borrow().class_id()),
+        Some(r) => {
+            let b = r.borrow();
+            b.ended().is_none() && ids.contains(&b.class_id())
+        }
     }
 }
 

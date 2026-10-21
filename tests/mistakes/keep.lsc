@@ -1,0 +1,26 @@
+state Phase = [Calm, Battle];
+
+class Item {
+    has {
+        string name = "thing";
+    }
+}
+
+class Hero {
+    has {
+        state is Phase.Calm;
+        Item array bag = [];
+        Item hand = nothing;
+    }
+
+    method grab() {
+        Item sword = new Item {};
+        bag:inject(sword);
+        hand = new Item {};
+        Item ok = new Item {};
+        keep ok in bag;
+        keep 5;
+        keep ok in 7;
+    }
+}
+end

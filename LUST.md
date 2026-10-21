@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (2.0 alpha 5):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`) works too. Not yet: `node`, `assembly`, `keep`, saves, `view`, `schema`/`route`, and LustQL. Lust v1 lives on the `v1` branch.
+> **What works today (2.0 alpha 6):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`) and things ending with their state (`keep`) work too. Not yet: `node`, `assembly`, saves, `view`, `schema`/`route`, and LustQL. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -238,25 +238,31 @@ state GameState = [
 - Change it with `is`: `state is GameState.ActiveGame.Combat;`
 - A question about an option includes everything inside it: during `Combat`, `is state == GameState.ActiveGame?` is yes.
 
-### States own memory
+### Things made in a state end with it
 
-Things made while a state is active belong to that state, and are freed the moment the state ends. There's no garbage collector, and nothing to free by hand.
-
-**The safety rule:** something made inside a state can't be stored anywhere that lives longer than the state. Lust catches this before the program runs:
+An object with a state of its own (`state is …;` in its `has`) owns what its methods make. Anything made with `new` in one of its methods belongs to the option the object is in at that moment, and **ends when the object leaves that option**:
 
 ```
-// during Combat
-Item sword = new Item { name = "Sword" };
-player.bag:inject(sword);      -- mistake: the sword is freed when Combat ends, but the bag lives on
+class Hero {
+    has {
+        state is Phase.Calm;
+        Item array bag = [];
+    }
+
+    method grab(string name) {
+        Item sword = new Item { name = name };
+        keep sword in bag;      -- without keep, the sword would end when Calm does
+    }
+}
 ```
 
-**To keep it, say so.** `keep` moves it out of the state's memory, into the place that will hold it:
-
-```
-keep sword in player.bag;      -- the sword now lives as long as the bag
-```
-
-This rule may be reworked as the design matures **(to design)**.
+- Once something has ended, its fields are let go, and using it stops the program with a message that says why: `this was made during Battle.Melee, and ended with it.` It isn't `nothing`, and it's no longer `like` anything.
+- **`keep thing in place;`** holds onto it: it no longer belongs to the state, and it goes into the place. The place can be an array (it's added to the end), a field or a variable.
+- **`keep thing;`** holds onto it without putting it anywhere.
+- Options inside options count separately: something made during `Battle.Melee` ends when the object moves on to `Battle.Ranged`.
+- Starting values in `has`, and anything made by code outside a class's methods, belong to no state.
+- If one ended thing owned things of its own, those end with it.
+- Lust catches the simple slips before running: storing something just made in a field or array without `keep` is a mistake.
 
 ---
 
@@ -678,10 +684,9 @@ Neither can the built-in objects: `Maths`, `Files`, `Time` and `Json`.
 
 ## 22. Still to design
 
-- **State memory:** whether the `keep` rule is enough, and how nodes and states share memory.
+- **State memory:** how nodes and states share memory.
 - **assembly:** several recipes, choosing between them, and making collections.
 - **LustQL (`.lql`):** what queries look like. It runs on SQLite underneath (see [ROADMAP.md](ROADMAP.md)).
 - **Web:** how route handlers take and give schemas.
 - **The standard library:** which Rust crates Lust wraps for files, networking, JSON, dates and sound, and how they look from Lust.
-- **Memory in Rust:** how state arenas and `keep` turn into Rust that satisfies Rust's ownership rules (likely arenas with handles).
 - **From v1:** whether `with x { }`, `{ }` inside text and the word `when` come along.

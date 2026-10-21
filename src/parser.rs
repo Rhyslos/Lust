@@ -391,7 +391,7 @@ impl<'a> Parser<'a> {
                 items.push(Item::Method(m));
                 return Ok(());
             }
-            "node" | "assembly" | "schema" | "route" | "view" | "style" | "save" | "load" | "keep" => {
+            "node" | "assembly" | "schema" | "route" | "view" | "style" | "save" | "load" => {
                 return self.fail(t.pos, format!("{word} is planned for Lust v2 but isn't built yet."));
             }
             _ => {}
@@ -789,6 +789,18 @@ impl<'a> Parser<'a> {
                     return Ok(Stmt::Return(value, t.pos));
                 }
                 "try" => return self.try_stmt(),
+                "keep" => {
+                    self.next();
+                    let value = self.expr()?;
+                    let into = if self.at_word("in") {
+                        self.next();
+                        Some(self.expr()?)
+                    } else {
+                        None
+                    };
+                    self.semi()?;
+                    return Ok(Stmt::Keep { value, into, pos: t.pos });
+                }
                 // wait 0.5; is a built-in that takes its value without ( ).
                 "wait" if !self.peek(1).is_sym("(") => {
                     self.next();
