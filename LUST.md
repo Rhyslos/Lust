@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (2.0 alpha 10):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Not yet: `view`, and LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (2.0 alpha 11):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. `view` has its first stage: windows with text, buttons and styles. Not yet: the rest of `view`, and LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -553,9 +553,51 @@ method registerHook() {
 
 ---
 
-## 17. Screens: view { } **(designed, not built yet)**
+## 17. Screens: view { } **(being built: stage 1 of 6)**
 
 A screen is described, not built step by step. `view` says what the window should look like right now, given the data. After anything happens (a click, a key, a timer), Lust looks at the view again and updates the window to match. You change data, never the screen.
+
+### What works so far
+
+Stage 1 is built: an assembly with a `view` opens a window with `App:open();`, through `lust run` and as a built program.
+
+- **Pieces:** `column`, `row`, `stack`, `space`, `text` and `button`. A button's `{ }` runs when it's clicked, and the window redraws afterwards.
+- **Styles:** every word in the list below, `hover:[ … ]` included, plus named styles (`style chip = [pad 6, round];`).
+- **Questions and loops** inside a view.
+- **The window's settings:** `title`, `width`, `height` and `background`.
+
+`scroll`, `input`, `checkbox`, `slider`, `image`, and using pieces from other files come in the next stages. Using one now says it isn't built yet.
+
+```
+assembly App {
+    has {
+        int count = 0;
+    }
+
+    view [title "Counter", width 360, height 200] {
+        column [center, gap 12, pad 24] {
+            text "Clicked " + count.text() + " times" [size 24, weight 600];
+            button "Add one" [blue, round] {
+                count = count + 1;
+            }
+        }
+    }
+}
+
+App:open();
+end
+```
+
+**Testing a view without a screen.** With `LUST_VIEW_TEST=1` set, no window opens. The program reads commands, one per line, from what's typed in (or a `.in` file in tests):
+
+| | |
+| --- | --- |
+| `dump` | prints every piece with its place and size |
+| `click Add one` | clicks the button showing that text |
+| `size 800 600` | resizes the window |
+| `snapshot shot.png` | draws the window into a picture |
+
+`lust test` sets it for every test, so a view's tests compare what `dump` prints.
 
 ### Pieces are assemblies
 

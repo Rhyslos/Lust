@@ -1,0 +1,43 @@
+-- A first window: text, buttons, and the screen following the data.
+state Clock = [Stopped, Running];
+
+style chip = [pad 6, round, background gray2];
+
+assembly App {
+    has {
+        int count = 0;
+        state is Clock.Stopped;
+        string array log = [];
+    }
+
+    method string label() {
+        return "Clicked " + count.text() + " times";
+    }
+
+    view [title "Counter", width 360, height 260] {
+        column [center, gap 12, pad 24] {
+            text label() [size 24, weight 600];
+            row [gap 8] {
+                button "Add one" [blue, round] {
+                    count = count + 1;
+                    log:inject("one");
+                }
+                button "Reset" [subtle] {
+                    count = 0;
+                    state is Clock.Stopped;
+                }
+            }
+            is count >= 3? then {
+                text "That's a lot of clicks!" [muted, strike];
+            }
+            row [gap 4] {
+                loop (string entry in log) {
+                    text entry [chip, small];
+                }
+            }
+        }
+    }
+}
+
+App:open();
+end

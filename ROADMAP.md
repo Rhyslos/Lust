@@ -17,7 +17,12 @@ The order Lust gets built in. Each step makes Lust more useful on its own, and n
 | ✅ | **7. Servers:** `schema` and `route`, answered by methods, with `Web:serve` and `Web:request` | Done (alpha 9) |
 | ✅ | **8. Ledger support and polish:** Ledger colours, checks, runs and builds `.lst` and `.lsc` files from their project's folder | Done |
 | ✅ | **Filling the gaps:** `Random[min, max]`, text patterns, dates, sorting, a web client, servers that read and answer several requests at once | Done (alpha 10) |
-| | **9. `view` and our own renderer,** designed in LUST.md section 17, built in stages: a window with text and a button, layout and styles, pieces, inputs, scrolling and images, polish | Next |
+| ✅ | **9.1 A window:** `view`, `App:open()`, `column`, `row`, `stack`, `space`, `text`, `button` and styles, drawn by Lust itself, with a test mode | Done (alpha 11) |
+| | **9.2 Layout and styles:** sizes that fill and share, alignment, borders, more of the palette | Next |
+| | **9.3 Pieces:** assemblies used inside views (`TodoRow { label = task };`), from files in `ui/` folders | |
+| | **9.4 Inputs:** `input`, `checkbox` and `slider` bound to fields, with typing, focus and the keyboard | |
+| | **9.5 Scrolling, images and timers** | |
+| | **9.6 Polish:** animation, speed and the details | |
 | | 🏁 *The Lust 2.0 release.* | |
 
 ## Decisions along the way

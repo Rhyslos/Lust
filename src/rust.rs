@@ -19,6 +19,7 @@ pub const DB_RUNTIME: &str = include_str!("native_db.rs");
 pub const WEB_RUNTIME: &str = include_str!("native_web.rs");
 pub const NET_RUNTIME: &str = include_str!("native_net.rs");
 pub const TEXT_RUNTIME: &str = include_str!("native_text.rs");
+pub const UI_RUNTIME: &str = include_str!("native_ui.rs");
 
 fn uses(info: &Info, funcs: &[&str]) -> bool {
     info.libs.values().any(|l| funcs.contains(&l.func.as_str()))
@@ -41,6 +42,9 @@ struct W<'a> {
     maker: Option<String>,
     /// Writing a node's starting values: what's made belongs to the node.
     owner_label: Option<String>,
+    /// Inside a view: the names of the pieces new pieces go into.
+    view_parent: Vec<String>,
+    named_styles: std::collections::HashMap<String, Vec<StyleItem>>,
 }
 
 pub fn write(prog: &Program, info: &Info, files: &[String]) -> String {
@@ -53,6 +57,15 @@ pub fn write(prog: &Program, info: &Info, files: &[String]) -> String {
         current_ret: None,
         maker: None,
         owner_label: None,
+        view_parent: vec![],
+        named_styles: prog
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                Item::Style(s) => Some((s.name.clone(), s.items.clone())),
+                _ => None,
+            })
+            .collect(),
     };
     let mut defs = String::new();
     let mut body = String::new();
@@ -168,6 +181,22 @@ pub fn write(prog: &Program, info: &Info, files: &[String]) -> String {
             let mut all = vec![format!("this: &Rc<RefCell<O{root}>>")];
             all.extend(params);
             defs.push_str(&format!("fn m{ci}_{}({}){ret} {{\n{b}}}\n", m.name, all.join(", ")));
+        }
+        if let Some(v) = &c.view {
+            // The window's settings, and the view: a tree of nodes Lust draws.
+            w.current_ret = None;
+            let s = w.styles(&v.settings);
+            defs.push_str(&format!(
+                "fn settings{ci}(this: &Rc<RefCell<O{root}>>) -> Vec<(String, rt::ui::SV)> {{\n    {s}\n}}\n"
+            ));
+            let mut b = String::from("    let _depth = rt::Depth::enter();\n    let mut p0 = rt::ui::Node::new(\"view\");\n");
+            w.view_parent.push("p0".into());
+            w.stmts(&v.body, &mut b, 1);
+            w.view_parent.pop();
+            b.push_str("    p0\n");
+            defs.push_str(&format!(
+                "fn view{ci}(this: &Rc<RefCell<O{root}>>, actions: &mut Vec<rt::ui::Action>) -> rt::ui::Node {{\n{b}}}\n"
+            ));
         }
         w.class = None;
     }
@@ -364,7 +393,7 @@ pub fn write(prog: &Program, info: &Info, files: &[String]) -> String {
         "// Written by Lust from {file}. It's rewritten on every build, so don't edit it.\n#![allow(warnings)]\nuse std::cell::RefCell;\nuse std::rc::Rc;\n\nmod rt {{\n{RUNTIME}\n{db}}}\n\n{rows}{defs}\nfn program() {{\n{body}}}\n\nfn main() {{\n    rt::main(program, &[{files}]);\n}}\n",
         files = files.iter().map(|f| format!("{f:?}")).collect::<Vec<_>>().join(", "),
         db = {
-            let mut m = String::new();
+            let mut m = format!("pub const UI_PROGRAM: bool = {};\n", !info.view_opens.is_empty());
             if !info.databases.is_empty() {
                 m.push_str(&format!("pub mod db {{\nuse super::*;\nuse std::rc::Rc;\n{DB_RUNTIME}\n}}\n"));
             }
@@ -373,6 +402,9 @@ pub fn write(prog: &Program, info: &Info, files: &[String]) -> String {
             }
             if uses(info, &["web_get", "web_post"]) {
                 m.push_str(&format!("pub mod net {{\nuse super::*;\n{NET_RUNTIME}\n}}\n"));
+            }
+            if !info.view_opens.is_empty() {
+                m.push_str(&format!("pub mod ui {{\nuse super::*;\n{UI_RUNTIME}\n}}\n"));
             }
             if uses(info, &["text_matches", "text_findAll", "text_replaceAll", "text_capture"]) {
                 m.push_str(&format!("pub mod pat {{\nuse super::*;\n{TEXT_RUNTIME}\n}}\n"));
@@ -435,10 +467,36 @@ fn walk_stmts(stmts: &[Stmt], f: &mut dyn FnMut(&Expr)) {
                     walk_expr(i, f);
                 }
             }
+            Stmt::Element {
+                arg,
+                style,
+                children,
+                action,
+                ..
+            } => {
+                if let Some(a) = arg {
+                    walk_expr(a, f);
+                }
+                walk_styles(style, f);
+                walk_stmts(children, f);
+                if let Some(a) = action {
+                    walk_stmts(a, f);
+                }
+            }
             Stmt::Try { body, handler, .. } => {
                 walk_stmts(body, f);
                 walk_stmts(handler, f);
             }
+            _ => {}
+        }
+    }
+}
+
+fn walk_styles(items: &[StyleItem], f: &mut dyn FnMut(&Expr)) {
+    for it in items {
+        match &it.value {
+            StyleValue::Expr(e) => walk_expr(e, f),
+            StyleValue::Nested(n) => walk_styles(n, f),
             _ => {}
         }
     }
@@ -722,6 +780,49 @@ impl<'a> W<'a> {
                 self.stmts(handler, out, depth + 1);
                 out.push_str(&format!("{pad}}}\n"));
             }
+            Stmt::Element {
+                kind,
+                arg,
+                style,
+                children,
+                action,
+                ..
+            } => {
+                let parent = self.view_parent.last().cloned().unwrap_or_else(|| "p0".into());
+                let v = format!("p{}", self.fresh());
+                out.push_str(&format!("{pad}{{\n{pad}    let mut {v} = rt::ui::Node::new({kind:?});\n"));
+                if let Some(a) = arg {
+                    let t = self.coerced(a, &Ty::Str);
+                    out.push_str(&format!("{pad}    {v}.text = {t};\n"));
+                }
+                if !style.is_empty() {
+                    let s = self.styles(style);
+                    out.push_str(&format!("{pad}    {v}.style = {s};\n"));
+                }
+                self.view_parent.push(v.clone());
+                self.stmts(children, out, depth + 1);
+                self.view_parent.pop();
+                if let Some(a) = action {
+                    // The action keeps copies of the view's variables it uses, and the piece itself.
+                    let inner = "    ".repeat(depth + 1);
+                    out.push_str(&format!("{inner}{{\n"));
+                    for c in captures(a, &[], self.info) {
+                        out.push_str(&format!("{inner}    let v_{c} = v_{c}.clone();\n"));
+                    }
+                    out.push_str(&format!("{inner}    let this = this.clone();\n"));
+                    out.push_str(&format!(
+                        "{inner}    actions.push(Box::new(move || match rt::attempt(|| {{\n{inner}        let this = &this;\n"
+                    ));
+                    let saved = self.current_ret.take();
+                    self.stmts(a, out, depth + 3);
+                    self.current_ret = saved;
+                    out.push_str(&format!(
+                        "{inner}    }}) {{\n{inner}        None => Ok(()),\n{inner}        Some(e) => Err(e),\n{inner}    }}));\n"
+                    ));
+                    out.push_str(&format!("{inner}    {v}.action = Some(actions.len() - 1);\n{inner}}}\n"));
+                }
+                out.push_str(&format!("{pad}    {parent}.children.push({v});\n{pad}}}\n"));
+            }
             Stmt::SaveDecl { .. } => {}
             Stmt::Save(name, _) => {
                 let list = self.info.saves.get(name).cloned().unwrap_or_default();
@@ -938,6 +1039,11 @@ impl<'a> W<'a> {
         }
         if let Some(lib) = self.info.libs.get(&e.id) {
             return self.lib(e, lib);
+        }
+        if let Some(c) = self.info.view_opens.get(&e.id) {
+            return format!(
+                "{{ let o = new{c}(); let s = settings{c}(&o); let mut build = || -> Result<(rt::ui::Node, Vec<rt::ui::Action>), String> {{ let mut actions: Vec<rt::ui::Action> = Vec::new(); let mut out = None; if let Some(e) = rt::attempt(|| out = Some(view{c}(&o, &mut actions))) {{ return Err(e); }} Ok((out.unwrap(), actions)) }}; if let Err(e) = rt::ui::show(&s, &mut build) {{ rt::fail(e); }} }}"
+            );
         }
         if let Some(op) = self.info.node_ops.get(&e.id) {
             let ExprKind::Method(t, ..) = &e.kind else { return "()".into() };
@@ -1464,6 +1570,32 @@ impl<'a> W<'a> {
                 format!("rt::own(this, {:?}, {made})", crate::ast::shown(&self.info.classes[c].name))
             }
             _ => made,
+        }
+    }
+
+    /// A view's [ ] as a list of (word, value). Named styles are put in place.
+    fn styles(&mut self, items: &[StyleItem]) -> String {
+        let mut parts = Vec::new();
+        self.style_parts(items, &mut parts);
+        format!("vec![{}]", parts.join(", "))
+    }
+
+    fn style_parts(&mut self, items: &[StyleItem], parts: &mut Vec<String>) {
+        for it in items {
+            if let (Some(named), StyleValue::Flag) = (self.named_styles.get(&it.name).cloned(), &it.value) {
+                self.style_parts(&named, parts);
+                continue;
+            }
+            let v = match &it.value {
+                StyleValue::Flag => "rt::ui::SV::Flag".to_string(),
+                StyleValue::Word(w) => format!("rt::ui::SV::Text({w:?}.to_string())"),
+                StyleValue::Expr(e) => match self.info.ty(e) {
+                    Ty::Int | Ty::Float => format!("rt::ui::SV::Num({})", self.coerced(e, &Ty::Float)),
+                    _ => format!("rt::ui::SV::Text({})", self.expr(e)),
+                },
+                StyleValue::Nested(n) => format!("rt::ui::SV::Nested({})", self.styles(n)),
+            };
+            parts.push(format!("({:?}.to_string(), {v})", crate::ast::shown(&it.name)));
         }
     }
 

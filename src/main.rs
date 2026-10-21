@@ -9,9 +9,12 @@ mod parser;
 mod project;
 // The runtime that goes into built programs. lust uses its file functions too, so
 // LustScript run by lust says exactly the same things.
-#[path = "native_rt.rs"]
 #[allow(dead_code, non_snake_case)]
-mod native_rt;
+mod native_rt {
+    // lust itself runs LustScript views on its own main thread.
+    pub const UI_PROGRAM: bool = false;
+    include!("native_rt.rs");
+}
 // Databases, for built programs that use them, and for LustScript run by lust.
 #[allow(dead_code)]
 mod native_db {
@@ -35,6 +38,11 @@ mod native_net {
 mod native_text {
     pub use crate::native_rt::*;
     include!("native_text.rs");
+}
+// Screens: views drawn by Lust, for built programs with a view and for LustScript run by lust.
+#[allow(dead_code)]
+mod native_ui {
+    include!("native_ui.rs");
 }
 mod run;
 mod rust;
@@ -218,7 +226,7 @@ fn cache_dir() -> std::path::PathBuf {
     std::env::temp_dir().join("lust-cache")
 }
 
-const CARGO_TOML: &str = "[package]\nname = \"lust_program\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nrusqlite = { version = \"0.40\", features = [\"bundled\"] }\ntiny_http = \"0.12\"\nureq = \"3\"\nregex = \"1\"\n\n[profile.release]\noverflow-checks = true\n\n[workspace]\n";
+const CARGO_TOML: &str = "[package]\nname = \"lust_program\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nrusqlite = { version = \"0.40\", features = [\"bundled\"] }\ntiny_http = \"0.12\"\nureq = \"3\"\nregex = \"1\"\nwinit = \"0.30\"\nsoftbuffer = \"0.4\"\nfontdue = \"0.9\"\n\n[profile.release]\noverflow-checks = true\n\n[workspace]\n";
 
 /// Builds a program that needs outside libraries with Cargo, in a folder of Lust's own. The
 /// libraries are shared, so they're only compiled the first time on each computer.
@@ -238,6 +246,15 @@ fn build_with_cargo(path: &Path, rust: &str, exe: &Path) -> Result<(), String> {
         std::fs::write(&toml, CARGO_TOML).map_err(|e| format!("couldn't write {}: {e}", toml.display()))?;
     }
     std::fs::write(project.join("src").join("main.rs"), rust).map_err(|e| format!("couldn't write the program: {e}"))?;
+    // Views draw with Lust's font, which goes into the program.
+    let fonts = project.join("assets").join("fonts");
+    std::fs::create_dir_all(&fonts).map_err(|e| format!("couldn't make a build folder: {e}"))?;
+    for (name, bytes) in native_ui::FONT_FILES.iter().zip(native_ui::FONTS.iter()) {
+        let f = fonts.join(name);
+        if std::fs::metadata(&f).map(|m| m.len() as usize != bytes.len()).unwrap_or(true) {
+            std::fs::write(&f, bytes).map_err(|e| format!("couldn't write {}: {e}", f.display()))?;
+        }
+    }
     let first = !target
         .join("release")
         .join("deps")
@@ -316,7 +333,7 @@ fn new_project(name: &str) -> ExitCode {
 }
 
 pub fn build_native(path: &Path, rust: &str) -> Result<std::path::PathBuf, String> {
-    if ["db", "web", "net", "pat"]
+    if ["db", "web", "net", "pat", "ui"]
         .iter()
         .any(|m| rust.contains(&format!("\npub mod {m} {{\n")))
     {

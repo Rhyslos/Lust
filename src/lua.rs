@@ -3,7 +3,7 @@
 //! Every output line remembers which Lust line it came from, so errors while running
 //! can point at the Lust code. Lines carry a marker while being built: \x01LINE\x02.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::ast::*;
 use crate::check::{CallRes, Info, NameRes};
@@ -50,6 +50,9 @@ struct W<'a> {
     maker: Option<String>,
     /// Writing a node's starting values: what's made belongs to the node.
     owner_label: Option<String>,
+    /// Inside a view: the Lua names of the pieces new pieces go into.
+    view_parent: Vec<String>,
+    named_styles: HashMap<String, Vec<StyleItem>>,
 }
 
 pub fn write(prog: &Program, info: &Info) -> Output {
@@ -63,6 +66,15 @@ pub fn write(prog: &Program, info: &Info) -> Output {
         object_names: HashSet::new(),
         maker: None,
         owner_label: None,
+        view_parent: vec![],
+        named_styles: prog
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                Item::Style(s) => Some((s.name.clone(), s.items.clone())),
+                _ => None,
+            })
+            .collect(),
     };
     w.program(prog);
     // Strip the line markers into a line map.
@@ -364,7 +376,45 @@ impl<'a> W<'a> {
             self.indent -= 1;
             self.line(m.pos.line, "end");
         }
+        if let Some(v) = &c.view {
+            // The window's settings, and the view: a tree of tables Lust draws.
+            let s = self.styles(&v.settings);
+            self.line(v.pos.line, &format!("function {table}:__settings() return {s} end"));
+            self.line(v.pos.line, &format!("function {table}:__view()"));
+            self.indent += 1;
+            self.line(v.pos.line, "local v0 = {k = \"view\", t = \"\", s = {}, c = {}}");
+            self.view_parent.push("v0".into());
+            self.stmts(&v.body);
+            self.view_parent.pop();
+            self.line(v.pos.line, "return v0");
+            self.indent -= 1;
+            self.line(v.pos.line, "end");
+        }
         self.class = None;
+    }
+
+    /// A view's [ ] as a Lua list of {word, value} pairs. Named styles are put in place.
+    fn styles(&mut self, items: &[StyleItem]) -> String {
+        let mut out = Vec::new();
+        for it in items {
+            if let Some(named) = self.named_styles.get(&it.name).cloned() {
+                if matches!(it.value, StyleValue::Flag) {
+                    let inner = self.styles(&named);
+                    let inner = inner.strip_prefix('{').and_then(|x| x.strip_suffix('}')).unwrap_or("").to_string();
+                    out.push(inner);
+                    continue;
+                }
+            }
+            let v = match &it.value {
+                StyleValue::Flag => "true".to_string(),
+                StyleValue::Word(w) => lua_string(w),
+                StyleValue::Expr(e) => self.expr(e),
+                StyleValue::Nested(n) => self.styles(n),
+            };
+            out.push(format!("{{{}, {v}}}", lua_string(crate::ast::shown(&it.name))));
+        }
+        let out: Vec<String> = out.into_iter().filter(|x| !x.is_empty()).collect();
+        format!("{{{}}}", out.join(", "))
     }
 
     // ----- statements -----
@@ -438,6 +488,37 @@ impl<'a> W<'a> {
                 self.indent += 1;
                 self.line(err.1.line, &format!("local {} = _L.errtext({e})", lname(&err.0)));
                 self.stmts(handler);
+                self.indent -= 1;
+                self.line(ln, "end");
+            }
+            Stmt::Element {
+                kind,
+                arg,
+                style,
+                children,
+                action,
+                ..
+            } => {
+                let parent = self.view_parent.last().cloned().unwrap_or_else(|| "v0".into());
+                let v = self.fresh("v");
+                let t = arg.as_ref().map(|a| self.expr(a)).unwrap_or_else(|| "\"\"".into());
+                let s = self.styles(style);
+                self.line(ln, "do");
+                self.indent += 1;
+                self.line(ln, &format!("local {v} = {{k = {}, t = {t}, s = {s}, c = {{}}}}", lua_string(kind)));
+                self.line(ln, &format!("{parent}.c[#{parent}.c + 1] = {v}"));
+                self.view_parent.push(v.clone());
+                self.stmts(children);
+                self.view_parent.pop();
+                if let Some(a) = action {
+                    self.line(ln, &format!("{v}.f = function()"));
+                    self.indent += 1;
+                    let saved = std::mem::take(&mut self.loops);
+                    self.stmts(a);
+                    self.loops = saved;
+                    self.indent -= 1;
+                    self.line(ln, "end");
+                }
                 self.indent -= 1;
                 self.line(ln, "end");
             }
@@ -697,6 +778,9 @@ impl<'a> W<'a> {
         }
         if let Some(lib) = self.info.libs.get(&e.id) {
             return self.lib(e, lib);
+        }
+        if let Some(c) = self.info.view_opens.get(&e.id) {
+            return format!("_L.view_open({})", self.class_table(*c));
         }
         if let Some(op) = self.info.node_ops.get(&e.id) {
             let ExprKind::Method(t, ..) = &e.kind else { return "nil".into() };

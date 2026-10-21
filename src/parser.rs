@@ -9,6 +9,11 @@ pub const RESERVED: &[&str] = &[
     "view", "style", "keep", "pass", "fetch", "get", "lua", "is", "then", "or", "either", "not", "true", "false", "loop", "stop", "skip",
     "in", "try", "error", "state", "save", "load", "saved", "end", "database", "int", "float", "string", "truth", "array", "cMap", "map",
 ];
+/// The pieces a view is made of.
+pub const ELEMENTS: &[&str] = &[
+    "column", "row", "stack", "scroll", "space", "text", "button", "input", "checkbox", "slider", "image",
+];
+
 pub const BUILTINS: &[&str] = &["print", "wait", "ask"];
 
 /// Words from other languages, with what Lust says instead.
@@ -123,6 +128,8 @@ pub struct Parser<'a> {
     last_field: Option<FieldDecl>,
     imports: Vec<Import>,
     passes: Vec<(String, Pos)>,
+    /// Inside a view's { }, where column, text, button and the rest are pieces of the screen.
+    in_view: bool,
 }
 
 pub fn parse(toks: Vec<Token>, diags: &mut Diags, is_script: bool, first_id: usize) -> Program {
@@ -133,6 +140,7 @@ pub fn parse(toks: Vec<Token>, diags: &mut Diags, is_script: bool, first_id: usi
         next_id: first_id,
         imports: vec![],
         passes: vec![],
+        in_view: false,
         is_script,
         uses_lua: false,
         loop_depth: 0,
@@ -400,7 +408,18 @@ impl<'a> Parser<'a> {
             "assembly" => {
                 *seen_other = true;
                 let a = self.assembly_decl()?;
-                items.push(Item::Assembly(a));
+                items.push(a);
+                return Ok(());
+            }
+            "style" if matches!(self.peek(1).kind, Tk::Ident(_)) && self.peek(2).is_sym("=") => {
+                *seen_other = true;
+                self.next();
+                let (name, pos) = self.ident("the style's name")?;
+                check_name(self.diags, &name, pos, NameKind::Value, "style");
+                self.next();
+                let list = self.style_list()?;
+                self.semi()?;
+                items.push(Item::Style(StyleDecl { name, pos, items: list }));
                 return Ok(());
             }
             "database" => {
@@ -421,7 +440,7 @@ impl<'a> Parser<'a> {
                 items.push(Item::Route(r));
                 return Ok(());
             }
-            "view" | "style" => {
+            "view" => {
                 return self.fail(t.pos, format!("{word} is planned for Lust v2 but isn't built yet."));
             }
             _ => {}
@@ -538,6 +557,7 @@ impl<'a> Parser<'a> {
             is_object,
             is_node,
             is_schema,
+            view: None,
             parent,
             fields,
             methods,
@@ -656,12 +676,16 @@ impl<'a> Parser<'a> {
     }
 
     /// assembly LootSpawner { create Item { name = "Potion"; value = 50; } }
-    fn assembly_decl(&mut self) -> R<AssemblyDecl> {
+    /// An assembly: recipes (create Item { … }), or fields, methods and a view: a piece of screen.
+    fn assembly_decl(&mut self) -> R<Item> {
         self.next();
         let (name, pos) = self.ident("the assembly's name")?;
         check_name(self.diags, &name, pos, NameKind::Type, "assembly");
-        let open = self.expect_sym("{", "expected { to start the assembly's recipes.")?;
+        let open = self.expect_sym("{", "expected { to start the assembly.")?;
         let mut recipes = Vec::new();
+        let mut fields = Vec::new();
+        let mut methods = Vec::new();
+        let mut view: Option<ViewDecl> = None;
         loop {
             if self.at_sym("}") {
                 self.next();
@@ -670,9 +694,42 @@ impl<'a> Parser<'a> {
             if self.at_eof() {
                 return self.fail(open.pos, format!("this {{ is never closed. Add a }} where {name} ends."));
             }
+            if self.at_word("has") {
+                self.next();
+                if self.has_block(&mut fields).is_err() {
+                    self.recover();
+                }
+                continue;
+            }
+            if self.at_word("method") {
+                match self.method_decl() {
+                    Ok(m) => methods.push(m),
+                    Err(_) => self.recover(),
+                }
+                continue;
+            }
+            if self.at_word("view") {
+                let v = self.next();
+                if view.is_some() {
+                    self.diags.add(v.pos, format!("{name} already has a view. A piece has one view."));
+                }
+                let settings = if self.at_sym("[") { self.style_list()? } else { vec![] };
+                let was = std::mem::replace(&mut self.in_view, true);
+                let body = self.block("the view");
+                self.in_view = was;
+                view = Some(ViewDecl {
+                    pos: v.pos,
+                    settings,
+                    body: body?,
+                });
+                continue;
+            }
             if !self.at_word("create") {
                 let pos = self.cur().pos;
-                self.diags.add(pos, "an assembly holds recipes: create Item { name = \"Potion\"; }");
+                self.diags.add(
+                    pos,
+                    "an assembly holds a has block, methods and a view, or recipes: create Item { name = \"Potion\"; }",
+                );
                 self.recover();
                 continue;
             }
@@ -704,7 +761,92 @@ impl<'a> Parser<'a> {
             );
             recipes.push((class, cpos, made));
         }
-        Ok(AssemblyDecl { name, pos, recipes })
+        if fields.is_empty() && methods.is_empty() && view.is_none() {
+            return Ok(Item::Assembly(AssemblyDecl { name, pos, recipes }));
+        }
+        if let Some((_, rpos, _)) = recipes.first() {
+            self.diags.add(
+                *rpos,
+                format!("{name} has fields, methods or a view, so its recipes go in an assembly of their own."),
+            );
+        }
+        Ok(Item::Class(ClassDecl {
+            name,
+            pos,
+            is_object: false,
+            is_node: false,
+            is_schema: false,
+            view,
+            parent: None,
+            fields,
+            methods,
+        }))
+    }
+
+    /// [center, gap 12, width fill, hover:[background gray2]]
+    fn style_list(&mut self) -> R<Vec<StyleItem>> {
+        self.expect_sym("[", "styles go in [ ]: [pad 16, round]")?;
+        let mut items = Vec::new();
+        while !self.at_sym("]") {
+            let (name, pos) = self.ident("a style, like pad 16 or round")?;
+            let value = if name == "hover" && self.at_sym(":") {
+                self.next();
+                StyleValue::Nested(self.style_list()?)
+            } else if self.at_sym(",") || self.at_sym("]") {
+                StyleValue::Flag
+            } else if matches!(self.cur().kind, Tk::Ident(_)) && (self.peek(1).is_sym(",") || self.peek(1).is_sym("]")) {
+                let Tk::Ident(w) = self.next().kind else { unreachable!() };
+                StyleValue::Word(w)
+            } else {
+                StyleValue::Expr(self.expr()?)
+            };
+            items.push(StyleItem { name, pos, value });
+            if self.at_sym(",") {
+                self.next();
+            } else if !self.at_sym("]") {
+                let p = self.cur().pos;
+                return self.fail(p, "expected , or ] here.");
+            }
+        }
+        self.next();
+        Ok(items)
+    }
+
+    /// A piece of a view: column [gap 8] { … }, text "Hi" [muted];, button "Go" [blue] { … }
+    fn element(&mut self) -> R<Stmt> {
+        let t = self.next();
+        let Tk::Ident(kind) = t.kind else { unreachable!() };
+        let container = matches!(kind.as_str(), "column" | "row" | "stack" | "scroll");
+        let arg = if container || kind == "space" || self.at_sym("[") || self.at_sym("{") || self.at_sym(";") {
+            None
+        } else {
+            Some(self.expr()?)
+        };
+        let style = if self.at_sym("[") { self.style_list()? } else { vec![] };
+        let mut children = Vec::new();
+        let mut action = None;
+        if self.at_sym("{") {
+            if container {
+                children = self.block(&format!("the {kind}"))?;
+            } else {
+                let was = std::mem::replace(&mut self.in_view, false);
+                let b = self.block(&format!("what the {kind} does"));
+                self.in_view = was;
+                action = Some(b?);
+            }
+        } else if container {
+            return self.fail(t.pos, format!("a {kind} holds other pieces in {{ }}: {kind} {{ text \"Hi\"; }}"));
+        } else {
+            self.semi()?;
+        }
+        Ok(Stmt::Element {
+            kind,
+            arg,
+            style,
+            children,
+            action,
+            pos: t.pos,
+        })
     }
 
     fn has_block(&mut self, fields: &mut Vec<FieldDecl>) -> R<()> {
@@ -972,6 +1114,9 @@ impl<'a> Parser<'a> {
     fn statement(&mut self) -> R<Stmt> {
         let t = self.cur().clone();
         if let Tk::Ident(w) = &t.kind {
+            if self.in_view && ELEMENTS.contains(&w.as_str()) {
+                return self.element();
+            }
             match w.as_str() {
                 "is" => return self.if_chain(),
                 "loop" => return self.loop_stmt(),
@@ -1122,6 +1267,15 @@ impl<'a> Parser<'a> {
         }
         if !matches!(target.kind, ExprKind::Call(..) | ExprKind::Method(..)) {
             if let ExprKind::Name(n) = &target.kind {
+                if ELEMENTS.contains(&n.as_str()) {
+                    return self.fail(t.pos, format!("{n} puts something on the screen, so it goes inside a view {{ }}."));
+                }
+                if self.in_view && (matches!(self.cur().kind, Tk::Str(_)) || self.cur().is_sym("[") || self.cur().is_sym("{")) {
+                    return self.fail(
+                        t.pos,
+                        format!("Lust has no screen piece called {n}. The pieces so far are column, row, stack, space, text and button."),
+                    );
+                }
                 if self.cur().pos.line == t.pos.line && matches!(self.cur().kind, Tk::Ident(_)) {
                     let pos = self.cur().pos;
                     return self.fail(pos, format!("Lust doesn't know a type called {n}."));
