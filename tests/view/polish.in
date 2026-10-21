@@ -1,0 +1,18 @@
+click Save
+click Never
+dump
+focus input 1
+type Buy
+type " milk"
+key ctrl+z
+dump
+key ctrl+z
+dump
+key ctrl+shift+z
+key ctrl+y
+dump
+key tab
+key tab
+dump
+click Save
+dump

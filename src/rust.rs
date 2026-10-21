@@ -189,7 +189,10 @@ pub fn write(prog: &Program, info: &Info, files: &[String]) -> String {
             defs.push_str(&format!(
                 "fn settings{ci}(this: &Rc<RefCell<O{root}>>) -> Vec<(String, rt::ui::SV)> {{\n    {s}\n}}\n"
             ));
-            let mut b = String::from("    let _depth = rt::Depth::enter();\n    let mut p0 = rt::ui::Node::new(\"view\");\n");
+            // The window's settings ride along, so a title can change with the data.
+            let mut b = format!(
+                "    let _depth = rt::Depth::enter();\n    let mut p0 = rt::ui::Node::new(\"view\");\n    p0.style = settings{ci}(this);\n"
+            );
             w.view_parent.push("p0".into());
             w.stmts(&v.body, &mut b, 1);
             w.view_parent.pop();
@@ -825,10 +828,8 @@ impl<'a> W<'a> {
                         "{pad}    {v}.kind = \"piece\".to_string();\n{pad}    {v}.text = {:?}.to_string();\n",
                         crate::ast::shown(class)
                     ));
-                    if !style.is_empty() {
-                        let s = self.styles(style);
-                        out.push_str(&format!("{pad}    {v}.style = {s};\n"));
-                    }
+                    let s = self.styles(style);
+                    out.push_str(&format!("{pad}    {v}.style = {s};\n"));
                     out.push_str(&format!("{pad}    {parent}.children.push({v});\n{pad}}}\n"));
                     return;
                 }
@@ -1662,6 +1663,8 @@ impl<'a> W<'a> {
                 StyleValue::Word(w) => format!("rt::ui::SV::Text({w:?}.to_string())"),
                 StyleValue::Expr(e) => match self.info.ty(e) {
                     Ty::Int | Ty::Float => format!("rt::ui::SV::Num({})", self.coerced(e, &Ty::Float)),
+                    // A style that's on only when this is true: [disabled not ready]
+                    Ty::Truth => format!("if {} {{ rt::ui::SV::Flag }} else {{ rt::ui::SV::Truth(false) }}", self.expr(e)),
                     _ => format!("rt::ui::SV::Text({})", self.expr(e)),
                 },
                 StyleValue::Nested(n) => format!("rt::ui::SV::Nested({})", self.styles(n)),

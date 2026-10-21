@@ -1,0 +1,4 @@
+recover.lsc:7:22  expected the save's name: saved gameSession here.
+recover.lsc:9:6  expected a value here, but found }.
+
+2 mistakes. Nothing was run.

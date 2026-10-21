@@ -1,0 +1,11 @@
+-- A mistake inside a view's [ ] used to make Lust stop forever at the } after it.
+assembly A {
+    has {
+        int count = 0;
+    }
+
+    view [title saved.text()] {
+        text "x";
+    }
+}
+end

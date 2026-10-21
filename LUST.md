@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (2.0 alpha 15):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. `view` has its first five stages: windows with text, buttons, layout, styles, pieces of your own, inputs, checkboxes, sliders, scrolling, pictures and timers. Not yet: the rest of `view`, and LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (2.0 alpha 16):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, checkboxes, sliders, scrolling, pictures and timers, all drawn by Lust itself. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -553,13 +553,13 @@ method registerHook() {
 
 ---
 
-## 17. Screens: view { } **(being built: stage 5 of 6)**
+## 17. Screens: view { }
 
 A screen is described, not built step by step. `view` says what the window should look like right now, given the data. After anything happens (a click, a key, a timer), Lust looks at the view again and updates the window to match. You change data, never the screen.
 
-### What works so far
+### What's there
 
-Stages 1 to 5 are built: an assembly with a `view` opens a window with `App:open();`, through `lust run` and as a built program.
+An assembly with a `view` opens a window with `App:open();`, through `lust run` and as a built program. `lust new name app` starts a project with a window and a piece in `ui/` to build on.
 
 - **Pieces:** `column`, `row`, `stack`, `space`, `text` and `button`. A button's `{ }` runs when it's clicked, and the window redraws afterwards.
 - **Scrolling, pictures and timers:** `scroll`, `image` and `every` (see below).
@@ -567,7 +567,10 @@ Stages 1 to 5 are built: an assembly with a `view` opens a window with `App:open
 - **Your own pieces:** any assembly with a view, used inside another view as `TodoRow { label = task };`, from the same file or fetched from files in `ui/` folders (see below).
 - **Styles and layout:** every word in the list below, `hover:[ … ]` included, plus named styles (`style chip = [pad 6, round];`). Text wraps onto more lines when it doesn't fit.
 - **Questions and loops** inside a view.
-- **The window's settings:** `title`, `width`, `height` and `background`.
+- **The window's settings:** `title`, `width`, `height`, `minWidth`, `minHeight` and `background`. They're worked out each time the view is drawn, so a title can show the data: `view [title "To do (" + (#todos).text() + ")"]`.
+- **`disabled`** greys out a piece and stops it being clicked, typed in or reached with Tab. It can depend on the data: `button "Save" [disabled name == ""] { … }`.
+- **Undo and redo** in inputs: Ctrl+Z, and Ctrl+Shift+Z or Ctrl+Y (Cmd on a Mac). A run of typing undoes in one go.
+- **Feedback:** hover looks fade in and out, and a button looks pressed in while it's held down.
 
 ```
 assembly App {
@@ -784,6 +787,8 @@ Short words in `[ ]`, in the spirit of Tailwind:
 | shape | `round`, `round 12`, `pill`, `border`, `border red`, `borderWidth 2`, `shadow`, `opacity 0.5` |
 | placement | `left`, `center`, `right` side to side; `top`, `middle`, `bottom` up and down; `spread` |
 | under the mouse | `hover:[ … ]` |
+| inputs and pictures | `placeholder "…"`, `from`, `to`, `step`, `cover` |
+| off | `disabled`, or `disabled` with a truth: `disabled not ready` |
 
 **Colours** are `white`, `black`, `gray1` to `gray9`, and `red`, `orange`, `yellow`, `green`, `teal`, `blue`, `indigo`, `purple` and `pink`. Each of those has nine shades from light to dark: `blue1` is a pale blue for backgrounds, `blue9` a deep one. Any other colour is written `"#2f9e44"`. The shades are the Open Color palette.
 

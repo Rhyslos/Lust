@@ -64,6 +64,7 @@ const USAGE: &str = "Lust 2 (alpha)
   lust build <file>    .lst: build a real program next to it (needs Rust installed)
                        .lsc: write the Lua next to it, as file.lua
   lust new <name>      make a new project folder, with a main.lst
+  lust new <name> app  the same, starting with a window and a piece in ui/
   lust test <folder>   run the test programs in a folder
   lust version         show which Lust this is
 
@@ -149,7 +150,7 @@ fn main() -> ExitCode {
     let display = path.file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_default();
     match cmd {
         "test" => tests::run_folder(path),
-        "new" => new_project(&file),
+        "new" => new_project(&file, args.get(2).map(|s| s == "app").unwrap_or(false)),
         "check" => match compile(path, false) {
             Some(_) => {
                 println!("{display} looks good.");
@@ -283,7 +284,58 @@ fn build_with_cargo(path: &Path, rust: &str, exe: &Path) -> Result<(), String> {
 }
 
 /// lust new name: a folder with a main.lst to start from, and the libraries made ready.
-fn new_project(name: &str) -> ExitCode {
+/// The window a new app starts with.
+const APP_MAIN: &str = r#"-- NAME: where the program starts. It opens a window.
+fetch "ui/counter":Counter;
+
+assembly App {
+    has {
+        string name = "";
+    }
+
+    view [title "NAME", width 480, height 360] {
+        column [gap 16, pad 24] {
+            text "NAME" [huge, bold];
+            input name [placeholder "What's your name?", width fill];
+            is name != ""? then {
+                text "Hello, " + name + "!" [large];
+            }
+            Counter { label = "Clicks" };
+        }
+    }
+}
+
+App:open();
+end
+"#;
+
+/// A piece of the window, in its own file.
+const APP_COUNTER: &str = r#"-- A piece of the screen: it counts clicks, and remembers its count between redraws.
+assembly Counter {
+    has {
+        string label = "";
+        int count = 0;
+    }
+
+    view {
+        row [gap 8, pad 12, round, background gray1] {
+            text label + ": " + count.text();
+            space;
+            button "Add one" [blue] {
+                count = count + 1;
+            }
+            button "Reset" [subtle, disabled count == 0] {
+                count = 0;
+            }
+        }
+    }
+}
+
+pass Counter;
+end
+"#;
+
+fn new_project(name: &str, app: bool) -> ExitCode {
     let dir = Path::new(name);
     if dir.exists() {
         eprintln!("there's already something called {name} here.");
@@ -295,10 +347,16 @@ fn new_project(name: &str) -> ExitCode {
         .unwrap_or_else(|| name.to_string());
     let made = std::fs::create_dir_all(dir)
         .and_then(|_| {
-            std::fs::write(
-                dir.join("main.lst"),
-                format!("-- {shown}: where the program starts.\nprint(\"Hello from {shown}!\");\nend\n"),
-            )
+            if app {
+                std::fs::create_dir_all(dir.join("ui"))?;
+                std::fs::write(dir.join("ui").join("counter.lst"), APP_COUNTER)?;
+                std::fs::write(dir.join("main.lst"), APP_MAIN.replace("NAME", &shown))
+            } else {
+                std::fs::write(
+                    dir.join("main.lst"),
+                    format!("-- {shown}: where the program starts.\nprint(\"Hello from {shown}!\");\nend\n"),
+                )
+            }
         })
         .and_then(|_| {
             std::fs::write(
@@ -310,7 +368,11 @@ fn new_project(name: &str) -> ExitCode {
         eprintln!("couldn't make {name}: {e}");
         return ExitCode::from(1);
     }
-    println!("Made {name}, with a main.lst to start from.");
+    if app {
+        println!("Made {name}, with a main.lst that opens a window, and a piece of it in ui/counter.lst.");
+    } else {
+        println!("Made {name}, with a main.lst to start from.");
+    }
     // A small program with a database, built once, so the first real build is quick.
     let warm = dir.join("lust-warm-up.lst");
     let src = "database Warm in \"warm.db\" {\n    cMap(int id, string name) things;\n}\nprint(#Warm.things);\nend\n";
