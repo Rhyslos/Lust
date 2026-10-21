@@ -1,0 +1,7 @@
+before open
+window "Counter" 300x120
+  button "Add" 0,0 58x33
+clicked, count is 1
+window "Counter" 300x120
+  button "Add" 0,0 58x33
+after the window closed

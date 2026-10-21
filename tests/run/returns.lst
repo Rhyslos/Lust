@@ -1,0 +1,38 @@
+-- Methods can give back a cMap (issue #41), and a hook.
+method cMap(int id, string item) starter() {
+    cMap(int id, string item) bag = [[1, "Sword"]];
+    bag:inject(["Shield"]);
+    return bag;
+}
+
+method hook int(int n) doubler() {
+    return new hook { return n * 2; };
+}
+
+class Shop {
+    has {
+        cMap(string name, float price) items = [];
+    }
+
+    method cMap(string name, float price) cheap() {
+        return items;
+    }
+}
+
+cMap(int id, string item) mine = starter();
+print(#mine);
+print(mine);
+print(#starter());
+hook int(int n) d = doubler();
+print(d(21));
+Shop s = new Shop;
+s.items:inject(["tea", 2.5]);
+s.items:inject(["cake", 4.0]);
+print(s:cheap());
+
+-- Random rolls the same numbers through Lua and as a built program for one seed (issue #42).
+print(Random[1, 1000000]);
+print(Random[1, 6]);
+float f = Random[0.0, 1.0];
+print(f);
+end

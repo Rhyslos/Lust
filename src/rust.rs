@@ -1880,6 +1880,16 @@ impl<'a> W<'a> {
                     format!("|v: &{tt}| ({row})(&v.borrow())")
                 }
             }
+            // A row of a database table: each column read back, shown like a cMap row.
+            Ty::TableRow(x) => {
+                let mut parts: Vec<String> = Vec::new();
+                for (n, ct) in x.cols.iter() {
+                    let f = self.fmt(ct, true);
+                    let v = self.from_sql(ct, &format!("&rt::db::r_get(r, {n:?})"));
+                    parts.push(format!("({f})(&{v})"));
+                }
+                format!("|r: &{tt}| format!(\"[{{}}]\", vec![{}].join(\", \"))", parts.join(", "))
+            }
             _ => format!("|_v: &{tt}| String::from(\"?\")"),
         }
     }

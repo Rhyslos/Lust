@@ -16,3 +16,4 @@ tea 2.5
 there's already a row with name "tea" in Shop.items.
 there's no row with name "milk" in Shop.items.
 there's no row with id 2 in Shop.orders to remove.
+["tea", 2.5, 10, Drink, true]

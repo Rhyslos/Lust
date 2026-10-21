@@ -28,6 +28,9 @@ fn host(lua: &Lua) -> mlua::Result<()> {
     )?;
     h.set("mkdir", lua.create_function(|_, p: String| Ok(rt::fs_mkdir(&p).err()))?)?;
     h.set("now", lua.create_function(|_, ()| Ok(rt::time_now()))?)?;
+    // Random rolls the same way as in built programs (the checks for lo > hi happen in Lua).
+    h.set("random", lua.create_function(|_, (lo, hi): (i64, i64)| Ok(rt::random(lo, hi)))?)?;
+    h.set("frandom", lua.create_function(|_, (lo, hi): (f64, f64)| Ok(rt::frandom(lo, hi)))?)?;
     h.set(
         "ui_open",
         lua.create_function(|_, (settings, view): (mlua::Table, mlua::Function)| {
