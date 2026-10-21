@@ -438,7 +438,7 @@ get "helpers/mathUtils":clamp;
 - Only what's brought in can be used. Lust says where something lives if a file forgets to bring it in.
 - Two files can each have a private thing with the same name. They never mix.
 - Files can bring things in from each other both ways.
-- **Only the file being run runs its code.** The code at the bottom of a fetched file is left out, so any file can be run on its own to try it out.
+- **Only the file being run runs its code.** The code at the bottom of a fetched file is left out, so any file can be run on its own to try it out, from any folder: `lust run entities/player.lst` from the project's folder, or `lust run player.lst` from inside `entities`. Lust finds the project's folder (the nearest one up with a `main.lst`) either way.
 - Mistakes and errors name the file they're in: `entities/player.lst:12  …`.
 - LustScript works the same way, with `.lsc` files. A LustScript program turns into one Lua file.
 
@@ -885,6 +885,7 @@ float chance = Random[0.0, 1.0];  -- a decimal from 0 up to (not quite) 1
 
 - With two ints, and going into an int, it's a whole number, and both ends can come up.
 - With a float, or going into a float, it's a decimal from the lowest up to just below the highest.
+- Each run rolls different numbers, even two runs started at the same moment. To get the same numbers every time (for tests), set `LUST_SEED` to a number before running: `lust run` and the built program then roll exactly the same numbers. `lust test` sets it to 1.
 
 ### Text
 

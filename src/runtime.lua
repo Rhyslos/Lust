@@ -20,7 +20,9 @@ end
 function L.btext(v) if v then return "true" else return "false" end end
 function L.qtext(v) return "\"" .. v .. "\"" end
 function L.stext(v) return v end
-function L.print(s) print(s) end
+-- Each line goes out straight away, as in a built program, even into a pipe or a file.
+local flush = io and io.stdout and function() io.stdout:flush() end or function() end
+function L.print(s) print(s) flush() end
 
 function L.show(v)
   if v == nil then return "nothing" end
@@ -49,6 +51,16 @@ function L.rshow(fs)
     cols = cols or r.__cols
     local parts = {}
     for i, c in ipairs(cols) do parts[i] = (r[c] == nil) and "nothing" or fs[i](r[c]) end
+    return "[" .. table.concat(parts, ", ") .. "]"
+  end
+end
+function L.trshow(fs)
+  return function(r)
+    local parts = {}
+    for i, c in ipairs(r.q.cols) do
+      local v = L.r_get(r, c)
+      parts[i] = (v == nil) and "nothing" or fs[i](v)
+    end
     return "[" .. table.concat(parts, ", ") .. "]"
   end
 end
@@ -106,23 +118,29 @@ function L.lines(s)
   return out
 end
 
+-- Under lust, Random uses the very same generator as built programs, so LUST_SEED rolls the same
+-- numbers both ways. Elsewhere (Garry's Mod, say) Lua's own is used, seeded from the time.
+local RHOST = rawget(_G, "LUST_HOST")
 local seeded = false
 local function seed()
   if not seeded then
     seeded = true
     local s = os and os.getenv and tonumber(os.getenv("LUST_SEED") or "")
-    if s then math.randomseed(s) elseif os and os.time then math.randomseed(os.time()) end
+    if s then math.randomseed(s)
+    elseif os and os.time then math.randomseed(os.time() + math.floor((os.clock and os.clock() or 0) * 1000003)) end
   end
 end
 function L.random(lo, hi)
-  seed()
   if lo > hi then error("Random's lowest number (" .. fmt("%d", lo) .. ") is bigger than its highest (" .. fmt("%d", hi) .. ").", 2) end
+  if RHOST and RHOST.random then return RHOST.random(lo, hi) end
+  seed()
   return math.random(lo, hi)
 end
 -- A decimal from lo up to (not quite) hi.
 function L.frandom(lo, hi)
-  seed()
   if lo > hi then error("Random's lowest number (" .. L.ftext(lo) .. ") is bigger than its highest (" .. L.ftext(hi) .. ").", 2) end
+  if RHOST and RHOST.frandom then return RHOST.frandom(lo, hi) end
+  seed()
   return lo + math.random() * (hi - lo)
 end
 

@@ -60,4 +60,6 @@ try {
 } error (string e) {
     print(e);
 }
+-- A whole row prints like a cMap row (issue #40).
+print(Shop.items["tea"]);
 end

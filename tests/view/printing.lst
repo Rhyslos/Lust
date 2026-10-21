@@ -1,0 +1,18 @@
+-- print and a window's test output come out in the order they happen (issue #39).
+assembly App {
+    has {
+        int count = 0;
+    }
+
+    view [title "Counter", width 300, height 120] {
+        button "Add" {
+            count = count + 1;
+            print("clicked, count is " + count.text());
+        }
+    }
+}
+
+print("before open");
+App:open();
+print("after the window closed");
+end

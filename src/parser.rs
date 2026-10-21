@@ -953,7 +953,10 @@ impl<'a> Parser<'a> {
     fn method_decl(&mut self) -> R<MethodDecl> {
         self.next(); // method
         let mut ret = None;
-        if !(matches!(self.cur().kind, Tk::Ident(_)) && self.peek(1).is_sym("(")) {
+        // A name followed by ( is the method's own, unless it's a type that's written with ( ):
+        // method cMap(int id, string item) starter() gives back a cMap.
+        let typed = self.at_word("cMap") || self.at_word("hook");
+        if typed || !(matches!(self.cur().kind, Tk::Ident(_)) && self.peek(1).is_sym("(")) {
             if self.at_word("void") {
                 let pos = self.cur().pos;
                 return self.fail(pos, "Lust has no void. Leave the return type out when nothing comes back.");

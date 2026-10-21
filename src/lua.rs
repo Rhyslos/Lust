@@ -1334,6 +1334,11 @@ impl<'a> W<'a> {
                 let f: Vec<String> = cols.iter().map(|(_, t)| self.fmt(t)).collect();
                 format!("_L.rshow({{{}}})", f.join(", "))
             }
+            // A row of a database table: each column read back, shown like a cMap row.
+            Ty::TableRow(x) => {
+                let f: Vec<String> = x.cols.iter().map(|(_, t)| self.fmt(t)).collect();
+                format!("_L.trshow({{{}}})", f.join(", "))
+            }
             _ => "_L.show".into(),
         }
     }

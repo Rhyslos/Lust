@@ -1,0 +1,10 @@
+-- Any file can be run on its own to try it out, from its own folder (issue #38).
+-- Its fetches still start from the project's folder, the one with main.lst.
+fetch "entities/player":Player;
+fetch "entities/world":World;
+
+Player bo = new Player { name = "Bo" };
+bo:hurt(5);
+print(bo.name + " has " + bo.hp.text());
+World:tick();
+end

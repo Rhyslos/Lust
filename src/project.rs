@@ -72,6 +72,10 @@ fn shown_path(path: &Path, root: &Path) -> String {
 /// Reads the program that starts at `entry`, with every file it brings in.
 pub fn load(entry: &Path, src: String, is_script: bool, diags: &mut Diags) -> Project {
     let ext = if is_script { "lsc" } else { "lst" };
+    // The search for the project's folder starts from the file's full path, so a short one like
+    // entities/player.lst still finds main.lst in the folder above.
+    let full = std::path::absolute(entry).unwrap_or_else(|_| entry.to_path_buf());
+    let entry = full.as_path();
     let root = root_of(entry, ext);
     let canon = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
     let mut files: Vec<File> = Vec::new();
