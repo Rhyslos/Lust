@@ -29,6 +29,40 @@ fn host(lua: &Lua) -> mlua::Result<()> {
     h.set("mkdir", lua.create_function(|_, p: String| Ok(rt::fs_mkdir(&p).err()))?)?;
     h.set("now", lua.create_function(|_, ()| Ok(rt::time_now()))?)?;
     h.set(
+        "http",
+        lua.create_function(|_, (url, body): (String, Option<String>)| {
+            Ok(match crate::native_net::fetch(&url, body.as_deref()) {
+                Ok(t) => (Some(t), None),
+                Err(e) => (None, Some(e)),
+            })
+        })?,
+    )?;
+    {
+        use crate::native_text as p;
+        fn both<T>(r: Result<T, String>) -> (Option<T>, Option<String>) {
+            match r {
+                Ok(v) => (Some(v), None),
+                Err(e) => (None, Some(e)),
+            }
+        }
+        h.set(
+            "pat_matches",
+            lua.create_function(|_, (s, pt): (String, String)| Ok(both(p::try_matches(&s, &pt))))?,
+        )?;
+        h.set(
+            "pat_find_all",
+            lua.create_function(|_, (s, pt): (String, String)| Ok(both(p::try_find_all(&s, &pt))))?,
+        )?;
+        h.set(
+            "pat_capture",
+            lua.create_function(|_, (s, pt): (String, String)| Ok(both(p::try_capture(&s, &pt))))?,
+        )?;
+        h.set(
+            "pat_replace_all",
+            lua.create_function(|_, (s, pt, w): (String, String, String)| Ok(both(p::try_replace_all(&s, &pt, &w))))?,
+        )?;
+    }
+    h.set(
         "serve",
         lua.create_function(|_, (port, answer): (i64, mlua::Function)| {
             let r = crate::native_web::serve_with(port, &mut |m, p, b| match answer.call::<(u16, String)>((m, p, b)) {

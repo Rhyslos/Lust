@@ -542,7 +542,7 @@ impl<'a> Renamer<'a> {
                     self.expr(a);
                 }
             }
-            ExprKind::Index(a, b) | ExprKind::Bin(_, a, b, _) => {
+            ExprKind::Index(a, b) | ExprKind::Bin(_, a, b, _) | ExprKind::Random(a, b) => {
                 self.expr(a);
                 self.expr(b);
             }

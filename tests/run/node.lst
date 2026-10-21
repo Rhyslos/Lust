@@ -20,7 +20,7 @@ assembly Loot {
     create Sword {
         name = "Old sword";
         value = 10 * 12;
-        sharpness = random(2, 2);
+        sharpness = Random[2, 2];
     }
 }
 

@@ -3,7 +3,7 @@ state Mood = [Cheerful, Grumpy, Sleepy];
 state Action = [Idle, Fighting [Attacking, Blocking], KnockedOut];
 
 method int dice(int sides) {
-    return random(1, sides);
+    return Random[1, sides];
 }
 
 method int doubleIt(int n) {

@@ -1,0 +1,17 @@
+class Player {
+    has {
+        string name = "";
+        truth ready = false;
+    }
+}
+int a = random(1, 6);
+int b = Random["one", 6];
+string c = Random[1, 6];
+Player array team = [];
+team:sortBy(ready);
+team:sortBy(age);
+cMap(int id, string name) bag = [];
+bag:sortBy("name");
+int array nums = [];
+nums:sortBy(x);
+end

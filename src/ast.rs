@@ -408,4 +408,6 @@ pub enum ExprKind {
     Convert(Box<Expr>, Conv, Pos),
     /// saved gameSession: is there a save to load?
     Saved(String),
+    /// Random[1, 6] or Random[0.0, 1.0]: a random number between the two.
+    Random(Box<Expr>, Box<Expr>),
 }

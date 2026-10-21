@@ -412,7 +412,7 @@ pub fn lines(s: &str) -> Arr<String> {
 
 pub fn random(lo: i64, hi: i64) -> i64 {
     if lo > hi {
-        fail(format!("random's low number ({lo}) is bigger than its high one ({hi})."));
+        fail(format!("Random's lowest number ({lo}) is bigger than its highest ({hi})."));
     }
     let mut x = RNG.with(|c| c.get());
     if x == 0 {
@@ -433,6 +433,19 @@ pub fn random(lo: i64, hi: i64) -> i64 {
     RNG.with(|c| c.set(x));
     let span = (hi - lo) as u64 + 1;
     lo + (x % span) as i64
+}
+
+/// A decimal from lo up to (not quite) hi.
+pub fn frandom(lo: f64, hi: f64) -> f64 {
+    if lo > hi {
+        fail(format!(
+            "Random's lowest number ({}) is bigger than its highest ({}).",
+            ftext(lo),
+            ftext(hi)
+        ));
+    }
+    let n = random(0, (1i64 << 53) - 1) as f64 / (1u64 << 53) as f64;
+    lo + n * (hi - lo)
 }
 
 // ----- states: options are their full names, like "ActiveGame.Combat" -----
@@ -740,6 +753,33 @@ pub fn cremove<R: Row>(c: &CMap<R>, k: R::K) {
 
 pub fn clen<R: Row>(c: &CMap<R>) -> i64 {
     c.borrow().rows.len() as i64
+}
+
+/// Puts the rows in order by one value each row has. Rows with the same value keep their order.
+pub fn csort<R: Row, K: PartialOrd>(c: &CMap<R>, key: impl Fn(&R) -> K) {
+    let mut b = c.borrow_mut();
+    let mut d: Vec<(K, Rc<RefCell<R>>)> = b
+        .rows
+        .drain(..)
+        .map(|r| {
+            let k = key(&r.borrow());
+            (k, r)
+        })
+        .collect();
+    d.sort_by(|x, y| x.0.partial_cmp(&y.0).unwrap_or(std::cmp::Ordering::Equal));
+    b.rows = d.into_iter().map(|x| x.1).collect();
+}
+
+pub fn creverse<R: Row>(c: &CMap<R>) {
+    c.borrow_mut().rows.reverse();
+}
+
+/// Puts an array of things in order by one of their fields.
+pub fn asort_by<T: Clone, K: PartialOrd>(a: &Arr<T>, key: impl Fn(&T) -> K) {
+    let items: Vec<T> = a.borrow().clone();
+    let mut d: Vec<(K, T)> = items.into_iter().map(|x| (key(&x), x)).collect();
+    d.sort_by(|x, y| x.0.partial_cmp(&y.0).unwrap_or(std::cmp::Ordering::Equal));
+    *a.borrow_mut() = d.into_iter().map(|x| x.1).collect();
 }
 
 pub fn rows<R: Row>(c: &CMap<R>) -> Vec<Rc<RefCell<R>>> {
@@ -1080,6 +1120,53 @@ fn civil(z: i64) -> (i64, i64, i64) {
     let d = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     (if m <= 2 { y + 1 } else { y }, m, d)
+}
+
+// Dates are text like "2026-10-21". Days are counted from 1 January 1970.
+fn days_from(y: i64, m: i64, d: i64) -> i64 {
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let mp = if m > 2 { m - 3 } else { m + 9 };
+    let doy = (153 * mp + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146097 + doe - 719468
+}
+fn day_of(s: &str) -> Option<i64> {
+    let b = s.as_bytes();
+    if b.len() != 10 || b[4] != b'-' || b[7] != b'-' || !s.chars().enumerate().all(|(i, c)| i == 4 || i == 7 || c.is_ascii_digit()) {
+        return None;
+    }
+    let (y, m, d): (i64, i64, i64) = (s[0..4].parse().ok()?, s[5..7].parse().ok()?, s[8..10].parse().ok()?);
+    let z = days_from(y, m, d);
+    if civil(z) != (y, m, d) {
+        return None;
+    }
+    Some(z)
+}
+fn need_day(s: &str) -> i64 {
+    match day_of(s) {
+        Some(z) => z,
+        None => fail(format!("\"{s}\" isn't a date. Dates are written like \"2026-10-21\".")),
+    }
+}
+fn date_text(z: i64) -> String {
+    let (y, m, d) = civil(z);
+    format!("{y:04}-{m:02}-{d:02}")
+}
+pub fn time_isDate(s: String) -> bool {
+    day_of(&s).is_some()
+}
+pub fn time_addDays(s: String, n: i64) -> String {
+    date_text(need_day(&s) + n)
+}
+pub fn time_daysBetween(a: String, b: String) -> i64 {
+    let x = need_day(&a);
+    need_day(&b) - x
+}
+pub fn time_weekday(s: String) -> String {
+    let names = ["Thursday", "Friday", "Saturday", "Sunday", "Monday", "Tuesday", "Wednesday"];
+    names[need_day(&s).rem_euclid(7) as usize].to_string()
 }
 
 pub fn time_date() -> String {

@@ -42,8 +42,8 @@ pub fn listing(obj: &str) -> &'static str {
     match obj {
         "Maths" => "abs, min, max, clamp, round, floor, ceil, sqrt, power, sin, cos and tan, and Maths.pi",
         "Files" => "read, write, append, exists, remove, list and makeFolder",
-        "Time" => "now, clock, date and time",
-        "Web" => "serve, request and fail",
+        "Time" => "now, clock, date, time, addDays, daysBetween, weekday and isDate",
+        "Web" => "serve, request, fail, get and post",
         _ => "read, write and pretty",
     }
 }
@@ -80,6 +80,12 @@ pub fn object_method(obj: &str, m: &str, args: &[Ty]) -> Option<Result<Lib, Stri
         ("Files", "list") => lib("files_list", vec![("folder", Str)], Array(Box::new(Str))),
         ("Files", "makeFolder") => lib("files_makeFolder", vec![("folder", Str)], Void),
         ("Time", "now" | "clock") => lib(&format!("time_{m}"), vec![], Float),
+        ("Web", "get") => lib("web_get", vec![("address", Str)], Str),
+        ("Web", "post") => lib("web_post", vec![("address", Str), ("body", Str)], Str),
+        ("Time", "addDays") => lib("time_addDays", vec![("date", Str), ("days", Int)], Str),
+        ("Time", "daysBetween") => lib("time_daysBetween", vec![("from", Str), ("to", Str)], Int),
+        ("Time", "weekday") => lib("time_weekday", vec![("date", Str)], Str),
+        ("Time", "isDate") => lib("time_isDate", vec![("text", Str)], Truth),
         ("Web", "serve") => lib("web_serve", vec![("port", Int)], Void),
         ("Web", "request") => lib("web_request", vec![("method", Str), ("path", Str), ("body", Str)], Str),
         ("Web", "fail") => lib("web_fail", vec![("status", Int), ("message", Str)], Void),
@@ -105,6 +111,10 @@ pub fn value_method(t: &Ty, m: &str) -> Option<Result<Lib, String>> {
         (Str, "replace") => lib("text_replace", vec![("old", Str), ("new", Str)], Str),
         (Str, "split") => lib("text_split", vec![("between", Str)], Array(Box::new(Str))),
         (Str, "slice") => lib("text_slice", vec![("from", Int), ("to", Int)], Str),
+        (Str, "matches") => lib("text_matches", vec![("pattern", Str)], Truth),
+        (Str, "findAll") => lib("text_findAll", vec![("pattern", Str)], Array(Box::new(Str))),
+        (Str, "replaceAll") => lib("text_replaceAll", vec![("pattern", Str), ("with", Str)], Str),
+        (Str, "capture") => lib("text_capture", vec![("pattern", Str)], Array(Box::new(Str))),
         (Array(el), "join") => {
             if **el == Str {
                 lib("array_join", vec![("between", Str)], Str)

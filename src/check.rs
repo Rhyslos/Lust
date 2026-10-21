@@ -226,6 +226,10 @@ pub fn check(prog: &Program, diags: &mut Diags, is_script: bool) -> Info {
 fn suggest(name: &str, candidates: impl IntoIterator<Item = String>) -> String {
     let lower = name.to_lowercase();
     let mut best: Option<(usize, String)> = None;
+    // In a fixed order, so the same mistake always gets the same suggestion.
+    let mut candidates: Vec<String> = candidates.into_iter().collect();
+    candidates.sort();
+    candidates.dedup();
     for c in candidates {
         let d = distance(&lower, &c.to_lowercase());
         let limit = if name.len() <= 3 { 1 } else { 2 };
@@ -1466,6 +1470,20 @@ impl<'a> Checker<'a> {
             ExprKind::Float(_) => Ty::Float,
             ExprKind::Str(_) => Ty::Str,
             ExprKind::Bool(_) => Ty::Truth,
+            ExprKind::Random(lo, hi) => {
+                let a = self.expr(lo, ctx, None);
+                let b = self.expr(hi, ctx, None);
+                for (x, t) in [(lo, &a), (hi, &b)] {
+                    if !matches!(t, Ty::Int | Ty::Float | Ty::Error) {
+                        self.err(x.pos, format!("Random picks between two numbers, but this is {}.", self.a(t)));
+                    }
+                }
+                if a == Ty::Float || b == Ty::Float || expected == Some(&Ty::Float) {
+                    Ty::Float
+                } else {
+                    Ty::Int
+                }
+            }
             ExprKind::Saved(name) => {
                 if !self.info.saves.contains_key(name) {
                     self.err(
@@ -2442,7 +2460,6 @@ impl<'a> Checker<'a> {
             self.info.calls.insert(e.id, CallRes::Builtin);
             let (params, ret): (Vec<(&str, Option<Ty>)>, Ty) = match name {
                 "print" => (vec![("value", None)], Ty::Void),
-                "random" => (vec![("low", Some(Ty::Int)), ("high", Some(Ty::Int))], Ty::Int),
                 "ask" => (vec![("question", Some(Ty::Str))], Ty::Str),
                 "wait" => (vec![("seconds", Some(Ty::Float))], Ty::Void),
                 _ => unreachable!(),
@@ -2526,6 +2543,10 @@ impl<'a> Checker<'a> {
                 cur = self.info.classes[i].parent;
             }
         }
+        if name == "random" {
+            self.err(e.pos, "Lust writes it Random[1, 6], with the lowest and highest number in [ ].");
+            return Ty::Int;
+        }
         if name == "readText" || name == "writeText" {
             let new = if name == "readText" {
                 "Files:read(\"notes.txt\")"
@@ -2569,7 +2590,55 @@ impl<'a> Checker<'a> {
             let tt = tt.clone();
             return self.table_call(e, &t, &tt, m, args, mpos, ctx);
         }
+        // bag:sortBy(amount) and players:sortBy(score): a column's or a field's name, in order.
+        if m == "sortBy" {
+            let names: Option<Vec<(String, Ty)>> = match &t {
+                Ty::CMap(cols) => Some(cols.to_vec()),
+                Ty::Array(el) => match &**el {
+                    Ty::Class(c) => Some(
+                        self.all_fields(*c)
+                            .into_iter()
+                            .map(|f| {
+                                let ty = self.info.field(*c, &f).map(|x| x.ty.clone()).unwrap_or(Ty::Error);
+                                (f, ty)
+                            })
+                            .collect(),
+                    ),
+                    _ => None,
+                },
+                _ => None,
+            };
+            if let Some(names) = names {
+                let what = if matches!(t, Ty::CMap(_)) { "column" } else { "field" };
+                let pick = match args {
+                    [a] => match &a.kind {
+                        ExprKind::Name(n) => names.iter().find(|(x, _)| x == n).cloned().map(|x| (a, x)),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                let shown: Vec<String> = names
+                    .iter()
+                    .filter(|(_, t)| matches!(t, Ty::Int | Ty::Float | Ty::Str))
+                    .map(|(n, _)| n.clone())
+                    .collect();
+                match pick {
+                    Some((a, (n, ty))) if matches!(ty, Ty::Int | Ty::Float | Ty::Str) => {
+                        self.info.columns.insert(a.id, n);
+                        self.info.table_ops.insert(e.id, "sortBy");
+                        self.info.calls.insert(e.id, CallRes::Builtin);
+                    }
+                    Some((_, (n, _))) => self.err(args[0].pos, format!("sortBy puts numbers or text in order, but {n} is neither.")),
+                    None => self.err(
+                        mpos,
+                        format!("sortBy takes the name of a {what} with numbers or text: {}.", shown.join(", ")),
+                    ),
+                }
+                return Ty::Void;
+            }
+        }
         let builtin: Option<(Vec<(String, Ty)>, Ty)> = match (&t, m) {
+            (Ty::CMap(_), "reverse") => Some((vec![], Ty::Void)),
             (Ty::Array(el), "inject") => Some((vec![("item".into(), (**el).clone())], Ty::Void)),
             (Ty::Array(_), "remove") => Some((vec![("position".into(), Ty::Int)], Ty::Void)),
             (Ty::Map(_), "has") => Some((vec![("key".into(), Ty::Str)], Ty::Truth)),
@@ -2649,7 +2718,7 @@ impl<'a> Checker<'a> {
                     Ty::Map(_) => " Maps have has and remove.",
                     Ty::CMap(_) => " cMaps have inject, remove and has.",
                     Ty::Str => {
-                        " Text has contains, startsWith, endsWith, find, replace, split and slice, and .upper(), .lower() and .trim()."
+                        " Text has contains, startsWith, endsWith, find, replace, split, slice, matches, findAll, replaceAll and capture, and .upper(), .lower() and .trim()."
                     }
                     _ => "",
                 };

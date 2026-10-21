@@ -107,14 +107,23 @@ function L.lines(s)
 end
 
 local seeded = false
-function L.random(lo, hi)
+local function seed()
   if not seeded then
     seeded = true
-    local seed = os and os.getenv and tonumber(os.getenv("LUST_SEED") or "")
-    if seed then math.randomseed(seed) elseif os and os.time then math.randomseed(os.time()) end
+    local s = os and os.getenv and tonumber(os.getenv("LUST_SEED") or "")
+    if s then math.randomseed(s) elseif os and os.time then math.randomseed(os.time()) end
   end
-  if lo > hi then error("random's low number (" .. lo .. ") is bigger than its high one (" .. hi .. ").", 2) end
+end
+function L.random(lo, hi)
+  seed()
+  if lo > hi then error("Random's lowest number (" .. fmt("%d", lo) .. ") is bigger than its highest (" .. fmt("%d", hi) .. ").", 2) end
   return math.random(lo, hi)
+end
+-- A decimal from lo up to (not quite) hi.
+function L.frandom(lo, hi)
+  seed()
+  if lo > hi then error("Random's lowest number (" .. L.ftext(lo) .. ") is bigger than its highest (" .. L.ftext(hi) .. ").", 2) end
+  return lo + math.random() * (hi - lo)
 end
 
 -- ----- arrays: { n = count, … }, counted from 0 in Lust -----
@@ -242,6 +251,30 @@ function L.cget(c, k)
   return r
 end
 function L.cinject(c, values) addrow(c, values, 3) end
+-- Puts a list in order by one value each item has. Items with the same value keep their order.
+local function stable(list, key)
+  local d = {}
+  for i, x in ipairs(list) do d[i] = { key(x), i, x } end
+  table.sort(d, function(a, b)
+    if a[1] ~= b[1] then return a[1] < b[1] end
+    return a[2] < b[2]
+  end)
+  for i, x in ipairs(d) do list[i] = x[3] end
+end
+function L.csort(c, col) stable(c.rows, function(r) return r[col] end) end
+function L.creverse(c)
+  local n = #c.rows
+  for i = 1, floor(n / 2) do c.rows[i], c.rows[n - i + 1] = c.rows[n - i + 1], c.rows[i] end
+end
+function L.asort_by(a, field)
+  local t = {}
+  for i = 1, a.n do t[i] = a[i] end
+  stable(t, function(o)
+    if o == nil then error("this is nothing, so it has no fields or methods. Check first: is it !== nothing?", 0) end
+    return o[field]
+  end)
+  for i = 1, a.n do a[i] = t[i] end
+end
 function L.chas(c, k) return c.byKey[k] ~= nil end
 function L.cremove(c, k)
   if not c.byKey[k] then error("there's no row with " .. c.key .. " " .. keytext(c, k) .. " to remove. " .. keys(c), 2) end
@@ -559,6 +592,72 @@ function L.files_makeFolder(folder)
   local e = host.mkdir(folder)
   if e then error(e, 2) end
 end
+
+-- Text patterns and the web client come from lust, which runs them with the same code as built programs.
+local function hostcall(what, name, ...)
+  if not host or not host[name] then needs(what) end
+  local r, e = host[name](...)
+  if r == nil then error(e, 3) end
+  return r
+end
+local function strings(list)
+  local out = { n = #list }
+  for i, s in ipairs(list) do out[i] = s end
+  return out
+end
+function L.text_matches(s, p) return hostcall(":matches", "pat_matches", s, p) end
+function L.text_findAll(s, p) return strings(hostcall(":findAll", "pat_find_all", s, p)) end
+function L.text_capture(s, p) return strings(hostcall(":capture", "pat_capture", s, p)) end
+function L.text_replaceAll(s, p, w) return hostcall(":replaceAll", "pat_replace_all", s, p, w) end
+function L.web_get(url) return hostcall("Web:get", "http", url) end
+function L.web_post(url, body) return hostcall("Web:post", "http", url, body) end
+
+-- Dates are text like "2026-10-21". Days are counted from 1 January 1970.
+local function days_from(y, m, d)
+  if m <= 2 then y = y - 1 end
+  local era = floor(y / 400)
+  local yoe = y - era * 400
+  local mp = m > 2 and m - 3 or m + 9
+  local doy = floor((153 * mp + 2) / 5) + d - 1
+  local doe = yoe * 365 + floor(yoe / 4) - floor(yoe / 100) + doy
+  return era * 146097 + doe - 719468
+end
+local function civil(z)
+  z = z + 719468
+  local era = floor(z / 146097)
+  local doe = z - era * 146097
+  local yoe = floor((doe - floor(doe / 1460) + floor(doe / 36524) - floor(doe / 146096)) / 365)
+  local y = yoe + era * 400
+  local doy = doe - (365 * yoe + floor(yoe / 4) - floor(yoe / 100))
+  local mp = floor((5 * doy + 2) / 153)
+  local d = doy - floor((153 * mp + 2) / 5) + 1
+  local m = mp < 10 and mp + 3 or mp - 9
+  if m <= 2 then y = y + 1 end
+  return y, m, d
+end
+local function dayof(s)
+  local y, m, d = s:match("^(%d%d%d%d)%-(%d%d)%-(%d%d)$")
+  if not y then return nil end
+  y, m, d = tonumber(y), tonumber(m), tonumber(d)
+  local z = days_from(y, m, d)
+  local y2, m2, d2 = civil(z)
+  if y2 ~= y or m2 ~= m or d2 ~= d then return nil end
+  return z
+end
+local function needday(s)
+  local z = dayof(s)
+  if not z then error("\"" .. s .. "\" isn't a date. Dates are written like \"2026-10-21\".", 3) end
+  return z
+end
+local function datetext(z)
+  local y, m, d = civil(z)
+  return fmt("%04d-%02d-%02d", y, m, d)
+end
+function L.time_isDate(s) return dayof(s) ~= nil end
+function L.time_addDays(s, n) return datetext(needday(s) + n) end
+function L.time_daysBetween(a, b) local x = needday(a); return needday(b) - x end
+local weekdays = { "Thursday", "Friday", "Saturday", "Sunday", "Monday", "Tuesday", "Wednesday" }
+function L.time_weekday(s) return weekdays[needday(s) % 7 + 1] end
 
 -- Time.
 local started = os and os.clock and os.clock() or 0

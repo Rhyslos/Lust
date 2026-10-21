@@ -17,6 +17,12 @@ use crate::types::Ty;
 pub const RUNTIME: &str = include_str!("native_rt.rs");
 pub const DB_RUNTIME: &str = include_str!("native_db.rs");
 pub const WEB_RUNTIME: &str = include_str!("native_web.rs");
+pub const NET_RUNTIME: &str = include_str!("native_net.rs");
+pub const TEXT_RUNTIME: &str = include_str!("native_text.rs");
+
+fn uses(info: &Info, funcs: &[&str]) -> bool {
+    info.libs.values().any(|l| funcs.contains(&l.func.as_str()))
+}
 
 fn serves(info: &Info) -> bool {
     info.libs.values().any(|l| l.func == "web_serve")
@@ -365,6 +371,12 @@ pub fn write(prog: &Program, info: &Info, files: &[String]) -> String {
             if serves(info) {
                 m.push_str(&format!("pub mod web {{\nuse super::*;\n{WEB_RUNTIME}\n}}\n"));
             }
+            if uses(info, &["web_get", "web_post"]) {
+                m.push_str(&format!("pub mod net {{\nuse super::*;\n{NET_RUNTIME}\n}}\n"));
+            }
+            if uses(info, &["text_matches", "text_findAll", "text_replaceAll", "text_capture"]) {
+                m.push_str(&format!("pub mod pat {{\nuse super::*;\n{TEXT_RUNTIME}\n}}\n"));
+            }
             m
         }
     )
@@ -448,7 +460,7 @@ pub fn walk_expr(e: &Expr, f: &mut dyn FnMut(&Expr)) {
                 walk_expr(a, f);
             }
         }
-        ExprKind::Index(a, b) | ExprKind::Bin(_, a, b, _) => {
+        ExprKind::Index(a, b) | ExprKind::Bin(_, a, b, _) | ExprKind::Random(a, b) => {
             walk_expr(a, f);
             walk_expr(b, f);
         }
@@ -1046,6 +1058,7 @@ impl<'a> W<'a> {
                         }
                         (Ty::CMap(_), "has") => format!("rt::chas(&{tc}, {})", self.expr(&args[0])),
                         (Ty::CMap(_), "remove") => format!("rt::cremove(&{tc}, {})", self.expr(&args[0])),
+                        (Ty::CMap(_), "reverse") => format!("rt::creverse(&{tc})"),
                         _ => "()".into(),
                     },
                     Some(CallRes::FieldHook) => {
@@ -1176,6 +1189,13 @@ impl<'a> W<'a> {
                 self.owned(s)
             }
             ExprKind::Saved(_) => "false".into(),
+            ExprKind::Random(lo, hi) => {
+                if self.info.ty(e) == Ty::Float {
+                    format!("rt::frandom({}, {})", self.coerced(lo, &Ty::Float), self.coerced(hi, &Ty::Float))
+                } else {
+                    format!("rt::random({}, {})", self.expr(lo), self.expr(hi))
+                }
+            }
             ExprKind::NewHook(body) => self.new_hook(e, body),
             ExprKind::Like(inner, class, _) => {
                 let c = self.expr(inner);
@@ -1314,7 +1334,6 @@ impl<'a> W<'a> {
                 let shown = self.show(&c, &t);
                 format!("rt::print({shown})")
             }
-            "random" => format!("rt::random({}, {})", self.expr(&args[0]), self.expr(&args[1])),
             "ask" => format!("rt::ask({})", self.expr(&args[0])),
             "readText" => format!("rt::read_text({})", self.expr(&args[0])),
             "writeText" => format!("rt::write_text({}, {})", self.expr(&args[0]), self.expr(&args[1])),
@@ -1340,6 +1359,23 @@ impl<'a> W<'a> {
         let ExprKind::Method(t, _, args, _) = &e.kind else {
             return "()".into();
         };
+        if op == "sortBy" {
+            let col = self.info.columns.get(&args[0].id).cloned().unwrap_or_default();
+            let c = self.expr(t);
+            return match self.info.ty(t) {
+                Ty::CMap(cols) => {
+                    let ri = self.row_index(&cols);
+                    format!("rt::csort(&{c}, |r: &Row{ri}| r.f_{col}.clone())")
+                }
+                Ty::Array(el) => {
+                    let Ty::Class(k) = *el else { return "()".into() };
+                    let root = self.root(k);
+                    let f = self.field_of(k, &col);
+                    format!("rt::asort_by(&{c}, |x: &Option<Rc<RefCell<O{root}>>>| {{ let o = rt::obj(x); let v = o.borrow().{f}.clone(); v }})")
+                }
+                _ => "()".into(),
+            };
+        }
         let (Ty::Table(tt) | Ty::Query(tt)) = self.info.ty(t) else {
             return "()".into();
         };
@@ -1450,6 +1486,19 @@ impl<'a> W<'a> {
                 format!("rt::json_read({t}, &{dec})")
             }
             "web_serve" => format!("rt::web::serve({})", self.expr(&args[0])),
+            "web_get" | "web_post" | "text_matches" | "text_findAll" | "text_replaceAll" | "text_capture" => {
+                let (module, name) = match lib.func.as_str() {
+                    "web_get" => ("net", "get"),
+                    "web_post" => ("net", "post"),
+                    "text_matches" => ("pat", "matches"),
+                    "text_findAll" => ("pat", "find_all"),
+                    "text_replaceAll" => ("pat", "replace_all"),
+                    _ => ("pat", "capture"),
+                };
+                let mut a: Vec<String> = target.map(|t| self.expr(t)).into_iter().collect();
+                a.extend(args.iter().map(|x| self.expr(x)));
+                format!("rt::{module}::{name}({})", a.join(", "))
+            }
             f => {
                 let mut a: Vec<String> = target.map(|t| self.expr(t)).into_iter().collect();
                 for (x, (_, pt)) in args.iter().zip(&lib.params) {

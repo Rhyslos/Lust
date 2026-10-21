@@ -1,6 +1,6 @@
 [package]
 name = "lust"
-version = "2.0.0-alpha.9"
+version = "2.0.0-alpha.10"
 edition = "2021"
 description = "The Lust programming language"
 license = "MIT"
@@ -13,6 +13,8 @@ path = "src/main.rs"
 mlua = { version = "0.10", features = ["lua51", "vendored"] }
 rusqlite = { version = "0.40", features = ["bundled"] }
 tiny_http = "0.12"
+ureq = "3"
+regex = "1"
 
 [profile.release]
 opt-level = 3

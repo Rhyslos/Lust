@@ -9,7 +9,7 @@ pub const RESERVED: &[&str] = &[
     "view", "style", "keep", "pass", "fetch", "get", "lua", "is", "then", "or", "either", "not", "true", "false", "loop", "stop", "skip",
     "in", "try", "error", "state", "save", "load", "saved", "end", "database", "int", "float", "string", "truth", "array", "cMap", "map",
 ];
-pub const BUILTINS: &[&str] = &["print", "wait", "random", "ask"];
+pub const BUILTINS: &[&str] = &["print", "wait", "ask"];
 
 /// Words from other languages, with what Lust says instead.
 fn hint_for(word: &str) -> Option<&'static str> {
@@ -62,7 +62,7 @@ pub fn check_name(diags: &mut Diags, name: &str, pos: Pos, kind: NameKind, what:
         diags.add(pos, format!("{name} is a built-in, so it can't be a name."));
         return;
     }
-    if crate::stdlib::OBJECTS.contains(&name) {
+    if crate::stdlib::OBJECTS.contains(&name) || name == "Random" {
         diags.add(pos, format!("{name} is one of Lust's built-in objects, so it can't be a name."));
         return;
     }
@@ -1525,6 +1525,15 @@ impl<'a> Parser<'a> {
                         Ok(self.mk(t.pos, ExprKind::Nothing))
                     }
                     "new" => self.new_expr(),
+                    "Random" if self.peek(1).is_sym("[") => {
+                        self.next();
+                        self.next();
+                        let lo = self.expr()?;
+                        self.expect_sym(",", "Random takes its lowest and highest number: Random[1, 6]")?;
+                        let hi = self.expr()?;
+                        self.expect_sym("]", "expected ] after the highest number: Random[1, 6]")?;
+                        Ok(self.mk(t.pos, ExprKind::Random(Box::new(lo), Box::new(hi))))
+                    }
                     "saved" => {
                         self.next();
                         let (name, _) = self.ident("the save's name: saved gameSession")?;
