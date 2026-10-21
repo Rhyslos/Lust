@@ -218,6 +218,8 @@ impl<'a> W<'a> {
                     self.object_names.insert(c.name.clone());
                     forward.push(lname(&c.name));
                 }
+                // Classes are named up front too, so one can use another written after it.
+                Item::Class(c) => forward.push(lname(&c.name)),
                 _ => {}
             }
         }
@@ -341,9 +343,10 @@ impl<'a> W<'a> {
             .parent
             .map(|p| self.class_table(p))
             .unwrap_or_else(|| "nil".into());
+        let local = if self.info.classes[ci].is_object { "local " } else { "" };
         self.line(
             c.pos.line,
-            &format!("local {table} = _L.class({}, {parent})", lua_string(crate::ast::shown(&c.name))),
+            &format!("{local}{table} = _L.class({}, {parent})", lua_string(crate::ast::shown(&c.name))),
         );
         self.class = None;
         self.line(c.pos.line, &format!("function {table}.__fields(self)"));
@@ -500,6 +503,45 @@ impl<'a> W<'a> {
                 ..
             } => {
                 let parent = self.view_parent.last().cloned().unwrap_or_else(|| "v0".into());
+                if let Some(Expr {
+                    kind: ExprKind::New { class, inits, .. },
+                    id,
+                    ..
+                }) = arg.as_ref().filter(|_| kind == "piece")
+                {
+                    // A piece: the same one each time the view is drawn, given its values again.
+                    let Some(&c) = self.info.class_index.get(class) else { return };
+                    let table = self.class_table(c);
+                    let p = self.fresh("pc");
+                    let s = self.styles(style);
+                    self.line(ln, "do");
+                    self.indent += 1;
+                    let key = match self.info.piece_keys.get(id) {
+                        Some(keys) => keys
+                            .iter()
+                            .map(|k| format!("tostring({})", lname(k)))
+                            .collect::<Vec<_>>()
+                            .join(" .. \"|\" .. "),
+                        None => "nil".into(),
+                    };
+                    self.line(ln, &format!("local {p} = _L.piece(self, {id}, {table}, {key})"));
+                    for (f, _, v) in inits {
+                        let val = self.expr(v);
+                        self.line(ln, &format!("{p}.{} = {val}", lname(f)));
+                    }
+                    self.line(ln, &format!("local {p}v = {p}:__view()"));
+                    self.line(
+                        ln,
+                        &format!(
+                            "{p}v.k = \"piece\"; {p}v.t = {}; {p}v.s = {s}",
+                            lua_string(crate::ast::shown(class))
+                        ),
+                    );
+                    self.line(ln, &format!("{parent}.c[#{parent}.c + 1] = {p}v"));
+                    self.indent -= 1;
+                    self.line(ln, "end");
+                    return;
+                }
                 let v = self.fresh("v");
                 let t = arg.as_ref().map(|a| self.expr(a)).unwrap_or_else(|| "\"\"".into());
                 let s = self.styles(style);

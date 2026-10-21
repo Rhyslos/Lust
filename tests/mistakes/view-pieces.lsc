@@ -1,0 +1,33 @@
+assembly Card {
+    has {
+        string title = "";
+    }
+
+    view {
+        text title;
+    }
+}
+
+assembly Plain {
+    has {
+        int n = 0;
+    }
+}
+
+assembly Page {
+    has {
+        int count = 0;
+    }
+
+    view {
+        column {
+            Card { title = count };
+            Card { heading = "Hi" };
+            Plain { n = 1 };
+            Nope { };
+        }
+    }
+}
+
+Card { title = "outside" };
+end

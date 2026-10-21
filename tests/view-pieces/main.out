@@ -1,0 +1,93 @@
+window "To do" 420x400
+  column 0,0 420x119
+    piece "Header" 16,16 127x27
+      row 16,16 127x27
+        text "To do" 16,16 61x27
+        text "0 things" 85,20 58x19
+    text "Nothing to do!" 16,47 101x19
+    button "Refill" 16,70 64x33
+window "To do" 420x400
+  column 0,0 420x255
+    piece "Header" 16,16 126x27
+      row 16,16 126x27
+        text "To do" 16,16 61x27
+        text "3 things" 85,20 57x19
+    piece "TodoRow" 16,47 388x49
+      row 16,47 388x49
+        button "Toggle" 24,55 79x33
+        text "Milk" 111,62 30x19
+        text "(0)" 149,64 18x16
+        space 175,72 105x0
+        button "Remove Milk" 288,57 108x30
+    piece "TodoRow" 16,100 388x49
+      row 16,100 388x49
+        button "Toggle" 24,108 79x33
+        text "Bread" 111,115 42x19
+        text "(0)" 161,117 18x16
+        space 187,125 82x0
+        button "Remove Bread" 277,110 119x30
+    piece "TodoRow" 16,153 388x49
+      row 16,153 388x49
+        button "Toggle" 24,161 79x33
+        text "Eggs" 111,168 36x19
+        text "(0)" 155,170 18x16
+        space 181,178 94x0
+        button "Remove Eggs" 283,163 113x30
+    button "Refill" 16,206 64x33
+window "To do" 420x400
+  column 0,0 420x255
+    piece "Header" 16,16 126x27
+      row 16,16 126x27
+        text "To do" 16,16 61x27
+        text "3 things" 85,20 57x19
+    piece "TodoRow" 16,47 388x49
+      row 16,47 388x49
+        button "Toggle" 24,55 79x33
+        text "Milk" 111,62 30x19
+        text "(1)" 149,64 15x16
+        space 172,72 108x0
+        button "Remove Milk" 288,57 108x30
+    piece "TodoRow" 16,100 388x49
+      row 16,100 388x49
+        button "Toggle" 24,108 79x33
+        text "Bread" 111,115 42x19
+        text "(0)" 161,117 18x16
+        space 187,125 82x0
+        button "Remove Bread" 277,110 119x30
+    piece "TodoRow" 16,153 388x49
+      row 16,153 388x49
+        button "Toggle" 24,161 79x33
+        text "Eggs" 111,168 36x19
+        text "(0)" 155,170 18x16
+        space 181,178 94x0
+        button "Remove Eggs" 283,163 113x30
+    button "Refill" 16,206 64x33
+window "To do" 420x400
+  column 0,0 420x202
+    piece "Header" 16,16 126x27
+      row 16,16 126x27
+        text "To do" 16,16 61x27
+        text "2 things" 85,20 57x19
+    piece "TodoRow" 16,47 388x49
+      row 16,47 388x49
+        button "Toggle" 24,55 79x33
+        text "Bread" 111,62 42x19
+        text "(0)" 161,64 18x16
+        space 187,72 82x0
+        button "Remove Bread" 277,57 119x30
+    piece "TodoRow" 16,100 388x49
+      row 16,100 388x49
+        button "Toggle" 24,108 79x33
+        text "Eggs" 111,115 36x19
+        text "(0)" 155,117 18x16
+        space 181,125 94x0
+        button "Remove Eggs" 283,110 113x30
+    button "Refill" 16,153 64x33
+window "To do" 420x400
+  column 0,0 420x119
+    piece "Header" 16,16 127x27
+      row 16,16 127x27
+        text "To do" 16,16 61x27
+        text "0 things" 85,20 58x19
+    text "Nothing to do!" 16,47 101x19
+    button "Refill" 16,70 64x33

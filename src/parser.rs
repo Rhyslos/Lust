@@ -849,6 +849,27 @@ impl<'a> Parser<'a> {
         })
     }
 
+    /// Another assembly used inside a view: TodoRow [width fill] { label = task };
+    /// It's written as a piece whose value is the same as new TodoRow { … }.
+    fn piece(&mut self) -> R<Stmt> {
+        let (class, class_pos) = self.ident("a piece's name")?;
+        let style = if self.at_sym("[") { self.style_list()? } else { vec![] };
+        let was = std::mem::replace(&mut self.in_view, false);
+        let inits = if self.at_sym("{") { self.new_inits(&class) } else { Ok(vec![]) };
+        self.in_view = was;
+        let inits = inits?;
+        self.semi()?;
+        let made = self.mk(class_pos, ExprKind::New { class, class_pos, inits });
+        Ok(Stmt::Element {
+            kind: "piece".into(),
+            arg: Some(made),
+            style,
+            children: vec![],
+            action: None,
+            pos: class_pos,
+        })
+    }
+
     fn has_block(&mut self, fields: &mut Vec<FieldDecl>) -> R<()> {
         let open = self.expect_sym("{", "expected { after has.")?;
         loop {
@@ -1116,6 +1137,28 @@ impl<'a> Parser<'a> {
         if let Tk::Ident(w) = &t.kind {
             if self.in_view && ELEMENTS.contains(&w.as_str()) {
                 return self.element();
+            }
+            if self.in_view
+                && w.starts_with(|c: char| c.is_ascii_uppercase())
+                && (self.peek(1).is_sym("{") || self.peek(1).is_sym("[") || self.peek(1).is_sym(";"))
+            {
+                return self.piece();
+            }
+            if !self.in_view
+                && w.starts_with(|c: char| c.is_ascii_uppercase())
+                && self.peek(1).is_sym("{")
+                && (self.peek(2).is_sym("}") || self.peek(3).is_sym("="))
+            {
+                self.diags.add(
+                    t.pos,
+                    format!("{w} {{ … }} puts a piece on the screen, so it goes inside a view. To make one here: new {w} {{ … }}"),
+                );
+                self.next();
+                self.recover();
+                if self.at_sym(";") {
+                    self.next();
+                }
+                return Ok(Stmt::Expr(self.mk(t.pos, ExprKind::Nothing)));
             }
             match w.as_str() {
                 "is" => return self.if_chain(),
@@ -1782,6 +1825,15 @@ impl<'a> Parser<'a> {
             );
         }
         if self.at_sym("{") {
+            inits = self.new_inits(&class)?;
+        }
+        Ok(self.mk(start, ExprKind::New { class, class_pos, inits }))
+    }
+
+    /// { name = "Ada", score = 3 }: the fields filled in when something is made.
+    fn new_inits(&mut self, class: &str) -> R<Vec<(String, Pos, Expr)>> {
+        let mut inits = Vec::new();
+        {
             self.next();
             while !self.at_sym("}") {
                 let (name, pos) = self.ident("a field's name")?;
@@ -1809,6 +1861,6 @@ impl<'a> Parser<'a> {
             }
             self.next();
         }
-        Ok(self.mk(start, ExprKind::New { class, class_pos, inits }))
+        Ok(inits)
     }
 }

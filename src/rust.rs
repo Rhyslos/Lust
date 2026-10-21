@@ -393,7 +393,7 @@ pub fn write(prog: &Program, info: &Info, files: &[String]) -> String {
         "// Written by Lust from {file}. It's rewritten on every build, so don't edit it.\n#![allow(warnings)]\nuse std::cell::RefCell;\nuse std::rc::Rc;\n\nmod rt {{\n{RUNTIME}\n{db}}}\n\n{rows}{defs}\nfn program() {{\n{body}}}\n\nfn main() {{\n    rt::main(program, &[{files}]);\n}}\n",
         files = files.iter().map(|f| format!("{f:?}")).collect::<Vec<_>>().join(", "),
         db = {
-            let mut m = format!("pub const UI_PROGRAM: bool = {};\n", !info.view_opens.is_empty());
+            let mut m = format!("pub const UI_PROGRAM: bool = {};\n", views(info));
             if !info.databases.is_empty() {
                 m.push_str(&format!("pub mod db {{\nuse super::*;\nuse std::rc::Rc;\n{DB_RUNTIME}\n}}\n"));
             }
@@ -403,7 +403,7 @@ pub fn write(prog: &Program, info: &Info, files: &[String]) -> String {
             if uses(info, &["web_get", "web_post"]) {
                 m.push_str(&format!("pub mod net {{\nuse super::*;\n{NET_RUNTIME}\n}}\n"));
             }
-            if !info.view_opens.is_empty() {
+            if views(info) {
                 m.push_str(&format!("pub mod ui {{\nuse super::*;\n{UI_RUNTIME}\n}}\n"));
             }
             if uses(info, &["text_matches", "text_findAll", "text_replaceAll", "text_capture"]) {
@@ -412,6 +412,11 @@ pub fn write(prog: &Program, info: &Info, files: &[String]) -> String {
             m
         }
     )
+}
+
+/// Whether the program has anything to do with screens.
+fn views(info: &Info) -> bool {
+    !info.view_opens.is_empty() || info.classes.iter().any(|c| c.has_view)
 }
 
 fn has_this(stmts: &[Stmt], info: &Info) -> bool {
@@ -789,6 +794,44 @@ impl<'a> W<'a> {
                 ..
             } => {
                 let parent = self.view_parent.last().cloned().unwrap_or_else(|| "p0".into());
+                if let Some(Expr {
+                    kind: ExprKind::New { class, inits, .. },
+                    id,
+                    ..
+                }) = arg.as_ref().filter(|_| kind == "piece")
+                {
+                    // A piece: the same one each time the view is drawn, given its values again.
+                    let Some(&ci) = self.info.class_index.get(class) else { return };
+                    let v = format!("p{}", self.fresh());
+                    let key = match self.info.piece_keys.get(id) {
+                        Some(keys) => format!(
+                            "Some(format!(\"{}\", {}))",
+                            vec!["{:?}"; keys.len()].join("|"),
+                            keys.iter().map(|k| format!("v_{k}")).collect::<Vec<_>>().join(", ")
+                        ),
+                        None => "None".into(),
+                    };
+                    out.push_str(&format!(
+                        "{pad}{{\n{pad}    let pc = rt::ui::piece(Rc::as_ptr(this) as *const () as usize, {id}, {key}, new{ci});\n"
+                    ));
+                    for (f, _, val) in inits {
+                        let want = self.info.field(ci, f).map(|x| x.ty.clone()).unwrap_or(Ty::Error);
+                        let vc = self.coerced(val, &want);
+                        let fname = self.field_of(ci, f);
+                        out.push_str(&format!("{pad}    {{ let v = {vc}; pc.borrow_mut().{fname} = v; }}\n"));
+                    }
+                    out.push_str(&format!("{pad}    let mut {v} = view{ci}(&pc, actions);\n"));
+                    out.push_str(&format!(
+                        "{pad}    {v}.kind = \"piece\".to_string();\n{pad}    {v}.text = {:?}.to_string();\n",
+                        crate::ast::shown(class)
+                    ));
+                    if !style.is_empty() {
+                        let s = self.styles(style);
+                        out.push_str(&format!("{pad}    {v}.style = {s};\n"));
+                    }
+                    out.push_str(&format!("{pad}    {parent}.children.push({v});\n{pad}}}\n"));
+                    return;
+                }
                 let v = format!("p{}", self.fresh());
                 out.push_str(&format!("{pad}{{\n{pad}    let mut {v} = rt::ui::Node::new({kind:?});\n"));
                 if let Some(a) = arg {

@@ -1,0 +1,36 @@
+-- Pieces: assemblies used inside a view, each from its own file in ui/.
+fetch "ui/todoRow":TodoRow;
+fetch "ui/header":Header;
+
+assembly App {
+    has {
+        cMap(int id, string task, truth done) todos = [];
+    }
+
+    method fill() {
+        todos:inject(["Milk", false]);
+        todos:inject(["Bread", false]);
+        todos:inject(["Eggs", false]);
+    }
+
+    view [title "To do", width 420, height 400] {
+        column [gap 4, pad 16] {
+            Header { title = "To do", count = #todos };
+            loop (int id, string task, truth done in todos) {
+                TodoRow {
+                    label = task,
+                    done = done,
+                    onToggle = new hook { todos[id].done = not todos[id].done; },
+                    onRemove = new hook { todos:remove(id); }
+                };
+            }
+            is #todos == 0? then {
+                text "Nothing to do!" [muted];
+            }
+            button "Refill" { fill(); }
+        }
+    }
+}
+
+App:open();
+end

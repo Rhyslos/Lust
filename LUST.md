@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (2.0 alpha 12):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. `view` has its first two stages: windows with text, buttons, layout and styles. Not yet: the rest of `view`, and LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (2.0 alpha 13):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. `view` has its first three stages: windows with text, buttons, layout, styles, and pieces of your own. Not yet: the rest of `view`, and LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -553,20 +553,21 @@ method registerHook() {
 
 ---
 
-## 17. Screens: view { } **(being built: stage 2 of 6)**
+## 17. Screens: view { } **(being built: stage 3 of 6)**
 
 A screen is described, not built step by step. `view` says what the window should look like right now, given the data. After anything happens (a click, a key, a timer), Lust looks at the view again and updates the window to match. You change data, never the screen.
 
 ### What works so far
 
-Stages 1 and 2 are built: an assembly with a `view` opens a window with `App:open();`, through `lust run` and as a built program.
+Stages 1 to 3 are built: an assembly with a `view` opens a window with `App:open();`, through `lust run` and as a built program.
 
 - **Pieces:** `column`, `row`, `stack`, `space`, `text` and `button`. A button's `{ }` runs when it's clicked, and the window redraws afterwards.
+- **Your own pieces:** any assembly with a view, used inside another view as `TodoRow { label = task };`, from the same file or fetched from files in `ui/` folders (see below).
 - **Styles and layout:** every word in the list below, `hover:[ … ]` included, plus named styles (`style chip = [pad 6, round];`). Text wraps onto more lines when it doesn't fit.
 - **Questions and loops** inside a view.
 - **The window's settings:** `title`, `width`, `height` and `background`.
 
-`scroll`, `input`, `checkbox`, `slider`, `image`, and using pieces from other files come in the next stages. Using one now says it isn't built yet.
+`scroll`, `input`, `checkbox`, `slider` and `image` come in the next stages. Using one now says it isn't built yet.
 
 ```
 assembly App {
@@ -689,7 +690,10 @@ end
 - **Using a piece:** `TodoRow { label = task };`, the same shape as `new TodoRow { … }` without `new`. The first time, Lust makes it and keeps it. Later redraws reuse it.
 - **Values given in `{ }` are given again on every redraw**, so a piece always shows the current data. Fields not given are the piece's own memory, kept between redraws.
 - **The data lives in one place.** A piece shows what it's given, and asks for changes through hooks.
-- When a piece leaves the screen, what it made ends with it, as with states and nodes.
+- **Which piece is which.** In a loop over a map or cMap, each row keeps its own piece, found by the row's key, so removing the first row doesn't hand its memory to the next one. Anywhere else, pieces are matched by their place: the third `TodoRow` written in the same spot is the same one next time.
+- When a piece leaves the screen, it's forgotten, and so is its memory. If it shows up again, it starts fresh.
+- A piece can be given `[styles]` like any other: `TodoRow [width 300] { label = task };`.
+- The `[ ]` after a piece's own `view` is only for windows (`title`, `width`, …), so a piece that's only ever used inside others doesn't need one.
 - Assemblies can still have `create` recipes next to a view. Nodes stay for game rooms and levels.
 
 ### Inputs are bound to fields

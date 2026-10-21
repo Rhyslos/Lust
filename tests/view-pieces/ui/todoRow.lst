@@ -1,0 +1,30 @@
+-- One row of the list: it shows what it's given, and asks for changes through hooks.
+assembly TodoRow {
+    has {
+        string label = "";
+        truth done = false;
+        int opened = 0;
+        hook() onToggle = nothing;
+        hook() onRemove = nothing;
+    }
+
+    view {
+        row [gap 8, pad 8] {
+            button "Toggle" [subtle] {
+                opened = opened + 1;
+                onToggle();
+            }
+            is done? then {
+                text label [muted, strike];
+            } or {
+                text label;
+            }
+            text "(" + opened.text() + ")" [small, muted];
+            space;
+            button "Remove " + label [subtle, small] { onRemove(); }
+        }
+    }
+}
+
+pass TodoRow;
+end
