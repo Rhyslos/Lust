@@ -1,0 +1,29 @@
+true
+true
+true
+5
+Random's lowest number (6) is bigger than its highest (1).
+true
+["2026-10-21", "2026-11-02"]
+["42", "2026-10-21"]
+[]
+Order # shipped on #-#-#, order # on #-#-#
+1a22b333c
+true
+2026-11-04
+2024-02-29
+2025-12-31
+358
+Wednesday
+Thursday
+false
+true
+"21/10/2026" isn't a date. Dates are written like "2026-10-21".
+[[2, "cake", 3], [4, "pie", 5], [1, "tea", 10], [3, "bun", 10]]
+[[1, "tea", 10], [4, "pie", 5], [2, "cake", 3], [3, "bun", 10]]
+Bo 12
+Ada 30
+Cy 30
+Cy
+can't reach http://127.0.0.1:9/nothing.
+ftp://example.com isn't a web address. Addresses start with http:// or https://.

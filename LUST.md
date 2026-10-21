@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (2.0 alpha 9):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Not yet: `view`, and LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (2.0 alpha 10):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Not yet: `view`, and LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -188,6 +188,7 @@ cMap(string name, int price, int stock) shop = [
 - `bag[1]` is the row with key 1, `shop["tea"]` the row with key "tea". `shop["tea"].price` reads a column, `shop["tea"].price = 3;` changes one.
 - `shop:inject(["bread", 3, 8]);` adds a row. `shop:remove("cake");` and `shop:has("cake")`. `#shop` is how many rows.
 - A key can't be changed. To give a row a new key, remove it and add it again.
+- `shop:sortBy(price);` puts the rows in order by a column (rows with the same value keep their order), and `shop:reverse();` turns them around.
 - `loop (string name, int price, int stock in shop) { … }` goes through the rows in the order they were added.
 
 **Keys Lust makes.** A new row can leave its key out, and Lust makes one:
@@ -197,7 +198,7 @@ cMap(string name, int price, int stock) shop = [
 
 ```
 method int rollId() {
-    return random(1000, 9999);
+    return Random[1000, 9999];
 }
 
 cMap(int id = rollId, string item, int amount) chest = [];
@@ -311,7 +312,7 @@ assembly Loot {
     }
     create Sword {
         name = "Old sword";
-        sharpness = random(1, 5);
+        sharpness = Random[1, 5];
     }
 }
 
@@ -319,7 +320,7 @@ Item drop = Loot:create(Item);
 Sword blade = Loot:create(Sword);
 ```
 
-- A recipe sets fields, and its values are worked out each time something is made, so `random` gives each sword its own sharpness.
+- A recipe sets fields, and its values are worked out each time something is made, so `Random` gives each sword its own sharpness.
 - What an assembly makes in a method of an object with a state, or of a node, belongs to it, just like `new`.
 
 ---
@@ -726,7 +727,19 @@ Web:serve(8080);
 - A path nobody answers gives 404. One that's answered, but not for that kind of request, gives 405.
 - **`Web:serve(8080);`** answers requests on that port until the program is stopped. Every file's routes are served. `pass route;` is fine to write but not needed.
 - **`Web:request("GET", "/api/users/2", "")`** tries a route without a network, and gives back the status and the answer as text: `200 {"id":2,"name":"Bo"}`. Good for testing.
-- For now, a server answers one request at a time.
+- Requests are read and answered several at once, so a slow visitor doesn't hold up the others. The methods that answer run one at a time, so they never get in each other's way.
+
+### Asking other websites
+
+```
+string answer = Web:get("https://api.example.com/weather?city=Oslo");
+Weather w = Json:read(answer);
+string reply = Web:post("https://example.com/scores", Json:write(score));
+```
+
+- Both give back the answer's text. Turn JSON into Lust values with `Json:read`.
+- If the site can't be reached, or answers with an error (400 and up), the program stops with what happened, like `https://example.com/x answered 404: …`. Use `try` to carry on.
+- A program that asks websites is built with Cargo, like ones with databases. In LustScript, it needs `lust run`.
 
 ---
 
@@ -736,8 +749,17 @@ Web:serve(8080);
 | --- | --- |
 | `print(x);` | shows `x` on its own line |
 | `wait seconds;` | pauses |
-| `random(low, high)` | a whole number from `low` to `high` |
 | `ask(question)` | shows a question and gives back what's typed |
+
+### Random numbers
+
+```
+int dice = Random[1, 6];          -- a whole number from 1 to 6
+float chance = Random[0.0, 1.0];  -- a decimal from 0 up to (not quite) 1
+```
+
+- With two ints, and going into an int, it's a whole number, and both ends can come up.
+- With a float, or going into a float, it's a decimal from the lowest up to just below the highest.
 
 ### Text
 
@@ -752,6 +774,12 @@ Positions count letters (not bytes), from 0, like arrays.
 | `name:replace("old", "new")` | the text with every `old` changed to `new` |
 | `line:split(",")` | a string array of the parts between the commas. `:split("")` gives every letter |
 | `name:slice(2, 5)` | letters 2, 3 and 4 |
+| `line:matches("[0-9]+")` | true if the pattern is in it somewhere |
+| `line:findAll("[0-9]+")` | every piece that fits the pattern, as a string array |
+| `line:capture("Order ([0-9]+)")` | the parts in `( )` of the first fit, as a string array (empty if nothing fits) |
+| `line:replaceAll("[0-9]+", "#")` | every fit replaced. `$1`, `$2` put back the parts in `( )` |
+
+Patterns are regular expressions, the kind most languages use: `[0-9]` is a digit, `+` means one or more, `( )` marks a part to keep. In LustScript they need `lust run`.
 
 ### Arrays
 
@@ -761,6 +789,7 @@ Positions count letters (not bytes), from 0, like arrays.
 | `scores:has(10)`, `scores:find(10)` | whether it's there, and where (or -1). For arrays of numbers, text and truths |
 | `scores:sort();` | puts numbers or text in order, smallest first |
 | `scores:reverse();` | turns the array around |
+| `team:sortBy(score);` | puts an array of things in order by one of their fields. Things with the same value keep their order |
 
 ### Built-in objects
 
@@ -793,6 +822,10 @@ Lust comes with five objects. Their methods are called like any object's: `Maths
 | `Time:now()` | seconds since 1 January 1970, as a float |
 | `Time:clock()` | seconds since the program started: good for timing things |
 | `Time:date()`, `Time:time()` | today's date as `"2026-10-21"`, and the time as `"14:05:09"`, by the computer's clock |
+| `Time:addDays(date, n)` | the date n days later (or earlier, with a minus) |
+| `Time:daysBetween(from, to)` | how many days from one date to the other |
+| `Time:weekday(date)` | `"Monday"` to `"Sunday"` |
+| `Time:isDate(text)` | true if it's a real date, written like `"2026-10-21"` |
 
 **Json** turns values into JSON text and back:
 

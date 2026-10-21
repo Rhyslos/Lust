@@ -871,6 +871,10 @@ impl<'a> W<'a> {
                 self.owned(made)
             }
             ExprKind::Saved(_) => "false".into(),
+            ExprKind::Random(lo, hi) => {
+                let f = if self.info.ty(e) == Ty::Float { "frandom" } else { "random" };
+                format!("_L.{f}({}, {})", self.expr(lo), self.expr(hi))
+            }
             ExprKind::NewHook(body) => {
                 let params: Vec<String> = self
                     .info
@@ -938,6 +942,14 @@ impl<'a> W<'a> {
         let ExprKind::Method(t, _, args, _) = &e.kind else {
             return "nil".into();
         };
+        if op == "sortBy" {
+            let col = lua_string(&lname(&self.info.columns.get(&args[0].id).cloned().unwrap_or_default()));
+            let c = self.expr(t);
+            return match self.info.ty(t) {
+                Ty::CMap(_) => format!("_L.csort({c}, {col})"),
+                _ => format!("_L.asort_by({c}, {col})"),
+            };
+        }
         let q = self.raw(t);
         match op {
             "inject" => format!("_L.t_inject({q}, {})", self.row(&args[0])),

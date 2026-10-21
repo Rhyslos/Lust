@@ -1,0 +1,10 @@
+gaps.lsc:7:9  Lust writes it Random[1, 6], with the lowest and highest number in [ ].
+gaps.lsc:8:16  Random picks between two numbers, but this is a string.
+gaps.lsc:9:12  c is a string, but this is an int. Use .text() to turn it into text.
+gaps.lsc:11:13  sortBy puts numbers or text in order, but ready is neither.
+gaps.lsc:12:6  sortBy takes the name of a field with numbers or text: name.
+gaps.lsc:14:5  sortBy takes the name of a column with numbers or text: id, name.
+gaps.lsc:16:6  nums is an int array, which has no method called sortBy. Arrays have inject, remove, has, find, join, sort and reverse.
+gaps.lsc:16:13  there's nothing called x here. Did you mean a?
+
+8 mistakes. Nothing was run.
