@@ -14,8 +14,8 @@ The order Lust gets built in. Each step makes Lust more useful on its own, and n
 | ✅ | **5. `node` and `assembly`:** objects that open and close, and factories with one recipe per class | Done (alpha 7) |
 | ✅ | **6. Databases (on SQLite), saves, and `lust new`:** tables used like cMaps, queries written in Lust, saves as readable JSON | Done (alpha 8) |
 | 🏁 | *Programs keep their data.* | Reached |
-| | **7. Servers:** `schema` and `route`, if they're still wanted by then | Next |
-| | **8. Ledger support and polish** | |
+| ✅ | **7. Servers:** `schema` and `route`, answered by methods, with `Web:serve` and `Web:request` | Done (alpha 9) |
+| | **8. Ledger support and polish** | Next |
 | | **9. `view` and our own renderer,** starting with a small test run (a window, text, a button) | |
 | | 🏁 *The Lust 2.0 release.* | |
 
@@ -24,4 +24,4 @@ The order Lust gets built in. Each step makes Lust more useful on its own, and n
 - **Databases run on SQLite.** For now, queries are written in Lust code (`Shop.items:where(price < 3.0)`); a `.lql` language of its own is designed later. SQLite does the hard part of a database (keeping data safe through crashes, indexes, one file per database), and it's free to use in anything. Lust checks queries and turns them into SQL. A cMap's key matches a table's primary key. Garry's Mod has SQLite built in, so LustScript there can get databases later.
 - **Saves are readable JSON files** (`name.save`), as the rulebook asked, not databases.
 - **`view` is our own, all the way down,** and it comes last, once everything it builds on has settled. Most of the remaining work is here.
-- **Servers come last.** They're on the list, but whether web servers are worth it gets decided when we get there.
+- **Servers answer one request at a time** for now, which is plenty for tools and small games' backends.

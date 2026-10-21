@@ -409,7 +409,19 @@ impl<'a> Parser<'a> {
                 items.push(Item::Database(d));
                 return Ok(());
             }
-            "schema" | "route" | "view" | "style" => {
+            "schema" => {
+                *seen_other = true;
+                let c = self.class_decl()?;
+                items.push(Item::Class(c));
+                return Ok(());
+            }
+            "route" => {
+                *seen_other = true;
+                let r = self.route_decl()?;
+                items.push(Item::Route(r));
+                return Ok(());
+            }
+            "view" | "style" => {
                 return self.fail(t.pos, format!("{word} is planned for Lust v2 but isn't built yet."));
             }
             _ => {}
@@ -467,9 +479,12 @@ impl<'a> Parser<'a> {
     fn class_decl(&mut self) -> R<ClassDecl> {
         let word = self.next();
         let is_node = word.is_word("node");
+        let is_schema = word.is_word("schema");
         let is_object = word.is_word("object") || is_node;
         let what = if is_node {
             "node"
+        } else if is_schema {
+            "schema"
         } else if is_object {
             "object"
         } else {
@@ -522,9 +537,68 @@ impl<'a> Parser<'a> {
             pos,
             is_object,
             is_node,
+            is_schema,
             parent,
             fields,
             methods,
+        })
+    }
+
+    /// route "/api/v1" { get "/user/:id" => getUser; }
+    fn route_decl(&mut self) -> R<RouteDecl> {
+        let start = self.next();
+        let t = self.cur().clone();
+        let prefix = match &t.kind {
+            Tk::Str(p) => {
+                let p = p.clone();
+                self.next();
+                p
+            }
+            _ => String::new(),
+        };
+        let open = self.expect_sym("{", "expected { to start the routes: route \"/api\" { get \"/hello\" => hello; }")?;
+        let mut routes = Vec::new();
+        loop {
+            if self.at_sym("}") {
+                self.next();
+                break;
+            }
+            if self.at_eof() {
+                return self.fail(open.pos, "this route's { is never closed.");
+            }
+            let w = self.cur().clone();
+            let method = match &w.kind {
+                Tk::Ident(m) if matches!(m.as_str(), "get" | "post" | "put" | "delete") => m.to_uppercase(),
+                _ => {
+                    self.diags
+                        .add(w.pos, "a route answers get, post, put or delete: get \"/user/:id\" => getUser;");
+                    self.recover();
+                    continue;
+                }
+            };
+            self.next();
+            let p = self.cur().clone();
+            let Tk::Str(path) = &p.kind else {
+                return self.fail(p.pos, "the path goes in quotes: get \"/user/:id\" => getUser;");
+            };
+            let path = path.clone();
+            self.next();
+            self.expect_sym(
+                "=>",
+                &format!(
+                    "after the path comes => and the method that answers: {} \"{path}\" => answer;",
+                    method.to_lowercase()
+                ),
+            )?;
+            let (handler, hpos) = self.ident("the method that answers")?;
+            self.semi()?;
+            let full = format!("{}/{}", prefix.trim_end_matches('/'), path.trim_start_matches('/'));
+            routes.push((method, if full.is_empty() { "/".into() } else { full }, handler, hpos));
+        }
+        Ok(RouteDecl {
+            prefix,
+            pos: start.pos,
+            routes,
         })
     }
 

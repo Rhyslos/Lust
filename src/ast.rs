@@ -143,6 +143,17 @@ pub enum Item {
     Method(MethodDecl),
     Assembly(AssemblyDecl),
     Database(DatabaseDecl),
+    Route(RouteDecl),
+}
+
+/// route "/api/v1" { get "/user/:id" => getUser; }
+#[allow(dead_code)]
+pub struct RouteDecl {
+    #[allow(dead_code)]
+    pub prefix: String,
+    pub pos: Pos,
+    /// Method (GET, POST, PUT, DELETE), the whole path, and the method that answers.
+    pub routes: Vec<(String, String, String, Pos)>,
 }
 
 /// database Shop in "shop.db" { cMap(string name, float price) items; }
@@ -180,6 +191,8 @@ pub struct ClassDecl {
     pub is_object: bool,
     /// A node is an object that opens and closes.
     pub is_node: bool,
+    /// A schema is the shape of data coming in and going out. Fields with no value must be filled in.
+    pub is_schema: bool,
     pub parent: Option<(String, Pos)>,
     pub fields: Vec<FieldDecl>,
     pub methods: Vec<MethodDecl>,

@@ -141,7 +141,8 @@ pub fn load(entry: &Path, src: String, is_script: bool, diags: &mut Diags) -> Pr
     // Passes name things the file has.
     for (f, file) in files.iter().enumerate() {
         for (name, pos) in &file.prog.passes {
-            if !declared[f].contains_key(name) {
+            // pass route; is welcome but not needed: every file's routes are served.
+            if name != "route" && !declared[f].contains_key(name) {
                 diags.add(*pos, format!("this file has no {name} to pass."));
             }
         }
@@ -259,6 +260,7 @@ fn declarations(p: &Program) -> HashMap<String, Kind> {
             Item::Method(m) => d.insert(m.name.clone(), Kind::Method),
             Item::Assembly(a) => d.insert(a.name.clone(), Kind::Assembly),
             Item::Database(b) => d.insert(b.name.clone(), Kind::Database),
+            Item::Route(_) => None,
         };
     }
     d
@@ -316,7 +318,7 @@ fn value_names(p: &Program, out: &mut HashSet<String>) {
                 }
             }
             Item::Method(m) => method(m, out),
-            Item::State(_) | Item::Assembly(_) | Item::Database(_) => {}
+            Item::State(_) | Item::Assembly(_) | Item::Database(_) | Item::Route(_) => {}
         }
     }
     stmts(&p.body, out);
@@ -383,6 +385,11 @@ impl<'a> Renamer<'a> {
             Item::Method(m) => {
                 self.name(&mut m.name, m.pos, false);
                 self.method(m);
+            }
+            Item::Route(r) => {
+                for (_, _, handler, pos) in &mut r.routes {
+                    self.name(handler, *pos, false);
+                }
             }
             Item::Database(b) => {
                 self.name(&mut b.name, b.pos, false);

@@ -1,0 +1,33 @@
+schema Thing {
+    has {
+        string name;
+    }
+    method hi() {
+        print("hi");
+    }
+}
+
+class Box {
+    has {
+        hook() h = nothing;
+    }
+}
+
+method string one(int id, Thing a, Thing b) {
+    return "x";
+}
+
+method two(int x) {
+    print(x);
+}
+
+route "/api" {
+    get "/one/:id" => one;
+    get "/two/:missing" => two;
+    get "/three" => three;
+    get "/one/:id" => one;
+    patch "/x" => one;
+}
+
+Thing t = new Thing {};
+end

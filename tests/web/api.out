@@ -1,0 +1,16 @@
+200 {"id":1,"name":"Ada","age":36}
+200 {"id":2,"name":"Bo","age":0}
+200 [{"id":1,"name":"Ada","age":36},{"id":2,"name":"Bo","age":0}]
+200 {"id":2,"name":"Bo","age":0}
+404 {"error":"there's no user 9."}
+400 {"error":"the path's id should be a number, but it's \"two\"."}
+400 {"error":"the path's id should be a whole number, but it's \"1.5\"."}
+200 "Hello, Garry Newman!"
+400 {"error":"the request's body doesn't fit: the JSON is missing name."}
+400 {"error":"the request's body doesn't fit: this isn't valid JSON (line 1): \"o\" is out of place."}
+405 {"error":"/api/users answers GET and POST and DELETE, not PUT."}
+404 {"error":"there's nothing at /nowhere."}
+500 {"error":"dividing a whole number by zero doesn't work."}
+204
+200 []
+0

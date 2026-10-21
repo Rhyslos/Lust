@@ -9,7 +9,7 @@
 
 use crate::types::Ty;
 
-pub const OBJECTS: &[&str] = &["Maths", "Files", "Time", "Json"];
+pub const OBJECTS: &[&str] = &["Maths", "Files", "Time", "Json", "Web"];
 
 /// One library call: the runtime function, and what it takes and gives back.
 #[derive(Clone, Debug)]
@@ -43,6 +43,7 @@ pub fn listing(obj: &str) -> &'static str {
         "Maths" => "abs, min, max, clamp, round, floor, ceil, sqrt, power, sin, cos and tan, and Maths.pi",
         "Files" => "read, write, append, exists, remove, list and makeFolder",
         "Time" => "now, clock, date and time",
+        "Web" => "serve, request and fail",
         _ => "read, write and pretty",
     }
 }
@@ -79,6 +80,9 @@ pub fn object_method(obj: &str, m: &str, args: &[Ty]) -> Option<Result<Lib, Stri
         ("Files", "list") => lib("files_list", vec![("folder", Str)], Array(Box::new(Str))),
         ("Files", "makeFolder") => lib("files_makeFolder", vec![("folder", Str)], Void),
         ("Time", "now" | "clock") => lib(&format!("time_{m}"), vec![], Float),
+        ("Web", "serve") => lib("web_serve", vec![("port", Int)], Void),
+        ("Web", "request") => lib("web_request", vec![("method", Str), ("path", Str), ("body", Str)], Str),
+        ("Web", "fail") => lib("web_fail", vec![("status", Int), ("message", Str)], Void),
         ("Time", "date" | "time") => lib(&format!("time_{m}"), vec![], Str),
         _ => return None,
     })
@@ -154,7 +158,7 @@ pub fn json_fields(info: &crate::check::Info, c: usize) -> Vec<(usize, String, T
 }
 
 pub fn uses_json(info: &crate::check::Info) -> bool {
-    !info.saves.is_empty() || info.libs.values().any(|l| l.func.starts_with("json_"))
+    !info.saves.is_empty() || !info.routes.is_empty() || info.libs.values().any(|l| l.func.starts_with("json_"))
 }
 
 /// Can this be turned into JSON and back? Hooks can't, and neither can `nothing` on its own.

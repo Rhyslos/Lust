@@ -19,6 +19,12 @@ mod native_db {
     use std::rc::Rc;
     include!("native_db.rs");
 }
+// Serving routes, for built programs that call Web:serve, and for LustScript run by lust.
+#[allow(dead_code)]
+mod native_web {
+    pub use crate::native_rt::*;
+    include!("native_web.rs");
+}
 mod run;
 mod rust;
 mod stdlib;
@@ -201,7 +207,7 @@ fn cache_dir() -> std::path::PathBuf {
     std::env::temp_dir().join("lust-cache")
 }
 
-const CARGO_TOML: &str = "[package]\nname = \"lust_program\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nrusqlite = { version = \"0.40\", features = [\"bundled\"] }\n\n[profile.release]\noverflow-checks = true\n\n[workspace]\n";
+const CARGO_TOML: &str = "[package]\nname = \"lust_program\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nrusqlite = { version = \"0.40\", features = [\"bundled\"] }\ntiny_http = \"0.12\"\n\n[profile.release]\noverflow-checks = true\n\n[workspace]\n";
 
 /// Builds a program that needs outside libraries with Cargo, in a folder of Lust's own. The
 /// libraries are shared, so they're only compiled the first time on each computer.
@@ -299,7 +305,7 @@ fn new_project(name: &str) -> ExitCode {
 }
 
 pub fn build_native(path: &Path, rust: &str) -> Result<std::path::PathBuf, String> {
-    if rust.contains("\npub mod db {\n") {
+    if rust.contains("\npub mod db {\n") || rust.contains("\npub mod web {\n") {
         let exe = path.with_extension(std::env::consts::EXE_EXTENSION);
         build_with_cargo(path, rust, &exe)?;
         return Ok(exe);

@@ -16,6 +16,16 @@ pub struct StateInfo {
 }
 
 #[allow(dead_code)]
+pub struct RouteInfo {
+    pub method: String,
+    pub path: String,
+    pub handler: String,
+    /// The handler's values: each one from the path (by name), or the request's body.
+    pub params: Vec<(String, Ty, bool)>,
+    pub ret: Ty,
+}
+
+#[allow(dead_code)]
 pub struct DbInfo {
     pub name: String,
     pub path: String,
@@ -45,6 +55,10 @@ pub struct ClassInfo {
     pub name: String,
     pub is_object: bool,
     pub is_node: bool,
+    #[allow(dead_code)]
+    pub is_schema: bool,
+    /// A schema's fields with no starting value: they must always be filled in.
+    pub required: Vec<String>,
     pub parent: Option<usize>,
     pub fields: Vec<FieldInfo>,
     pub methods: HashMap<String, MethodSig>,
@@ -94,6 +108,8 @@ pub struct Info {
     pub columns: HashMap<usize, String>,
     /// Calls on tables and queries: inject, where, orderBy and the rest.
     pub table_ops: HashMap<usize, &'static str>,
+    /// Every route the program answers.
+    pub routes: Vec<RouteInfo>,
     /// Saves, by name: what each one holds.
     pub saves: HashMap<String, Vec<(String, SaveItem)>>,
     pub states: Vec<StateInfo>,
@@ -304,6 +320,8 @@ impl<'a> Checker<'a> {
                         name: c.name.clone(),
                         is_object: c.is_object,
                         is_node: c.is_node,
+                        is_schema: c.is_schema,
+                        required: vec![],
                         parent: None,
                         fields: vec![],
                         methods: HashMap::new(),
@@ -315,6 +333,7 @@ impl<'a> Checker<'a> {
                     }
                     self.info.assemblies.insert(a.name.clone(), vec![]);
                 }
+                Item::Route(_) => {}
                 Item::Database(d) => {
                     if self.name_taken(&d.name, d.pos) {
                         continue;
@@ -344,6 +363,17 @@ impl<'a> Checker<'a> {
         for item in &prog.items {
             if let Item::Class(c) = item {
                 let Some(&ci) = self.info.class_index.get(&c.name) else { continue };
+                if c.is_schema {
+                    if let Some((_, pos)) = &c.parent {
+                        self.err(*pos, "a schema can't be like a class. It's only the shape of some data.");
+                    }
+                    if let Some(m) = c.methods.first() {
+                        self.err(
+                            m.pos,
+                            "a schema only holds fields: it's the shape of some data, so it has no methods.",
+                        );
+                    }
+                }
                 if c.is_node {
                     for m in &c.methods {
                         if matches!(m.name.as_str(), "open" | "close" | "isOpen") {
@@ -592,6 +622,7 @@ impl<'a> Checker<'a> {
                             self.key_maker(t, &want, &mut ctx);
                         }
                     }
+                    None if c.is_schema => self.info.classes[ci].required.push(f.name.clone()),
                     None => {
                         if !want.can_be_nothing() && want != Ty::Error {
                             let example = self.example(&want);
@@ -602,6 +633,66 @@ impl<'a> Checker<'a> {
                         }
                     }
                 }
+            }
+        }
+        // Routes: each answered by a method, whose values come from the path and the body.
+        for item in &prog.items {
+            let Item::Route(r) = item else { continue };
+            for (method, path, handler, pos) in &r.routes {
+                let Some(sig) = self.info.methods.get(handler).cloned() else {
+                    self.err(*pos, format!("there's no method called {handler} to answer {method} {path}."));
+                    continue;
+                };
+                if self.info.routes.iter().any(|x| x.method == *method && x.path == *path) {
+                    self.err(*pos, format!("{method} {path} is answered twice."));
+                    continue;
+                }
+                let names: Vec<String> = path.split('/').filter_map(|s| s.strip_prefix(':')).map(|s| s.to_string()).collect();
+                let mut params = Vec::new();
+                let mut body = 0;
+                for (pn, pt) in &sig.params {
+                    let from_path = names.contains(pn);
+                    if from_path {
+                        if !matches!(pt, Ty::Int | Ty::Float | Ty::Str) {
+                            self.err(
+                                *pos,
+                                format!("{handler}'s {pn} comes from the path, so it's an int, a float or a string."),
+                            );
+                        }
+                    } else {
+                        body += 1;
+                        if let Some(p) = crate::stdlib::json_problem(pt, &|t| self.a(t)) {
+                            self.err(
+                                *pos,
+                                format!("{handler}'s {pn} isn't in the path, so it comes from the request's body as JSON, but {p}"),
+                            );
+                        }
+                    }
+                    params.push((pn.clone(), pt.clone(), from_path));
+                }
+                if body > 1 {
+                    self.err(*pos, format!("{handler} takes more than one value that isn't in the path. Only one comes from the request's body: put them in a schema."));
+                }
+                for n in &names {
+                    if !sig.params.iter().any(|(p, _)| p == n) {
+                        self.err(
+                            *pos,
+                            format!("the path has :{n}, so {handler} needs a value called {n}: method {handler}(int {n}) {{ … }}"),
+                        );
+                    }
+                }
+                if sig.ret != Ty::Void {
+                    if let Some(p) = crate::stdlib::json_problem(&sig.ret, &|t| self.a(t)) {
+                        self.err(*pos, format!("{handler}'s answer goes back as JSON, but {p}"));
+                    }
+                }
+                self.info.routes.push(RouteInfo {
+                    method: method.clone(),
+                    path: path.clone(),
+                    handler: handler.clone(),
+                    params,
+                    ret: sig.ret.clone(),
+                });
             }
         }
         // 4. The top level of the file, then every method.
@@ -1557,6 +1648,23 @@ impl<'a> Checker<'a> {
                     self.err(
                         *class_pos,
                         format!("{class} is an object: there's only ever one, and it's ready to use as {class}."),
+                    );
+                }
+                let missing: Vec<String> = self.info.classes[c]
+                    .required
+                    .iter()
+                    .filter(|r| !inits.iter().any(|(f, _, _)| f == *r))
+                    .cloned()
+                    .collect();
+                if !missing.is_empty() {
+                    let ex: Vec<String> = missing.iter().map(|m| format!("{m} = …")).collect();
+                    self.err(
+                        *class_pos,
+                        format!(
+                            "{class} needs {} filled in: new {class} {{ {} }}",
+                            missing.join(" and "),
+                            ex.join(", ")
+                        ),
                     );
                 }
                 for (f, fpos, v) in inits {

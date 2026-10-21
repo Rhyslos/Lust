@@ -783,9 +783,14 @@ function L.jr_cmap(cols, textkey, fs)
   end
 end
 -- A thing made from a class: its fields that are in the JSON, the rest keep their starting values.
-function L.jr_fields(v, at, class, names, fs)
+function L.jr_fields(v, at, class, names, fs, required)
   if v == L.NULL then return nil end
   if type(v) ~= "table" or not v.__obj then misfit(at, "an object", v) end
+  for _, r in ipairs(required or {}) do
+    if v.vals[r] == nil then
+      error((at == "" and "the JSON" or ("the JSON at " .. at)) .. " is missing " .. r .. ".", 0)
+    end
+  end
   local o = L.new(class)
   for i, name in ipairs(names) do
     local x = v.vals[name]
@@ -877,6 +882,86 @@ function L.json_write(v, f, pretty)
   local ok, r = pcall(f, v, pretty and 0 or nil)
   if not ok then error(r, 2) end
   return r
+end
+
+-- ----- web: routes answered by methods -----
+
+local routes = {}
+local WebFail = { __tostring = function(e) return e.message end }
+local function segments(path)
+  local out = {}
+  for s in path:gmatch("[^/]+") do out[#out + 1] = s end
+  return out
+end
+local function unescape(s)
+  return (s:gsub("%%(%x%x)", function(h) return string.char(tonumber(h, 16)) end))
+end
+function L.route(method, path, f)
+  routes[#routes + 1] = { method = method, parts = segments(path), f = f }
+end
+function L.web_fail(status, msg)
+  error(setmetatable({ status = status, message = msg }, WebFail), 2)
+end
+local function bad(msg) error(setmetatable({ status = 400, message = msg }, WebFail), 0) end
+function L.web_param(p, name, kind)
+  local v = p[name]
+  if kind == "string" then return v end
+  if not L.isnum(v) then bad("the path's " .. name .. " should be a number, but it's \"" .. v .. "\".") end
+  if kind == "int" then
+    local n = tonumber(v)
+    if n ~= floor(n) then bad("the path's " .. name .. " should be a whole number, but it's \"" .. v .. "\".") end
+    return n
+  end
+  return tonumber(v) + 0.0
+end
+function L.web_body(body, f)
+  local ok, r = pcall(function() return f(parse(body), "") end)
+  if not ok then
+    if getmetatable(r) == WebFail then error(r, 0) end
+    bad("the request's body doesn't fit: " .. L.errtext(r))
+  end
+  return r
+end
+local function errjson(msg) return '{"error":' .. jquote(msg) .. '}' end
+function L.web_handle(method, path, body)
+  path = path:gsub("%?.*$", "")
+  local parts = segments(path)
+  local allowed = {}
+  for _, r in ipairs(routes) do
+    if #r.parts == #parts then
+      local p, fits = {}, true
+      for i, s in ipairs(r.parts) do
+        if s:sub(1, 1) == ":" then p[s:sub(2)] = unescape(parts[i])
+        elseif s ~= parts[i] then fits = false break end
+      end
+      if fits then
+        if r.method == method then
+          local ok, res = pcall(r.f, p, body)
+          if ok then
+            if res == nil then return 204, "" end
+            return 200, res
+          end
+          if getmetatable(res) == WebFail then return res.status, errjson(res.message) end
+          return 500, errjson(L.errtext(res))
+        end
+        allowed[#allowed + 1] = r.method
+      end
+    end
+  end
+  if #allowed > 0 then
+    return 405, errjson(path .. " answers " .. table.concat(allowed, " and ") .. ", not " .. method .. ".")
+  end
+  return 404, errjson("there's nothing at " .. path .. ".")
+end
+function L.web_request(method, path, body)
+  local status, text = L.web_handle(method:upper(), path, body)
+  if text == "" then return fmt("%d", status) end
+  return fmt("%d", status) .. " " .. text
+end
+function L.web_serve(port)
+  if not host or not host.serve then needs("Web:serve") end
+  local e = host.serve(port, L.web_handle)
+  if e then error(e, 2) end
 end
 
 -- ----- saves: readable JSON files, name.save -----
@@ -1058,6 +1143,7 @@ end
 -- try … error (string message): just the message, without Lua's file and line.
 -- Lua's own messages are turned into plain words, the same ones lust run shows.
 function L.errtext(e)
+  if type(e) == "table" and e.message then return e.message end
   local s = (tostring(e):gsub("^[^:]*:%d+: ", ""))
   if s:find("attempt to index") and s:find("nil value") then
     return "this is nothing, so it has no fields or methods. Check first: is it !== nothing?"
