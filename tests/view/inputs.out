@@ -1,0 +1,180 @@
+window "Form" 400x300
+  column 0,0 400x216
+    row 16,16 228x33
+      input "" 16,16 220x33
+      text 244,23 0x19
+    row 16,57 76x19
+      checkbox "off" 16,58 18x18
+      text "I agree" 42,57 50x19
+    row 16,84 227x20
+      slider "30" 16,84 200x20
+      text "30" 224,85 19x19
+    row 16,112 228x20
+      slider "1" 16,112 200x20
+      text "1.0" 224,113 20x19
+    text "changes: 0" 16,140 79x19
+    button "Clear" 16,167 66x33
+window "Form" 400x300
+  column 0,0 400x216
+    row 16,16 260x33
+      input "Ada" 16,16 220x33 (focus, caret 3)
+      text "ADA" 244,23 32x19
+    row 16,57 76x19
+      checkbox "off" 16,58 18x18
+      text "I agree" 42,57 50x19
+    row 16,84 227x20
+      slider "30" 16,84 200x20
+      text "30" 224,85 19x19
+    row 16,112 228x20
+      slider "1" 16,112 200x20
+      text "1.0" 224,113 20x19
+    text "changes: 1" 16,140 76x19
+    button "Clear" 16,167 66x33
+window "Form" 400x300
+  column 0,0 400x216
+    row 16,16 270x33
+      input "Axda" 16,16 220x33 (focus, caret 2)
+      text "AXDA" 244,23 42x19
+    row 16,57 76x19
+      checkbox "off" 16,58 18x18
+      text "I agree" 42,57 50x19
+    row 16,84 227x20
+      slider "30" 16,84 200x20
+      text "30" 224,85 19x19
+    row 16,112 228x20
+      slider "1" 16,112 200x20
+      text "1.0" 224,113 20x19
+    text "changes: 2" 16,140 79x19
+    button "Clear" 16,167 66x33
+window "Form" 400x300
+  column 0,0 400x216
+    row 16,16 270x33
+      input "Axda" 16,16 220x33 (focus, selected 2..4)
+      text "AXDA" 244,23 42x19
+    row 16,57 76x19
+      checkbox "off" 16,58 18x18
+      text "I agree" 42,57 50x19
+    row 16,84 227x20
+      slider "30" 16,84 200x20
+      text "30" 224,85 19x19
+    row 16,112 228x20
+      slider "1" 16,112 200x20
+      text "1.0" 224,113 20x19
+    text "changes: 2" 16,140 79x19
+    button "Clear" 16,167 66x33
+window "Form" 400x300
+  column 0,0 400x216
+    row 16,16 270x33
+      input "AxAx" 16,16 220x33 (focus, caret 4)
+      text "AXAX" 244,23 42x19
+    row 16,57 76x19
+      checkbox "off" 16,58 18x18
+      text "I agree" 42,57 50x19
+    row 16,84 227x20
+      slider "30" 16,84 200x20
+      text "30" 224,85 19x19
+    row 16,112 228x20
+      slider "1" 16,112 200x20
+      text "1.0" 224,113 20x19
+    text "changes: 4" 16,140 79x19
+    button "Clear" 16,167 66x33
+window "Form" 400x300
+  column 0,0 400x216
+    row 16,16 270x33
+      input "AxAx" 16,16 220x33 (focus, caret 0)
+      text "AXAX" 244,23 42x19
+    row 16,57 76x19
+      checkbox "off" 16,58 18x18
+      text "I agree" 42,57 50x19
+    row 16,84 227x20
+      slider "30" 16,84 200x20
+      text "30" 224,85 19x19
+    row 16,112 228x20
+      slider "1" 16,112 200x20
+      text "1.0" 224,113 20x19
+    text "changes: 4" 16,140 79x19
+    button "Clear" 16,167 66x33
+window "Form" 400x300
+  column 0,0 400x216
+    row 16,16 259x33
+      input "xAx" 16,16 220x33 (focus, caret 0)
+      text "XAX" 244,23 31x19
+    row 16,57 76x19
+      checkbox "off" 16,58 18x18
+      text "I agree" 42,57 50x19
+    row 16,84 227x20
+      slider "30" 16,84 200x20
+      text "30" 224,85 19x19
+    row 16,112 228x20
+      slider "1" 16,112 200x20
+      text "1.0" 224,113 20x19
+    text "changes: 5" 16,140 79x19
+    button "Clear" 16,167 66x33
+window "Form" 400x300
+  column 0,0 400x216
+    row 16,16 259x33
+      input "xAx" 16,16 220x33
+      text "XAX" 244,23 31x19
+    row 16,57 136x19
+      checkbox "on" 16,58 18x18 (focus)
+      text "I agree" 42,57 50x19
+      text "thanks!" 100,57 52x19
+    row 16,84 227x20
+      slider "80" 16,84 200x20
+      text "80" 224,85 19x19
+    row 16,112 228x20
+      slider "1.5" 16,112 200x20
+      text "1.5" 224,113 20x19
+    text "changes: 5" 16,140 79x19
+    button "Clear" 16,167 66x33
+window "Form" 400x300
+  column 0,0 400x216
+    row 16,16 228x33
+      input "" 16,16 220x33
+      text 244,23 0x19
+    row 16,57 136x19
+      checkbox "on" 16,58 18x18
+      text "I agree" 42,57 50x19
+      text "thanks!" 100,57 52x19
+    row 16,84 227x20
+      slider "80" 16,84 200x20
+      text "80" 224,85 19x19
+    row 16,112 228x20
+      slider "1.5" 16,112 200x20
+      text "1.5" 224,113 20x19
+    text "changes: 5" 16,140 79x19
+    button "Clear" 16,167 66x33
+window "Form" 400x300
+  column 0,0 400x216
+    row 16,16 307x33
+      input "Lovelace" 16,16 220x33 (focus, caret 2)
+      text "LOVELACE" 244,23 79x19
+    row 16,57 136x19
+      checkbox "on" 16,58 18x18
+      text "I agree" 42,57 50x19
+      text "thanks!" 100,57 52x19
+    row 16,84 227x20
+      slider "80" 16,84 200x20
+      text "80" 224,85 19x19
+    row 16,112 228x20
+      slider "1.5" 16,112 200x20
+      text "1.5" 224,113 20x19
+    text "changes: 6" 16,140 79x19
+    button "Clear" 16,167 66x33
+window "Form" 400x300
+  column 0,0 400x216
+    row 16,16 307x33
+      input "Lovelace" 16,16 220x33 (focus, selected 0..8)
+      text "LOVELACE" 244,23 79x19
+    row 16,57 136x19
+      checkbox "on" 16,58 18x18
+      text "I agree" 42,57 50x19
+      text "thanks!" 100,57 52x19
+    row 16,84 227x20
+      slider "80" 16,84 200x20
+      text "80" 224,85 19x19
+    row 16,112 228x20
+      slider "1.5" 16,112 200x20
+      text "1.5" 224,113 20x19
+    text "changes: 6" 16,140 79x19
+    button "Clear" 16,167 66x33

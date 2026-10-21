@@ -209,8 +209,24 @@ fn ui_node(t: &mlua::Table, actions: &mut Vec<crate::native_ui::Action>) -> mlua
     if let Some(s) = t.get::<Option<mlua::Table>>("s")? {
         n.style = ui_styles(&s)?;
     }
+    n.value = match t.get::<mlua::Value>("v")? {
+        mlua::Value::String(s) => Some(crate::native_ui::SV::Text(s.to_str()?.to_string())),
+        mlua::Value::Boolean(b) => Some(crate::native_ui::SV::Truth(b)),
+        mlua::Value::Integer(i) => Some(crate::native_ui::SV::Num(i as f64)),
+        mlua::Value::Number(x) => Some(crate::native_ui::SV::Num(x)),
+        _ => None,
+    };
     if let Some(f) = t.get::<Option<mlua::Function>>("f")? {
-        actions.push(Box::new(move || f.call::<()>(()).map_err(|e| raw_error(&e))));
+        // An input's action is given its new value.
+        actions.push(Box::new(move || {
+            let r = match crate::native_ui::incoming() {
+                crate::native_ui::SV::Text(s) => f.call::<()>(s),
+                crate::native_ui::SV::Truth(b) => f.call::<()>(b),
+                crate::native_ui::SV::Num(x) => f.call::<()>(x),
+                _ => f.call::<()>(()),
+            };
+            r.map_err(|e| raw_error(&e))
+        }));
         n.action = Some(actions.len() - 1);
     }
     if let Some(c) = t.get::<Option<mlua::Table>>("c")? {

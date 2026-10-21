@@ -1,0 +1,10 @@
+view-inputs.lsc:11:19  input changes text, but age is an int: input name;
+view-inputs.lsc:12:22  checkbox changes a truth, but name is a string: checkbox done;
+view-inputs.lsc:13:20  slider changes a number, but ok is a truth: slider volume [from 0, to 100];
+view-inputs.lsc:14:13  an input needs the field it changes: input name;
+view-inputs.lsc:16:23  t is a variable of the view, made again each time it's drawn, so what's typed would be lost. Bind the input to a field.
+view-inputs.lsc:18:25  placeholder takes text: placeholder "Search…".
+view-inputs.lsc:19:19  an input changes a field, so it needs one: input name;
+view-inputs.lsc:20:33  age is an int, but this is a string. Use .int() to turn text into a number.
+
+8 mistakes. Nothing was run.

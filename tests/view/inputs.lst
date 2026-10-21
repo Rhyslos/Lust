@@ -1,0 +1,43 @@
+-- Inputs, checkboxes and sliders, bound to fields.
+assembly Form {
+    has {
+        string name = "";
+        string shout = "";
+        truth agree = false;
+        int volume = 30;
+        float zoom = 1.0;
+        int changes = 0;
+    }
+
+    view [title "Form", width 400, height 300] {
+        column [gap 8, pad 16] {
+            row [gap 8] {
+                input name [placeholder "Your name"] {
+                    shout = name.upper();
+                    changes = changes + 1;
+                }
+                text shout;
+            }
+            row [gap 8] {
+                checkbox agree;
+                text "I agree";
+                is agree? then {
+                    text "thanks!" [green];
+                }
+            }
+            row [gap 8] {
+                slider volume [from 0, to 100, step 10];
+                text volume.text();
+            }
+            row [gap 8] {
+                slider zoom [from 0.5, to 2.0, step 0.25, purple];
+                text zoom.text();
+            }
+            text "changes: " + changes.text() [muted];
+            button "Clear" { name = ""; shout = ""; }
+        }
+    }
+}
+
+Form:open();
+end

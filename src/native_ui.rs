@@ -21,6 +21,7 @@ pub enum SV {
     Flag,
     Num(f64),
     Text(String),
+    Truth(bool),
     Nested(Vec<(String, SV)>),
 }
 
@@ -30,17 +31,52 @@ pub struct Node {
     pub text: String,
     pub style: Vec<(String, SV)>,
     pub children: Vec<Node>,
-    /// Which of the view's actions a click runs.
+    /// Which of the view's actions a click runs, or an input's change.
     pub action: Option<usize>,
+    /// What an input, checkbox or slider shows: the value it's bound to.
+    pub value: Option<SV>,
 }
 
 impl Node {
     pub fn new(kind: &str) -> Node {
-        Node { kind: kind.to_string(), text: String::new(), style: vec![], children: vec![], action: None }
+        Node { kind: kind.to_string(), text: String::new(), style: vec![], children: vec![], action: None, value: None }
     }
 }
 
 pub type Action = Box<dyn FnMut() -> Result<(), String>>;
+
+thread_local! {
+    /// The new value an input hands to its action, just before the action runs.
+    static INCOMING: std::cell::RefCell<SV> = const { std::cell::RefCell::new(SV::Flag) };
+}
+
+/// Runs an input's action with its new value.
+fn run_with(action: &mut Action, value: SV) -> Result<(), String> {
+    INCOMING.with(|i| *i.borrow_mut() = value);
+    action()
+}
+
+pub fn incoming() -> SV {
+    INCOMING.with(|i| i.borrow().clone())
+}
+
+pub fn incoming_text() -> String {
+    match incoming() {
+        SV::Text(t) => t,
+        _ => String::new(),
+    }
+}
+
+pub fn incoming_num() -> f64 {
+    match incoming() {
+        SV::Num(n) => n,
+        _ => 0.0,
+    }
+}
+
+pub fn incoming_truth() -> bool {
+    matches!(incoming(), SV::Truth(true))
+}
 
 // ----- fonts -----
 
@@ -279,6 +315,14 @@ struct Look {
     wrap: bool,
     strike: bool,
     opacity: f32,
+    /// The colour of a checked checkbox, a slider's filled part, and the ring around what has focus.
+    accent: u32,
+    /// What an empty input shows.
+    placeholder: String,
+    /// A slider's range and how far one step goes.
+    from: f32,
+    to: f32,
+    step: f32,
 }
 
 fn num(v: &SV) -> Option<f32> {
@@ -326,8 +370,32 @@ fn base_look(kind: &str) -> Look {
         wrap: true,
         strike: false,
         opacity: 1.0,
+        accent: 0x1c7ed6,
+        placeholder: String::new(),
+        from: 0.0,
+        to: 100.0,
+        step: 1.0,
     };
     match kind {
+        "input" => {
+            l.pad = [7.0, 10.0, 7.0, 10.0];
+            l.width = Size::Fixed(220.0);
+            l.background = Some(0xffffff);
+            l.border = Some(0xced4da);
+            l.radius = 6.0;
+        }
+        "checkbox" => {
+            l.width = Size::Fixed(18.0);
+            l.height = Size::Fixed(18.0);
+            l.background = Some(0xffffff);
+            l.border = Some(0xadb5bd);
+            l.border_w = 1.5;
+            l.radius = 4.0;
+        }
+        "slider" => {
+            l.width = Size::Fixed(200.0);
+            l.height = Size::Fixed(20.0);
+        }
         "button" => {
             l.pad = [7.0, 14.0, 7.0, 14.0];
             l.background = Some(0xe9ecef);
@@ -418,12 +486,18 @@ fn apply(l: &mut Look, kind: &str, style: &[(String, SV)]) {
             "bottom" => l.valign = Align::End,
             "spread" => l.spread = true,
             "subtle" => l.background = None,
+            "placeholder" => l.placeholder = text_of(v).unwrap_or("").to_string(),
+            "from" => l.from = num(v).unwrap_or(0.0),
+            "to" => l.to = num(v).unwrap_or(100.0),
+            "step" => l.step = num(v).unwrap_or(1.0).max(0.0),
             other => {
                 // A colour on its own: a button's colour, or text's.
                 if let Some(c) = colour(other) {
                     if kind == "button" {
                         l.background = Some(c);
                         l.color = if light(c) { INK } else { 0xffffff };
+                    } else if matches!(kind, "checkbox" | "slider" | "input") {
+                        l.accent = c;
                     } else {
                         l.color = c;
                     }
@@ -490,6 +564,8 @@ struct Laid {
     look: Look,
     hover: Option<Look>,
     action: Option<usize>,
+    /// What an input, checkbox or slider shows.
+    value: Option<SV>,
     x: f32,
     y: f32,
     w: f32,
@@ -523,6 +599,7 @@ fn lay(n: &Node) -> Laid {
         look,
         hover,
         action: n.action,
+        value: n.value.clone(),
         x: 0.0,
         y: 0.0,
         w: 0.0,
@@ -604,7 +681,8 @@ fn measure(n: &Laid, max_w: f32) -> (f32, f32) {
             let w = lines.iter().map(|s| text_width(s, l.size, l.weight)).fold(0.0, f32::max);
             (w.ceil(), lh * lines.len() as f32)
         }
-        "space" => (0.0, 0.0),
+        "space" | "checkbox" | "slider" => (0.0, 0.0),
+        "input" => (0.0, line_metrics(l.size, l.weight).1),
         "row" => {
             let sizes = row_sizes(n, inner);
             (sizes.iter().map(|s| s.0).sum::<f32>() + gaps, sizes.iter().map(|s| s.1).fold(0.0, f32::max))
@@ -797,6 +875,8 @@ struct Canvas {
     scale: f32,
     /// How see-through everything painted now is (opacity), 1 for solid.
     alpha: f32,
+    /// Only pixels inside this box (in pixels: left, top, right, bottom) are painted.
+    clip: Option<[i64; 4]>,
     px: Vec<u32>,
 }
 
@@ -815,13 +895,18 @@ fn outside(fx: f32, fy: f32, x0: f32, y0: f32, x1: f32, y1: f32, r: f32) -> f32 
 
 impl Canvas {
     fn new(w: usize, h: usize, scale: f32) -> Canvas {
-        Canvas { w, h, scale, alpha: 1.0, px: vec![0xffffff; w * h] }
+        Canvas { w, h, scale, alpha: 1.0, clip: None, px: vec![0xffffff; w * h] }
     }
 
     fn blend(&mut self, x: i64, y: i64, c: u32, a: f32) {
         let a = a * self.alpha;
         if x < 0 || y < 0 || x >= self.w as i64 || y >= self.h as i64 || a <= 0.0 {
             return;
+        }
+        if let Some([x0, y0, x1, y1]) = self.clip {
+            if x < x0 || y < y0 || x >= x1 || y >= y1 {
+                return;
+            }
         }
         let i = y as usize * self.w + x as usize;
         self.px[i] = if a >= 1.0 { c } else { mix(self.px[i], c, a) };
@@ -848,6 +933,34 @@ impl Canvas {
                     cover *= 1.0 - (0.5 - inner).clamp(0.0, 1.0);
                 }
                 self.blend(px, py, c, cover * alpha);
+            }
+        }
+    }
+
+    /// Paints only inside this box (in the view's units) until `unclip`, within any box already set.
+    fn clip_to(&mut self, x: f32, y: f32, w: f32, h: f32) -> Option<[i64; 4]> {
+        let s = self.scale;
+        let mut b = [(x * s).floor() as i64, (y * s).floor() as i64, ((x + w) * s).ceil() as i64, ((y + h) * s).ceil() as i64];
+        if let Some(o) = self.clip {
+            b = [b[0].max(o[0]), b[1].max(o[1]), b[2].min(o[2]), b[3].min(o[3])];
+        }
+        std::mem::replace(&mut self.clip, Some(b))
+    }
+
+    /// A straight line `width` thick with round ends, smooth at the edges.
+    #[allow(clippy::too_many_arguments)]
+    fn line(&mut self, x0: f32, y0: f32, x1: f32, y1: f32, width: f32, c: u32) {
+        let s = self.scale;
+        let (ax, ay, bx, by, r) = (x0 * s, y0 * s, x1 * s, y1 * s, width * s / 2.0);
+        let (dx, dy) = (bx - ax, by - ay);
+        let len2 = (dx * dx + dy * dy).max(1e-6);
+        for py in ((ay.min(by) - r).floor() as i64)..((ay.max(by) + r).ceil() as i64) {
+            for px in ((ax.min(bx) - r).floor() as i64)..((ax.max(bx) + r).ceil() as i64) {
+                let (fx, fy) = (px as f32 + 0.5, py as f32 + 0.5);
+                let t = (((fx - ax) * dx + (fy - ay) * dy) / len2).clamp(0.0, 1.0);
+                let (qx, qy) = (ax + t * dx - fx, ay + t * dy - fy);
+                let d = (qx * qx + qy * qy).sqrt() - r;
+                self.blend(px, py, c, (0.5 - d).clamp(0.0, 1.0));
             }
         }
     }
@@ -884,9 +997,130 @@ impl Canvas {
     }
 }
 
-fn paint(c: &mut Canvas, n: &Laid, hover: Option<(f32, f32)>) {
+/// What painting needs to know besides the tree: the mouse, and what has focus.
+#[derive(Clone, Default)]
+struct PaintState {
+    hover: Option<(f32, f32)>,
+    focus: Option<Vec<usize>>,
+    /// Whether focus came from the keyboard, so it gets a ring.
+    ring: bool,
+    caret: Caret,
+    /// How far the focused input's text is slid left, to keep the caret in view.
+    scroll_x: f32,
+    caret_on: bool,
+}
+
+const RING: f32 = 3.0;
+
+fn ring_around(c: &mut Canvas, n: &Laid, accent: u32) {
+    let r = n.look.radius.min(n.w.min(n.h) / 2.0) + RING;
+    c.shape(n.x - RING, n.y - RING, n.w + 2.0 * RING, n.h + 2.0 * RING, r, Some(RING), mix(accent, 0xffffff, 0.65), 1.0);
+}
+
+fn value_text(n: &Laid) -> &str {
+    match &n.value {
+        Some(SV::Text(t)) => t,
+        _ => "",
+    }
+}
+
+fn value_num(n: &Laid) -> f32 {
+    match &n.value {
+        Some(SV::Num(x)) => *x as f32,
+        _ => 0.0,
+    }
+}
+
+/// Where a slider's thumb sits, from 0 to 1.
+fn slider_frac(n: &Laid) -> f32 {
+    let l = &n.look;
+    if l.to == l.from {
+        return 0.0;
+    }
+    ((value_num(n) - l.from) / (l.to - l.from)).clamp(0.0, 1.0)
+}
+
+const THUMB: f32 = 8.0;
+
+/// The inside of an input, where its text goes: x, top of the line, width.
+fn input_inner(n: &Laid) -> (f32, f32, f32) {
+    let l = &n.look;
+    let (_, lh) = line_metrics(l.size, l.weight);
+    let top = n.y + l.pad[0] + ((n.h - l.pad[0] - l.pad[2] - lh) / 2.0).max(0.0);
+    (n.x + l.pad[3], top, (n.w - l.pad[1] - l.pad[3]).max(0.0))
+}
+
+fn paint_input(c: &mut Canvas, n: &Laid, focused: bool, st: &PaintState) {
+    let l = &n.look;
+    let (ix, top, iw) = input_inner(n);
+    let (_, lh) = line_metrics(l.size, l.weight);
+    if focused {
+        ring_around(c, n, l.accent);
+        c.shape(n.x, n.y, n.w, n.h, l.radius, Some(1.5), l.accent, 1.0);
+    }
+    let text = value_text(n);
+    let scroll = if focused { st.scroll_x } else { 0.0 };
+    let was = c.clip_to(ix - 1.0, n.y, iw + 2.0, n.h);
+    if text.is_empty() {
+        c.text(&l.placeholder, ix, top, l.size, l.weight, 0x868e96);
+    } else {
+        if focused {
+            let (a, b) = st.caret.range();
+            if a != b && b <= text.len() {
+                let xa = text_width(&text[..a], l.size, l.weight) - scroll;
+                let xb = text_width(&text[..b], l.size, l.weight) - scroll;
+                c.rect(ix + xa, top, xb - xa, lh, 0.0, mix(l.accent, 0xffffff, 0.7), 1.0);
+            }
+        }
+        c.text(text, ix - scroll, top, l.size, l.weight, l.color);
+    }
+    if focused && st.caret_on && st.caret.caret <= text.len() {
+        let x = ix + text_width(&text[..st.caret.caret], l.size, l.weight) - scroll;
+        c.rect(x - 0.5, top + 1.0, 1.5, lh - 2.0, 0.0, l.color, 1.0);
+    }
+    c.clip = was;
+}
+
+fn paint_checkbox(c: &mut Canvas, n: &Laid, l: &Look, ring: bool) {
+    let on = matches!(n.value, Some(SV::Truth(true)));
+    if ring {
+        ring_around(c, n, l.accent);
+    }
+    if on {
+        c.rect(n.x, n.y, n.w, n.h, l.radius, l.accent, 1.0);
+        let (x, y, w, h) = (n.x, n.y, n.w, n.h);
+        c.line(x + w * 0.27, y + h * 0.53, x + w * 0.44, y + h * 0.69, 2.0, 0xffffff);
+        c.line(x + w * 0.44, y + h * 0.69, x + w * 0.74, y + h * 0.33, 2.0, 0xffffff);
+    } else {
+        if let Some(bg) = l.background {
+            c.rect(n.x, n.y, n.w, n.h, l.radius, bg, 1.0);
+        }
+        if let Some(b) = l.border {
+            c.shape(n.x, n.y, n.w, n.h, l.radius, Some(l.border_w), b, 1.0);
+        }
+    }
+}
+
+fn paint_slider(c: &mut Canvas, n: &Laid, l: &Look, ring: bool) {
+    let f = slider_frac(n);
+    let cy = n.y + n.h / 2.0;
+    let (x0, x1) = (n.x + THUMB, n.x + n.w - THUMB);
+    let tx = x0 + f * (x1 - x0);
+    c.rect(x0, cy - 2.0, x1 - x0, 4.0, 2.0, 0xe9ecef, 1.0);
+    c.rect(x0, cy - 2.0, tx - x0, 4.0, 2.0, l.accent, 1.0);
+    if ring {
+        c.shape(tx - THUMB - RING, cy - THUMB - RING, 2.0 * (THUMB + RING), 2.0 * (THUMB + RING), THUMB + RING, Some(RING), mix(l.accent, 0xffffff, 0.65), 1.0);
+    }
+    c.rect(tx - THUMB, cy - THUMB + 1.0, 2.0 * THUMB, 2.0 * THUMB, THUMB, 0x000000, 0.12);
+    c.rect(tx - THUMB, cy - THUMB, 2.0 * THUMB, 2.0 * THUMB, THUMB, 0xffffff, 1.0);
+    c.shape(tx - THUMB, cy - THUMB, 2.0 * THUMB, 2.0 * THUMB, THUMB, Some(1.5), l.accent, 1.0);
+}
+
+fn paint(c: &mut Canvas, n: &Laid, st: &PaintState, path: &mut Vec<usize>) {
+    let hover = st.hover;
     let over = hover.map(|(hx, hy)| hx >= n.x && hy >= n.y && hx < n.x + n.w && hy < n.y + n.h).unwrap_or(false);
     let l = if over { n.hover.as_ref().unwrap_or(&n.look) } else { &n.look };
+    let focused = st.focus.as_deref() == Some(path.as_slice());
     let was = c.alpha;
     c.alpha *= l.opacity;
     if l.shadow {
@@ -895,11 +1129,23 @@ fn paint(c: &mut Canvas, n: &Laid, hover: Option<(f32, f32)>) {
             c.rect(n.x - e + 0.0, n.y - e + 3.0, n.w + 2.0 * e, n.h + 2.0 * e, l.radius + e, 0x000000, 0.012);
         }
     }
-    if let Some(bg) = l.background {
-        c.rect(n.x, n.y, n.w, n.h, l.radius, bg, 1.0);
+    match n.kind.as_str() {
+        "checkbox" => paint_checkbox(c, n, l, focused && st.ring),
+        "slider" => paint_slider(c, n, l, focused && st.ring),
+        _ => {
+            if focused && st.ring && n.kind == "button" {
+                ring_around(c, n, 0x1c7ed6);
+            }
+            if let Some(bg) = l.background {
+                c.rect(n.x, n.y, n.w, n.h, l.radius, bg, 1.0);
+            }
+            if let Some(b) = l.border {
+                c.shape(n.x, n.y, n.w, n.h, l.radius, Some(l.border_w), b, 1.0);
+            }
+        }
     }
-    if let Some(b) = l.border {
-        c.shape(n.x, n.y, n.w, n.h, l.radius, Some(l.border_w), b, 1.0);
+    if n.kind == "input" {
+        paint_input(c, n, focused, st);
     }
     if shows_text(&n.kind) {
         let (_, lh) = line_metrics(l.size, l.weight);
@@ -916,34 +1162,52 @@ fn paint(c: &mut Canvas, n: &Laid, hover: Option<(f32, f32)>) {
             }
         }
     }
-    for ch in &n.children {
-        paint(c, ch, hover);
+    for (i, ch) in n.children.iter().enumerate() {
+        path.push(i);
+        paint(c, ch, st, path);
+        path.pop();
     }
     c.alpha = was;
 }
 
-fn render(tree: &Laid, w: usize, h: usize, scale: f32, hover: Option<(f32, f32)>, background: u32) -> Canvas {
+fn render(tree: &Laid, w: usize, h: usize, scale: f32, st: &PaintState, background: u32) -> Canvas {
     let mut c = Canvas::new(w, h, scale);
     c.px.iter_mut().for_each(|p| *p = background);
-    paint(&mut c, tree, hover);
+    paint(&mut c, tree, st, &mut vec![]);
     c
 }
 
-/// The deepest node with an action at this point.
-fn hit(n: &Laid, x: f32, y: f32) -> Option<usize> {
+/// The way to the deepest node with an action at this point: which child, at each level.
+fn hit(n: &Laid, x: f32, y: f32) -> Option<Vec<usize>> {
     if x < n.x || y < n.y || x >= n.x + n.w || y >= n.y + n.h {
         return None;
     }
-    for c in n.children.iter().rev() {
-        if let Some(a) = hit(c, x, y) {
-            return Some(a);
+    for (i, c) in n.children.iter().enumerate().rev() {
+        if let Some(mut p) = hit(c, x, y) {
+            p.insert(0, i);
+            return Some(p);
         }
     }
-    n.action
+    n.action.map(|_| vec![])
 }
 
-fn wants_hand(n: &Laid, x: f32, y: f32) -> bool {
-    hit(n, x, y).is_some()
+fn node_at<'a>(n: &'a Laid, path: &[usize]) -> Option<&'a Laid> {
+    match path.split_first() {
+        None => Some(n),
+        Some((&i, rest)) => n.children.get(i).and_then(|c| node_at(c, rest)),
+    }
+}
+
+/// Everything that can have focus, in the order Tab goes through them.
+fn focusable(n: &Laid, path: &mut Vec<usize>, out: &mut Vec<Vec<usize>>) {
+    if n.action.is_some() && matches!(n.kind.as_str(), "button" | "input" | "checkbox" | "slider") {
+        out.push(path.clone());
+    }
+    for (i, c) in n.children.iter().enumerate() {
+        path.push(i);
+        focusable(c, path, out);
+        path.pop();
+    }
 }
 
 // ----- the window -----
@@ -1042,23 +1306,440 @@ pub fn show(style: &[(String, SV)], build: &mut Build) -> Result<(), String> {
     r
 }
 
+// ----- what happens: clicks, keys and typing, the same in a window and in tests -----
+
+/// The keys held down. `command` is Ctrl (Cmd on a Mac); `word` moves by words: Ctrl (Option on a Mac).
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
+struct Mods {
+    shift: bool,
+    command: bool,
+    word: bool,
+}
+
+/// A key that does something, besides typing.
+#[derive(Clone, Debug, PartialEq)]
+enum Nav {
+    Edit(Key),
+    Tab,
+    Enter,
+    Space,
+    Escape,
+    Up,
+    Down,
+    Copy,
+    Cut,
+    Paste,
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Drag {
+    None,
+    Select,
+    Slide,
+}
+
+/// A slider's value, kept in its range and on its steps.
+fn snap(l: &Look, v: f32) -> f32 {
+    let (lo, hi) = (l.from.min(l.to), l.from.max(l.to));
+    let mut v = v.clamp(lo, hi);
+    if l.step > 0.0 {
+        v = (l.from + ((v - l.from) / l.step).round() * l.step).clamp(lo, hi);
+    }
+    (v * 1e6).round() / 1e6
+}
+
+/// A window's view while it's open: the tree, what has focus, and what the mouse is doing.
+struct Ui<'a, 'b> {
+    s: Settings,
+    build: &'a mut Build<'b>,
+    w: f32,
+    h: f32,
+    tree: Laid,
+    actions: Vec<Action>,
+    st: PaintState,
+    pressed: Option<Vec<usize>>,
+    drag: Drag,
+    /// When and where the last click was, and how many came quickly together (a double click).
+    clicks: (std::time::Instant, u32, (f32, f32)),
+    /// Copied text, for when there's no system clipboard (and in tests).
+    clip: String,
+    system_clipboard: bool,
+    /// When the caret last started blinking; None keeps it showing (tests).
+    blink: Option<std::time::Instant>,
+}
+
+const BLINK_MS: u128 = 530;
+
+impl<'a, 'b> Ui<'a, 'b> {
+    fn new(s: Settings, build: &'a mut Build<'b>, windowed: bool) -> Result<Ui<'a, 'b>, String> {
+        let (w, h) = (s.width as f32, s.height as f32);
+        let (node, actions) = build()?;
+        let tree = lay_out(&node, w, h);
+        let now = std::time::Instant::now();
+        Ok(Ui {
+            s,
+            build,
+            w,
+            h,
+            tree,
+            actions,
+            st: PaintState { caret_on: true, ..Default::default() },
+            pressed: None,
+            drag: Drag::None,
+            clicks: (now, 0, (0.0, 0.0)),
+            clip: String::new(),
+            system_clipboard: windowed,
+            blink: windowed.then_some(now),
+        })
+    }
+
+    /// Draws the view again from the data as it is now. Focus stays where it was, if it can.
+    fn rebuild(&mut self) -> Result<(), String> {
+        let (node, actions) = (self.build)()?;
+        self.tree = lay_out(&node, self.w, self.h);
+        self.actions = actions;
+        if let Some(f) = self.st.focus.clone() {
+            match node_at(&self.tree, &f) {
+                Some(n) if n.action.is_some() => {
+                    let t = value_text(n).to_string();
+                    self.st.caret.fit(&t);
+                }
+                _ => self.st.focus = None,
+            }
+        }
+        self.keep_caret_in_view();
+        Ok(())
+    }
+
+    fn resize(&mut self, w: f32, h: f32) -> Result<(), String> {
+        self.w = w;
+        self.h = h;
+        self.rebuild()
+    }
+
+    /// Runs what's at `path` with its new value, then draws again.
+    fn run(&mut self, path: &[usize], value: SV) -> Result<(), String> {
+        let Some(a) = node_at(&self.tree, path).and_then(|n| n.action) else { return Ok(()) };
+        run_with(&mut self.actions[a], value)?;
+        self.rebuild()
+    }
+
+    fn focused(&self) -> Option<&Laid> {
+        self.st.focus.as_ref().and_then(|f| node_at(&self.tree, f))
+    }
+
+    fn focused_kind(&self) -> String {
+        self.focused().map(|n| n.kind.clone()).unwrap_or_default()
+    }
+
+    fn set_focus(&mut self, path: Option<Vec<usize>>, ring: bool) {
+        if path != self.st.focus {
+            self.st.scroll_x = 0.0;
+            let end = path.as_ref().and_then(|p| node_at(&self.tree, p)).map(|n| value_text(n).len()).unwrap_or(0);
+            self.st.caret = Caret::at(end);
+        }
+        self.st.focus = path;
+        self.st.ring = ring;
+        self.wake();
+    }
+
+    /// Shows the caret again, straight away.
+    fn wake(&mut self) {
+        if self.blink.is_some() {
+            self.blink = Some(std::time::Instant::now());
+        }
+    }
+
+    fn paint_state(&self) -> PaintState {
+        let mut st = self.st.clone();
+        st.caret_on = match self.blink {
+            Some(t) => (t.elapsed().as_millis() / BLINK_MS) % 2 == 0,
+            None => true,
+        };
+        st
+    }
+
+    /// When the caret next blinks, if an input has focus.
+    fn next_blink(&self) -> Option<std::time::Instant> {
+        let t = self.blink?;
+        if self.focused_kind() != "input" {
+            return None;
+        }
+        let ms = t.elapsed().as_millis();
+        Some(t + std::time::Duration::from_millis(((ms / BLINK_MS + 1) * BLINK_MS) as u64))
+    }
+
+    /// Slides the focused input's text so the caret stays in view.
+    fn keep_caret_in_view(&mut self) {
+        let Some(n) = self.focused() else { return };
+        if n.kind != "input" {
+            return;
+        }
+        let (_, _, iw) = input_inner(n);
+        let t = value_text(n);
+        let l = &n.look;
+        let cx = text_width(&t[..self.st.caret.caret.min(t.len())], l.size, l.weight);
+        let tw = text_width(t, l.size, l.weight);
+        let mut s = self.st.scroll_x;
+        if cx - s > iw - 2.0 {
+            s = cx - iw + 2.0;
+        }
+        if cx < s {
+            s = cx;
+        }
+        self.st.scroll_x = s.min((tw - iw + 2.0).max(0.0)).max(0.0);
+    }
+
+    fn place_in_input(&self, n: &Laid, x: f32) -> usize {
+        let (ix, _, _) = input_inner(n);
+        place_at(value_text(n), x - ix + self.st.scroll_x, n.look.size, n.look.weight)
+    }
+
+    fn slide_to(&mut self, path: &[usize], x: f32) -> Result<(), String> {
+        let Some(n) = node_at(&self.tree, path) else { return Ok(()) };
+        let l = &n.look;
+        let (x0, x1) = (n.x + THUMB, n.x + n.w - THUMB);
+        let f = ((x - x0) / (x1 - x0).max(1.0)).clamp(0.0, 1.0);
+        let v = snap(l, l.from + f * (l.to - l.from));
+        if (v - value_num(n)).abs() < 1e-6 {
+            return Ok(());
+        }
+        self.run(path, SV::Num(v as f64))
+    }
+
+    fn clip_get(&self) -> Option<String> {
+        if self.system_clipboard {
+            if let Some(t) = clipboard_get() {
+                return Some(t);
+            }
+        }
+        Some(self.clip.clone())
+    }
+
+    fn clip_set(&mut self, t: &str) {
+        self.clip = t.to_string();
+        if self.system_clipboard {
+            clipboard_set(t);
+        }
+    }
+
+    fn press(&mut self, x: f32, y: f32, mods: Mods) -> Result<(), String> {
+        self.st.hover = Some((x, y));
+        let now = std::time::Instant::now();
+        let (t, n, (px, py)) = self.clicks;
+        let quick = now.duration_since(t) < std::time::Duration::from_millis(400) && (x - px).abs() < 4.0 && (y - py).abs() < 4.0;
+        let count = if quick { n + 1 } else { 1 };
+        self.clicks = (now, count, (x, y));
+        let at = hit(&self.tree, x, y);
+        self.pressed = at.clone();
+        let Some(path) = at else {
+            self.set_focus(None, false);
+            return Ok(());
+        };
+        let kind = node_at(&self.tree, &path).map(|n| n.kind.clone()).unwrap_or_default();
+        match kind.as_str() {
+            "input" => {
+                if self.st.focus.as_ref() != Some(&path) {
+                    self.set_focus(Some(path.clone()), false);
+                }
+                self.st.ring = false;
+                let Some(n) = node_at(&self.tree, &path) else { return Ok(()) };
+                let i = self.place_in_input(n, x);
+                let t = value_text(n).to_string();
+                match count {
+                    1 if mods.shift => self.st.caret.caret = i,
+                    1 => self.st.caret = Caret::at(i),
+                    2 => {
+                        let (a, b) = word_at(&t, i);
+                        self.st.caret = Caret { anchor: a, caret: b };
+                    }
+                    _ => self.st.caret = Caret { anchor: 0, caret: t.len() },
+                }
+                self.drag = if count == 1 { Drag::Select } else { Drag::None };
+                self.wake();
+                self.keep_caret_in_view();
+            }
+            "slider" => {
+                self.set_focus(Some(path.clone()), false);
+                self.drag = Drag::Slide;
+                self.slide_to(&path, x)?;
+            }
+            // Buttons and checkboxes act when the mouse is let go over them. Clicking one takes
+            // focus away from an input, without giving the button a ring.
+            _ => self.set_focus(None, false),
+        }
+        Ok(())
+    }
+
+    fn moved(&mut self, x: f32, y: f32) -> Result<(), String> {
+        self.st.hover = Some((x, y));
+        match self.drag {
+            Drag::Select => {
+                if let Some(n) = self.focused() {
+                    let i = self.place_in_input(n, x);
+                    self.st.caret.caret = i;
+                    self.keep_caret_in_view();
+                }
+            }
+            Drag::Slide => {
+                if let Some(p) = self.st.focus.clone() {
+                    self.slide_to(&p, x)?;
+                }
+            }
+            Drag::None => {}
+        }
+        Ok(())
+    }
+
+    fn release(&mut self, x: f32, y: f32) -> Result<(), String> {
+        self.drag = Drag::None;
+        let at = hit(&self.tree, x, y);
+        let pressed = self.pressed.take();
+        let Some(path) = at.filter(|a| Some(a) == pressed.as_ref()) else { return Ok(()) };
+        let Some(n) = node_at(&self.tree, &path) else { return Ok(()) };
+        match n.kind.as_str() {
+            "checkbox" => {
+                let on = matches!(n.value, Some(SV::Truth(true)));
+                self.run(&path, SV::Truth(!on))
+            }
+            "button" => self.run(&path, SV::Flag),
+            _ => Ok(()),
+        }
+    }
+
+    fn typed(&mut self, s: &str) -> Result<(), String> {
+        self.edit(Key::Type(s.to_string()), Mods::default())
+    }
+
+    /// A key in the focused input: the text changes, then its action runs with the new text.
+    fn edit(&mut self, k: Key, mods: Mods) -> Result<(), String> {
+        let Some(path) = self.st.focus.clone() else { return Ok(()) };
+        let Some(n) = node_at(&self.tree, &path) else { return Ok(()) };
+        if n.kind != "input" {
+            return Ok(());
+        }
+        let t = value_text(n).to_string();
+        let changed = self.st.caret.key(&t, &k, mods.shift, mods.word);
+        self.wake();
+        if let Some(new) = changed {
+            let caret = self.st.caret.clone();
+            self.run(&path, SV::Text(new))?;
+            self.st.caret = caret;
+            if let Some(n) = self.focused() {
+                let t = value_text(n).to_string();
+                self.st.caret.fit(&t);
+            }
+        }
+        self.keep_caret_in_view();
+        Ok(())
+    }
+
+    fn nav(&mut self, k: Nav, mods: Mods) -> Result<(), String> {
+        match k {
+            Nav::Tab => {
+                let mut all = Vec::new();
+                focusable(&self.tree, &mut vec![], &mut all);
+                if all.is_empty() {
+                    return Ok(());
+                }
+                let len = all.len();
+                let at = self.st.focus.as_ref().and_then(|f| all.iter().position(|p| p == f));
+                let next = match (at, mods.shift) {
+                    (None, false) => 0,
+                    (None, true) => len - 1,
+                    (Some(i), false) => (i + 1) % len,
+                    (Some(i), true) => (i + len - 1) % len,
+                };
+                self.set_focus(Some(all[next].clone()), true);
+                // Tabbing into an input selects its text, ready to be typed over.
+                if let Some(n) = self.focused() {
+                    if n.kind == "input" {
+                        let end = value_text(n).len();
+                        self.st.caret = Caret { anchor: 0, caret: end };
+                    }
+                }
+                self.keep_caret_in_view();
+                Ok(())
+            }
+            Nav::Escape => {
+                self.set_focus(None, false);
+                Ok(())
+            }
+            _ => {
+                let Some(path) = self.st.focus.clone() else { return Ok(()) };
+                let Some(n) = node_at(&self.tree, &path) else { return Ok(()) };
+                match (n.kind.as_str(), &k) {
+                    ("input", Nav::Edit(e)) => self.edit(e.clone(), mods),
+                    ("input", Nav::Copy | Nav::Cut) => {
+                        let sel = self.st.caret.selected(value_text(n)).to_string();
+                        if sel.is_empty() {
+                            return Ok(());
+                        }
+                        self.clip_set(&sel);
+                        if k == Nav::Cut {
+                            return self.edit(Key::Back, Mods::default());
+                        }
+                        Ok(())
+                    }
+                    ("input", Nav::Paste) => match self.clip_get() {
+                        // An input is one line, so pasted lines are joined with spaces.
+                        Some(t) => self.edit(Key::Type(t.replace("\r\n", " ").replace(['\n', '\r'], " ")), Mods::default()),
+                        None => Ok(()),
+                    },
+                    ("button", Nav::Enter | Nav::Space) => self.run(&path, SV::Flag),
+                    ("checkbox", Nav::Enter | Nav::Space) => {
+                        let on = matches!(n.value, Some(SV::Truth(true)));
+                        self.run(&path, SV::Truth(!on))
+                    }
+                    ("slider", Nav::Edit(Key::Left | Key::Right | Key::Home | Key::End) | Nav::Up | Nav::Down) => {
+                        let l = &n.look;
+                        let step = if l.step > 0.0 { l.step } else { (l.to - l.from).abs() / 100.0 };
+                        let sign = if l.to >= l.from { 1.0 } else { -1.0 };
+                        let v = value_num(n);
+                        let nv = match &k {
+                            Nav::Edit(Key::Left) | Nav::Down => v - step * sign,
+                            Nav::Edit(Key::Right) | Nav::Up => v + step * sign,
+                            Nav::Edit(Key::Home) => l.from,
+                            _ => l.to,
+                        };
+                        let nv = snap(l, nv);
+                        if (nv - v).abs() < 1e-6 {
+                            return Ok(());
+                        }
+                        self.run(&path, SV::Num(nv as f64))
+                    }
+                    _ => Ok(()),
+                }
+            }
+        }
+    }
+
+    /// The mouse pointer for this spot: a hand over things that act, a text bar over inputs.
+    fn pointer(&self, x: f32, y: f32) -> u8 {
+        match hit(&self.tree, x, y).and_then(|p| node_at(&self.tree, &p)).map(|n| n.kind.as_str()) {
+            Some("input") => 2,
+            Some(_) => 1,
+            None => 0,
+        }
+    }
+}
+
 mod windowed {
     use super::*;
     use std::num::NonZeroU32;
     use std::rc::Rc;
     use winit::application::ApplicationHandler;
-    use winit::event::{ElementState, MouseButton, WindowEvent};
-    use winit::event_loop::{ActiveEventLoop, EventLoop};
+    use winit::event::{ElementState, MouseButton, StartCause, WindowEvent};
+    use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
+    use winit::keyboard::{Key as WKey, ModifiersState, NamedKey};
     use winit::window::{CursorIcon, Window, WindowId};
 
     struct App<'a, 'b> {
-        s: Settings,
-        build: &'a mut Build<'b>,
+        ui: Ui<'a, 'b>,
         window: Option<Rc<Window>>,
         surface: Option<softbuffer::Surface<Rc<Window>, Rc<Window>>>,
-        tree: Option<(Laid, Vec<Action>)>,
         mouse: Option<(f32, f32)>,
-        pressed: Option<usize>,
+        mods: ModifiersState,
         error: Option<String>,
     }
 
@@ -1070,17 +1751,76 @@ mod windowed {
             (size.width as f32 / scale, size.height as f32 / scale, scale)
         }
 
-        fn rebuild(&mut self) {
-            match (self.build)() {
-                Ok((node, actions)) => {
-                    let (w, h, _) = self.logical();
-                    self.tree = Some((lay_out(&node, w, h), actions));
-                }
-                Err(e) => self.error = Some(e),
+        fn mods(&self) -> Mods {
+            let m = self.mods;
+            if cfg!(target_os = "macos") {
+                Mods { shift: m.shift_key(), command: m.super_key(), word: m.alt_key() }
+            } else {
+                Mods { shift: m.shift_key(), command: m.control_key(), word: m.control_key() }
             }
+        }
+
+        fn redraw(&self) {
             if let Some(w) = &self.window {
                 w.request_redraw();
             }
+        }
+
+        /// Keeps a failure to stop the window with.
+        fn check(&mut self, r: Result<(), String>, el: &ActiveEventLoop) {
+            if let Err(e) = r {
+                self.error = Some(e);
+                el.exit();
+            }
+            self.redraw();
+        }
+
+        fn key(&mut self, event: winit::event::KeyEvent) -> Result<(), String> {
+            let mods = self.mods();
+            let input = self.ui.focused_kind() == "input";
+            if mods.command {
+                if let WKey::Character(c) = &event.logical_key {
+                    let nav = match c.to_lowercase().as_str() {
+                        "a" => Some(Nav::Edit(Key::All)),
+                        "c" => Some(Nav::Copy),
+                        "x" => Some(Nav::Cut),
+                        "v" => Some(Nav::Paste),
+                        _ => None,
+                    };
+                    if let Some(n) = nav {
+                        return self.ui.nav(n, mods);
+                    }
+                }
+            }
+            let mac_line = cfg!(target_os = "macos") && mods.command;
+            let nav = match &event.logical_key {
+                WKey::Named(NamedKey::Backspace) => Some(Nav::Edit(Key::Back)),
+                WKey::Named(NamedKey::Delete) => Some(Nav::Edit(Key::Delete)),
+                WKey::Named(NamedKey::ArrowLeft) if mac_line => Some(Nav::Edit(Key::Home)),
+                WKey::Named(NamedKey::ArrowRight) if mac_line => Some(Nav::Edit(Key::End)),
+                WKey::Named(NamedKey::ArrowLeft) => Some(Nav::Edit(Key::Left)),
+                WKey::Named(NamedKey::ArrowRight) => Some(Nav::Edit(Key::Right)),
+                WKey::Named(NamedKey::Home) => Some(Nav::Edit(Key::Home)),
+                WKey::Named(NamedKey::End) => Some(Nav::Edit(Key::End)),
+                WKey::Named(NamedKey::ArrowUp) => Some(Nav::Up),
+                WKey::Named(NamedKey::ArrowDown) => Some(Nav::Down),
+                WKey::Named(NamedKey::Tab) => Some(Nav::Tab),
+                WKey::Named(NamedKey::Enter) => Some(Nav::Enter),
+                WKey::Named(NamedKey::Escape) => Some(Nav::Escape),
+                WKey::Named(NamedKey::Space) if !input => Some(Nav::Space),
+                _ => None,
+            };
+            if let Some(n) = nav {
+                return self.ui.nav(n, mods);
+            }
+            if input && !mods.command {
+                if let Some(t) = &event.text {
+                    if !t.chars().any(|c| c.is_control()) {
+                        return self.ui.typed(t);
+                    }
+                }
+            }
+            Ok(())
         }
     }
 
@@ -1090,8 +1830,8 @@ mod windowed {
                 return;
             }
             let attrs = Window::default_attributes()
-                .with_title(self.s.title.clone())
-                .with_inner_size(winit::dpi::LogicalSize::new(self.s.width, self.s.height));
+                .with_title(self.ui.s.title.clone())
+                .with_inner_size(winit::dpi::LogicalSize::new(self.ui.s.width, self.ui.s.height));
             let window = match el.create_window(attrs) {
                 Ok(w) => Rc::new(w),
                 Err(e) => {
@@ -1110,7 +1850,22 @@ mod windowed {
                 }
             }
             self.window = Some(window);
-            self.rebuild();
+            let (w, h, _) = self.logical();
+            let r = self.ui.resize(w, h);
+            self.check(r, el);
+        }
+
+        fn new_events(&mut self, _: &ActiveEventLoop, cause: StartCause) {
+            if let StartCause::ResumeTimeReached { .. } = cause {
+                self.redraw();
+            }
+        }
+
+        fn about_to_wait(&mut self, el: &ActiveEventLoop) {
+            match self.ui.next_blink() {
+                Some(t) => el.set_control_flow(ControlFlow::WaitUntil(t)),
+                None => el.set_control_flow(ControlFlow::Wait),
+            }
         }
 
         fn window_event(&mut self, el: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
@@ -1120,41 +1875,43 @@ mod windowed {
             }
             match event {
                 WindowEvent::CloseRequested => el.exit(),
-                WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => self.rebuild(),
+                WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
+                    let (w, h, _) = self.logical();
+                    let r = self.ui.resize(w, h);
+                    self.check(r, el);
+                }
+                WindowEvent::ModifiersChanged(m) => self.mods = m.state(),
                 WindowEvent::CursorMoved { position, .. } => {
                     let (_, _, scale) = self.logical();
                     let p = (position.x as f32 / scale, position.y as f32 / scale);
                     self.mouse = Some(p);
-                    if let (Some(w), Some((t, _))) = (&self.window, &self.tree) {
-                        w.set_cursor(if wants_hand(t, p.0, p.1) { CursorIcon::Pointer } else { CursorIcon::Default });
-                        w.request_redraw();
+                    let r = self.ui.moved(p.0, p.1);
+                    if let Some(w) = &self.window {
+                        w.set_cursor(match self.ui.pointer(p.0, p.1) {
+                            2 => CursorIcon::Text,
+                            1 => CursorIcon::Pointer,
+                            _ => CursorIcon::Default,
+                        });
                     }
+                    self.check(r, el);
                 }
                 WindowEvent::CursorLeft { .. } => {
                     self.mouse = None;
-                    if let Some(w) = &self.window {
-                        w.request_redraw();
-                    }
+                    self.ui.st.hover = None;
+                    self.redraw();
                 }
                 WindowEvent::MouseInput { state, button: MouseButton::Left, .. } => {
                     let Some((x, y)) = self.mouse else { return };
-                    let at = self.tree.as_ref().and_then(|(t, _)| hit(t, x, y));
-                    match state {
-                        ElementState::Pressed => self.pressed = at,
-                        ElementState::Released => {
-                            if at.is_some() && at == self.pressed {
-                                if let Some((_, actions)) = &mut self.tree {
-                                    if let Err(e) = (actions[at.unwrap()])() {
-                                        self.error = Some(e);
-                                        el.exit();
-                                        return;
-                                    }
-                                }
-                                self.rebuild();
-                            }
-                            self.pressed = None;
-                        }
-                    }
+                    let mods = self.mods();
+                    let r = match state {
+                        ElementState::Pressed => self.ui.press(x, y, mods),
+                        ElementState::Released => self.ui.release(x, y),
+                    };
+                    self.check(r, el);
+                }
+                WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
+                    let r = self.key(event);
+                    self.check(r, el);
                 }
                 WindowEvent::RedrawRequested => {
                     let (lw, lh, scale) = self.logical();
@@ -1164,13 +1921,10 @@ mod windowed {
                     if surface.resize(w, h).is_err() {
                         return;
                     }
-                    if let Some((t, _)) = &self.tree {
-                        if (t.w - lw).abs() > 0.5 || (t.h - lh).abs() > 0.5 {
-                            win.request_redraw();
-                        }
+                    if (self.ui.tree.w - lw).abs() > 0.5 || (self.ui.tree.h - lh).abs() > 0.5 {
+                        win.request_redraw();
                     }
-                    let Some((tree, _)) = &self.tree else { return };
-                    let c = render(tree, size.width as usize, size.height as usize, scale, self.mouse, self.s.background);
+                    let c = render(&self.ui.tree, size.width as usize, size.height as usize, scale, &self.ui.paint_state(), self.ui.s.background);
                     if let Ok(mut buf) = surface.buffer_mut() {
                         let n = buf.len().min(c.px.len());
                         buf[..n].copy_from_slice(&c.px[..n]);
@@ -1217,7 +1971,8 @@ mod windowed {
             Some(el) => el,
             None => new_loop()?,
         };
-        let mut app = App { s, build, window: None, surface: None, tree: None, mouse: None, pressed: None, error: None };
+        let ui = Ui::new(s, build, true)?;
+        let mut app = App { ui, window: None, surface: None, mouse: None, mods: ModifiersState::default(), error: None };
         let ran = el.run_app_on_demand(&mut app);
         app.surface = None;
         app.window = None;
@@ -1230,78 +1985,385 @@ mod windowed {
     }
 }
 
-// ----- test mode: commands instead of a window -----
+// ----- typing: the text being edited in an input -----
 
-fn dump(n: &Laid, depth: usize, out: &mut String) {
-    let pad = "  ".repeat(depth);
-    let text = if n.text.is_empty() { String::new() } else { format!(" {:?}", n.text) };
-    out.push_str(&format!("{pad}{}{text} {},{} {}x{}\n", n.kind, n.x as i64, n.y as i64, n.w as i64, n.h as i64));
-    for c in &n.children {
-        dump(c, depth + 1, out);
+/// The caret and selection in the focused input. Places are byte offsets on letter boundaries;
+/// `anchor` is where a selection started, equal to `caret` when nothing is selected.
+#[derive(Clone, Debug, Default, PartialEq)]
+struct Caret {
+    caret: usize,
+    anchor: usize,
+}
+
+fn prev_char(t: &str, i: usize) -> usize {
+    t[..i].char_indices().next_back().map(|(p, _)| p).unwrap_or(0)
+}
+
+fn next_char(t: &str, i: usize) -> usize {
+    t[i..].chars().next().map(|c| i + c.len_utf8()).unwrap_or(t.len())
+}
+
+fn is_word(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
+}
+
+/// The start of the word before i (skipping spaces first), as Ctrl+Left goes.
+fn prev_word(t: &str, mut i: usize) -> usize {
+    while i > 0 && !is_word(t[..i].chars().next_back().unwrap()) {
+        i = prev_char(t, i);
+    }
+    while i > 0 && is_word(t[..i].chars().next_back().unwrap()) {
+        i = prev_char(t, i);
+    }
+    i
+}
+
+/// The end of the word after i, as Ctrl+Right goes.
+fn next_word(t: &str, mut i: usize) -> usize {
+    while i < t.len() && !is_word(t[i..].chars().next().unwrap()) {
+        i = next_char(t, i);
+    }
+    while i < t.len() && is_word(t[i..].chars().next().unwrap()) {
+        i = next_char(t, i);
+    }
+    i
+}
+
+/// The word around i, for a double-click.
+fn word_at(t: &str, i: usize) -> (usize, usize) {
+    let mut a = i.min(t.len());
+    let mut b = a;
+    while a > 0 && is_word(t[..a].chars().next_back().unwrap()) {
+        a = prev_char(t, a);
+    }
+    while b < t.len() && is_word(t[b..].chars().next().unwrap()) {
+        b = next_char(t, b);
+    }
+    (a, b)
+}
+
+/// What a key does in an input.
+#[derive(Clone, Debug, PartialEq)]
+enum Key {
+    Type(String),
+    Back,
+    Delete,
+    Left,
+    Right,
+    Home,
+    End,
+    All,
+}
+
+impl Caret {
+    fn at(i: usize) -> Caret {
+        Caret { caret: i, anchor: i }
+    }
+
+    fn range(&self) -> (usize, usize) {
+        (self.caret.min(self.anchor), self.caret.max(self.anchor))
+    }
+
+    fn selected<'a>(&self, t: &'a str) -> &'a str {
+        let (a, b) = self.range();
+        &t[a.min(t.len())..b.min(t.len())]
+    }
+
+    /// Keeps the caret on a letter boundary inside the text, after the text changed from outside.
+    fn fit(&mut self, t: &str) {
+        let fix = |mut i: usize| {
+            i = i.min(t.len());
+            while !t.is_char_boundary(i) {
+                i -= 1;
+            }
+            i
+        };
+        self.caret = fix(self.caret);
+        self.anchor = fix(self.anchor);
+    }
+
+    /// Applies a key. Returns the new text when it changed. `shift` extends the selection, and
+    /// `word` moves or deletes by words (Ctrl, or Option on a Mac).
+    fn key(&mut self, t: &str, k: &Key, shift: bool, word: bool) -> Option<String> {
+        self.fit(t);
+        let (a, b) = self.range();
+        let replace = |c: &mut Caret, from: usize, to: usize, with: &str| {
+            let mut s = String::with_capacity(t.len() + with.len());
+            s.push_str(&t[..from]);
+            s.push_str(with);
+            s.push_str(&t[to..]);
+            *c = Caret::at(from + with.len());
+            Some(s)
+        };
+        let moved = |c: &mut Caret, to: usize| {
+            c.caret = to;
+            if !shift {
+                c.anchor = to;
+            }
+            None
+        };
+        match k {
+            Key::Type(s) => {
+                let s: String = s.chars().filter(|c| !c.is_control()).collect();
+                if s.is_empty() {
+                    return None;
+                }
+                replace(self, a, b, &s)
+            }
+            Key::Back if a != b => replace(self, a, b, ""),
+            Key::Delete if a != b => replace(self, a, b, ""),
+            Key::Back if a == 0 => None,
+            Key::Back => {
+                let from = if word { prev_word(t, a) } else { prev_char(t, a) };
+                replace(self, from, a, "")
+            }
+            Key::Delete if a >= t.len() => None,
+            Key::Delete => {
+                let to = if word { next_word(t, a) } else { next_char(t, a) };
+                replace(self, a, to, "")
+            }
+            Key::Left if a != b && !shift => moved(self, a),
+            Key::Right if a != b && !shift => moved(self, b),
+            Key::Left => {
+                let to = if word { prev_word(t, self.caret) } else { prev_char(t, self.caret) };
+                moved(self, to)
+            }
+            Key::Right => {
+                let to = if word { next_word(t, self.caret) } else { next_char(t, self.caret) };
+                moved(self, to)
+            }
+            Key::Home => moved(self, 0),
+            Key::End => moved(self, t.len()),
+            Key::All => {
+                self.anchor = 0;
+                self.caret = t.len();
+                None
+            }
+        }
     }
 }
 
-fn find_button<'a>(n: &'a Laid, text: &str) -> Option<&'a Laid> {
-    if n.action.is_some() && n.text == text {
-        return Some(n);
+/// The place in the text nearest to x pixels from its start.
+fn place_at(t: &str, x: f32, size: f32, weight: f32) -> usize {
+    let mut best = (0usize, x.abs());
+    let mut i = 0;
+    while i < t.len() {
+        i = next_char(t, i);
+        let d = (text_width(&t[..i], size, weight) - x).abs();
+        if d < best.1 {
+            best = (i, d);
+        }
     }
-    n.children.iter().find_map(|c| find_button(c, text))
+    best.0
+}
+
+// ----- the system clipboard -----
+
+fn clipboard_get() -> Option<String> {
+    arboard::Clipboard::new().ok()?.get_text().ok()
+}
+
+fn clipboard_set(t: &str) {
+    if let Ok(mut c) = arboard::Clipboard::new() {
+        let _ = c.set_text(t.to_string());
+    }
+}
+
+// ----- test mode: commands instead of a window -----
+
+fn num_text(x: f64) -> String {
+    if x.fract() == 0.0 && x.abs() < 1e15 {
+        format!("{}", x as i64)
+    } else {
+        format!("{x}")
+    }
+}
+
+fn dump(n: &Laid, depth: usize, path: &mut Vec<usize>, st: &PaintState, out: &mut String) {
+    let pad = "  ".repeat(depth);
+    let shown = match (&n.value, n.kind.as_str()) {
+        (Some(SV::Text(t)), _) => Some(t.clone()),
+        (Some(SV::Truth(b)), _) => Some(if *b { "on" } else { "off" }.to_string()),
+        (Some(SV::Num(x)), "slider") => Some(num_text(*x)),
+        _ => None,
+    };
+    let text = match shown {
+        Some(t) => format!(" {t:?}"),
+        None if !n.text.is_empty() => format!(" {:?}", n.text),
+        None => String::new(),
+    };
+    let mut focus = String::new();
+    if st.focus.as_deref() == Some(path.as_slice()) {
+        focus.push_str(" (focus");
+        if n.kind == "input" {
+            let (a, b) = st.caret.range();
+            let t = value_text(n);
+            let chars = |i: usize| t[..i.min(t.len())].chars().count();
+            if a == b {
+                focus.push_str(&format!(", caret {}", chars(a)));
+            } else {
+                focus.push_str(&format!(", selected {}..{}", chars(a), chars(b)));
+            }
+        }
+        focus.push(')');
+    }
+    out.push_str(&format!("{pad}{}{text} {},{} {}x{}{focus}\n", n.kind, n.x as i64, n.y as i64, n.w as i64, n.h as i64));
+    for (i, c) in n.children.iter().enumerate() {
+        path.push(i);
+        dump(c, depth + 1, path, st, out);
+        path.pop();
+    }
+}
+
+fn find_button(n: &Laid, text: &str, path: &mut Vec<usize>) -> Option<Vec<usize>> {
+    if n.action.is_some() && n.kind == "button" && n.text == text {
+        return Some(path.clone());
+    }
+    for (i, c) in n.children.iter().enumerate() {
+        path.push(i);
+        let found = find_button(c, text, path);
+        path.pop();
+        if found.is_some() {
+            return found;
+        }
+    }
+    None
+}
+
+/// The n-th (from 1) input, checkbox or slider, by kind.
+fn find_nth(n: &Laid, kind: &str, nth: usize) -> Option<Vec<usize>> {
+    let mut all = Vec::new();
+    focusable(n, &mut vec![], &mut all);
+    all.into_iter().filter(|p| node_at(n, p).map(|x| x.kind == kind).unwrap_or(false)).nth(nth.checked_sub(1)?)
+}
+
+/// A key written like ctrl+shift+left.
+fn parse_key(spec: &str) -> Option<(Nav, Mods)> {
+    let mut mods = Mods::default();
+    let mut name = "";
+    for part in spec.split('+') {
+        match part.trim().to_lowercase().as_str() {
+            "shift" => mods.shift = true,
+            "ctrl" | "cmd" => {
+                mods.command = true;
+                mods.word = true;
+            }
+            _ => name = part.trim(),
+        }
+    }
+    let nav = match name.to_lowercase().as_str() {
+        "backspace" => Nav::Edit(Key::Back),
+        "delete" => Nav::Edit(Key::Delete),
+        "left" => Nav::Edit(Key::Left),
+        "right" => Nav::Edit(Key::Right),
+        "home" => Nav::Edit(Key::Home),
+        "end" => Nav::Edit(Key::End),
+        "up" => Nav::Up,
+        "down" => Nav::Down,
+        "tab" => Nav::Tab,
+        "enter" => Nav::Enter,
+        "space" => Nav::Space,
+        "escape" => Nav::Escape,
+        "a" if mods.command => Nav::Edit(Key::All),
+        "c" if mods.command => Nav::Copy,
+        "x" if mods.command => Nav::Cut,
+        "v" if mods.command => Nav::Paste,
+        _ => return None,
+    };
+    Some((nav, mods))
+}
+
+fn centre(ui: &Ui, path: &[usize]) -> (f32, f32) {
+    node_at(&ui.tree, path).map(|n| (n.x + n.w / 2.0, n.y + n.h / 2.0)).unwrap_or((-1.0, -1.0))
 }
 
 fn test(s: Settings, build: &mut Build) -> Result<(), String> {
     use std::io::BufRead;
-    let (mut w, mut h) = (s.width as f32, s.height as f32);
-    let (node, mut actions) = build()?;
-    let mut tree = lay_out(&node, w, h);
-    let mut hover: Option<(f32, f32)> = None;
+    let mut ui = Ui::new(s, build, false)?;
     for line in std::io::stdin().lock().lines() {
         let line = line.unwrap_or_default();
         let line = line.trim();
         let (cmd, rest) = line.split_once(' ').unwrap_or((line, ""));
         let rest = rest.trim().trim_matches('"');
+        let nums: Vec<f32> = rest.split_whitespace().filter_map(|x| x.parse::<f32>().ok()).collect();
         match cmd {
             "dump" => {
-                let mut out = format!("window {:?} {}x{}\n", s.title, w as i64, h as i64);
-                for c in &tree.children {
-                    dump(c, 1, &mut out);
+                let mut out = format!("window {:?} {}x{}\n", ui.s.title, ui.w as i64, ui.h as i64);
+                let st = ui.paint_state();
+                for (i, c) in ui.tree.children.iter().enumerate() {
+                    dump(c, 1, &mut vec![i], &st, &mut out);
                 }
                 print!("{out}");
             }
-            "click" => match find_button(&tree, rest).and_then(|b| b.action) {
-                Some(a) => {
-                    actions[a]()?;
-                    let (n, a2) = build()?;
-                    tree = lay_out(&n, w, h);
-                    actions = a2;
+            "click" => match find_button(&ui.tree, rest, &mut vec![]) {
+                Some(p) => {
+                    let (x, y) = centre(&ui, &p);
+                    ui.press(x, y, Mods::default())?;
+                    ui.release(x, y)?;
                 }
                 None => println!("(there's no button \"{rest}\" to click)"),
             },
-            "hover" => {
-                hover = find_button(&tree, rest).map(|b| (b.x + 1.0, b.y + 1.0));
-            }
-            "size" => {
-                let mut it = rest.split_whitespace().filter_map(|x| x.parse::<f32>().ok());
-                if let (Some(a), Some(b)) = (it.next(), it.next()) {
-                    w = a;
-                    h = b;
-                    tree = lay_out(&node_again(build, &mut actions)?, w, h);
+            "check" => match nums.first().and_then(|&n| find_nth(&ui.tree, "checkbox", n as usize)) {
+                Some(p) => {
+                    let (x, y) = centre(&ui, &p);
+                    ui.press(x, y, Mods::default())?;
+                    ui.release(x, y)?;
+                }
+                None => println!("(there's no checkbox {rest})"),
+            },
+            "slide" => match (nums.first().and_then(|&n| find_nth(&ui.tree, "slider", n as usize)), nums.get(1)) {
+                (Some(p), Some(&v)) => {
+                    let n = node_at(&ui.tree, &p).unwrap();
+                    let l = &n.look;
+                    let f = if l.to == l.from { 0.0 } else { (v - l.from) / (l.to - l.from) };
+                    let x = n.x + THUMB + f.clamp(0.0, 1.0) * (n.w - 2.0 * THUMB);
+                    let y = n.y + n.h / 2.0;
+                    ui.press(x, y, Mods::default())?;
+                    ui.release(x, y)?;
+                }
+                _ => println!("(there's no slider {rest})"),
+            },
+            "focus" => {
+                let mut it = rest.split_whitespace();
+                let kind = it.next().unwrap_or("input");
+                let nth = it.next().and_then(|x| x.parse::<usize>().ok()).unwrap_or(1);
+                match find_nth(&ui.tree, kind, nth) {
+                    Some(p) => ui.set_focus(Some(p), true),
+                    None => println!("(there's no {kind} {nth})"),
                 }
             }
+            "type" => ui.typed(rest)?,
+            "key" => match parse_key(rest) {
+                Some((nav, mods)) => ui.nav(nav, mods)?,
+                None => println!("(Lust doesn't know the key {rest})"),
+            },
+            "press" | "move" | "release" | "dblclick" if nums.len() >= 2 => {
+                let (x, y) = (nums[0], nums[1]);
+                match cmd {
+                    "press" => ui.press(x, y, Mods::default())?,
+                    "move" => ui.moved(x, y)?,
+                    "release" => ui.release(x, y)?,
+                    _ => {
+                        for _ in 0..2 {
+                            ui.press(x, y, Mods::default())?;
+                            ui.release(x, y)?;
+                        }
+                    }
+                }
+            }
+            "hover" => {
+                ui.st.hover = find_button(&ui.tree, rest, &mut vec![]).and_then(|p| node_at(&ui.tree, &p)).map(|b| (b.x + 1.0, b.y + 1.0));
+            }
+            "size" if nums.len() >= 2 => ui.resize(nums[0], nums[1])?,
             "snapshot" => {
                 let scale = 2.0;
-                let c = render(&tree, (w * scale) as usize, (h * scale) as usize, scale, hover, s.background);
+                let c = render(&ui.tree, (ui.w * scale) as usize, (ui.h * scale) as usize, scale, &ui.paint_state(), ui.s.background);
                 std::fs::write(rest, png(&c)).map_err(|e| format!("can't write {rest}: {e}"))?;
             }
             _ => {}
         }
     }
     Ok(())
-}
-
-fn node_again(build: &mut Build, actions: &mut Vec<Action>) -> Result<Node, String> {
-    let (n, a) = build()?;
-    *actions = a;
-    Ok(n)
 }
 
 // ----- a small PNG writer, for snapshots -----

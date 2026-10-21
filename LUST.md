@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (2.0 alpha 13):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. `view` has its first three stages: windows with text, buttons, layout, styles, and pieces of your own. Not yet: the rest of `view`, and LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (2.0 alpha 14):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. `view` has its first four stages: windows with text, buttons, layout, styles, pieces of your own, and inputs, checkboxes and sliders. Not yet: the rest of `view`, and LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -553,21 +553,22 @@ method registerHook() {
 
 ---
 
-## 17. Screens: view { } **(being built: stage 3 of 6)**
+## 17. Screens: view { } **(being built: stage 4 of 6)**
 
 A screen is described, not built step by step. `view` says what the window should look like right now, given the data. After anything happens (a click, a key, a timer), Lust looks at the view again and updates the window to match. You change data, never the screen.
 
 ### What works so far
 
-Stages 1 to 3 are built: an assembly with a `view` opens a window with `App:open();`, through `lust run` and as a built program.
+Stages 1 to 4 are built: an assembly with a `view` opens a window with `App:open();`, through `lust run` and as a built program.
 
 - **Pieces:** `column`, `row`, `stack`, `space`, `text` and `button`. A button's `{ }` runs when it's clicked, and the window redraws afterwards.
+- **Inputs:** `input`, `checkbox` and `slider`, each bound to a field (see below), with the mouse, the keyboard and the clipboard.
 - **Your own pieces:** any assembly with a view, used inside another view as `TodoRow { label = task };`, from the same file or fetched from files in `ui/` folders (see below).
 - **Styles and layout:** every word in the list below, `hover:[ … ]` included, plus named styles (`style chip = [pad 6, round];`). Text wraps onto more lines when it doesn't fit.
 - **Questions and loops** inside a view.
 - **The window's settings:** `title`, `width`, `height` and `background`.
 
-`scroll`, `input`, `checkbox`, `slider` and `image` come in the next stages. Using one now says it isn't built yet.
+`scroll` and `image` come in the next stage. Using one now says it isn't built yet.
 
 ```
 assembly App {
@@ -595,6 +596,12 @@ end
 | --- | --- |
 | `dump` | prints every piece with its place and size |
 | `click Add one` | clicks the button showing that text |
+| `focus input 1` | gives the first input focus (also `checkbox 2`, `slider 1`, `button 3`) |
+| `type Hello` | types into the input that has focus |
+| `key ctrl+left` | presses a key: `backspace`, `delete`, `left`, `right`, `home`, `end`, `up`, `down`, `tab`, `enter`, `space`, `escape`, with `shift+` or `ctrl+` in front, and `ctrl+a`, `ctrl+c`, `ctrl+x`, `ctrl+v` |
+| `check 1` | clicks the first checkbox |
+| `slide 1 70` | drags the first slider to 70 |
+| `press 40 20`, `move 90 20`, `release 90 20`, `dblclick 40 20` | the mouse, at a place in the window |
 | `size 800 600` | resizes the window |
 | `snapshot shot.png` | draws the window into a picture |
 
@@ -698,7 +705,36 @@ end
 
 ### Inputs are bound to fields
 
-`input newTodo;` shows the field and changes it as you type. `checkbox done` and `slider volume [from 0, to 100]` work the same way. A block runs after each change: `input search { results = find(search); }`.
+`input newTodo;` shows the field and changes it as you type. `checkbox done;` and `slider volume [from 0, to 100];` work the same way. A block runs after each change, once the field already holds the new value: `input search { results = find(search); }`.
+
+```
+assembly Settings {
+    has {
+        string name = "";
+        truth dark = false;
+        int volume = 50;
+    }
+
+    view [title "Settings"] {
+        column [gap 12, pad 20] {
+            input name [placeholder "Your name", width fill];
+            row [gap 8] {
+                checkbox dark;
+                text "Dark mode";
+            }
+            row [gap 8] {
+                slider volume [from 0, to 100, step 5];
+                text volume.text();
+            }
+        }
+    }
+}
+```
+
+- **What they change.** An `input` changes a string, a `checkbox` a truth, and a `slider` an int or a float. It's bound to a field (or a field of something, like `todos[id].task`), not a variable of the view, because the view's variables are made again each time it's drawn.
+- **Styles of their own:** `placeholder "…"` is what an empty input shows. A slider goes `from` one number `to` another, one `step` at a time (`step 0` slides smoothly). A colour word colours a checkbox's tick and a slider's bar: `slider volume [purple]`. Inputs are 220 wide and sliders 200 unless they're given a `width`.
+- **The mouse:** click to put the caret somewhere, drag to select, double-click for a word, three clicks for everything, Shift+click to select up to there. Drag a slider's knob, or click anywhere along it.
+- **The keyboard:** Tab and Shift+Tab move between inputs, checkboxes, sliders and buttons, and what has focus gets a ring. In an input: the arrows, Home and End (with Shift to select, and with Ctrl, or Option on a Mac, to go by words), Backspace and Delete, and Ctrl+A, C, X and V (Cmd on a Mac) to select all, copy, cut and paste. Space ticks a checkbox and presses a button, and so does Enter on a button. The arrows move a slider by one step. Escape takes focus away.
 
 ### The pieces
 
@@ -737,7 +773,7 @@ Name a style to reuse it: `style card = [pad 16, round, shadow];`, then `[card]`
 
 ### Underneath
 
-Lust draws everything itself, from the pixels up: layout, every piece, text editing, focus, scrolling, styles and animation. Small permissive libraries only open the window (winit), hand over the pixels (softbuffer) and read font files (fontdue). Views are for `.lst` programs on Windows, macOS and Linux. Web pages stay HTML, CSS and JavaScript.
+Lust draws everything itself, from the pixels up: layout, every piece, text editing, focus, scrolling, styles and animation. Small permissive libraries only open the window (winit), hand over the pixels (softbuffer), read font files (fontdue) and reach the system clipboard (arboard). Views are for `.lst` programs on Windows, macOS and Linux. Web pages stay HTML, CSS and JavaScript.
 
 ---
 

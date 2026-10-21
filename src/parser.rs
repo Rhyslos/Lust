@@ -14,6 +14,9 @@ pub const ELEMENTS: &[&str] = &[
     "column", "row", "stack", "scroll", "space", "text", "button", "input", "checkbox", "slider", "image",
 ];
 
+/// The value an input hands over when it changes. Lust code can't write this name.
+pub const VALUE: &str = "·value";
+
 pub const BUILTINS: &[&str] = &["print", "wait", "ask"];
 
 /// Words from other languages, with what Lust says instead.
@@ -839,6 +842,20 @@ impl<'a> Parser<'a> {
         } else {
             self.semi()?;
         }
+        // An input changes what it's bound to, then runs its block: input name { … } is
+        // name = (what was typed); …
+        if matches!(kind.as_str(), "input" | "checkbox" | "slider") {
+            if let Some(a) = &arg {
+                let value = self.mk(a.pos, ExprKind::Name(VALUE.into()));
+                let mut body = vec![Stmt::Assign {
+                    target: a.clone(),
+                    value,
+                    pos: a.pos,
+                }];
+                body.extend(action.take().unwrap_or_default());
+                action = Some(body);
+            }
+        }
         Ok(Stmt::Element {
             kind,
             arg,
@@ -1316,7 +1333,10 @@ impl<'a> Parser<'a> {
                 if self.in_view && (matches!(self.cur().kind, Tk::Str(_)) || self.cur().is_sym("[") || self.cur().is_sym("{")) {
                     return self.fail(
                         t.pos,
-                        format!("Lust has no screen piece called {n}. The pieces so far are column, row, stack, space, text and button."),
+                        format!(
+                            "Lust has no screen piece called {n}. The pieces are {}, and assemblies with a view.",
+                            ELEMENTS.join(", ")
+                        ),
                     );
                 }
                 if self.cur().pos.line == t.pos.line && matches!(self.cur().kind, Tk::Ident(_)) {

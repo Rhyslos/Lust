@@ -226,7 +226,7 @@ fn cache_dir() -> std::path::PathBuf {
     std::env::temp_dir().join("lust-cache")
 }
 
-const CARGO_TOML: &str = "[package]\nname = \"lust_program\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nrusqlite = { version = \"0.40\", features = [\"bundled\"] }\ntiny_http = \"0.12\"\nureq = \"3\"\nregex = \"1\"\nwinit = \"0.30\"\nsoftbuffer = \"0.4\"\nfontdue = \"0.9\"\n\n[profile.release]\noverflow-checks = true\n\n[workspace]\n";
+const CARGO_TOML: &str = "[package]\nname = \"lust_program\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nrusqlite = { version = \"0.40\", features = [\"bundled\"] }\ntiny_http = \"0.12\"\nureq = \"3\"\nregex = \"1\"\nwinit = \"0.30\"\nsoftbuffer = \"0.4\"\nfontdue = \"0.9\"\narboard = { version = \"3\", default-features = false }\n\n[profile.release]\noverflow-checks = true\n\n[workspace]\n";
 
 /// Builds a program that needs outside libraries with Cargo, in a folder of Lust's own. The
 /// libraries are shared, so they're only compiled the first time on each computer.

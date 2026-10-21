@@ -941,7 +941,7 @@ impl<'a> Checker<'a> {
             self.err(pos, format!("{kind} is a piece of a screen, so it goes inside a view {{ }}."));
             return;
         }
-        if matches!(kind, "scroll" | "input" | "checkbox" | "slider" | "image") {
+        if matches!(kind, "scroll" | "image") {
             self.err(pos, format!("{kind} isn't built yet: it comes in one of the next steps of views."));
             return;
         }
@@ -971,6 +971,53 @@ impl<'a> Checker<'a> {
                     self.err(a.pos, format!("{kind} shows text, but this is {}.{fix}", self.a(&t)));
                 }
             }
+            ("input" | "checkbox" | "slider", Some(a)) => {
+                let t = self.expr(a, ctx, None);
+                let (want, example) = match kind {
+                    "input" => ("text", "input name;"),
+                    "checkbox" => ("a truth", "checkbox done;"),
+                    _ => ("a number", "slider volume [from 0, to 100];"),
+                };
+                let fits = match kind {
+                    "input" => t == Ty::Str,
+                    "checkbox" => t == Ty::Truth,
+                    _ => matches!(t, Ty::Int | Ty::Float),
+                };
+                if !fits && t != Ty::Error {
+                    self.err(
+                        a.pos,
+                        format!("{kind} changes {want}, but {} is {}: {example}", describe(a), self.a(&t)),
+                    );
+                }
+                // It changes what it's bound to, so that has to be something that stays.
+                let local = matches!(a.kind, ExprKind::Name(_)) && self.info.names.get(&a.id) == Some(&NameRes::Local);
+                if local {
+                    self.err(
+                        a.pos,
+                        format!(
+                            "{} is a variable of the view, made again each time it's drawn, so what's typed would be lost. Bind the {kind} to a field.",
+                            describe(a)
+                        ),
+                    );
+                } else if !matches!(a.kind, ExprKind::Name(_) | ExprKind::Field(..) | ExprKind::Index(..)) {
+                    let an = if kind == "input" { "an" } else { "a" };
+                    self.err(a.pos, format!("{an} {kind} changes a field, so it needs one: {example}"));
+                }
+                ctx.scopes.push(HashMap::new());
+                ctx.scopes.last_mut().unwrap().insert(
+                    crate::parser::VALUE.to_string(),
+                    Local {
+                        ty: t,
+                        readonly: true,
+                        pos: a.pos,
+                    },
+                );
+            }
+            ("input" | "checkbox" | "slider", None) => {
+                let an = if kind == "input" { "an" } else { "a" };
+                self.err(pos, format!("{an} {kind} needs the field it changes: {kind} name;"));
+                ctx.scopes.push(HashMap::new());
+            }
             ("text", None) => self.err(pos, "text needs something to show: text \"Hello\";"),
             ("button", None) => self.err(pos, "a button needs its words: button \"Start\" { … }"),
             (_, Some(a)) => self.err(
@@ -991,8 +1038,9 @@ impl<'a> Checker<'a> {
             }
             ctx.scopes.pop();
         }
+        let bound = matches!(kind, "input" | "checkbox" | "slider");
         if let Some(a) = action {
-            if kind != "button" {
+            if kind != "button" && !bound {
                 self.err(pos, format!("a {kind} doesn't do anything when clicked, so it has no {{ }}."));
             }
             let was = std::mem::replace(&mut ctx.in_view, false);
@@ -1002,6 +1050,9 @@ impl<'a> Checker<'a> {
             }
             ctx.scopes.pop();
             ctx.in_view = was;
+        }
+        if bound {
+            ctx.scopes.pop();
         }
     }
 
@@ -1038,6 +1089,9 @@ impl<'a> Checker<'a> {
             "maxHeight",
             "borderWidth",
             "opacity",
+            "from",
+            "to",
+            "step",
         ];
         const FLAGS: &[&str] = &[
             "tiny", "small", "large", "huge", "bold", "muted", "strike", "nowrap", "shadow", "pill", "left", "center", "right", "top",
@@ -1061,6 +1115,10 @@ impl<'a> Checker<'a> {
             };
             match (n, &it.value) {
                 ("title", StyleValue::Expr(_)) if window => {}
+                ("placeholder", v) if !window => match v {
+                    StyleValue::Expr(e) if matches!(self.info.ty(e), Ty::Str | Ty::Error) => {}
+                    _ => self.err(it.pos, "placeholder takes text: placeholder \"Search…\"."),
+                },
                 ("width" | "height", StyleValue::Expr(_)) if window => {}
                 ("width" | "height", StyleValue::Expr(_) | StyleValue::Word(_)) => {
                     if let StyleValue::Word(w) = &it.value {
@@ -1100,7 +1158,7 @@ impl<'a> Checker<'a> {
                         NUMS.iter()
                             .chain(FLAGS)
                             .chain(COLOURED)
-                            .chain(["width", "height", "round", "border", "hover"].iter())
+                            .chain(["width", "height", "round", "border", "hover", "placeholder"].iter())
                             .map(|s| s.to_string())
                             .collect()
                     };

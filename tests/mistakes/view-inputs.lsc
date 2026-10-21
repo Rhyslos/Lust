@@ -1,0 +1,24 @@
+assembly Form {
+    has {
+        string name = "";
+        int age = 0;
+        truth ok = false;
+        string array tags = [];
+    }
+
+    view {
+        column {
+            input age;
+            checkbox name;
+            slider ok;
+            input;
+            loop (string t in tags) {
+                input t;
+            }
+            input name [placeholder 5];
+            input name.upper();
+            checkbox ok { age = "old"; }
+        }
+    }
+}
+end
