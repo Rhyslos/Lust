@@ -6,6 +6,8 @@
 //!
 //! A program with neither .out nor .err is a helper, and is skipped.
 //!
+//! Database files (.db) next to a test are removed before each run, so every run starts fresh.
+//!
 //! A .lst program without mistakes runs twice: through Lua, then built for real
 //! through Rust. Both have to give the same result.
 
@@ -85,6 +87,14 @@ pub fn run_folder(folder: &Path) -> ExitCode {
 /// Runs one command for a test file and lists how its output differs from what's expected.
 fn compare(f: &Path, mut cmd: Command) -> Vec<String> {
     let input = f.with_extension("in");
+    // Each run starts without the databases a run before it made.
+    if let Ok(entries) = std::fs::read_dir(f.parent().unwrap()) {
+        for e in entries.flatten() {
+            if e.path().extension().map(|x| x == "db").unwrap_or(false) {
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
+    }
     cmd.env("LUST_SEED", "1");
     cmd.env("LUST_VIEW_TEST", "1");
     cmd.stdin(if input.exists() {

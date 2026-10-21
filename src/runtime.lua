@@ -323,8 +323,10 @@ end
 
 function L.state(name, list) return { name = name, list = list } end
 -- Is a the option b, or inside it?
+-- == on state options: the same option, or one inside the other, whichever side it's written on.
+local function inside(a, b) return a:sub(1, #b + 1) == b .. "." end
 function L.sin(a, b)
-  return a == b or (a ~= nil and b ~= nil and a:sub(1, #b + 1) == b .. ".")
+  return a == b or (a ~= nil and b ~= nil and (inside(a, b) or inside(b, a)))
 end
 
 -- ----- classes -----

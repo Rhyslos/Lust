@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (2.0 alpha 16):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, checkboxes, sliders, scrolling, pictures and timers, all drawn by Lust itself. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (2.0 alpha 17):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, checkboxes, sliders, scrolling, pictures and timers, all drawn by Lust itself. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -37,7 +37,7 @@ There is no .NET in v2, so no `fetch cs:`.
 - **Every statement ends with `;`.**
 - **Every file ends with `end`** on its last line. Only blank lines and comments may follow.
 - **Order inside a file:** imports (`fetch`, `get`), then states and nodes, then classes, objects, assemblies, schemas and methods, then `pass`, then the code that runs.
-- **Dashes are not allowed** in names, file names or folder names: `my_file.lst`, `myFile.lst`, never `my-file.lst`.
+- **No dashes in names**, since `-` takes away: `int max-hp` is a mistake that suggests `maxHp`. Files and folders that other files `fetch` can't have dashes either (`fetch "my-parts/x"` is a mistake), so use `myParts` or `my_parts`. A project folder, or a file only ever run on its own, can be called anything.
 
 ### Comments
 
@@ -54,12 +54,17 @@ Because `--` starts a comment, subtracting a negative number needs a space: `a -
 
 ## 3. Naming
 
+Lust's house style (Lust doesn't check these two, but everything in this rulebook and in `lust new` follows them):
+
 - **PascalCase for kinds of things:** classes, objects, states, schemas, assemblies, nodes. `Player`, `GameState`, `LootSpawner`.
 - **camelCase for everything else:** variables, fields, methods, hooks, files and folders. `currentHp`, `takeDamage()`, `main.lst`, `entities/player.lst`.
+
+What Lust does check:
+
 - So `Player player = new Player;` reads clearly: the capital is the kind, the small letter is the thing.
 - Map keys are text, so any text is fine: `"max_hp"`, `"item-id"`.
-- ALL_CAPS names are not allowed.
-- **Every word Lust uses is reserved** and can't be a name (see section 20).
+- ALL_CAPS names are not allowed: `int MAX_HP` suggests `maxHp`.
+- **Every word Lust uses is reserved** and can't be a name (see section 21): `int loop = 3;` says `loop is one of Lust's own words, so it can't be a name.` So are the built-ins and the built-in objects.
 
 ---
 
@@ -120,13 +125,15 @@ is hp == 0? then {
 
 | Write | Means |
 | --- | --- |
-| `a == b` | same value |
-| `a != b` | different values |
-| `a === b` | the very same thing (the same object, not just an equal copy) |
-| `a !== b` | not the very same thing |
+| `a == b` | the same: equal numbers, text or truths, the very same thing, or for state options, the same option or one inside the other |
+| `a != b` | not the same |
+| `a === b` | exactly the same: for state options, only that very option |
+| `a !== b` | not exactly the same |
 | `<  >  <=  >=` | comparisons for numbers |
 
-- For numbers, text and truth values, `===` means the same as `==`. It matters for things made from classes: two players with the same name are `==` only if you compare their fields, but `===` asks whether they are one and the same player.
+- For numbers, text and truths, `===` means the same as `==`.
+- **Things made from classes** are compared by which thing they are, with either: two `new Hero`s with the same fields are two heroes, so `==` says false. To ask whether two are alike, compare their fields: `a.name == b.name`.
+- **State options:** `==` counts the options inside an option. During `ActiveGame.Combat`, `now == GameState.ActiveGame` is true, and so is `GameState.ActiveGame == now`. `===` asks for that very option: `now === GameState.ActiveGame` is false then.
 - Comparing different types (`"1" == 1`) is a mistake caught before running. Lust never converts types quietly.
 - Join checks with `&&` and `||`. Group with `( )`.
 
@@ -237,8 +244,9 @@ state GameState = [
 ];
 ```
 
-- Change it with `is`: `state is GameState.ActiveGame.Combat;`
-- A question about an option includes everything inside it: during `Combat`, `is state == GameState.ActiveGame?` is yes.
+- A variable holding a state option changes with `is`: `now is GameState.ActiveGame.Combat;` (or with `=`, like any variable).
+- A class or object can have a state of its own, written `state is GameState.MainMenu;` in its `has`. Inside its methods, `state is GameState.ActiveGame.Combat;` changes it, and `state` reads it. Outside a class or object there's no `state` to change; use a variable.
+- A question about an option includes everything inside it: during `Combat`, `is state == GameState.ActiveGame?` is yes, whichever side the option is written on. `===` asks for that very option (section 5).
 
 ### Things made in a state end with it
 
@@ -389,7 +397,8 @@ class Shop {
     }
 }
 
-Shop.onSell = new hook {
+Shop shop = new Shop;
+shop.onSell = new hook {
     print("Sold " + item + " for " + price.text());
 };
 ```
@@ -461,7 +470,7 @@ save gameSession;
 ```
 
 - A save lists what it holds once, at the top of the file: objects, and variables declared above it. Then `save` and `load` do the rest.
-- The file is `gameSession.save`, next to the program, as readable JSON.
+- The file is `gameSession.save`, as readable JSON, in the folder the program runs from: the folder you're in when you start it (`lust run sub/game.lst` from the project's folder writes `./gameSession.save`), or the program's own folder when it's double-clicked. Database files (`in "shop.db"`) are found the same way.
 - Loading is strict: everything is read first, and if the save doesn't fit the program, nothing changes and the error says why, like `gameSession's save doesn't fit this program, so nothing was loaded: it has no currentDay.`
 - `saved gameSession` is true when there's a save to load.
 - Hooks aren't saved, and nodes can't be: save what's in them.
@@ -483,7 +492,7 @@ print(Shop.items["tea"].price);
 print(#Shop.items);
 ```
 
-- The first column is the key, as in a cMap. An `int` key counts up when a row leaves it out. A `string` key has to be given.
+- The first column is the key, as in a cMap. An `int` key counts up when a row leaves it out, from the biggest key the table has ever had, so a removed row's key isn't given to a new row. (Tables made before alpha 17 give one more than the biggest key they have now.) A `string` key has to be given.
 - Columns hold numbers, text, truths and state options.
 - `:inject`, `:has(key)`, `:remove(key)` and `[key]` work as they do on cMaps. A row found with `[key]` reads and changes the database itself.
 - If a table is already in the file with other columns, Lust says so instead of guessing.
@@ -535,7 +544,6 @@ try {
 
 LustScript is Lust turned into Lua, for running inside programs that already speak Lua. It's the same language with the same rules and checks. Only the output differs.
 
-- The host program offers its own library: `fetch gmod;`, `fetch aventail;`.
 - `fetch lua;` allows raw Lua inside a `lua { }` block, for anything the library doesn't cover:
 
 ```
@@ -784,7 +792,7 @@ Short words in `[ ]`, in the spirit of Tailwind:
 | spacing | `pad 16`, `padX 8`, `padY 4`, `padTop`, `padRight`, `padBottom`, `padLeft`, and `gap 8` between children |
 | size | `width 200`, `height 40`, `width fill`, `height fill`, `grow 2`, `minWidth`, `maxWidth`, `minHeight`, `maxHeight` |
 | text | `size 24`, `tiny`, `small`, `large`, `huge`, `weight 600`, `bold`, `muted`, `strike`, `nowrap` |
-| colour | a colour word on its own colours text (or a whole button), `color …` and `background …` |
+| colour | a colour word on its own colours text (or a whole button), `color …` and `background …`, and `subtle` for a button with no background until the mouse is over it |
 | shape | `round`, `round 12`, `pill`, `border`, `border red`, `borderWidth 2`, `shadow`, `opacity 0.5` |
 | placement | `left`, `center`, `right` side to side; `top`, `middle`, `bottom` up and down; `spread` |
 | under the mouse | `hover:[ … ]` |
@@ -1017,22 +1025,23 @@ schema     route      view       style      keep       pass
 fetch      get        lua        is         then       or
 either     not        true       false      loop       stop
 skip       in         try        error      state      save
-load       saved      end        int        float      string
-truth      array      cMap       map
+load       saved      end        database   int        float
+string     truth      array      cMap       map
 ```
 
 The built-ins can't be used as names either:
 
 ```
-print      wait       random     ask
+print      wait       ask
 ```
 
-Neither can the built-in objects: `Maths`, `Files`, `Time`, `Json` and `Web`.
+Neither can the built-in objects: `Maths`, `Files`, `Time`, `Json`, `Web` and `Random`.
 
 ---
 
 ## 22. Still to design
 
 - **LustQL (`.lql`):** a query language of its own, for later. Queries are written in Lust code for now (section 14).
+- **Host libraries for LustScript:** a way for the program running the Lua to offer its own library to Lust, checked like the standard one, like `fetch gmod;` for Garry's Mod or `fetch aventail;`. For now, `lua { }` blocks reach the host's own functions.
 - **The standard library:** which Rust crates Lust wraps for files, networking, JSON, dates and sound, and how they look from Lust.
 - **From v1:** whether `with x { }`, `{ }` inside text and the word `when` come along.

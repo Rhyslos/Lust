@@ -1,0 +1,9 @@
+-- Names that can't be names say why (issue #44).
+int loop = 3;
+string database = "";
+int array view = [];
+int max-hp = 3;
+int MAX_HP = 3;
+int Random = 2;
+int print = 1;
+end

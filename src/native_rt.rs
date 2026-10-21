@@ -457,8 +457,10 @@ pub fn frandom(lo: f64, hi: f64) -> f64 {
 // ----- states: options are their full names, like "ActiveGame.Combat" -----
 
 /// Is a the option b, or inside it?
+/// == on state options: the same option, or one inside the other, whichever side it's written on.
 pub fn sin(a: &str, b: &str) -> bool {
-    a == b || (a.len() > b.len() && a.starts_with(b) && a.as_bytes()[b.len()] == b'.')
+    let inside = |a: &str, b: &str| a.len() > b.len() && a.starts_with(b) && a.as_bytes()[b.len()] == b'.';
+    a == b || inside(a, b) || inside(b, a)
 }
 
 // ----- arrays, counted from 0 -----

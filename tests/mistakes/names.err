@@ -1,0 +1,9 @@
+names.lsc:2:5  loop is one of Lust's own words, so it can't be a name.
+names.lsc:3:8  database is one of Lust's own words, so it can't be a name.
+names.lsc:4:11  view is one of Lust's own words, so it can't be a name.
+names.lsc:5:5  names can't have - in them, since - takes away. Join the words with a capital: maxHp.
+names.lsc:6:5  names can't be in capitals. Try maxHp.
+names.lsc:7:5  Random is one of Lust's built-in objects, so it can't be a name.
+names.lsc:8:5  print is a built-in, so it can't be a name.
+
+7 mistakes. Nothing was run.
