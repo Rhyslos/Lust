@@ -18,8 +18,8 @@ The order Lust gets built in. Each step makes Lust more useful on its own, and n
 | ✅ | **8. Ledger support and polish:** Ledger colours, checks, runs and builds `.lst` and `.lsc` files from their project's folder | Done |
 | ✅ | **Filling the gaps:** `Random[min, max]`, text patterns, dates, sorting, a web client, servers that read and answer several requests at once | Done (alpha 10) |
 | ✅ | **9.1 A window:** `view`, `App:open()`, `column`, `row`, `stack`, `space`, `text`, `button` and styles, drawn by Lust itself, with a test mode | Done (alpha 11) |
-| | **9.2 Layout and styles:** sizes that fill and share, alignment, borders, more of the palette | Next |
-| | **9.3 Pieces:** assemblies used inside views (`TodoRow { label = task };`), from files in `ui/` folders | |
+| ✅ | **9.2 Layout and styles:** sizes that fill and share, alignment, `spread`, stacks, wrapping text, borders, opacity, nine shades of each colour | Done (alpha 12) |
+| | **9.3 Pieces:** assemblies used inside views (`TodoRow { label = task };`), from files in `ui/` folders | Next |
 | | **9.4 Inputs:** `input`, `checkbox` and `slider` bound to fields, with typing, focus and the keyboard | |
 | | **9.5 Scrolling, images and timers** | |
 | | **9.6 Polish:** animation, speed and the details | |

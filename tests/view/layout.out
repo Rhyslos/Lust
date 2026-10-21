@@ -1,0 +1,84 @@
+window "Layout" 400x600
+  column 0,0 400x600
+    row 10,10 380x19
+      text "a" 10,10 117x19
+      text "b" 137,10 234x19
+      text "c" 381,10 9x19
+    row 10,39 255x38
+      text "min" 10,49 120x19
+      text "a long label" 140,39 44x38
+      button "Wider" 194,42 71x33
+    row 10,87 380x60
+      text "right" 276,128 33x19
+      text "bottom" 309,117 81x30
+    row 10,157 380x22
+      text "one" 10,161 20x14
+      text "two" 176,160 23x16
+      text "three" 345,157 45x22
+    stack 10,189 380x80
+      text "behind" 10,189 380x80
+      text "front" 173,220 54x19
+    text "This sentence is long enough that it has to wrap onto more than one line." 10,279 150x76
+    text "first line\nsecond line" 10,365 82x38
+    text "one line, however narrow" 10,413 60x19
+    text "padded" 10,442 94x35
+    space 10,487 0x74
+    row 10,571 380x19
+      text "left" 30,571 23x19
+      text "right" 337,571 33x19
+window "Layout" 400x600
+  column 0,0 400x600
+    row 10,10 380x19
+      text "a" 10,10 117x19
+      text "b" 137,10 234x19
+      text "c" 381,10 9x19
+    row 10,39 255x38
+      text "min" 10,49 120x19
+      text "a long label" 140,39 44x38
+      button "Wider" 194,42 71x33
+    row 10,87 380x60
+      text "right" 276,128 33x19
+      text "bottom" 309,117 81x30
+    row 10,157 380x22
+      text "one" 10,161 20x14
+      text "two" 176,160 23x16
+      text "three" 345,157 45x22
+    stack 10,189 380x80
+      text "behind" 10,189 380x80
+      text "front" 173,220 54x19
+    text "This sentence is long enough that it has to wrap onto more than one line." 10,279 300x38
+    text "first line\nsecond line" 10,327 82x38
+    text "one line, however narrow" 10,375 60x19
+    text "padded" 10,404 94x35
+    space 10,449 0x112
+    row 10,571 380x19
+      text "left" 30,571 23x19
+      text "right" 337,571 33x19
+window "Layout" 300x500
+  column 0,0 300x500
+    row 10,10 280x19
+      text "a" 10,10 84x19
+      text "b" 104,10 167x19
+      text "c" 281,10 9x19
+    row 10,39 255x38
+      text "min" 10,49 120x19
+      text "a long label" 140,39 44x38
+      button "Wider" 194,42 71x33
+    row 10,87 280x60
+      text "right" 176,128 33x19
+      text "bottom" 209,117 81x30
+    row 10,157 280x22
+      text "one" 10,161 20x14
+      text "two" 126,160 23x16
+      text "three" 245,157 45x22
+    stack 10,189 280x80
+      text "behind" 10,189 280x80
+      text "front" 123,220 54x19
+    text "This sentence is long enough that it has to wrap onto more than one line." 10,279 300x38
+    text "first line\nsecond line" 10,327 82x38
+    text "one line, however narrow" 10,375 60x19
+    text "padded" 10,404 94x35
+    space 10,449 0x12
+    row 10,471 280x19
+      text "left" 30,471 23x19
+      text "right" 237,471 33x19

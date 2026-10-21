@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (2.0 alpha 11):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. `view` has its first stage: windows with text, buttons and styles. Not yet: the rest of `view`, and LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (2.0 alpha 12):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. `view` has its first two stages: windows with text, buttons, layout and styles. Not yet: the rest of `view`, and LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -553,16 +553,16 @@ method registerHook() {
 
 ---
 
-## 17. Screens: view { } **(being built: stage 1 of 6)**
+## 17. Screens: view { } **(being built: stage 2 of 6)**
 
 A screen is described, not built step by step. `view` says what the window should look like right now, given the data. After anything happens (a click, a key, a timer), Lust looks at the view again and updates the window to match. You change data, never the screen.
 
 ### What works so far
 
-Stage 1 is built: an assembly with a `view` opens a window with `App:open();`, through `lust run` and as a built program.
+Stages 1 and 2 are built: an assembly with a `view` opens a window with `App:open();`, through `lust run` and as a built program.
 
 - **Pieces:** `column`, `row`, `stack`, `space`, `text` and `button`. A button's `{ }` runs when it's clicked, and the window redraws afterwards.
-- **Styles:** every word in the list below, `hover:[ … ]` included, plus named styles (`style chip = [pad 6, round];`).
+- **Styles and layout:** every word in the list below, `hover:[ … ]` included, plus named styles (`style chip = [pad 6, round];`). Text wraps onto more lines when it doesn't fit.
 - **Questions and loops** inside a view.
 - **The window's settings:** `title`, `width`, `height` and `background`.
 
@@ -709,13 +709,25 @@ Questions and loops work inside a view: showing something only sometimes is an `
 
 Short words in `[ ]`, in the spirit of Tailwind:
 
-- spacing: `pad 16`, `gap 8`
-- size: `width 200`, `width fill`, `height …`
-- text: `size 24`, `weight 600`, `small`, `muted`, `strike`
-- colour: a built-in palette (`blue`, `gray1`, …) or `#hex`, and `background …`
-- shape: `round`, `border`, `shadow`
-- placement: `center`, `left`, `right`
-- under the mouse: `hover:[ … ]`
+| | |
+| --- | --- |
+| spacing | `pad 16`, `padX 8`, `padY 4`, `padTop`, `padRight`, `padBottom`, `padLeft`, and `gap 8` between children |
+| size | `width 200`, `height 40`, `width fill`, `height fill`, `grow 2`, `minWidth`, `maxWidth`, `minHeight`, `maxHeight` |
+| text | `size 24`, `tiny`, `small`, `large`, `huge`, `weight 600`, `bold`, `muted`, `strike`, `nowrap` |
+| colour | a colour word on its own colours text (or a whole button), `color …` and `background …` |
+| shape | `round`, `round 12`, `pill`, `border`, `border red`, `borderWidth 2`, `shadow`, `opacity 0.5` |
+| placement | `left`, `center`, `right` side to side; `top`, `middle`, `bottom` up and down; `spread` |
+| under the mouse | `hover:[ … ]` |
+
+**Colours** are `white`, `black`, `gray1` to `gray9`, and `red`, `orange`, `yellow`, `green`, `teal`, `blue`, `indigo`, `purple` and `pink`. Each of those has nine shades from light to dark: `blue1` is a pale blue for backgrounds, `blue9` a deep one. Any other colour is written `"#2f9e44"`. The shades are the Open Color palette.
+
+**Sharing the room.** Pieces are as big as what's in them. `width fill` in a row (or `height fill` in a column) takes the room that's left over; several fills share it equally, and `grow 2` takes twice the share of `grow 1`. A `space` is an empty fill, so it pushes what comes after it to the end. `minWidth` and `maxWidth` keep a piece between two sizes.
+
+**Placing.** On a column, `left`, `center` and `right` place its children side to side, and `top`, `middle` and `bottom` up and down in any room to spare. On a row it's the same, and its children sit in the middle up and down unless told otherwise. `spread` puts the spare room evenly between the children: `row [spread] { text "Back"; text "Next"; }` puts one at each end. A row or column told `center`, `right` or `spread` stretches across the room it's in, so there's somewhere to place its children. On a text, `center` and `right` place its lines.
+
+A `stack` lays its children on top of each other, the later ones in front, placed by these same words: a picture with a label on it, or a badge in a corner.
+
+**Text wraps** onto more lines when it's wider than the room it has, breaking between words. `\n` in the text starts a new line, and `nowrap` keeps it on one line.
 
 Name a style to reuse it: `style card = [pad 16, round, shadow];`, then `[card]`.
 

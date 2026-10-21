@@ -1,0 +1,62 @@
+-- Layout: sharing room, growing, limits, alignment, spreading, stacks, wrapping, padding per side.
+style box = [background gray3, round 4];
+
+assembly Layout {
+    has {
+        truth wide = false;
+    }
+
+    view [title "Layout", width 400, height 600] {
+        column [gap 10, pad 10, height fill] {
+            -- Two fills share the room; grow 2 takes twice as much.
+            row [gap 10] {
+                text "a" [box, width fill];
+                text "b" [box, grow 2];
+                text "c" [box];
+            }
+            -- Limits: at least 120 wide, at most 60 wide, so it wraps.
+            row [gap 10] {
+                text "min" [box, minWidth 120];
+                text "a long label" [box, maxWidth 60];
+                button "Wider" [border, borderWidth 2] {
+                    wide = not wide;
+                }
+            }
+            -- right moves a row's children to its end; bottom moves them down.
+            row [right, bottom, height 60, background gray1] {
+                text "right";
+                text "bottom" [huge];
+            }
+            -- spread puts the room between them.
+            row [spread] {
+                text "one" [tiny];
+                text "two" [small];
+                text "three" [large];
+            }
+            -- A stack lays its children on top of each other.
+            stack [height 80, center, middle, background gray2] {
+                text "behind" [width fill, height fill, background blue1];
+                text "front" [pill, background blue7, color white, padX 10];
+            }
+            -- Text wraps to the width it's given, and \n starts a new line.
+            is wide? then {
+                text "This sentence is long enough that it has to wrap onto more than one line." [width 300, center];
+            } or {
+                text "This sentence is long enough that it has to wrap onto more than one line." [width 150, center];
+            }
+            text "first line\nsecond line" [opacity 0.5];
+            text "one line, however narrow" [width 60, nowrap];
+            -- Padding on one side only.
+            text "padded" [box, padLeft 40, padTop 4, padBottom 12];
+            -- A space and a fill at the end push things down to the bottom.
+            space;
+            row [spread, padX 20] {
+                text "left" [green7];
+                text "right" [red3];
+            }
+        }
+    }
+}
+
+Layout:open();
+end

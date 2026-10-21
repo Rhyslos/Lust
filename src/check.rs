@@ -1001,9 +1001,28 @@ impl<'a> Checker<'a> {
 
     /// The words in a view's [ ]. `kind` is the piece they're on, or "view" for the window's own.
     fn check_styles(&mut self, items: &[StyleItem], kind: &str) {
-        const NUMS: &[&str] = &["pad", "padX", "padY", "gap", "size", "weight"];
+        const NUMS: &[&str] = &[
+            "pad",
+            "padX",
+            "padY",
+            "padTop",
+            "padRight",
+            "padBottom",
+            "padLeft",
+            "gap",
+            "size",
+            "weight",
+            "grow",
+            "minWidth",
+            "maxWidth",
+            "minHeight",
+            "maxHeight",
+            "borderWidth",
+            "opacity",
+        ];
         const FLAGS: &[&str] = &[
-            "small", "large", "bold", "muted", "strike", "shadow", "center", "left", "right", "subtle",
+            "tiny", "small", "large", "huge", "bold", "muted", "strike", "nowrap", "shadow", "pill", "left", "center", "right", "top",
+            "middle", "bottom", "spread", "subtle",
         ];
         const COLOURED: &[&str] = &["color", "background"];
         let window = kind == "view";
@@ -1038,8 +1057,8 @@ impl<'a> Checker<'a> {
                     _ => self.err(it.pos, format!("{n} takes a colour: {n} blue, or {n} \"#2f9e44\".")),
                 },
                 (n2, v) if NUMS.contains(&n2) && !window => match v {
-                    StyleValue::Flag if matches!(n2, "pad" | "gap") => {}
-                    other => number(self, other, &format!("{n2} 12")),
+                    StyleValue::Flag if matches!(n2, "pad" | "gap" | "grow") => {}
+                    other => number(self, other, &format!("{n2} {}", if n2 == "opacity" { "0.5" } else { "12" })),
                 },
                 ("round", StyleValue::Flag | StyleValue::Expr(_)) if !window => {}
                 ("border", StyleValue::Flag) if !window => {}
@@ -1068,6 +1087,7 @@ impl<'a> Checker<'a> {
                     };
                     if !window {
                         known.extend(self.info.styles.iter().cloned());
+                        known.extend(crate::native_ui::COLOURS.iter().map(|s| s.to_string()));
                     }
                     let s = suggest(n, known.clone());
                     if window {
