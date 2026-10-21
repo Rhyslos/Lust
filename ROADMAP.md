@@ -15,8 +15,8 @@ The order Lust gets built in. Each step makes Lust more useful on its own, and n
 | ✅ | **6. Databases (on SQLite), saves, and `lust new`:** tables used like cMaps, queries written in Lust, saves as readable JSON | Done (alpha 8) |
 | 🏁 | *Programs keep their data.* | Reached |
 | ✅ | **7. Servers:** `schema` and `route`, answered by methods, with `Web:serve` and `Web:request` | Done (alpha 9) |
-| | **8. Ledger support and polish** | Next |
-| | **9. `view` and our own renderer,** starting with a small test run (a window, text, a button) | |
+| ✅ | **8. Ledger support and polish:** Ledger colours, checks, runs and builds `.lst` and `.lsc` files from their project's folder | Done |
+| | **9. `view` and our own renderer,** starting with a small test run (a window, text, a button) | Next |
 | | 🏁 *The Lust 2.0 release.* | |
 
 ## Decisions along the way

@@ -53,6 +53,8 @@ This is **Lust 2**, a fresh start written in Rust. One language, two outputs:
 
 Every test runs both ways, through Lua and as a real program, and both have to print exactly the same.
 
+[Ledger](https://github.com/Rhyslos/ledger), our editor, colours, checks, runs and builds Lust files.
+
 The full rules are in **[LUST.md](LUST.md)**, and what gets built next is in **[ROADMAP.md](ROADMAP.md)**. Lust 1, the version that compiled to C#, lives on the [`v1`](https://github.com/Rhyslos/Lust/tree/v1) branch.
 
 ## Try it

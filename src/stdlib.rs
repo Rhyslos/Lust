@@ -28,7 +28,7 @@ fn lib(func: &str, params: Vec<(&'static str, Ty)>, ret: Ty) -> Result<Lib, Stri
 }
 
 fn numeric(args: &[Ty]) -> Option<Ty> {
-    if args.iter().any(|t| *t == Ty::Float) {
+    if args.contains(&Ty::Float) {
         Some(Ty::Float)
     } else if args.iter().all(|t| *t == Ty::Int || *t == Ty::Error) {
         Some(Ty::Int)

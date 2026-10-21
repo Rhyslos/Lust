@@ -72,7 +72,7 @@ pub fn write(prog: &Program, info: &Info) -> Output {
     code.push_str("local _L = (function()\n");
     code.push_str(RUNTIME);
     code.push_str("\nend)()\n");
-    lines.extend(std::iter::repeat(0).take(runtime_lines + 1));
+    lines.extend(std::iter::repeat_n(0, runtime_lines + 1));
     let mut current = 0u32;
     for raw in w.buf.lines() {
         let mut text = String::new();
@@ -202,11 +202,9 @@ impl<'a> W<'a> {
                         forward.push(format!("_A_{}_{}", lname(&a.name), lname(class)));
                     }
                 }
-                Item::Class(c) => {
-                    if c.is_object {
-                        self.object_names.insert(c.name.clone());
-                        forward.push(lname(&c.name));
-                    }
+                Item::Class(c) if c.is_object => {
+                    self.object_names.insert(c.name.clone());
+                    forward.push(lname(&c.name));
                 }
                 _ => {}
             }

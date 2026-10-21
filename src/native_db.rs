@@ -245,7 +245,7 @@ pub fn t_inject(q: &Q, mut values: Vec<SqlVal>) {
 
 pub fn t_remove(q: &Q, k: SqlVal) {
     let sql = format!("DELETE FROM \"{}\" WHERE \"{}\" = ?", q.table, key(q));
-    if ok(exec(&q.db, &sql, &[k.clone()])) == 0 {
+    if ok(exec(&q.db, &sql, std::slice::from_ref(&k))) == 0 {
         fail(format!("there's no row with {} {} in {} to remove.", key(q), keytext(q, &k), q.shown));
     }
 }
@@ -270,7 +270,7 @@ fn gone(r: &RowRef) -> ! {
 
 pub fn r_get(r: &RowRef, col: &str) -> SqlVal {
     let sql = format!("SELECT \"{col}\" FROM \"{}\" WHERE \"{}\" = ?", r.q.table, key(&r.q));
-    match ok(rows(&r.q.db, &sql, &[r.k.clone()])).into_iter().next() {
+    match ok(rows(&r.q.db, &sql, std::slice::from_ref(&r.k))).into_iter().next() {
         Some(mut row) => row.remove(0),
         None => gone(r),
     }
