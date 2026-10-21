@@ -552,40 +552,133 @@ method registerHook() {
 
 ---
 
-## 17. Screens: view { }
+## 17. Screens: view { } **(designed, not built yet)**
 
-Screens are described Compose-style, with Tailwind-style styles in `[ ]`. Change a field or a state and the screen redraws itself. Lust draws everything itself, with no toolkit underneath.
+A screen is described, not built step by step. `view` says what the window should look like right now, given the data. After anything happens (a click, a key, a timer), Lust looks at the view again and updates the window to match. You change data, never the screen.
+
+### Pieces are assemblies
+
+A piece of screen is an `assembly` with a `view`. Each piece goes in its own file, in folders that mirror the app: `ui/components/navbar.lst`, `ui/kanban/column.lst`.
 
 ```
-fetch ui;
-
-state Clock = [Stopped, Running, Paused];
-
-object Timer like App {
+-- ui/todoRow.lst
+assembly TodoRow {
     has {
-        int secondsLeft = 1500;
-        state is Clock.Stopped;
+        string label = "";
+        truth done = false;
+        hook() onToggle = nothing;
+        hook() onRemove = nothing;
     }
 
     view {
-        column [center, gap 12, pad 24] {
-            text time() [size 28, weight 500];
-            row [gap 8] {
-                button "Start" [blue, round] { state is Clock.Running; }
-                button "Pause" [subtle] { state is Clock.Paused; }
+        row [gap 8, pad 8, round, hover:[background gray1]] {
+            checkbox done { onToggle(); }
+
+            is done? then {
+                text label [muted, strike];
+            } or {
+                text label;
             }
-            is state == Clock.Paused? then { text "Paused" [muted]; }
+
+            space;
+            button "✕" [subtle, small] { onRemove(); }
         }
     }
 }
 
-Timer:open();
+pass TodoRow;
+end
 ```
 
-- Buttons say what they do in their own block.
-- Styles are short words: `gap 12`, `pad 24`, `blue`, `round`. Name one to reuse it: `style card = [pad 16, round, shadow];`.
-- Questions and loops work inside a view.
-- Views are for desktop apps. Web pages stay HTML, CSS and JavaScript.
+```
+-- main.lst
+fetch "ui/todoRow":TodoRow;
+
+style card = [pad 16, round, shadow, background white];
+
+assembly App {
+    has {
+        cMap(int id, string task, truth done) todos = [];
+        string newTodo = "";
+    }
+
+    method add() {
+        is newTodo.trim() != ""? then {
+            todos:inject([newTodo.trim(), false]);
+            newTodo = "";
+        }
+    }
+
+    view [title "To do", width 420, height 600] {
+        column [gap 12, pad 24] {
+            text "To do" [size 24, weight 600];
+
+            row [gap 8] {
+                input newTodo [width fill, placeholder "Something to do…"];
+                button "Add" [blue, round] { add(); }
+            }
+
+            column [card, gap 4] {
+                loop (int id, string task, truth done in todos) {
+                    TodoRow {
+                        label = task,
+                        done = done,
+                        onToggle = new hook { todos[id].done = not todos[id].done; },
+                        onRemove = new hook { todos:remove(id); }
+                    };
+                }
+
+                is #todos == 0? then {
+                    text "Nothing to do!" [muted, center];
+                }
+            }
+
+            text (#todos).text() + " things" [muted, small];
+        }
+    }
+}
+
+App:open();
+end
+```
+
+- **`App:open();`** opens the top piece as a window. The view's own `[ ]` holds the window's settings: `title`, `width`, `height`.
+- **Using a piece:** `TodoRow { label = task };`, the same shape as `new TodoRow { … }` without `new`. The first time, Lust makes it and keeps it. Later redraws reuse it.
+- **Values given in `{ }` are given again on every redraw**, so a piece always shows the current data. Fields not given are the piece's own memory, kept between redraws.
+- **The data lives in one place.** A piece shows what it's given, and asks for changes through hooks.
+- When a piece leaves the screen, what it made ends with it, as with states and nodes.
+- Assemblies can still have `create` recipes next to a view. Nodes stay for game rooms and levels.
+
+### Inputs are bound to fields
+
+`input newTodo;` shows the field and changes it as you type. `checkbox done` and `slider volume [from 0, to 100]` work the same way. A block runs after each change: `input search { results = find(search); }`.
+
+### The pieces
+
+| | |
+| --- | --- |
+| Layout | `column`, `row`, `stack` (layers), `scroll`, `space` |
+| Content | `text`, `button`, `input`, `checkbox`, `slider`, `image` |
+
+Questions and loops work inside a view: showing something only sometimes is an `is … ? then`, and a list is a `loop`.
+
+### Styles
+
+Short words in `[ ]`, in the spirit of Tailwind:
+
+- spacing: `pad 16`, `gap 8`
+- size: `width 200`, `width fill`, `height …`
+- text: `size 24`, `weight 600`, `small`, `muted`, `strike`
+- colour: a built-in palette (`blue`, `gray1`, …) or `#hex`, and `background …`
+- shape: `round`, `border`, `shadow`
+- placement: `center`, `left`, `right`
+- under the mouse: `hover:[ … ]`
+
+Name a style to reuse it: `style card = [pad 16, round, shadow];`, then `[card]`.
+
+### Underneath
+
+Lust draws everything itself, from the pixels up: layout, every piece, text editing, focus, scrolling, styles and animation. Small permissive libraries only open the window (winit), hand over the pixels (softbuffer) and read font files (fontdue). Views are for `.lst` programs on Windows, macOS and Linux. Web pages stay HTML, CSS and JavaScript.
 
 ---
 
