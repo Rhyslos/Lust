@@ -1065,11 +1065,46 @@ end
 
 -- ----- views: lust draws them, from the tables a view makes -----
 
+-- Pieces are kept between redraws: by the piece they're in, where they're written, and their
+-- turn there. A piece that isn't drawn again is forgotten. Each open window has its own.
+local stores = {}
+
 function L.view_open(class)
   if not host or not host.ui_open then needs("A view") end
   local o = L.new(class)
-  local e = host.ui_open(o:__settings(), function() return o:__view() end)
+  local st = {items = {}, seen = {}, turns = {}}
+  stores[#stores + 1] = st
+  local e = host.ui_open(o:__settings(), function()
+    st.seen, st.turns = {}, {}
+    local v = o:__view()
+    for parent, made in pairs(st.items) do
+      for k, p in pairs(made) do
+        if not st.seen[p] then made[k] = nil end
+      end
+      if next(made) == nil then st.items[parent] = nil end
+    end
+    return v
+  end)
+  stores[#stores] = nil
   if e then error(e, 0) end
+end
+
+function L.piece(parent, site, class, rowkey)
+  local st = stores[#stores]
+  local turns = st.turns[parent]
+  if not turns then turns = {} st.turns[parent] = turns end
+  local n = (turns[site] or 0) + 1
+  turns[site] = n
+  local made = st.items[parent]
+  if not made then made = {} st.items[parent] = made end
+  local key = site .. ":" .. (rowkey and ("k" .. rowkey) or n)
+  local p = made[key]
+  if not p then
+    p = L.new(class)
+    made[key] = p
+  end
+  st.seen[p] = true
+  return p
 end
 
 -- ----- saves: readable JSON files, name.save -----

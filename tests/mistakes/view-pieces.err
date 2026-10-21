@@ -1,0 +1,7 @@
+view-pieces.lsc:24:28  title is a string, but this is an int. Use .text() to turn it into text.
+view-pieces.lsc:25:20  Card has no field called heading.
+view-pieces.lsc:26:13  Plain has no view, so it can't be a piece of a screen. Give it one: view { … }
+view-pieces.lsc:27:13  there's no class called Nope.
+view-pieces.lsc:32:1  Card { … } puts a piece on the screen, so it goes inside a view. To make one here: new Card { … }
+
+5 mistakes. Nothing was run.

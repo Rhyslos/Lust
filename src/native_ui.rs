@@ -779,7 +779,7 @@ fn place(n: &mut Laid, x: f32, y: f32, w: f32, h: f32) {
 fn lay_out(root: &Node, w: f32, h: f32) -> Laid {
     let mut top = lay(root);
     for c in &mut top.children {
-        if (c.kind == "column" || c.kind == "row") && c.look.width == Size::Auto {
+        if (c.kind == "column" || c.kind == "row" || c.kind == "piece") && c.look.width == Size::Auto {
             c.look.width = Size::Fill;
         }
     }
@@ -971,14 +971,75 @@ pub fn settings(style: &[(String, SV)]) -> Settings {
 
 pub type Build<'a> = dyn FnMut() -> Result<(Node, Vec<Action>), String> + 'a;
 
+// ----- pieces: kept between redraws -----
+
+type PieceKey = (usize, usize, String);
+
+/// The pieces of one open window: by the piece they're in, where they're written, and their turn
+/// there (the third TodoRow in a loop is the same third TodoRow next time).
+#[derive(Default)]
+struct Pieces {
+    items: HashMap<PieceKey, std::rc::Rc<dyn std::any::Any>>,
+    seen: std::collections::HashSet<PieceKey>,
+    turns: HashMap<(usize, usize), u32>,
+}
+
+thread_local! {
+    static PIECES: std::cell::RefCell<Vec<Pieces>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// The piece written at `site` inside `parent`, made the first time it's drawn.
+/// In a loop over a map or cMap, `key` is the row's key, so a piece stays with its row.
+pub fn piece<T: 'static>(parent: usize, site: usize, key: Option<String>, make: impl FnOnce() -> std::rc::Rc<T>) -> std::rc::Rc<T> {
+    let (key, found) = PIECES.with(|p| {
+        let mut p = p.borrow_mut();
+        let Some(st) = p.last_mut() else { return ((parent, site, String::new()), None) };
+        let turn = st.turns.entry((parent, site)).or_insert(0);
+        *turn += 1;
+        let key = (parent, site, key.unwrap_or_else(|| format!("#{turn}")));
+        st.seen.insert(key.clone());
+        let found = st.items.get(&key).cloned();
+        (key, found)
+    });
+    if let Some(found) = found.and_then(|f| f.downcast::<T>().ok()) {
+        return found;
+    }
+    let made = make();
+    PIECES.with(|p| {
+        if let Some(st) = p.borrow_mut().last_mut() {
+            st.items.insert(key, made.clone());
+        }
+    });
+    made
+}
+
 /// Opens a window showing the view, until it's closed. Each click runs its action, and then the
 /// view is drawn again from the data as it is now.
 pub fn show(style: &[(String, SV)], build: &mut Build) -> Result<(), String> {
     let s = settings(style);
-    if std::env::var("LUST_VIEW_TEST").is_ok() {
-        return test(s, build);
-    }
-    windowed::run(s, build)
+    PIECES.with(|p| p.borrow_mut().push(Pieces::default()));
+    // Each drawing starts the pieces' turns again, and forgets pieces that weren't drawn.
+    let mut framed = || {
+        PIECES.with(|p| {
+            if let Some(st) = p.borrow_mut().last_mut() {
+                st.seen.clear();
+                st.turns.clear();
+            }
+        });
+        let r = build();
+        let gone: Vec<std::rc::Rc<dyn std::any::Any>> = PIECES.with(|p| {
+            let mut p = p.borrow_mut();
+            let Some(st) = p.last_mut() else { return vec![] };
+            let keys: Vec<PieceKey> = st.items.keys().filter(|k| !st.seen.contains(*k)).cloned().collect();
+            keys.iter().filter_map(|k| st.items.remove(k)).collect()
+        });
+        drop(gone);
+        r
+    };
+    let r = if std::env::var("LUST_VIEW_TEST").is_ok() { test(s, &mut framed) } else { windowed::run(s, &mut framed) };
+    let gone = PIECES.with(|p| p.borrow_mut().pop());
+    drop(gone);
+    r
 }
 
 mod windowed {

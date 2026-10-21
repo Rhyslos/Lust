@@ -115,6 +115,8 @@ pub struct Info {
     pub styles: std::collections::HashSet<String>,
     /// App:open(), by expression: the assembly whose view opens.
     pub view_opens: HashMap<usize, usize>,
+    /// A piece in a loop over a map or cMap: the loop keys that tell its pieces apart.
+    pub piece_keys: HashMap<usize, Vec<String>>,
     /// Saves, by name: what each one holds.
     pub saves: HashMap<String, Vec<(String, SaveItem)>>,
     pub states: Vec<StateInfo>,
@@ -215,6 +217,8 @@ pub struct Checker<'a> {
     state_names: Vec<String>,
     /// Set just before resolving a type that may carry a key-maker (a variable's or a field's).
     maker_ok: bool,
+    /// The keys of the map and cMap loops being checked, innermost last.
+    loop_keys: Vec<String>,
 }
 
 pub fn check(prog: &Program, diags: &mut Diags, is_script: bool) -> Info {
@@ -225,6 +229,7 @@ pub fn check(prog: &Program, diags: &mut Diags, is_script: bool) -> Info {
         class_names: vec![],
         state_names: vec![],
         maker_ok: false,
+        loop_keys: vec![],
     };
     c.run(prog, is_script);
     c.info
@@ -941,6 +946,20 @@ impl<'a> Checker<'a> {
             return;
         }
         match (kind, arg) {
+            ("piece", Some(a)) => {
+                if !self.loop_keys.is_empty() {
+                    self.info.piece_keys.insert(a.id, self.loop_keys.clone());
+                }
+                let t = self.expr(a, ctx, None);
+                if let (Ty::Class(c), ExprKind::New { class, class_pos, .. }) = (&t, &a.kind) {
+                    if !self.info.classes[*c].has_view {
+                        self.err(
+                            *class_pos,
+                            format!("{class} has no view, so it can't be a piece of a screen. Give it one: view {{ … }}"),
+                        );
+                    }
+                }
+            }
             ("text" | "button", Some(a)) => {
                 let t = self.expr(a, ctx, Some(&Ty::Str));
                 if t != Ty::Str && t != Ty::Error {
@@ -1371,8 +1390,23 @@ impl<'a> Checker<'a> {
                     }
                     LoopKind::Each { vars, source } => self.each(vars, source, ctx),
                 }
+                // Pieces in a loop over keys are told apart by the key, not their turn.
+                let keyed = match kind {
+                    LoopKind::Each { vars, source } => match (self.info.ty(source), vars.first()) {
+                        (Ty::Map(_), Some(v)) => Some(v.1.clone()),
+                        (Ty::CMap(cols), Some(v)) if matches!(cols[0].1, Ty::Int | Ty::Str) => Some(v.1.clone()),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                if let Some(k) = &keyed {
+                    self.loop_keys.push(k.clone());
+                }
                 for s in body {
                     self.stmt(s, ctx);
+                }
+                if keyed.is_some() {
+                    self.loop_keys.pop();
                 }
                 ctx.scopes.pop();
             }

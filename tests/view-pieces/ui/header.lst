@@ -1,0 +1,16 @@
+assembly Header {
+    has {
+        string title = "";
+        int count = 0;
+    }
+
+    view {
+        row [gap 8] {
+            text title [size 22, weight 600];
+            text count.text() + " things" [muted];
+        }
+    }
+}
+
+pass Header;
+end
