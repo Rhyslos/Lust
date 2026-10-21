@@ -7,24 +7,36 @@ pub struct Pos {
 }
 
 /// A type as written in the source: `int`, `Player array`, `hook int(int n)`.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum TypeRef {
     Named(String, Pos),
     Array(Box<TypeRef>),
     Map(Box<TypeRef>),
-    CArray(Vec<Column>),
+    CMap(Vec<Column>),
     Hook { ret: Option<Box<TypeRef>>, params: Vec<HookParam> },
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 #[allow(dead_code)] // positions kept for messages to come
 pub struct Column {
     pub ty: TypeRef,
     pub name: String,
     pub pos: Pos,
+    /// The key column's key-maker: `cMap(int id = rollId, …)`.
+    pub maker: Option<Expr>,
 }
 
-#[derive(Clone, Debug)]
+impl TypeRef {
+    /// The key-maker of a cMap type, if it has one.
+    pub fn key_maker(&self) -> Option<&Expr> {
+        match self {
+            TypeRef::CMap(cols) => cols.first().and_then(|c| c.maker.as_ref()),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct HookParam {
     pub ty: TypeRef,
     pub name: Option<String>,
@@ -36,9 +48,9 @@ impl std::fmt::Display for TypeRef {
             TypeRef::Named(n, _) => write!(f, "{n}"),
             TypeRef::Array(t) => write!(f, "{t} array"),
             TypeRef::Map(t) => write!(f, "{t} map"),
-            TypeRef::CArray(cols) => {
+            TypeRef::CMap(cols) => {
                 let c: Vec<String> = cols.iter().map(|c| format!("{} {}", c.ty, c.name)).collect();
-                write!(f, "cArray({})", c.join(", "))
+                write!(f, "cMap({})", c.join(", "))
             }
             TypeRef::Hook { ret, params } => {
                 write!(f, "hook")?;

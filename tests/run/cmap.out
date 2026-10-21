@@ -1,0 +1,16 @@
+3
+true
+false
+[["tea", 3, 10], ["bread", 3, 8]]
+2
+tea: 3 (10 left)
+bread: 3 (8 left)
+[[1, "Sword"], [10, "Shield"], [11, "Map"]]
+Map
+[[107, "Gold"], [114, "Ruby"], [5, "Pearl"]]
+[["C1", 1], ["C2", 2], ["C0", 3]]
+the key-maker keeps making codes that are already taken.
+this cMap's key (name) is text, so each new row needs it first.
+there's no row with name "milk". The names are "tea", "bread".
+there's already a row with id 10.
+there's no row with id 99 to remove. The ids are 1, 10, 11.

@@ -1,1 +1,1 @@
-deep.lust:2  methods called each other too deeply. That usually means one calls itself with no way to stop.
+deep.lst:2  methods called each other too deeply. That usually means one calls itself with no way to stop.

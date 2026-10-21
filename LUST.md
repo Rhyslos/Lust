@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (2.0 alpha 2):** both outputs. `.lsc` files are checked and turned into Lua. `.lust` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cArrays, states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks and the built-ins. Not yet: sharing between files (`pass`/`fetch`/`get`), `node`, `assembly`, `keep`, saves, `view`, `schema`/`route`, and LustQL. Lust v1 lives on the `v1` branch.
+> **What works today (2.0 alpha 3):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks and the built-ins. Not yet: sharing between files (`pass`/`fetch`/`get`), `node`, `assembly`, `keep`, saves, `view`, `schema`/`route`, and LustQL. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -17,7 +17,7 @@ This is the single source of truth for Lust v2. Things still being designed are 
 
 | Output | Files | Used for |
 | --- | --- | --- |
-| Rust, compiled to real machine code | `.lust` | Programs, apps and servers, on Windows, macOS and Linux |
+| Rust, compiled to real machine code | `.lst` | Programs, apps and servers, on Windows, macOS and Linux |
 | LustScript, turned into Lua | `.lsc` | Scripting and modding inside other programs (Garry's Mod, Aventail, Halberd) |
 
 Plus **LustQL** (`.lql`) for stored data **(to design)**.
@@ -32,12 +32,12 @@ There is no .NET in v2, so no `fetch cs:`.
 
 ## 2. Files
 
-- **Extensions:** `.lust` for programs, `.lsc` for LustScript, `.lql` for LustQL.
-- **Every project has a `main.lust`** at its root, where the program starts.
+- **Extensions:** `.lst` for programs, `.lsc` for LustScript, `.lql` for LustQL.
+- **Every project has a `main.lst`** at its root, where the program starts.
 - **Every statement ends with `;`.**
 - **Every file ends with `end`** on its last line. Only blank lines and comments may follow.
 - **Order inside a file:** imports (`fetch`, `get`), then states and nodes, then classes, objects, assemblies, schemas and methods, then `pass`, then the code that runs.
-- **Dashes are not allowed** in names, file names or folder names: `my_file.lust`, `myFile.lust`, never `my-file.lust`.
+- **Dashes are not allowed** in names, file names or folder names: `my_file.lst`, `myFile.lst`, never `my-file.lst`.
 
 ### Comments
 
@@ -55,7 +55,7 @@ Because `--` starts a comment, subtracting a negative number needs a space: `a -
 ## 3. Naming
 
 - **PascalCase for kinds of things:** classes, objects, states, schemas, assemblies, nodes. `Player`, `GameState`, `LootSpawner`.
-- **camelCase for everything else:** variables, fields, methods, hooks, files and folders. `currentHp`, `takeDamage()`, `main.lust`, `entities/player.lust`.
+- **camelCase for everything else:** variables, fields, methods, hooks, files and folders. `currentHp`, `takeDamage()`, `main.lst`, `entities/player.lst`.
 - So `Player player = new Player;` reads clearly: the capital is the kind, the small letter is the thing.
 - Map keys are text, so any text is fine: `"max_hp"`, `"item-id"`.
 - ALL_CAPS names are not allowed.
@@ -82,7 +82,7 @@ truth alive = true;
 | `truth` | yes or no | `true`, `false`, `not true` |
 | a class name | one thing made from a class | `Player`, `Weapon` |
 | `T array` | a list of `T` | `int array` |
-| `cArray(...)` | a small table with ids | `cArray(string itemName, int amount)` |
+| `cMap(...)` | a table of rows, found by their key (the first column) | `cMap(int id, string itemName, int amount)` |
 | `T map` | values found by a text key | `int map` |
 | a state's name | one of that state's options | `GameState` |
 | a schema's name | a data shape for the web | `UserPayload` |
@@ -155,7 +155,7 @@ string mood = either hp > 10? "happy" or "grumpy";
 
 ---
 
-## 7. Arrays, cArrays and maps
+## 7. Arrays, cMaps and maps
 
 ### Arrays
 
@@ -167,20 +167,46 @@ int array scores = [10, 20, 30];
 - `#scores` is how many items. `#"Hello"` is how many letters.
 - `scores:inject(40);` adds to the end. `scores:remove(0);` removes by position.
 
-### cArrays
+### cMaps
 
-A small table. Every row gets an `id`, starting at 1:
+A table whose rows are found by their key. The first column is always the key, and you choose its name and whether it's an `int` or a `string`:
 
 ```
-cArray(string itemName, int amount) bag = [
+cMap(int id, string itemName, int amount) bag = [
     [1, "Sword", 1],
     [2, "Apple", 5]
 ];
+
+cMap(string name, int price, int stock) shop = [
+    ["tea", 2, 10],
+    ["cake", 5, 3]
+];
 ```
 
-- `bag[1]` is the row with id 1. `bag[1].amount` reads a column.
-- `bag:inject(["Map", 1]);` adds a row with the next id. Ids are never reused.
-- `bag:remove(id);` and `bag:has(id)`.
+- `bag[1]` is the row with key 1, `shop["tea"]` the row with key "tea". `shop["tea"].price` reads a column, `shop["tea"].price = 3;` changes one.
+- `shop:inject(["bread", 3, 8]);` adds a row. `shop:remove("cake");` and `shop:has("cake")`. `#shop` is how many rows.
+- A key can't be changed. To give a row a new key, remove it and add it again.
+- `loop (string name, int price, int stock in shop) { … }` goes through the rows in the order they were added.
+
+**Keys Lust makes.** A new row can leave its key out, and Lust makes one:
+
+- **An `int` key counts up** from the biggest key so far: `bag:inject(["Map", 1]);` gets 3.
+- **A key-maker** makes it instead. It's a method or hook that takes nothing and gives back a key, written after the key column like a starting value:
+
+```
+method int rollId() {
+    return random(1000, 9999);
+}
+
+cMap(int id = rollId, string item, int amount) chest = [];
+chest:inject(["Ruby", 1]);    -- gets a key from rollId
+```
+
+- If the key-maker gives a key that's taken, Lust asks it again. After 100 taken keys in a row it stops with an error.
+- A key-maker goes where a cMap is made: on a variable or a field, not in a method's parameters.
+- **A `string` key with no key-maker** has to be given every time.
+
+A cMap with one column after its key does the same job as a map, but maps are quicker to write for that, so both exist.
 
 ### Maps
 
@@ -350,7 +376,7 @@ loop { … }                                      -- forever, until stop
 loop 3 { … }                                    -- three times
 loop (hp > 0) { … }                             -- while true
 loop (int score in scores) { … }                -- each item of an array
-loop (int id, string item, int qty in bag) { … } -- each row of a cArray
+loop (int id, string item, int qty in bag) { … } -- each row of a cMap
 loop (string key, int value in prices) { … }    -- each key of a map
 loop (GameState s in GameState) { … }           -- each option of a state
 ```
@@ -368,7 +394,7 @@ pass Player;
 pass GameState;
 ```
 
-Another file brings things in with `fetch` (classes, objects, states) and `get` (single methods). The path is in quotes, from the project's root, without `.lust`:
+Another file brings things in with `fetch` (classes, objects, states) and `get` (single methods). The path is in quotes, from the project's root, without `.lst`:
 
 ```
 fetch "system/gameState":GameState;
@@ -518,7 +544,7 @@ How handlers receive a schema and send one back is **(to design)**.
 ## 20. A complete file
 
 ```
--- main.lust
+-- main.lst
 fetch "system/gameState":GameState;
 fetch "entities/player":Player;
 
@@ -560,7 +586,7 @@ fetch      get        lua        is         then       or
 either     not        true       false      loop       stop
 skip       in         try        error      state      save
 load       saved      end        int        float      string
-truth      array      cArray     map
+truth      array      cMap       map
 ```
 
 The built-ins can't be used as names either:
@@ -575,7 +601,7 @@ print      wait       random     ask        readText   writeText
 
 - **State memory:** whether the `keep` rule is enough, and how nodes and states share memory.
 - **assembly:** several recipes, choosing between them, and making collections.
-- **LustQL (`.lql`):** what a stored-data file looks like.
+- **LustQL (`.lql`):** what queries look like. It runs on SQLite underneath (see [ROADMAP.md](ROADMAP.md)).
 - **Web:** how route handlers take and give schemas.
 - **The standard library:** which Rust crates Lust wraps for files, networking, JSON, dates and sound, and how they look from Lust.
 - **Memory in Rust:** how state arenas and `keep` turn into Rust that satisfies Rust's ownership rules (likely arenas with handles).

@@ -26,7 +26,7 @@ class Player {
         Mood mood = Mood.Cheerful;
         Player friend = nothing;
         string array titles = [];
-        cArray(string itemName, int amount) bag = [
+        cMap(int id, string itemName, int amount) bag = [
             [1, "Sword", 1],
             [2, "Apple", 3]
         ];

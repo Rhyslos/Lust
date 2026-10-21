@@ -6,7 +6,7 @@
 //!
 //! A program with neither .out nor .err is a helper, and is skipped.
 //!
-//! A .lust program without mistakes runs twice: through Lua, then built for real
+//! A .lst program without mistakes runs twice: through Lua, then built for real
 //! through Rust. Both have to give the same result.
 
 use std::path::{Path, PathBuf};
@@ -19,7 +19,7 @@ fn find(dir: &Path, out: &mut Vec<PathBuf>) {
     for p in entries {
         if p.is_dir() {
             find(&p, out);
-        } else if matches!(p.extension().and_then(|e| e.to_str()), Some("lust" | "lsc"))
+        } else if matches!(p.extension().and_then(|e| e.to_str()), Some("lst" | "lsc"))
             && (p.with_extension("out").exists() || p.with_extension("err").exists())
         {
             out.push(p);
@@ -47,7 +47,7 @@ pub fn run_folder(folder: &Path) -> ExitCode {
         let mut cmd = Command::new(&exe);
         cmd.arg("run").arg(name).current_dir(dir);
         let mut problems = compare(f, cmd);
-        let native = f.extension().map(|e| e == "lust").unwrap_or(false) && crate::compile(f, true).is_some();
+        let native = f.extension().map(|e| e == "lst").unwrap_or(false) && crate::compile(f, true).is_some();
         if native {
             match crate::compile(f, true).and_then(|c| c.rust).map(|r| crate::build_native(f, &r)) {
                 Some(Ok(built)) => {

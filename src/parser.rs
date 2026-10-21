@@ -7,7 +7,7 @@ use crate::lexer::{Tk, Token};
 pub const RESERVED: &[&str] = &[
     "class", "object", "node", "assembly", "create", "has", "method", "hook", "return", "like", "new", "nothing", "schema", "route",
     "view", "style", "keep", "pass", "fetch", "get", "lua", "is", "then", "or", "either", "not", "true", "false", "loop", "stop", "skip",
-    "in", "try", "error", "state", "save", "load", "saved", "end", "int", "float", "string", "truth", "array", "cArray", "map",
+    "in", "try", "error", "state", "save", "load", "saved", "end", "int", "float", "string", "truth", "array", "cMap", "map",
 ];
 pub const BUILTINS: &[&str] = &["print", "wait", "random", "ask", "readText", "writeText"];
 
@@ -476,7 +476,7 @@ impl<'a> Parser<'a> {
             });
             return Ok(());
         }
-        if matches!(self.cur().kind, Tk::Ident(_)) && self.peek(1).is_sym("[") && !self.at_word("cArray") {
+        if matches!(self.cur().kind, Tk::Ident(_)) && self.peek(1).is_sym("[") && !self.at_word("cMap") {
             let pos = self.cur().pos;
             return self.fail(pos, "v2 writes fields like variables: int hp = 20;");
         }
@@ -555,18 +555,32 @@ impl<'a> Parser<'a> {
                 self.next();
                 self.hook_type()?
             }
-            Tk::Ident(w) if w == "cArray" => {
+            Tk::Ident(w) if w == "cMap" => {
                 self.next();
-                self.expect_sym("(", "a cArray lists its columns: cArray(string itemName, int amount)")?;
+                self.expect_sym(
+                    "(",
+                    "a cMap lists its columns, its key first: cMap(int id, string itemName, int amount)",
+                )?;
                 let mut cols = Vec::new();
                 while !self.at_sym(")") {
                     let ty = self.ty()?;
                     let (name, pos) = self.ident("the column's name")?;
                     check_name(self.diags, &name, pos, NameKind::Value, "column");
-                    if name == "id" {
-                        self.diags.add(pos, "every cArray has an id already, so it isn't listed.");
+                    let mut maker = None;
+                    if self.at_sym("=") {
+                        let at = self.cur().pos;
+                        self.next();
+                        let e = self.expr()?;
+                        if cols.is_empty() {
+                            maker = Some(e);
+                        } else {
+                            self.diags.add(
+                                at,
+                                "only the key (the first column) can have a key-maker: cMap(int id = rollId, string item)",
+                            );
+                        }
                     }
-                    cols.push(Column { ty, name, pos });
+                    cols.push(Column { ty, name, pos, maker });
                     if self.at_sym(",") {
                         self.next();
                     } else if !self.at_sym(")") {
@@ -575,7 +589,7 @@ impl<'a> Parser<'a> {
                     }
                 }
                 self.next();
-                TypeRef::CArray(cols)
+                TypeRef::CMap(cols)
             }
             Tk::Ident(w) => {
                 if let Some(h) = hint_for(w) {
@@ -654,9 +668,9 @@ impl<'a> Parser<'a> {
         self.ty()
     }
 
-    /// Does a declaration start here? `int x`, `Player array team`, `cArray(…) bag`, `hook … f`.
+    /// Does a declaration start here? `int x`, `Player array team`, `cMap(…) bag`, `hook … f`.
     fn looks_like_decl(&self) -> bool {
-        if self.at_word("hook") || self.at_word("cArray") {
+        if self.at_word("hook") || self.at_word("cMap") {
             return true;
         }
         if !matches!(self.cur().kind, Tk::Ident(_)) {

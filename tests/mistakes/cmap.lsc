@@ -1,0 +1,14 @@
+cMap(float weight, string item) a = [];
+cMap(int id, string item = "x") b = [];
+cMap(int id = 5, string item) c = [];
+cMap(string name, int price) d = [["tea", 2]];
+d["tea"].name = "milk";
+print(d[1].price);
+d:inject([2]);
+cMap(int id, string item) e = [[1, "a", "b"]];
+
+method count(cMap(int id = 5, string item) x) {
+    print(#x);
+}
+
+end

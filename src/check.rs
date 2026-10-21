@@ -135,6 +135,8 @@ pub struct Checker<'a> {
     top_vars: HashMap<String, Pos>,
     class_names: Vec<String>,
     state_names: Vec<String>,
+    /// Set just before resolving a type that may carry a key-maker (a variable's or a field's).
+    maker_ok: bool,
 }
 
 pub fn check(prog: &Program, diags: &mut Diags, is_script: bool) -> Info {
@@ -144,6 +146,7 @@ pub fn check(prog: &Program, diags: &mut Diags, is_script: bool) -> Info {
         top_vars: HashMap::new(),
         class_names: vec![],
         state_names: vec![],
+        maker_ok: false,
     };
     c.run(prog, is_script);
     c.info
@@ -329,7 +332,10 @@ impl<'a> Checker<'a> {
             let Some(&ci) = self.info.class_index.get(&c.name) else { continue };
             for f in &c.fields {
                 let ty = match &f.ty {
-                    Some(t) => self.resolve(t),
+                    Some(t) => {
+                        self.maker_ok = true;
+                        self.resolve(t)
+                    }
                     None => {
                         // state is GameState.Idle;
                         let mut ctx = Ctx {
@@ -423,6 +429,9 @@ impl<'a> Checker<'a> {
                         };
                         let got = self.expr(d, &mut ctx, Some(&want));
                         self.expect_fits(d, &got, &want, &format!("{} is {}", f.name, self.a(&want)));
+                        if let Some(t) = &f.ty {
+                            self.key_maker(t, &want, &mut ctx);
+                        }
                     }
                     None => {
                         if !want.can_be_nothing() && want != Ty::Error {
@@ -527,6 +536,7 @@ impl<'a> Checker<'a> {
     }
 
     fn resolve(&mut self, t: &TypeRef) -> Ty {
+        let maker_ok = std::mem::take(&mut self.maker_ok);
         match t {
             TypeRef::Named(n, pos) => match n.as_str() {
                 "int" => Ty::Int,
@@ -548,13 +558,32 @@ impl<'a> Checker<'a> {
                         .chain(["int", "float", "string", "truth"].iter().map(|s| s.to_string()))
                         .collect();
                     let s = suggest(n, known);
-                    self.err(*pos, format!("Lust doesn't have a type called {n}.{s} The types are int, float, string, truth, arrays, maps, cArrays, hooks, classes and states."));
+                    self.err(*pos, format!("Lust doesn't have a type called {n}.{s} The types are int, float, string, truth, arrays, maps, cMaps, hooks, classes and states."));
                     Ty::Error
                 }
             },
             TypeRef::Array(e) => Ty::Array(Box::new(self.resolve(e))),
             TypeRef::Map(e) => Ty::Map(Box::new(self.resolve(e))),
-            TypeRef::CArray(cols) => Ty::CArray(Rc::new(cols.iter().map(|c| (c.name.clone(), self.resolve(&c.ty))).collect())),
+            TypeRef::CMap(cols) => {
+                let resolved: Vec<(String, Ty)> = cols.iter().map(|c| (c.name.clone(), self.resolve(&c.ty))).collect();
+                if let Some(key) = cols.first() {
+                    if !matches!(resolved[0].1, Ty::Int | Ty::Str | Ty::Error) {
+                        self.err(
+                            key.pos,
+                            format!("a cMap's first column is its key, so it has to be an int or a string: cMap(int id, …) or cMap(string name, …). {} is {}.", key.name, self.a(&resolved[0].1)),
+                        );
+                    }
+                    if let (Some(m), false) = (&key.maker, maker_ok) {
+                        self.err(
+                            m.pos,
+                            "a key-maker goes where a cMap is made: cMap(int id = rollId, string item) bag = [];",
+                        );
+                    }
+                } else {
+                    self.err(Pos::default(), "a cMap needs at least its key column: cMap(int id, string item)");
+                }
+                Ty::CMap(Rc::new(resolved))
+            }
             TypeRef::Hook { ret, params } => {
                 let ret = ret.as_ref().map(|r| self.resolve(r)).unwrap_or(Ty::Void);
                 let params = params.iter().map(|p| (self.resolve(&p.ty), p.name.clone())).collect();
@@ -569,7 +598,7 @@ impl<'a> Checker<'a> {
             Ty::Float => "1.5".into(),
             Ty::Str => "\"text\"".into(),
             Ty::Truth => "true".into(),
-            Ty::Array(_) | Ty::Map(_) | Ty::CArray(_) => "[]".into(),
+            Ty::Array(_) | Ty::Map(_) | Ty::CMap(_) => "[]".into(),
             Ty::State(s) => format!("{}.{}", self.info.states[*s].name, self.info.states[*s].options[0]),
             _ => "nothing".into(),
         }
@@ -680,7 +709,9 @@ impl<'a> Checker<'a> {
     fn stmt(&mut self, s: &Stmt, ctx: &mut Ctx) {
         match s {
             Stmt::Var { ty, name, pos, value } => {
+                self.maker_ok = true;
                 let want = self.resolve(ty);
+                self.key_maker(ty, &want, ctx);
                 let got = self.expr(value, ctx, Some(&want));
                 self.expect_fits(value, &got, &want, &format!("{name} is {}", self.a(&want)));
                 self.info.decl_types.insert(value.id, want.clone());
@@ -851,14 +882,14 @@ impl<'a> Checker<'a> {
         let wanted: Option<Vec<Ty>> = match &src {
             Ty::Array(e) => Some(vec![(**e).clone()]),
             Ty::Map(v) => Some(vec![Ty::Str, (**v).clone()]),
-            Ty::CArray(cols) => Some(std::iter::once(Ty::Int).chain(cols.iter().map(|(_, t)| t.clone())).collect()),
+            Ty::CMap(cols) => Some(cols.iter().map(|(_, t)| t.clone()).collect()),
             Ty::StateList(s) => Some(vec![Ty::State(*s)]),
             Ty::Error => None,
             other => {
                 self.err(
                     source.pos,
                     format!(
-                        "a loop can go through an array, a map, a cArray or a state's options, but this is {}.",
+                        "a loop can go through an array, a map, a cMap or a state's options, but this is {}.",
                         self.a(other)
                     ),
                 );
@@ -869,9 +900,9 @@ impl<'a> Checker<'a> {
             if w.len() != vars.len() {
                 let example = match &src {
                     Ty::Map(_) => "loop (string key, int value in prices) { }".to_string(),
-                    Ty::CArray(cols) => {
+                    Ty::CMap(cols) => {
                         let c: Vec<String> = cols.iter().map(|(n, t)| format!("{} {n}", self.show(t))).collect();
-                        format!("loop (int id, {} in {}) {{ }}", c.join(", "), describe(source))
+                        format!("loop ({} in {}) {{ }}", c.join(", "), describe(source))
                     }
                     _ => format!("loop ({} item in {}) {{ }}", self.show(&w[0]), describe(source)),
                 };
@@ -915,16 +946,24 @@ impl<'a> Checker<'a> {
                 Some(_) => self.err(pos, format!("{n} can't be changed.")),
             },
             ExprKind::Field(t, f, fp) => {
-                if matches!(self.info.ty(t), Ty::Row(_)) && f == "id" {
-                    self.err(*fp, "a row's id can't be changed.");
+                if let Ty::Row(cols) = self.info.ty(t) {
+                    if cols.first().map(|c| &c.0) == Some(f) {
+                        self.err(
+                            *fp,
+                            format!("{f} is this cMap's key, so it can't be changed. Remove the row and add it again with the new {f}."),
+                        );
+                    }
                 }
                 if self.info.options.contains_key(&target.id) {
                     self.err(pos, "a state's option can't be changed.");
                 }
             }
             ExprKind::Index(t, _) => {
-                if matches!(self.info.ty(t), Ty::CArray(_)) {
-                    self.err(pos, "a whole row can't be replaced. Change its columns instead: bag[1].amount = 5;");
+                if matches!(self.info.ty(t), Ty::CMap(_)) {
+                    self.err(
+                        pos,
+                        "a whole row can't be replaced. Change its columns instead: bag[1].amount = 5;, or add a new row with :inject.",
+                    );
                 }
             }
             _ => {}
@@ -955,7 +994,7 @@ impl<'a> Checker<'a> {
                 a.ret == b.ret && a.params.len() == b.params.len() && a.params.iter().zip(&b.params).all(|(x, y)| x.0 == y.0)
             }
             (Ty::Array(a), Ty::Array(b)) | (Ty::Map(a), Ty::Map(b)) => a == b,
-            (Ty::CArray(a), Ty::CArray(b)) => a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| x.1 == y.1),
+            (Ty::CMap(a), Ty::CMap(b)) => a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| x.1 == y.1),
             _ => false,
         }
     }
@@ -1051,13 +1090,16 @@ impl<'a> Checker<'a> {
                         }
                         *v
                     }
-                    Ty::CArray(cols) => {
-                        let i = self.expr(index, ctx, Some(&Ty::Int));
-                        if i != Ty::Int && i != Ty::Error {
+                    Ty::CMap(cols) => {
+                        let (kn, kt) = cols[0].clone();
+                        let i = self.expr(index, ctx, Some(&kt));
+                        if i != kt && i != Ty::Error && kt != Ty::Error {
+                            let ex = if kt == Ty::Str { "[\"tea\"]" } else { "[1]" };
                             self.err(
                                 index.pos,
                                 format!(
-                                    "a cArray's rows are found by their id, a whole number: {}[1]. This is {}.",
+                                    "this cMap's rows are found by their {kn}, which is {}: {}{ex}. This is {}.",
+                                    self.a(&kt),
                                     describe(target),
                                     self.a(&i)
                                 ),
@@ -1087,11 +1129,11 @@ impl<'a> Checker<'a> {
             ExprKind::Len(inner) => {
                 let t = self.expr(inner, ctx, None);
                 match t {
-                    Ty::Str | Ty::Array(_) | Ty::Map(_) | Ty::CArray(_) | Ty::Error => Ty::Int,
+                    Ty::Str | Ty::Array(_) | Ty::Map(_) | Ty::CMap(_) | Ty::Error => Ty::Int,
                     other => {
                         self.err(
                             e.pos,
-                            format!("# counts text, arrays, maps and cArrays, but this is {}.", self.a(&other)),
+                            format!("# counts text, arrays, maps and cMaps, but this is {}.", self.a(&other)),
                         );
                         Ty::Int
                     }
@@ -1415,23 +1457,18 @@ impl<'a> Checker<'a> {
                     Ty::Error
                 }
             },
-            Ty::Row(cols) => {
-                if f == "id" {
-                    return Ty::Int;
+            Ty::Row(cols) => match cols.iter().find(|(n, _)| n == f) {
+                Some((_, t)) => t.clone(),
+                None => {
+                    let names: Vec<String> = cols.iter().map(|(n, _)| n.clone()).collect();
+                    let s = suggest(f, names.clone());
+                    self.err(
+                        fpos,
+                        format!("this cMap has no column called {f}.{s} Its columns are {}.", names.join(", ")),
+                    );
+                    Ty::Error
                 }
-                match cols.iter().find(|(n, _)| n == f) {
-                    Some((_, t)) => t.clone(),
-                    None => {
-                        let names: Vec<String> = cols.iter().map(|(n, _)| n.clone()).collect();
-                        let s = suggest(f, names.clone());
-                        self.err(
-                            fpos,
-                            format!("this cArray has no column called {f}.{s} Its columns are id, {}.", names.join(", ")),
-                        );
-                        Ty::Error
-                    }
-                }
-            }
+            },
             Ty::Error => Ty::Error,
             Ty::Nothing => {
                 self.err(e.pos, "nothing has no fields.");
@@ -1582,9 +1619,9 @@ impl<'a> Checker<'a> {
             (Ty::Array(_), "remove") => Some((vec![("position".into(), Ty::Int)], Ty::Void)),
             (Ty::Map(_), "has") => Some((vec![("key".into(), Ty::Str)], Ty::Truth)),
             (Ty::Map(_), "remove") => Some((vec![("key".into(), Ty::Str)], Ty::Void)),
-            (Ty::CArray(_), "remove") => Some((vec![("id".into(), Ty::Int)], Ty::Void)),
-            (Ty::CArray(_), "has") => Some((vec![("id".into(), Ty::Int)], Ty::Truth)),
-            (Ty::CArray(cols), "inject") => {
+            (Ty::CMap(cols), "remove") => Some((vec![cols[0].clone()], Ty::Void)),
+            (Ty::CMap(cols), "has") => Some((vec![cols[0].clone()], Ty::Truth)),
+            (Ty::CMap(cols), "inject") => {
                 if args.len() != 1 {
                     self.err(mpos, "inject takes one row, like bag:inject([\"map\", 1]);");
                     return Ty::Void;
@@ -1640,7 +1677,7 @@ impl<'a> Checker<'a> {
                 let what = match other {
                     Ty::Array(_) => " Arrays have inject and remove.",
                     Ty::Map(_) => " Maps have has and remove.",
-                    Ty::CArray(_) => " cArrays have inject, remove and has.",
+                    Ty::CMap(_) => " cMaps have inject, remove and has.",
                     _ => "",
                 };
                 self.err(
@@ -1652,24 +1689,25 @@ impl<'a> Checker<'a> {
         }
     }
 
-    /// One cArray row: its columns' values, optionally with its id first.
+    /// One cMap row: a value for every column, or for every column but the key.
     fn row(&mut self, item: &Expr, cols: &Rc<Vec<(String, Ty)>>, ctx: &mut Ctx) {
         let ExprKind::List { items, keys: None } = &item.kind else {
             let t = self.expr(item, ctx, None);
             if t != Ty::Error {
-                self.err(item.pos, "a cArray row is written in [ ], one value per column: [\"map\", 1]");
+                self.err(item.pos, "a cMap row is written in [ ], one value per column: [1, \"map\", 1]");
             }
             return;
         };
         self.info.types.insert(item.id, Ty::Row(cols.clone()));
-        let with_id = items.len() == cols.len() + 1;
-        if items.len() != cols.len() && !with_id {
+        let with_key = items.len() == cols.len();
+        if !with_key && items.len() + 1 != cols.len() {
             let names: Vec<String> = cols.iter().map(|(n, _)| n.clone()).collect();
             self.err(
                 item.pos,
                 format!(
-                    "a row needs one value for each column ({}), or an id first and then those.",
-                    names.join(", ")
+                    "a row needs one value for each column ({}). The key ({}) can be left out when Lust can make it.",
+                    names.join(", "),
+                    names[0]
                 ),
             );
             for i in items {
@@ -1677,13 +1715,36 @@ impl<'a> Checker<'a> {
             }
             return;
         }
-        let mut wanted: Vec<(String, Ty)> = cols.iter().cloned().collect();
-        if with_id {
-            wanted.insert(0, ("id".into(), Ty::Int));
-        }
+        let wanted: Vec<(String, Ty)> = if with_key {
+            cols.iter().cloned().collect()
+        } else {
+            cols[1..].to_vec()
+        };
         for (v, (n, t)) in items.iter().zip(&wanted) {
             let got = self.expr(v, ctx, Some(t));
             self.expect_fits(v, &got, t, &format!("{n} is {}", self.a(t)));
+        }
+    }
+
+    /// Checks a cMap type's key-maker: a hook that takes nothing and gives a key.
+    fn key_maker(&mut self, t: &TypeRef, ty: &Ty, ctx: &mut Ctx) {
+        let (Some(m), Ty::CMap(cols)) = (t.key_maker(), ty) else { return };
+        let want = Ty::Hook(Rc::new(HookSig {
+            ret: cols[0].1.clone(),
+            params: vec![],
+        }));
+        let got = self.expr(m, ctx, Some(&want));
+        if !self.fits(&got, &want) {
+            let kt = self.show(&cols[0].1);
+            self.err(
+                m.pos,
+                format!(
+                    "a key-maker is a method or hook that takes nothing and gives back {}: {kt} {} = makeKey. This is {}.",
+                    self.a(&cols[0].1),
+                    cols[0].0,
+                    self.a(&got)
+                ),
+            );
         }
     }
 
@@ -1718,11 +1779,11 @@ impl<'a> Checker<'a> {
                 }
                 return Ty::Map(v.clone());
             }
-            Some(Ty::CArray(cols)) if keys.is_none() => {
+            Some(Ty::CMap(cols)) if keys.is_none() => {
                 for i in items {
                     self.row(i, cols, ctx);
                 }
-                return Ty::CArray(cols.clone());
+                return Ty::CMap(cols.clone());
             }
             _ => {}
         }

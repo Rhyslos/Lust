@@ -132,7 +132,7 @@ loop (Light x in Light) {
     print(x);
 }
 
--- Lists of lists, maps and cArrays
+-- Lists of lists, maps and cMaps
 int array array grid = [[1, 2], [3]];
 grid[1]:inject(4);
 print(grid);
@@ -140,7 +140,7 @@ float map prices = ["tea" 1.5, "cake" 3];
 prices:remove("tea");
 print(prices);
 print(prices:has("tea"));
-cArray(string who, truth here) people = [["Ana", true], [5, "Bo", false]];
+cMap(int id, string who, truth here) people = [["Ana", true], [5, "Bo", false]];
 people:inject(["Cy", true]);
 people:remove(1);
 print(people);

@@ -18,22 +18,22 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 const USAGE: &str = "Lust 2 (alpha)
 
-  lust run <file>      check a .lust or .lsc file, then run it
+  lust run <file>      check a .lst or .lsc file, then run it
   lust check <file>    only check it, and list any mistakes
   lust lua <file>      show the Lua a file turns into
-  lust rust <file>     show the Rust a .lust file turns into
-  lust build <file>    .lust: build a real program next to it (needs Rust installed)
+  lust rust <file>     show the Rust a .lst file turns into
+  lust build <file>    .lst: build a real program next to it (needs Rust installed)
                        .lsc: write the Lua next to it, as file.lua
   lust test <folder>   run the test programs in a folder
   lust version         show which Lust this is
 
 lust <file> is the same as lust run <file>.
-lust run is quick to start, so it runs .lust files through Lua too.
+lust run is quick to start, so it runs .lst files through Lua too.
 lust build makes the real, fast program.";
 
 pub struct Compiled {
     pub out: lua::Output,
-    /// The Rust version, for .lust files.
+    /// The Rust version, for .lst files.
     pub rust: Option<String>,
 }
 
@@ -41,8 +41,15 @@ pub struct Compiled {
 pub fn compile(path: &Path, quiet: bool) -> Option<Compiled> {
     let display = path.file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_default();
     let ext = path.extension().map(|e| e.to_string_lossy().to_string()).unwrap_or_default();
-    if ext != "lust" && ext != "lsc" {
-        eprintln!("{display} isn't a Lust file. Lust files end in .lust, or .lsc for LustScript.");
+    if ext == "lust" {
+        eprintln!(
+            "Lust programs now end in .lst. Rename {display} to {}.lst and try again.",
+            path.file_stem().unwrap_or_default().to_string_lossy()
+        );
+        return None;
+    }
+    if ext != "lst" && ext != "lsc" {
+        eprintln!("{display} isn't a Lust file. Lust files end in .lst, or .lsc for LustScript.");
         return None;
     }
     let src = match std::fs::read_to_string(path) {
@@ -155,7 +162,7 @@ fn main() -> ExitCode {
     }
 }
 
-/// Turns the Rust for a program into a real program next to the .lust file, with rustc.
+/// Turns the Rust for a program into a real program next to the .lst file, with rustc.
 pub fn build_native(path: &Path, rust: &str) -> Result<std::path::PathBuf, String> {
     let stem = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
     let dir = std::env::temp_dir().join("lust-build");

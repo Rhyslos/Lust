@@ -416,98 +416,175 @@ pub fn mshow<T>(m: &Map<T>, f: impl Fn(&T) -> String) -> String {
     format!("[{}]", parts.join(", "))
 }
 
-// ----- cArrays: rows with ids -----
+// ----- cMaps: rows found by their key, the first column -----
+
+/// What a cMap's key can be: a whole number or text.
+pub trait Key: Clone + PartialEq {
+    fn show(&self) -> String;
+    /// The key Lust counts up to by itself, when it can.
+    fn counted(n: i64) -> Option<Self>;
+    fn number(&self) -> Option<i64>;
+}
+
+impl Key for i64 {
+    fn show(&self) -> String {
+        itext(*self)
+    }
+    fn counted(n: i64) -> Option<Self> {
+        Some(n)
+    }
+    fn number(&self) -> Option<i64> {
+        Some(*self)
+    }
+}
+
+impl Key for String {
+    fn show(&self) -> String {
+        qtext(self)
+    }
+    fn counted(_: i64) -> Option<Self> {
+        None
+    }
+    fn number(&self) -> Option<i64> {
+        None
+    }
+}
 
 pub trait Row {
-    fn id(&self) -> i64;
-    fn set_id(&mut self, id: i64);
+    type K: Key;
+    fn key(&self) -> Self::K;
+    fn set_key(&mut self, k: Self::K);
 }
 
-pub struct CArr<R> {
+pub struct CMapData<R: Row> {
     rows: Vec<Rc<RefCell<R>>>,
     next: i64,
+    key: &'static str,
+    maker: Option<Rc<dyn Fn() -> R::K>>,
 }
 
-impl<R> Default for CArr<R> {
+impl<R: Row> Default for CMapData<R> {
     fn default() -> Self {
-        CArr { rows: Vec::new(), next: 1 }
+        CMapData { rows: Vec::new(), next: 1, key: "id", maker: None }
     }
 }
 
-pub type CArray<R> = Rc<RefCell<CArr<R>>>;
+pub type CMap<R> = Rc<RefCell<CMapData<R>>>;
 
-fn add_row<R: Row>(c: &mut CArr<R>, id: Option<i64>, mut r: R) {
-    let id = match id {
-        Some(i) => {
-            if c.rows.iter().any(|x| x.borrow().id() == i) {
-                fail(format!("there's already a row with id {i}."));
+fn taken<R: Row>(c: &CMap<R>, k: &R::K) -> bool {
+    c.borrow().rows.iter().any(|r| r.borrow().key() == *k)
+}
+
+fn add_row<R: Row>(c: &CMap<R>, k: Option<R::K>, mut r: R) {
+    let key = c.borrow().key;
+    let k = match k {
+        Some(k) => {
+            if taken(c, &k) {
+                fail(format!("there's already a row with {key} {}.", k.show()));
             }
-            i
+            k
         }
-        None => c.next,
+        None => {
+            let maker = c.borrow().maker.clone();
+            match maker {
+                Some(m) => {
+                    let mut tries = 0;
+                    loop {
+                        // Called with the cMap free, so the key-maker can look at it.
+                        let k = m();
+                        if !taken(c, &k) {
+                            break k;
+                        }
+                        tries += 1;
+                        if tries >= 100 {
+                            fail(format!("the key-maker keeps making {key}s that are already taken."));
+                        }
+                    }
+                }
+                None => match R::K::counted(c.borrow().next) {
+                    Some(k) => k,
+                    None => fail(format!("this cMap's key ({key}) is text, so each new row needs it first.")),
+                },
+            }
+        }
     };
-    r.set_id(id);
-    if id >= c.next {
-        c.next = id + 1;
-    }
-    c.rows.push(Rc::new(RefCell::new(r)));
-}
-
-pub fn carr<R: Row>(rows: Vec<(Option<i64>, R)>) -> CArray<R> {
-    let mut c = CArr::default();
-    for (id, r) in rows {
-        add_row(&mut c, id, r);
-    }
-    Rc::new(RefCell::new(c))
-}
-
-fn ids<R: Row>(c: &CArr<R>) -> String {
-    if c.rows.is_empty() {
-        return "The cArray is empty.".into();
-    }
-    let list: Vec<String> = c.rows.iter().map(|r| r.borrow().id().to_string()).collect();
-    format!("The ids are {}.", list.join(", "))
-}
-
-pub fn cget<R: Row>(c: &CArray<R>, id: i64) -> Rc<RefCell<R>> {
-    let b = c.borrow();
-    match b.rows.iter().find(|r| r.borrow().id() == id) {
-        Some(r) => r.clone(),
-        None => fail(format!("there's no row with id {id}. {}", ids(&b))),
-    }
-}
-
-pub fn cinject<R: Row>(c: &CArray<R>, row: (Option<i64>, R)) {
-    add_row(&mut c.borrow_mut(), row.0, row.1);
-}
-
-pub fn chas<R: Row>(c: &CArray<R>, id: i64) -> bool {
-    c.borrow().rows.iter().any(|r| r.borrow().id() == id)
-}
-
-pub fn cremove<R: Row>(c: &CArray<R>, id: i64) {
     let mut b = c.borrow_mut();
-    match b.rows.iter().position(|r| r.borrow().id() == id) {
+    if let Some(n) = k.number() {
+        if n >= b.next {
+            b.next = n + 1;
+        }
+    }
+    r.set_key(k);
+    b.rows.push(Rc::new(RefCell::new(r)));
+}
+
+pub fn carr<R: Row>(key: &'static str, maker: Option<Option<Rc<dyn Fn() -> R::K>>>, rows: Vec<(Option<R::K>, R)>) -> CMap<R> {
+    let mut c = Rc::new(RefCell::new(CMapData { rows: Vec::new(), next: 1, key, maker: None }));
+    if let Some(m) = maker {
+        c = cmaker(c, m);
+    }
+    for (k, r) in rows {
+        add_row(&c, k, r);
+    }
+    c
+}
+
+/// Gives a cMap its key-maker, and gives the cMap back.
+pub fn cmaker<R: Row>(c: CMap<R>, maker: Option<Rc<dyn Fn() -> R::K>>) -> CMap<R> {
+    c.borrow_mut().maker = Some(match maker {
+        Some(m) => m,
+        None => Rc::new(|| fail("the key-maker is nothing, so it can't make keys.".into())),
+    });
+    c
+}
+
+fn keys<R: Row>(c: &CMapData<R>) -> String {
+    if c.rows.is_empty() {
+        return "The cMap is empty.".into();
+    }
+    let list: Vec<String> = c.rows.iter().map(|r| r.borrow().key().show()).collect();
+    format!("The {}s are {}.", c.key, list.join(", "))
+}
+
+pub fn cget<R: Row>(c: &CMap<R>, k: R::K) -> Rc<RefCell<R>> {
+    let b = c.borrow();
+    match b.rows.iter().find(|r| r.borrow().key() == k) {
+        Some(r) => r.clone(),
+        None => fail(format!("there's no row with {} {}. {}", b.key, k.show(), keys(&b))),
+    }
+}
+
+pub fn cinject<R: Row>(c: &CMap<R>, row: (Option<R::K>, R)) {
+    add_row(c, row.0, row.1);
+}
+
+pub fn chas<R: Row>(c: &CMap<R>, k: R::K) -> bool {
+    taken(c, &k)
+}
+
+pub fn cremove<R: Row>(c: &CMap<R>, k: R::K) {
+    let mut b = c.borrow_mut();
+    match b.rows.iter().position(|r| r.borrow().key() == k) {
         Some(i) => {
             b.rows.remove(i);
         }
         None => {
-            let msg = format!("there's no row with id {id} to remove. {}", ids(&b));
+            let msg = format!("there's no row with {} {} to remove. {}", b.key, k.show(), keys(&b));
             drop(b);
             fail(msg)
         }
     }
 }
 
-pub fn clen<R>(c: &CArray<R>) -> i64 {
+pub fn clen<R: Row>(c: &CMap<R>) -> i64 {
     c.borrow().rows.len() as i64
 }
 
-pub fn rows<R>(c: &CArray<R>) -> Vec<Rc<RefCell<R>>> {
+pub fn rows<R: Row>(c: &CMap<R>) -> Vec<Rc<RefCell<R>>> {
     c.borrow().rows.clone()
 }
 
-pub fn cshow<R>(c: &CArray<R>, f: impl Fn(&R) -> String) -> String {
+pub fn cshow<R: Row>(c: &CMap<R>, f: impl Fn(&R) -> String) -> String {
     let parts: Vec<String> = c.borrow().rows.iter().map(|r| f(&r.borrow())).collect();
     format!("[{}]", parts.join(", "))
 }

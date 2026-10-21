@@ -1,0 +1,9 @@
+cmap.lsc:1:12  a cMap's first column is its key, so it has to be an int or a string: cMap(int id, …) or cMap(string name, …). weight is a float.
+cmap.lsc:2:26  only the key (the first column) can have a key-maker: cMap(int id = rollId, string item)
+cmap.lsc:3:15  a key-maker is a method or hook that takes nothing and gives back an int: int id = makeKey. This is an int.
+cmap.lsc:5:10  name is this cMap's key, so it can't be changed. Remove the row and add it again with the new name.
+cmap.lsc:6:9  this cMap's rows are found by their name, which is a string: d["tea"]. This is an int.
+cmap.lsc:8:32  a row needs one value for each column (id, item). The key (id) can be left out when Lust can make it.
+cmap.lsc:10:28  a key-maker goes where a cMap is made: cMap(int id = rollId, string item) bag = [];
+
+7 mistakes. Nothing was run.
