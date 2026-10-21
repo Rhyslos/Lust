@@ -1,0 +1,17 @@
+first line
+second line
+
+["first line", "second line"]
+true
+false
+["a.txt", "inner"]
+can't remove scratch: the folder isn't empty.
+can't read scratch/b.txt: there's no such file.
+there's no folder nowhere.
+false
+true
+true
+10
+-
+8
+:

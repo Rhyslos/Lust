@@ -1,0 +1,117 @@
+-- JSON, both ways.
+state Mood = [Happy, Grumpy];
+
+class Item {
+    has {
+        string name = "thing";
+        int weight = 1;
+    }
+}
+
+class Player {
+    has {
+        string name = "Hero";
+        int hp = 20;
+        float speed = 1.5;
+        truth alive = true;
+        Mood mood = Mood.Happy;
+        string array titles = [];
+        int map skills = [];
+        cMap(int id, string item, int amount) bag = [];
+        Player friend = nothing;
+        Item hand = nothing;
+        hook() onHit = nothing;
+    }
+}
+
+class Wizard like Player {
+    has {
+        int mana = 30;
+    }
+}
+
+Player ada = new Player { name = "Ada \"the brave\"", mood = Mood.Grumpy };
+ada.titles:inject("Knight");
+ada.skills["cook"] = 2;
+ada.bag:inject(["Sword", 1]);
+ada.bag:inject([7, "Apple", 3]);
+ada.hand = new Item { name = "torch" };
+ada.friend = new Wizard { name = "Merlin" };
+print(Json:write(ada));
+print(Json:pretty(ada.bag));
+print(Json:write([1.5, 2.0, -0.0000003]));
+print(Json:write("tab\there, line\nthere, ünïcode"));
+float map prices = ["tea" 2.5];
+print(Json:pretty(prices));
+string array none = [];
+print(Json:pretty(none));
+
+string text = Files:read("player.json");
+Player back = Json:read(text);
+print(back.name);
+print(back.hp);
+print(back.speed);
+print(back.mood);
+print(back.titles);
+print(back.skills);
+print(back.bag);
+print(back.friend.name);
+print(back.hand === nothing);
+Player again = Json:read(Json:write(back));
+print(Json:write(back) == Json:write(again));
+
+int array numbers = Json:read(" [1, 2, 3] ");
+print(numbers);
+cMap(string code, int price) shop = Json:read("[{\"code\": \"A1\", \"price\": 5}]");
+print(shop["A1"].price);
+string s = Json:read("\"caf\\u00e9 \\ud83d\\ude00\"");
+print(s);
+
+try {
+    Player p = Json:read("{\"hp\": \"lots\"}");
+} error (string e) {
+    print(e);
+}
+try {
+    Player p = Json:read("{\"mood\": \"Sleepy\"}");
+} error (string e) {
+    print(e);
+}
+try {
+    Player p = Json:read("{\"bag\": [{\"id\": 1}]}");
+} error (string e) {
+    print(e);
+}
+try {
+    int array a = Json:read("[1, 2.5]");
+} error (string e) {
+    print(e);
+}
+try {
+    int array a = Json:read("[1, 2,\n 3");
+} error (string e) {
+    print(e);
+}
+try {
+    int array a = Json:read("[1, 02]");
+} error (string e) {
+    print(e);
+}
+try {
+    int array a = Json:read("[1] x");
+} error (string e) {
+    print(e);
+}
+try {
+    print(Json:write(1.0 / 0.0));
+} error (string e) {
+    print(e);
+}
+Player loopy = new Player {};
+loopy.friend = loopy;
+try {
+    print(Json:write(loopy));
+} error (string e) {
+    print(e);
+}
+end

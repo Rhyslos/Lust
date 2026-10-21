@@ -208,6 +208,9 @@ impl<'a> W<'a> {
                 break;
             }
         }
+        if crate::stdlib::uses_json(self.info) {
+            self.class_json();
+        }
         // Methods on their own.
         for item in &prog.items {
             if let Item::Method(m) = item {
@@ -488,6 +491,9 @@ impl<'a> W<'a> {
     // ----- expressions -----
 
     fn expr(&mut self, e: &Expr) -> String {
+        if let Some(lib) = self.info.libs.get(&e.id) {
+            return self.lib(e, lib);
+        }
         match &e.kind {
             ExprKind::Int(v) => {
                 if *v < 0 {
@@ -689,8 +695,107 @@ impl<'a> W<'a> {
                     },
                     Conv::IsNumber => format!("_L.isnum({c})"),
                     Conv::Lines => format!("_L.lines({c})"),
+                    Conv::Upper => format!("_L.text_upper({c})"),
+                    Conv::Lower => format!("_L.text_lower({c})"),
+                    Conv::Trim => format!("_L.text_trim({c})"),
                 }
             }
+        }
+    }
+
+    /// A standard library call.
+    fn lib(&mut self, e: &Expr, lib: &crate::stdlib::Lib) -> String {
+        let (target, args): (Option<&Expr>, &[Expr]) = match &e.kind {
+            ExprKind::Method(t, _, args, _) => ((!crate::stdlib::is_object(t)).then_some(&**t), args),
+            _ => (None, &[]),
+        };
+        match lib.func.as_str() {
+            "json_write" | "json_pretty" => {
+                let v = self.expr(&args[0]);
+                let enc = self.jenc(&self.info.ty(&args[0]));
+                format!("_L.json_write({v}, {enc}, {})", lib.func == "json_pretty")
+            }
+            "json_read" => {
+                let t = self.expr(&args[0]);
+                let dec = self.jdec(&lib.ret);
+                format!("_L.json_read({t}, {dec})")
+            }
+            f => {
+                let mut a: Vec<String> = target.map(|t| self.expr(t)).into_iter().collect();
+                a.extend(args.iter().map(|x| self.expr(x)));
+                format!("_L.{f}({})", a.join(", "))
+            }
+        }
+    }
+
+    /// A Lua function that writes a value of type `t` as JSON.
+    fn jenc(&self, t: &Ty) -> String {
+        match t {
+            Ty::Int => "_L.jw.int".into(),
+            Ty::Float => "_L.jw.float".into(),
+            Ty::Truth => "_L.jw.truth".into(),
+            Ty::Str | Ty::State(_) => "_L.jw.string".into(),
+            Ty::Array(el) => format!("_L.jw_array({})", self.jenc(el)),
+            Ty::Map(v) => format!("_L.jw_map({})", self.jenc(v)),
+            Ty::CMap(cols) => {
+                let f: Vec<String> = cols.iter().map(|(_, t)| self.jenc(t)).collect();
+                format!("_L.jw_cmap({{{}}})", f.join(", "))
+            }
+            _ => "_L.jw_obj".into(),
+        }
+    }
+
+    /// A Lua function that reads a value of type `t` from parsed JSON.
+    fn jdec(&self, t: &Ty) -> String {
+        match t {
+            Ty::Int => "_L.jr.int".into(),
+            Ty::Float => "_L.jr.float".into(),
+            Ty::Truth => "_L.jr.truth".into(),
+            Ty::Str => "_L.jr.string".into(),
+            Ty::State(s) => {
+                let opts: Vec<String> = self.info.states[*s].options.iter().map(|o| lua_string(o)).collect();
+                format!("_L.jr_state({{{}}})", opts.join(", "))
+            }
+            Ty::Array(el) => format!("_L.jr_array({})", self.jdec(el)),
+            Ty::Map(v) => format!("_L.jr_map({})", self.jdec(v)),
+            Ty::CMap(cols) => {
+                let names: Vec<String> = cols.iter().map(|(n, _)| lua_string(&lname(n))).collect();
+                let f: Vec<String> = cols.iter().map(|(_, t)| self.jdec(t)).collect();
+                format!(
+                    "_L.jr_cmap({{{}}}, {}, {{{}}})",
+                    names.join(", "),
+                    cols[0].1 == Ty::Str,
+                    f.join(", ")
+                )
+            }
+            Ty::Class(c) => format!("function(v, at) return {}.__jr(v, at) end", self.class_table(*c)),
+            _ => "nil".into(),
+        }
+    }
+
+    /// Every class learns to write itself as JSON and read itself back.
+    fn class_json(&mut self) {
+        for c in 0..self.info.classes.len() {
+            let t = self.class_table(c);
+            let fields = crate::stdlib::json_fields(self.info, c);
+            let names: Vec<String> = fields.iter().map(|(_, n, _)| lua_string(&lname(n))).collect();
+            let enc: Vec<String> = fields.iter().map(|(_, _, ty)| self.jenc(ty)).collect();
+            let dec: Vec<String> = fields.iter().map(|(_, _, ty)| self.jdec(ty)).collect();
+            let names = names.join(", ");
+            self.line(
+                0,
+                &format!(
+                    "function {t}.__jw(o, d) return _L.jw_fields(o, d, {{{names}}}, {{{}}}) end",
+                    enc.join(", ")
+                ),
+            );
+            self.line(
+                0,
+                &format!(
+                    "function {t}.__jr(v, at) return _L.jr_fields(v, at, {t}, {{{names}}}, {{{}}}) end",
+                    dec.join(", ")
+                ),
+            );
         }
     }
 

@@ -1,0 +1,11 @@
+{
+  "name": "Rune",
+  "hp": 12,
+  "speed": 2,
+  "mood": "Grumpy",
+  "titles": ["Smith", "Bard"],
+  "skills": {"sing": 3, "forge": 5},
+  "bag": [{"id": 4, "item": "Hammer", "amount": 1}, {"item": "Nails", "amount": 40}],
+  "friend": {"name": "Liv", "unknown": true},
+  "hand": null
+}

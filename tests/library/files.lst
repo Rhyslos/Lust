@@ -1,0 +1,44 @@
+-- Files and time.
+string dir = "scratch";
+is Files:exists(dir)? then {
+    loop (string f in Files:list(dir)) {
+        Files:remove(dir + "/" + f);
+    }
+    Files:remove(dir);
+}
+Files:makeFolder(dir + "/inner");
+Files:write(dir + "/a.txt", "first line\n");
+Files:append(dir + "/a.txt", "second line\n");
+print(Files:read(dir + "/a.txt"));
+print(Files:read(dir + "/a.txt").lines());
+print(Files:exists(dir + "/a.txt"));
+print(Files:exists(dir + "/b.txt"));
+print(Files:list(dir));
+try {
+    Files:remove(dir);
+} error (string e) {
+    print(e);
+}
+try {
+    print(Files:read(dir + "/b.txt"));
+} error (string e) {
+    print(e);
+}
+try {
+    print(Files:list("nowhere"));
+} error (string e) {
+    print(e);
+}
+Files:remove(dir + "/inner");
+Files:remove(dir + "/a.txt");
+Files:remove(dir);
+print(Files:exists(dir));
+
+print(Time:now() > 1700000000.0);
+float start = Time:clock();
+print(start >= 0.0 && start < 5.0);
+print(#Time:date());
+print(Time:date():slice(4, 5));
+print(#Time:time());
+print(Time:time():slice(2, 3));
+end

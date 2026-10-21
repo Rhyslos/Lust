@@ -1,0 +1,20 @@
+int array nums = [1, 2];
+print(nums:join(", "));
+print(Maths:squareRoot(2.0));
+print(Maths:sqrt("two"));
+print(Maths.e);
+print(Files:read(5));
+print(Json:read("[1]"));
+hook() h = nothing;
+print(Json:write(h));
+print("hi":shout());
+print(5.upper());
+string old = readText("a.txt");
+Time:now(1);
+
+class Maths {
+    has {
+        int x = 0;
+    }
+}
+end

@@ -1,0 +1,49 @@
+-- Text and array tools.
+string s = "  Hello, wide world!  ";
+print("[" + s.trim() + "]");
+string t = s.trim();
+print(t.upper());
+print(t.lower());
+print("blåbær og ÆØÅ".upper());
+print("BLÅBÆR".lower());
+print(t:contains("wide"));
+print(t:startsWith("Hello"));
+print(t:endsWith("?"));
+print(t:find("world"));
+print("blåbær":find("bær"));
+print(t:find("moon"));
+print(t:replace("o", "0"));
+print("50% off":replace("%", " percent"));
+string array words = "red,green,,blue":split(",");
+print(words);
+print(#words);
+print("åbc":split(""));
+print(t:slice(7, 11));
+print("blåbær":slice(2, 4));
+print(words:join(" + "));
+print(words:has("green"));
+print(words:find("blue"));
+print(words:find("pink"));
+int array nums = [5, 3, 9, 1];
+nums:sort();
+print(nums);
+nums:reverse();
+print(nums);
+string array names = ["pear", "Apple", "fig"];
+names:sort();
+print(names);
+float array fs = [2.5, -1.0, 2];
+fs:sort();
+print(fs);
+print(fs:has(2.0));
+try {
+    print(t:slice(5, 99));
+} error (string e) {
+    print(e);
+}
+try {
+    print(t:replace("", "x"));
+} error (string e) {
+    print(e);
+}
+end

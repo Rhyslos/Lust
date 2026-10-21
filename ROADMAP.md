@@ -8,9 +8,9 @@ The order Lust gets built in. Each step makes Lust more useful on its own, and n
 | ✅ | **Real programs:** `.lst` built through Rust into a program of its own | Done (alpha 2) |
 | ✅ | **1. cMaps and `.lst`:** the key is the first column, key-makers; programs end in `.lst` | Done (alpha 3) |
 | ✅ | **2. Sharing between files:** `pass`, `fetch`, `get` | Done (alpha 4) |
-| | **3. A basic standard library:** files and folders, time, maths, text tools, JSON | Next |
-| | 🏁 *Lust is a complete tool for console programs and Garry's Mod scripts.* | |
-| | **4. `keep`:** the memory rule for states | |
+| ✅ | **3. A basic standard library:** files and folders, time, maths, text tools, JSON | Done (alpha 5) |
+| 🏁 | *Lust is a complete tool for console programs and Garry's Mod scripts.* | Reached |
+| | **4. `keep`:** the memory rule for states | Next |
 | | **5. `node` and `assembly`** | |
 | | **6. LustQL, then saves on top of it** | |
 | | 🏁 *Programs keep their data.* | |
