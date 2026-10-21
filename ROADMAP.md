@@ -11,8 +11,8 @@ The order Lust gets built in. Each step makes Lust more useful on its own, and n
 | ✅ | **3. A basic standard library:** files and folders, time, maths, text tools, JSON | Done (alpha 5) |
 | 🏁 | *Lust is a complete tool for console programs and Garry's Mod scripts.* | Reached |
 | ✅ | **4. `keep`:** things made in a state end with it, unless they're kept | Done (alpha 6) |
-| | **5. `node` and `assembly`** | Next |
-| | **6. LustQL, then saves on top of it** | |
+| ✅ | **5. `node` and `assembly`:** objects that open and close, and factories with one recipe per class | Done (alpha 7) |
+| | **6. Databases (on SQLite), then saves** | Next |
 | | 🏁 *Programs keep their data.* | |
 | | **7. Servers:** `schema` and `route`, if they're still wanted by then | |
 | | **8. Ledger support and polish** | |

@@ -242,6 +242,11 @@ pub fn set_state<O>(owner: &Rc<RefCell<O>>, new: &'static str) {
     }
 }
 
+/// A node closed: everything it made ends.
+pub fn end_owned<O>(owner: &Rc<RefCell<O>>, msg: &str) {
+    end_owned_by(addr(owner), msg);
+}
+
 /// keep: it no longer belongs to the state it was made in.
 pub fn keep<T>(t: &Option<Rc<RefCell<T>>>) {
     if let Some(t) = t {

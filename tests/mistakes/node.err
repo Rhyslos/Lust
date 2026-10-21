@@ -1,0 +1,14 @@
+node.lsc:7:16  a node can't be like a class. It stands on its own, like an object.
+node.lsc:8:12  every node has open already: Lust opens and closes nodes. Use onOpen and onClose to do things then.
+node.lsc:11:12  onOpen takes nothing and gives nothing back: method onOpen() { … }
+node.lsc:18:16  name is a string, but this is an int. Use .text() to turn it into text.
+node.lsc:20:12  Loot already has a recipe for Item. An assembly has one recipe per class.
+node.lsc:23:12  Loot already has a recipe for Item. An assembly has one recipe per class.
+node.lsc:24:9  Item has no field called colour.
+node.lsc:28:15  an assembly makes things with create: Loot:create(Item)
+node.lsc:29:22  Loot has no recipe for Sword. It makes Item.
+node.lsc:30:15  create takes the name of the class to make: Loot:create(Item)
+node.lsc:31:7  Loot is an assembly. Make things with it like this: Loot:create(Item)
+node.lsc:32:6  open takes nothing in its ( ).
+
+12 mistakes. Nothing was run.

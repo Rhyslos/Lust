@@ -48,6 +48,8 @@ struct W<'a> {
     object_names: HashSet<String>,
     /// A key-maker for the cMap about to be written.
     maker: Option<String>,
+    /// Writing a node's starting values: what's made belongs to the node.
+    owner_label: Option<String>,
 }
 
 pub fn write(prog: &Program, info: &Info) -> Output {
@@ -60,6 +62,7 @@ pub fn write(prog: &Program, info: &Info) -> Output {
         loops: vec![],
         object_names: HashSet::new(),
         maker: None,
+        owner_label: None,
     };
     w.program(prog);
     // Strip the line markers into a line map.
@@ -166,6 +169,11 @@ impl<'a> W<'a> {
         for item in &prog.items {
             match item {
                 Item::Method(m) => forward.push(lname(&m.name)),
+                Item::Assembly(a) => {
+                    for (class, _, _) in &a.recipes {
+                        forward.push(format!("_A_{}_{}", lname(&a.name), lname(class)));
+                    }
+                }
                 Item::Class(c) => {
                     if c.is_object {
                         self.object_names.insert(c.name.clone());
@@ -211,6 +219,19 @@ impl<'a> W<'a> {
         if crate::stdlib::uses_json(self.info) {
             self.class_json();
         }
+        // Assembly recipes, each a function that makes one thing.
+        for item in &prog.items {
+            if let Item::Assembly(a) = item {
+                self.class = None;
+                for (class, _, made) in &a.recipes {
+                    let v = self.expr(made);
+                    self.line(
+                        a.pos.line,
+                        &format!("_A_{}_{} = function() return {v} end", lname(&a.name), lname(class)),
+                    );
+                }
+            }
+        }
         // Methods on their own.
         for item in &prog.items {
             if let Item::Method(m) = item {
@@ -228,7 +249,15 @@ impl<'a> W<'a> {
             if c.is_object {
                 if let Some(&ci) = self.info.class_index.get(&c.name) {
                     let t = self.class_table(ci);
-                    self.line(c.pos.line, &format!("{} = _L.new({t})", lname(&c.name)));
+                    if c.is_node {
+                        // Nodes start closed.
+                        self.line(
+                            c.pos.line,
+                            &format!("{} = _L.node({t}, {})", lname(&c.name), lua_string(crate::ast::shown(&c.name))),
+                        );
+                    } else {
+                        self.line(c.pos.line, &format!("{} = _L.new({t})", lname(&c.name)));
+                    }
                 }
             }
         }
@@ -253,6 +282,9 @@ impl<'a> W<'a> {
         if parent != "nil" {
             self.line(c.pos.line, &format!("{parent}.__fields(self)"));
         }
+        if c.is_node {
+            self.owner_label = Some(lua_string(crate::ast::shown(&c.name)));
+        }
         for f in &c.fields {
             let value = match &f.default {
                 Some(d) => match &f.ty {
@@ -263,6 +295,7 @@ impl<'a> W<'a> {
             };
             self.line(f.pos.line, &format!("self.{} = {value}", lname(&f.name)));
         }
+        self.owner_label = None;
         self.indent -= 1;
         self.line(c.pos.line, "end");
         self.class = Some(ci);
@@ -521,6 +554,15 @@ impl<'a> W<'a> {
         if let Some(lib) = self.info.libs.get(&e.id) {
             return self.lib(e, lib);
         }
+        if let Some(op) = self.info.node_ops.get(&e.id) {
+            let ExprKind::Method(t, ..) = &e.kind else { return "nil".into() };
+            let n = self.expr(t);
+            return format!("_L.node_{}({n})", op.to_lowercase());
+        }
+        if let Some((asm, c)) = self.info.creates.get(&e.id) {
+            let f = format!("_A_{}_{}()", lname(asm), lname(&self.info.classes[*c].name));
+            return self.owned(f);
+        }
         match &e.kind {
             ExprKind::Int(v) => {
                 if *v < 0 {
@@ -667,11 +709,7 @@ impl<'a> W<'a> {
                     parts.push(self.expr(v));
                 }
                 let made = format!("_L.new({})", parts.join(", "));
-                match self.class {
-                    // Made in a method while its object is in a state: it belongs to that state.
-                    Some(c) if self.info.stateful(c) => format!("_L.own(self, {made})"),
-                    _ => made,
-                }
+                self.owned(made)
             }
             ExprKind::NewHook(body) => {
                 let params: Vec<String> = self
@@ -732,6 +770,24 @@ impl<'a> W<'a> {
                     Conv::Trim => format!("_L.text_trim({c})"),
                 }
             }
+        }
+    }
+
+    /// Something just made, given to whatever owns what's made here: the object's state
+    /// option, or the node it's in.
+    fn owned(&self, made: String) -> String {
+        if let Some(l) = &self.owner_label {
+            return format!("_L.own(self, {made}, {l})");
+        }
+        match self.class {
+            Some(c) if self.info.stateful(c) => format!("_L.own(self, {made}, self.state)"),
+            Some(c) if self.info.classes[c].is_node => {
+                format!(
+                    "_L.own(self, {made}, {})",
+                    lua_string(crate::ast::shown(&self.info.classes[c].name))
+                )
+            }
+            _ => made,
         }
     }
 

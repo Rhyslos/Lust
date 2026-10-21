@@ -1,0 +1,17 @@
+Potion is worth 50
+Old sword, sharpness 2
+true
+false
+Cave is closed. Open it first: Cave:open();
+You enter the cave.
+chest, Old sword
+You leave the cave with 2 things left on the floor.
+false
+this was made in Cave, and ended when it closed. To hold onto something made in a node, keep it.
+this was made in Cave, and ended when it closed. To hold onto something made in a node, keep it.
+Old sword
+Cave is already closed.
+You enter the cave.
+0
+0
+Cave is already open.

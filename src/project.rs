@@ -20,6 +20,7 @@ enum Kind {
     Object,
     State,
     Method,
+    Assembly,
 }
 
 impl Kind {
@@ -29,6 +30,7 @@ impl Kind {
             Kind::Object => "an object",
             Kind::State => "a state",
             Kind::Method => "a method",
+            Kind::Assembly => "an assembly",
         }
     }
 }
@@ -253,6 +255,7 @@ fn declarations(p: &Program) -> HashMap<String, Kind> {
             Item::State(s) => d.insert(s.name.clone(), Kind::State),
             Item::Class(c) => d.insert(c.name.clone(), if c.is_object { Kind::Object } else { Kind::Class }),
             Item::Method(m) => d.insert(m.name.clone(), Kind::Method),
+            Item::Assembly(a) => d.insert(a.name.clone(), Kind::Assembly),
         };
     }
     d
@@ -310,7 +313,7 @@ fn value_names(p: &Program, out: &mut HashSet<String>) {
                 }
             }
             Item::Method(m) => method(m, out),
-            Item::State(_) => {}
+            Item::State(_) | Item::Assembly(_) => {}
         }
     }
     stmts(&p.body, out);
@@ -377,6 +380,13 @@ impl<'a> Renamer<'a> {
             Item::Method(m) => {
                 self.name(&mut m.name, m.pos, false);
                 self.method(m);
+            }
+            Item::Assembly(a) => {
+                self.name(&mut a.name, a.pos, false);
+                for (class, pos, made) in &mut a.recipes {
+                    self.name(class, *pos, false);
+                    self.expr(made);
+                }
             }
         }
     }
