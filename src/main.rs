@@ -7,8 +7,14 @@ mod lexer;
 mod lua;
 mod parser;
 mod project;
+// The runtime that goes into built programs. lust uses its file functions too, so
+// LustScript run by lust says exactly the same things.
+#[path = "native_rt.rs"]
+#[allow(dead_code, non_snake_case)]
+mod native_rt;
 mod run;
 mod rust;
+mod stdlib;
 mod tests;
 mod types;
 

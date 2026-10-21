@@ -167,6 +167,11 @@ pub fn write(prog: &Program, info: &Info, files: &[String]) -> String {
         }
     }
 
+    if crate::stdlib::uses_json(info) {
+        let j = w.class_json();
+        defs.push_str(&j);
+    }
+
     // Methods on their own.
     for item in &prog.items {
         if let Item::Method(m) = item {
@@ -632,6 +637,9 @@ impl<'a> W<'a> {
     }
 
     fn expr(&mut self, e: &Expr) -> String {
+        if let Some(lib) = self.info.libs.get(&e.id) {
+            return self.lib(e, lib);
+        }
         match &e.kind {
             ExprKind::Int(v) => format!("({v}i64)"),
             ExprKind::Float(v) => format!("({v:?}f64)"),
@@ -873,6 +881,9 @@ impl<'a> W<'a> {
                     },
                     Conv::IsNumber => format!("rt::isnum(&{c})"),
                     Conv::Lines => format!("rt::lines(&{c})"),
+                    Conv::Upper => format!("rt::text_upper({c})"),
+                    Conv::Lower => format!("rt::text_lower({c})"),
+                    Conv::Trim => format!("rt::text_trim({c})"),
                 }
             }
         }
@@ -997,6 +1008,158 @@ impl<'a> W<'a> {
                 format!("({f})(&{code})")
             }
         }
+    }
+
+    /// A standard library call.
+    fn lib(&mut self, e: &Expr, lib: &crate::stdlib::Lib) -> String {
+        let (target, args): (Option<&Expr>, &[Expr]) = match &e.kind {
+            ExprKind::Method(t, _, args, _) => ((!crate::stdlib::is_object(t)).then_some(&**t), args),
+            _ => (None, &[]),
+        };
+        match lib.func.as_str() {
+            "json_write" | "json_pretty" => {
+                let t = self.info.ty(&args[0]);
+                let v = self.expr(&args[0]);
+                let enc = self.jenc(&t);
+                format!("rt::json_write(&{v}, &{enc}, {})", lib.func == "json_pretty")
+            }
+            "json_read" => {
+                let t = self.expr(&args[0]);
+                let dec = self.jdec(&lib.ret);
+                format!("rt::json_read({t}, &{dec})")
+            }
+            f => {
+                let mut a: Vec<String> = target.map(|t| self.expr(t)).into_iter().collect();
+                for (x, (_, pt)) in args.iter().zip(&lib.params) {
+                    a.push(self.coerced(x, pt));
+                }
+                format!("rt::{f}({})", a.join(", "))
+            }
+        }
+    }
+
+    /// A Rust function or closure that writes a value of type `t` as JSON.
+    fn jenc(&mut self, t: &Ty) -> String {
+        let tt = self.ty(t);
+        match t {
+            Ty::Int => "rt::jw_int".into(),
+            Ty::Float => "rt::jw_float".into(),
+            Ty::Truth => "rt::jw_truth".into(),
+            Ty::Str => "rt::jw_string".into(),
+            Ty::State(_) => "rt::jw_state".into(),
+            Ty::Class(c) => format!("jw{}", self.root(*c)),
+            Ty::Array(el) => {
+                let inner = self.jenc(el);
+                format!("(|v: &{tt}, d: Option<usize>| -> String {{ rt::jw_array(v, d, &{inner}) }})")
+            }
+            Ty::Map(el) => {
+                let inner = self.jenc(el);
+                format!("(|v: &{tt}, d: Option<usize>| -> String {{ rt::jw_map(v, d, &{inner}) }})")
+            }
+            Ty::CMap(cols) => {
+                let ri = self.row_index(cols);
+                let mut parts = Vec::new();
+                for (n, ct) in cols.iter() {
+                    let f = self.jenc(ct);
+                    parts.push(format!("({n:?}, ({f})(&r.f_{n}, rt::deeper(d)))"));
+                }
+                let row = format!(
+                    "(|r: &Row{ri}, d: Option<usize>| -> String {{ rt::jw_fields(vec![{}], d) }})",
+                    parts.join(", ")
+                );
+                format!("(|v: &{tt}, d: Option<usize>| -> String {{ rt::jw_cmap(v, d, &{row}) }})")
+            }
+            _ => "rt::jw_int".into(),
+        }
+    }
+
+    /// A Rust function or closure that reads a value of type `t` from parsed JSON.
+    fn jdec(&mut self, t: &Ty) -> String {
+        let tt = self.ty(t);
+        match t {
+            Ty::Int => "rt::jr_int".into(),
+            Ty::Float => "rt::jr_float".into(),
+            Ty::Truth => "rt::jr_truth".into(),
+            Ty::Str => "rt::jr_string".into(),
+            Ty::State(s) => {
+                let opts: Vec<String> = self.info.states[*s].options.iter().map(|o| format!("{o:?}")).collect();
+                format!(
+                    "(|v: &rt::Json, at: &str| -> &'static str {{ rt::jr_state(v, at, &[{}]) }})",
+                    opts.join(", ")
+                )
+            }
+            Ty::Class(c) => format!("jr{c}"),
+            Ty::Array(el) => {
+                let inner = self.jdec(el);
+                format!("(|v: &rt::Json, at: &str| -> {tt} {{ rt::jr_array(v, at, &{inner}) }})")
+            }
+            Ty::Map(el) => {
+                let inner = self.jdec(el);
+                format!("(|v: &rt::Json, at: &str| -> {tt} {{ rt::jr_map(v, at, &{inner}) }})")
+            }
+            Ty::CMap(cols) => {
+                let ri = self.row_index(cols);
+                let kt = self.ty(&cols[0].1);
+                let (kn, kty) = cols[0].clone();
+                let kdec = self.jdec(&kty);
+                let mut body = format!("let k = rt::jget(o, {kn:?}).map(|x| ({kdec})(x, &rt::child(at, {kn:?}))); ");
+                let mut fields = Vec::new();
+                for (i, (n, ct)) in cols.iter().enumerate().skip(1) {
+                    let f = self.jdec(ct);
+                    body.push_str(&format!("let c{i} = ({f})(rt::jneed(o, {n:?}, at), &rt::child(at, {n:?})); "));
+                    fields.push(format!("f_{n}: c{i}, "));
+                }
+                let row = format!(
+                    "(|o: &rt::Json, at: &str| -> (Option<{kt}>, Row{ri}) {{ {body}(k, Row{ri} {{ {}..Default::default() }}) }})",
+                    fields.concat()
+                );
+                format!("(|v: &rt::Json, at: &str| -> {tt} {{ rt::jr_cmap(v, at, {kn:?}, &{row}) }})")
+            }
+            _ => "rt::jr_int".into(),
+        }
+    }
+
+    /// Every class family learns to write itself as JSON, and every class to read itself back.
+    fn class_json(&mut self) -> String {
+        let info = self.info;
+        let n = info.classes.len();
+        let mut out = String::new();
+        for root in 0..n {
+            if info.classes[root].parent.is_some() {
+                continue;
+            }
+            let mut arms = String::new();
+            let family: Vec<usize> = (0..n).filter(|&c| self.root(c) == root).collect();
+            for c in family {
+                let mut parts = Vec::new();
+                for (decl, name, ty) in crate::stdlib::json_fields(info, c) {
+                    let enc = self.jenc(&ty);
+                    parts.push(format!("({name:?}, ({enc})(&b.{}, rt::deeper(d)))", self.fname(decl, &name)));
+                }
+                arms.push_str(&format!(
+                    "ID_{c} => {{ let b = o.borrow(); rt::jw_fields(vec![{}], d) }} ",
+                    parts.join(", ")
+                ));
+            }
+            out.push_str(&format!(
+                "fn jw{root}(o: &Option<Rc<RefCell<O{root}>>>, d: Option<usize>) -> String {{ let Some(o) = o else {{ return \"null\".to_string() }}; rt::jw_enter(); let c = o.borrow().class; let s = match c {{ {arms}_ => String::new() }}; rt::jw_leave(); s }}\n"
+            ));
+        }
+        for c in 0..n {
+            let root = self.root(c);
+            let mut sets = String::new();
+            for (decl, name, ty) in crate::stdlib::json_fields(info, c) {
+                let dec = self.jdec(&ty);
+                sets.push_str(&format!(
+                    "if let Some(x) = rt::jget(v, {name:?}) {{ let val = ({dec})(x, &rt::child(at, {name:?})); o.borrow_mut().{} = val; }} ",
+                    self.fname(decl, &name)
+                ));
+            }
+            out.push_str(&format!(
+                "fn jr{c}(v: &rt::Json, at: &str) -> Option<Rc<RefCell<O{root}>>> {{ if !rt::jr_object(v, at) {{ return None; }} let o = new{c}(); {sets}Some(o) }}\n"
+            ));
+        }
+        out
     }
 
     /// A closure taking &T and giving its text. Inside lists, text is in quotes.

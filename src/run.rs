@@ -7,8 +7,34 @@ use mlua::Lua;
 
 use crate::lua::Output;
 
+/// What Lua can't do on its own, from lust: folders, and a precise clock.
+fn host(lua: &Lua) -> mlua::Result<()> {
+    use crate::native_rt as rt;
+    let h = lua.create_table()?;
+    let started = std::time::Instant::now();
+    h.set("exists", lua.create_function(|_, p: String| Ok(std::path::Path::new(&p).exists()))?)?;
+    h.set("remove", lua.create_function(|_, p: String| Ok(rt::fs_remove(&p).err()))?)?;
+    h.set(
+        "list",
+        lua.create_function(|_, p: String| {
+            Ok(match rt::fs_list(&p) {
+                Ok(names) => (Some(names), None),
+                Err(e) => (None, Some(e)),
+            })
+        })?,
+    )?;
+    h.set("mkdir", lua.create_function(|_, p: String| Ok(rt::fs_mkdir(&p).err()))?)?;
+    h.set("now", lua.create_function(|_, ()| Ok(rt::time_now()))?)?;
+    h.set("clock", lua.create_function(move |_, ()| Ok(started.elapsed().as_secs_f64()))?)?;
+    lua.globals().set("LUST_HOST", h)
+}
+
 pub fn run(out: &Output, files: &[String]) -> ExitCode {
     let lua = Lua::new();
+    if let Err(e) = host(&lua) {
+        eprintln!("couldn't start Lua: {e}");
+        return ExitCode::from(1);
+    }
     let result = lua.load(&out.code).set_name("=lust").exec();
     match result {
         Ok(()) => ExitCode::SUCCESS,

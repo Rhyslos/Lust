@@ -64,6 +64,8 @@ pub struct Info {
     pub hook_params: HashMap<usize, Vec<String>>,
     /// Declared types: a variable's, keyed by its value; a called local hook's, keyed by the call.
     pub decl_types: HashMap<usize, Ty>,
+    /// Standard library calls, by expression.
+    pub libs: HashMap<usize, crate::stdlib::Lib>,
     pub states: Vec<StateInfo>,
     pub classes: Vec<ClassInfo>,
     pub methods: HashMap<String, MethodSig>,
@@ -1041,7 +1043,7 @@ impl<'a> Checker<'a> {
             },
             ExprKind::Name(n) => self.name(e, n, ctx),
             ExprKind::Field(target, f, fpos) => self.field(e, target, f, *fpos, ctx),
-            ExprKind::Method(target, m, args, mpos) => self.method_call(e, target, m, args, *mpos, ctx),
+            ExprKind::Method(target, m, args, mpos) => self.method_call(e, target, m, args, *mpos, ctx, expected),
             ExprKind::MethodRef(target, m, mpos) => {
                 let t = self.expr(target, ctx, None);
                 match t {
@@ -1285,6 +1287,7 @@ impl<'a> Checker<'a> {
                         Conv::Float => Ty::Float,
                         Conv::IsNumber => Ty::Truth,
                         Conv::Lines => Ty::Array(Box::new(Ty::Str)),
+                        Conv::Upper | Conv::Lower | Conv::Trim => Ty::Str,
                     };
                 }
                 match conv {
@@ -1315,6 +1318,17 @@ impl<'a> Checker<'a> {
                             _ => self.err(*cpos, format!(".float() works on ints and text, but this is {}.", self.a(&t))),
                         }
                         Ty::Float
+                    }
+                    Conv::Upper | Conv::Lower | Conv::Trim => {
+                        if t != Ty::Str {
+                            let n = match conv {
+                                Conv::Upper => "upper",
+                                Conv::Lower => "lower",
+                                _ => "trim",
+                            };
+                            self.err(*cpos, format!(".{n}() works on text, but this is {}.", self.a(&t)));
+                        }
+                        Ty::Str
                     }
                     Conv::IsNumber | Conv::Lines => {
                         if t != Ty::Str {
@@ -1409,7 +1423,169 @@ impl<'a> Checker<'a> {
         Ty::Error
     }
 
+    /// A call to the standard library, once it's known which one: checks the arguments.
+    fn lib_call(&mut self, e: &Expr, lib: crate::stdlib::Lib, args: &[Expr], m: &str, mpos: Pos, ctx: &mut Ctx) -> Ty {
+        let params: Vec<(String, Ty)> = lib.params.iter().map(|(n, t)| (n.to_string(), t.clone())).collect();
+        self.info.calls.insert(e.id, CallRes::Builtin);
+        self.args(args, &params, m, mpos, ctx);
+        let ret = lib.ret.clone();
+        self.info.libs.insert(e.id, lib);
+        ret
+    }
+
+    /// Maths:sqrt(2.0), Files:read("notes.txt"), Json:read(text) and the rest.
+    #[allow(clippy::too_many_arguments)]
+    fn object_call(&mut self, e: &Expr, obj: &str, m: &str, args: &[Expr], mpos: Pos, ctx: &mut Ctx, expected: Option<&Ty>) -> Ty {
+        use crate::stdlib::Lib;
+        if obj == "Json" {
+            let one = |me: &mut Self, ctx: &mut Ctx| -> Option<Ty> {
+                if args.len() != 1 {
+                    me.err(mpos, format!("Json:{m} takes one value, but gets {}.", args.len()));
+                    for a in args {
+                        me.expr(a, ctx, None);
+                    }
+                    return None;
+                }
+                Some(me.expr(&args[0], ctx, if m == "read" { Some(&Ty::Str) } else { None }))
+            };
+            match m {
+                "write" | "pretty" => {
+                    let Some(t) = one(self, ctx) else { return Ty::Str };
+                    if let Some(p) = crate::stdlib::json_problem(&t, &|t| self.a(t)) {
+                        self.err(
+                            args[0].pos,
+                            format!("{p} JSON holds numbers, text, truths, states, arrays, maps, cMaps and things made from classes."),
+                        );
+                    } else if t == Ty::Void || t == Ty::Nothing {
+                        self.err(args[0].pos, "there's nothing here to turn into JSON.");
+                    }
+                    self.info.calls.insert(e.id, CallRes::Builtin);
+                    self.info.libs.insert(
+                        e.id,
+                        Lib {
+                            func: format!("json_{m}"),
+                            params: vec![],
+                            ret: Ty::Str,
+                        },
+                    );
+                    return Ty::Str;
+                }
+                "read" => {
+                    let got = one(self, ctx);
+                    if let Some(g) = got {
+                        if g != Ty::Str && g != Ty::Error {
+                            self.err(args[0].pos, format!("Json:read reads text, but this is {}.", self.a(&g)));
+                        }
+                    }
+                    let Some(want) = expected.cloned().filter(|t| !matches!(t, Ty::Void | Ty::Nothing)) else {
+                        self.err(
+                            mpos,
+                            "Json:read needs to know what it's reading, so give it a place to go: Player p = Json:read(text);",
+                        );
+                        return Ty::Error;
+                    };
+                    if let Some(p) = crate::stdlib::json_problem(&want, &|t| self.a(t)) {
+                        self.err(
+                            mpos,
+                            format!("{p} JSON holds numbers, text, truths, states, arrays, maps, cMaps and things made from classes."),
+                        );
+                        return Ty::Error;
+                    }
+                    if let Ty::Class(c) = want {
+                        if self.info.classes[c].is_object {
+                            self.err(mpos, format!("{} is an object, and there's only ever one, so it can't be read from JSON. Read into its fields instead.", self.info.classes[c].name));
+                            return Ty::Error;
+                        }
+                    }
+                    self.info.calls.insert(e.id, CallRes::Builtin);
+                    self.info.libs.insert(
+                        e.id,
+                        Lib {
+                            func: "json_read".into(),
+                            params: vec![],
+                            ret: want.clone(),
+                        },
+                    );
+                    return want;
+                }
+                _ => {}
+            }
+        } else {
+            let types: Vec<Ty> = args.iter().map(|a| self.expr(a, ctx, None)).collect();
+            if let Some(found) = crate::stdlib::object_method(obj, m, &types) {
+                match found {
+                    Ok(lib) => {
+                        self.info.calls.insert(e.id, CallRes::Builtin);
+                        if args.len() != lib.params.len() {
+                            self.err(
+                                e.pos,
+                                format!(
+                                    "{obj}:{m} takes {} value{}, but gets {}.",
+                                    lib.params.len(),
+                                    if lib.params.len() == 1 { "" } else { "s" },
+                                    args.len()
+                                ),
+                            );
+                        } else {
+                            for ((a, got), (pn, pt)) in args.iter().zip(&types).zip(&lib.params) {
+                                self.expect_fits(a, got, pt, &format!("{obj}:{m}'s {pn} is {}", self.a(pt)));
+                            }
+                        }
+                        let ret = lib.ret.clone();
+                        self.info.libs.insert(e.id, lib);
+                        return ret;
+                    }
+                    Err(msg) => {
+                        self.err(mpos, msg);
+                        return Ty::Error;
+                    }
+                }
+            }
+        }
+        if obj == "Json" {
+            for a in args {
+                self.expr(a, ctx, None);
+            }
+        }
+        let s = suggest(
+            m,
+            crate::stdlib::listing(obj)
+                .replace(" and ", ", ")
+                .split(", ")
+                .map(|x| x.trim_start_matches("and ").to_string())
+                .collect::<Vec<String>>(),
+        );
+        self.err(
+            mpos,
+            format!("{obj} has no method called {m}.{s} It has {}.", crate::stdlib::listing(obj)),
+        );
+        Ty::Error
+    }
+
     fn field(&mut self, e: &Expr, target: &Expr, f: &str, fpos: Pos, ctx: &mut Ctx) -> Ty {
+        if let ExprKind::Name(n) = &target.kind {
+            if crate::stdlib::OBJECTS.contains(&n.as_str()) {
+                if n == "Maths" && f == "pi" {
+                    self.info.libs.insert(
+                        e.id,
+                        crate::stdlib::Lib {
+                            func: "maths_pi".into(),
+                            params: vec![],
+                            ret: Ty::Float,
+                        },
+                    );
+                    return Ty::Float;
+                }
+                self.err(
+                    fpos,
+                    format!(
+                        "{n} has no field called {f}. Its methods are called with : like {n}:{}(…).",
+                        crate::stdlib::listing(n).split(',').next().unwrap_or("")
+                    ),
+                );
+                return Ty::Error;
+            }
+        }
         let t = self.expr(target, ctx, None);
         // GameState.ActiveGame.Combat: walking down a state's options.
         if let Some((s, path)) = self.info.options.get(&target.id).cloned() {
@@ -1523,8 +1699,6 @@ impl<'a> Checker<'a> {
                 "print" => (vec![("value", None)], Ty::Void),
                 "random" => (vec![("low", Some(Ty::Int)), ("high", Some(Ty::Int))], Ty::Int),
                 "ask" => (vec![("question", Some(Ty::Str))], Ty::Str),
-                "readText" => (vec![("file", Some(Ty::Str))], Ty::Str),
-                "writeText" => (vec![("file", Some(Ty::Str)), ("text", Some(Ty::Str))], Ty::Void),
                 "wait" => (vec![("seconds", Some(Ty::Float))], Ty::Void),
                 _ => unreachable!(),
             };
@@ -1607,12 +1781,26 @@ impl<'a> Checker<'a> {
                 cur = self.info.classes[i].parent;
             }
         }
+        if name == "readText" || name == "writeText" {
+            let new = if name == "readText" {
+                "Files:read(\"notes.txt\")"
+            } else {
+                "Files:write(\"notes.txt\", text)"
+            };
+            self.err(e.pos, format!("{name} is part of Files now: {new}"));
+            return Ty::Error;
+        }
         let s = suggest(name, known);
         self.err(e.pos, format!("there's no method called {name}.{s}"));
         Ty::Error
     }
 
-    fn method_call(&mut self, e: &Expr, target: &Expr, m: &str, args: &[Expr], mpos: Pos, ctx: &mut Ctx) -> Ty {
+    fn method_call(&mut self, e: &Expr, target: &Expr, m: &str, args: &[Expr], mpos: Pos, ctx: &mut Ctx, expected: Option<&Ty>) -> Ty {
+        if let ExprKind::Name(n) = &target.kind {
+            if crate::stdlib::OBJECTS.contains(&n.as_str()) {
+                return self.object_call(e, n, m, args, mpos, ctx, expected);
+            }
+        }
         let t = self.expr(target, ctx, None);
         let builtin: Option<(Vec<(String, Ty)>, Ty)> = match (&t, m) {
             (Ty::Array(el), "inject") => Some((vec![("item".into(), (**el).clone())], Ty::Void)),
@@ -1636,6 +1824,18 @@ impl<'a> Checker<'a> {
             self.info.calls.insert(e.id, CallRes::Builtin);
             self.args(args, &params, m, e.pos, ctx);
             return ret;
+        }
+        if let Some(found) = crate::stdlib::value_method(&t, m) {
+            return match found {
+                Ok(lib) => self.lib_call(e, lib, args, m, mpos, ctx),
+                Err(msg) => {
+                    for a in args {
+                        self.expr(a, ctx, None);
+                    }
+                    self.err(mpos, msg);
+                    Ty::Error
+                }
+            };
         }
         match t {
             Ty::Class(c) => {
@@ -1675,9 +1875,12 @@ impl<'a> Checker<'a> {
                     self.expr(a, ctx, None);
                 }
                 let what = match other {
-                    Ty::Array(_) => " Arrays have inject and remove.",
+                    Ty::Array(_) => " Arrays have inject, remove, has, find, join, sort and reverse.",
                     Ty::Map(_) => " Maps have has and remove.",
                     Ty::CMap(_) => " cMaps have inject, remove and has.",
+                    Ty::Str => {
+                        " Text has contains, startsWith, endsWith, find, replace, split and slice, and .upper(), .lower() and .trim()."
+                    }
                     _ => "",
                 };
                 self.err(

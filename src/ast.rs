@@ -305,6 +305,9 @@ pub enum Conv {
     Float,
     IsNumber,
     Lines,
+    Upper,
+    Lower,
+    Trim,
 }
 
 #[derive(Clone)]

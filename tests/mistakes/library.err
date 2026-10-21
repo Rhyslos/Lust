@@ -1,0 +1,14 @@
+library.lsc:2:12  join works on string arrays. Turn the items into text first.
+library.lsc:3:13  Maths has no method called squareRoot. It has abs, min, max, clamp, round, floor, ceil, sqrt, power, sin, cos and tan, and Maths.pi.
+library.lsc:4:18  Maths:sqrt's number is a float, but this is a string. Use .float() to turn text into a number.
+library.lsc:5:13  Maths has no field called e. Its methods are called with : like Maths:abs(…).
+library.lsc:6:18  Files:read's file is a string, but this is an int. Use .text() to turn it into text.
+library.lsc:7:12  Json:read needs to know what it's reading, so give it a place to go: Player p = Json:read(text);
+library.lsc:9:18  a hook can't be JSON. JSON holds numbers, text, truths, states, arrays, maps, cMaps and things made from classes.
+library.lsc:10:12  this is a string, which has no method called shout. Text has contains, startsWith, endsWith, find, replace, split and slice, and .upper(), .lower() and .trim().
+library.lsc:11:9  .upper() works on text, but this is an int.
+library.lsc:12:14  readText is part of Files now: Files:read("notes.txt")
+library.lsc:13:1  Time:now takes 0 values, but gets 1.
+library.lsc:15:7  Maths is one of Lust's built-in objects, so it can't be a name.
+
+12 mistakes. Nothing was run.

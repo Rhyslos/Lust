@@ -1,0 +1,41 @@
+{"name":"Ada \"the brave\"","hp":20,"speed":1.5,"alive":true,"mood":"Grumpy","titles":["Knight"],"skills":{"cook":2},"bag":[{"id":1,"item":"Sword","amount":1},{"id":7,"item":"Apple","amount":3}],"friend":{"name":"Merlin","hp":20,"speed":1.5,"alive":true,"mood":"Happy","titles":[],"skills":{},"bag":[],"friend":null,"hand":null,"mana":30},"hand":{"name":"torch","weight":1}}
+[
+  {
+    "id": 1,
+    "item": "Sword",
+    "amount": 1
+  },
+  {
+    "id": 7,
+    "item": "Apple",
+    "amount": 3
+  }
+]
+[1.5,2.0,-3e-07]
+"tab\there, line\nthere, ünïcode"
+{
+  "tea": 2.5
+}
+[]
+Rune
+12
+2.0
+Grumpy
+["Smith", "Bard"]
+["sing" 3, "forge" 5]
+[[4, "Hammer", 1], [5, "Nails", 40]]
+Liv
+true
+true
+[1, 2, 3]
+5
+café 😀
+the JSON at hp should be an int, but it's text.
+the JSON at mood should be one of Happy, Grumpy, but it's "Sleepy".
+the JSON at bag[0] is missing item.
+the JSON at [1] should be an int, but it's a number with a fraction.
+this isn't valid JSON (line 2): the text ends too early.
+this isn't valid JSON (line 1): "2" is out of place.
+this isn't valid JSON (line 1): "x" is out of place.
+JSON can't hold infinity.
+this holds itself (somewhere inside it, something points back to it), so it can't be JSON.

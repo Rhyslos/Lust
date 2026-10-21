@@ -1,0 +1,29 @@
+-- Maths.
+print(Maths:abs(-5));
+print(Maths:abs(-2.5));
+print(Maths:min(3, 8));
+print(Maths:max(3, 8.5));
+print(Maths:clamp(150, 0, 100));
+print(Maths:clamp(-0.5, 0.0, 1.0));
+print(Maths:round(2.5));
+print(Maths:round(-2.5));
+print(Maths:round(2.4));
+print(Maths:floor(-1.5));
+print(Maths:ceil(1.2));
+print(Maths:sqrt(16));
+print(Maths:power(2, 10));
+print(Maths:sin(0));
+print(Maths:cos(0));
+print(Maths.pi);
+print(Maths:round(Maths.pi * 100));
+try {
+    print(Maths:sqrt(-1));
+} error (string e) {
+    print(e);
+}
+try {
+    print(Maths:clamp(5, 10, 1));
+} error (string e) {
+    print(e);
+}
+end

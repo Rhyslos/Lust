@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (2.0 alpha 4):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks and the built-ins. Sharing between files (`pass`/`fetch`/`get`) works too. Not yet: `node`, `assembly`, `keep`, saves, `view`, `schema`/`route`, and LustQL. Lust v1 lives on the `v1` branch.
+> **What works today (2.0 alpha 5):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`) works too. Not yet: `node`, `assembly`, `keep`, saves, `view`, `schema`/`route`, and LustQL. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -152,6 +152,8 @@ string mood = either hp > 10? "happy" or "grumpy";
 | `.float()` | an int or text as a float |
 | `.isNumber()` | `true` when text is a number |
 | `.lines()` | text cut into its lines |
+
+More tools for text, and `Maths` for square roots, rounding and the rest, are in section 19.
 
 ---
 
@@ -432,7 +434,7 @@ save gameSession;
 
 ```
 try {
-    writeText("config.json", data);
+    Files:write("config.json", data);
 } error (string message) {
     print("That didn't work: " + message);
 }
@@ -533,7 +535,7 @@ How handlers receive a schema and send one back is **(to design)**.
 
 ---
 
-## 19. Built-ins and testing
+## 19. Built-ins and the standard library
 
 | Built-in | Does |
 | --- | --- |
@@ -541,8 +543,76 @@ How handlers receive a schema and send one back is **(to design)**.
 | `wait seconds;` | pauses |
 | `random(low, high)` | a whole number from `low` to `high` |
 | `ask(question)` | shows a question and gives back what's typed |
-| `readText(file)` | a whole text file |
-| `writeText(file, text);` | writes a text file |
+
+### Text
+
+Positions count letters (not bytes), from 0, like arrays.
+
+| | Gives |
+| --- | --- |
+| `name.upper()`, `name.lower()` | the text in capitals, or in small letters (a–z and accented letters like æ, ø, å, é) |
+| `name.trim()` | the text without spaces and line breaks at either end |
+| `name:contains("a")`, `:startsWith("a")`, `:endsWith("a")` | true or false |
+| `name:find("a")` | where it first is, or -1 if it isn't there |
+| `name:replace("old", "new")` | the text with every `old` changed to `new` |
+| `line:split(",")` | a string array of the parts between the commas. `:split("")` gives every letter |
+| `name:slice(2, 5)` | letters 2, 3 and 4 |
+
+### Arrays
+
+| | Does |
+| --- | --- |
+| `words:join(", ")` | one text from a string array, with `", "` between the items |
+| `scores:has(10)`, `scores:find(10)` | whether it's there, and where (or -1). For arrays of numbers, text and truths |
+| `scores:sort();` | puts numbers or text in order, smallest first |
+| `scores:reverse();` | turns the array around |
+
+### Built-in objects
+
+Lust comes with four objects. Their methods are called like any object's: `Maths:sqrt(2.0)`.
+
+**Maths**
+
+| | Gives |
+| --- | --- |
+| `Maths:abs(x)`, `Maths:min(a, b)`, `Maths:max(a, b)`, `Maths:clamp(x, low, high)` | an int for ints, a float when there's a float |
+| `Maths:round(x)`, `Maths:floor(x)`, `Maths:ceil(x)` | the nearest whole number, the one below, the one above (an int) |
+| `Maths:sqrt(x)`, `Maths:power(x, p)`, `Maths:sin(x)`, `Maths:cos(x)`, `Maths:tan(x)` | a float. Angles are in radians |
+| `Maths.pi` | 3.14159… |
+
+**Files.** Paths are from the folder the program runs in.
+
+| | Does |
+| --- | --- |
+| `Files:read(path)` | the whole file as text |
+| `Files:write(path, text);`, `Files:append(path, text);` | writes the file, or adds to its end |
+| `Files:exists(path)` | true if there's a file or folder there |
+| `Files:remove(path);` | removes a file, or an empty folder |
+| `Files:list(folder)` | a string array of what's in the folder, in order |
+| `Files:makeFolder(path);` | makes the folder, and any folders it's inside |
+
+**Time**
+
+| | Gives |
+| --- | --- |
+| `Time:now()` | seconds since 1 January 1970, as a float |
+| `Time:clock()` | seconds since the program started: good for timing things |
+| `Time:date()`, `Time:time()` | today's date as `"2026-10-21"`, and the time as `"14:05:09"`, by the computer's clock |
+
+**Json** turns values into JSON text and back:
+
+```
+string text = Json:write(player);     -- {"name":"Ada","hp":20}
+string nice = Json:pretty(player);    -- the same, over several lines
+Player back = Json:read(text);
+```
+
+- JSON holds numbers, text, truths, state options (as their names), arrays, maps (as JSON objects), cMaps (as arrays of objects) and things made from classes (as objects of their fields). Hooks stay out.
+- `Json:read` needs a place to go, so Lust knows what it's reading: `Player back = Json:read(text);`.
+- A class's fields that are missing from the JSON keep their starting values. Anything extra is left out.
+- If the JSON doesn't fit, the error says where: `the JSON at bag[0] is missing item.`
+
+In LustScript, `Files:list`, `Files:makeFolder` and the precise clock need `lust run`. Inside other programs, like Garry's Mod, they say they aren't available.
 
 **Testing:** `lust test <folder>` runs every program that has an expected result next to it: `.out` for what it prints, `.err` for the mistakes it should report, `.in` for what's typed in.
 
@@ -599,8 +669,10 @@ truth      array      cMap       map
 The built-ins can't be used as names either:
 
 ```
-print      wait       random     ask        readText   writeText
+print      wait       random     ask
 ```
+
+Neither can the built-in objects: `Maths`, `Files`, `Time` and `Json`.
 
 ---
 

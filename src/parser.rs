@@ -9,7 +9,7 @@ pub const RESERVED: &[&str] = &[
     "view", "style", "keep", "pass", "fetch", "get", "lua", "is", "then", "or", "either", "not", "true", "false", "loop", "stop", "skip",
     "in", "try", "error", "state", "save", "load", "saved", "end", "int", "float", "string", "truth", "array", "cMap", "map",
 ];
-pub const BUILTINS: &[&str] = &["print", "wait", "random", "ask", "readText", "writeText"];
+pub const BUILTINS: &[&str] = &["print", "wait", "random", "ask"];
 
 /// Words from other languages, with what Lust says instead.
 fn hint_for(word: &str) -> Option<&'static str> {
@@ -41,6 +41,9 @@ const CONVERSIONS: &[(&str, Conv)] = &[
     ("float", Conv::Float),
     ("isNumber", Conv::IsNumber),
     ("lines", Conv::Lines),
+    ("upper", Conv::Upper),
+    ("lower", Conv::Lower),
+    ("trim", Conv::Trim),
 ];
 
 #[derive(Clone, Copy, PartialEq)]
@@ -57,6 +60,10 @@ pub fn check_name(diags: &mut Diags, name: &str, pos: Pos, kind: NameKind, what:
     }
     if BUILTINS.contains(&name) {
         diags.add(pos, format!("{name} is a built-in, so it can't be a name."));
+        return;
+    }
+    if crate::stdlib::OBJECTS.contains(&name) {
+        diags.add(pos, format!("{name} is one of Lust's built-in objects, so it can't be a name."));
         return;
     }
     let letters: Vec<char> = name.chars().filter(|c| c.is_alphabetic()).collect();
