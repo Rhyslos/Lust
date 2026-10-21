@@ -6,9 +6,9 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 thread_local! {
-    static LINE: Cell<u32> = Cell::new(0);
-    static DEPTH: Cell<u32> = Cell::new(0);
-    static RNG: Cell<u64> = Cell::new(0);
+    static LINE: Cell<u32> = const { Cell::new(0) };
+    static DEPTH: Cell<u32> = const { Cell::new(0) };
+    static RNG: Cell<u64> = const { Cell::new(0) };
 }
 
 /// The Lust line now running, for error messages.
@@ -162,7 +162,7 @@ struct Owned {
 }
 
 thread_local! {
-    static OWNED: RefCell<Vec<Owned>> = RefCell::new(Vec::new());
+    static OWNED: RefCell<Vec<Owned>> = const { RefCell::new(Vec::new()) };
 }
 
 fn addr<T>(r: &Rc<T>) -> usize {
@@ -287,7 +287,7 @@ fn g15(v: f64) -> String {
     let e = format!("{:.14e}", v);
     let (mant, exp) = e.split_once('e').unwrap();
     let exp: i32 = exp.parse().unwrap();
-    if exp < -4 || exp >= 15 {
+    if !(-4..15).contains(&exp) {
         let sign = if exp < 0 { '-' } else { '+' };
         format!("{}e{}{:02}", trim_zeros(mant), sign, exp.abs())
     } else {
@@ -369,7 +369,7 @@ pub fn toint(v: f64) -> i64 {
     if v.is_nan() {
         fail("this float isn't a number, so it can't be an int.".into());
     }
-    if v.is_infinite() || v >= 9.2233720368547758e18 || v < -9.2233720368547758e18 {
+    if v.is_infinite() || !(-9.223_372_036_854_776e18..9.223_372_036_854_776e18).contains(&v) {
         fail(format!("{} is too big to be an int.", ftext(v)));
     }
     v.trunc() as i64
@@ -494,7 +494,7 @@ pub fn acopy<T: Clone>(a: &Arr<T>) -> Vec<T> {
 }
 
 pub fn ashow<T>(a: &Arr<T>, f: impl Fn(&T) -> String) -> String {
-    let parts: Vec<String> = a.borrow().iter().map(|x| f(x)).collect();
+    let parts: Vec<String> = a.borrow().iter().map(f).collect();
     format!("[{}]", parts.join(", "))
 }
 
@@ -844,7 +844,7 @@ pub fn array_join(a: Arr<String>, sep: String) -> String {
     a.borrow().join(&sep)
 }
 pub fn array_has<T: PartialEq>(a: Arr<T>, x: T) -> bool {
-    a.borrow().iter().any(|y| *y == x)
+    a.borrow().contains(&x)
 }
 pub fn array_find<T: PartialEq>(a: Arr<T>, x: T) -> i64 {
     a.borrow().iter().position(|y| *y == x).map(|i| i as i64).unwrap_or(-1)
@@ -1449,7 +1449,7 @@ pub type Handler = fn(&str, &str, &str) -> (u16, String);
 
 thread_local! {
     /// The status a failing request answers with: set by Web:fail, and for bad requests.
-    static STATUS: Cell<u16> = Cell::new(0);
+    static STATUS: Cell<u16> = const { Cell::new(0) };
     static HANDLER: Cell<Option<Handler>> = Cell::new(None);
 }
 
@@ -1700,7 +1700,7 @@ pub fn jw_cmap<R: Row>(c: &CMap<R>, d: Option<usize>, f: &dyn Fn(&R, Option<usiz
     block("[", "]", parts, d)
 }
 thread_local! {
-    static JDEPTH: Cell<u32> = Cell::new(0);
+    static JDEPTH: Cell<u32> = const { Cell::new(0) };
 }
 /// Guards against things that hold themselves, which would go on forever.
 pub fn jw_enter() {

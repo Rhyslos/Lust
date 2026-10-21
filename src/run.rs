@@ -77,7 +77,7 @@ fn host(lua: &Lua) -> mlua::Result<()> {
             out.push(match v? {
                 mlua::Value::Number(n) if n.fract() == 0.0 && n.abs() < 9.0e15 => SqlVal::Int(n as i64),
                 mlua::Value::Number(n) => SqlVal::Real(n),
-                mlua::Value::Integer(i) => SqlVal::Int(i as i64),
+                mlua::Value::Integer(i) => SqlVal::Int(i),
                 mlua::Value::String(s) => SqlVal::Text(s.to_str()?.to_string()),
                 mlua::Value::Boolean(b) => SqlVal::Int(b as i64),
                 _ => SqlVal::Null,
