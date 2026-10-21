@@ -60,6 +60,11 @@ try {
 } error (string e) {
     print(e);
 }
+-- A removed row's key isn't handed out again, as in a cMap (issue #44).
+Shop.orders:remove(11);
+Shop.orders:inject(["Ed", "tea"]);
+print(Shop.orders);
+
 -- A whole row prints like a cMap row (issue #40).
 print(Shop.items["tea"]);
 end

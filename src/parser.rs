@@ -1160,8 +1160,37 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// A declaration whose name can't be one: int loop = 3; or int max-hp = 3;
+    fn bad_name(&mut self) -> Option<R<Stmt>> {
+        let Tk::Ident(w) = &self.cur().kind else { return None };
+        let typed = matches!(w.as_str(), "int" | "float" | "string" | "truth") || w.starts_with(|c: char| c.is_ascii_uppercase());
+        if !typed {
+            return None;
+        }
+        let mut n = 1;
+        while self.peek(n).is_word("array") || self.peek(n).is_word("map") {
+            n += 1;
+        }
+        let Tk::Ident(name) = self.peek(n).kind.clone() else { return None };
+        let at = self.peek(n).pos;
+        let next = self.peek(n + 1).clone();
+        let msg = if RESERVED.contains(&name.as_str()) && name != "state" && (next.is_sym("=") || next.is_sym(";")) {
+            format!("{name} is one of Lust's own words, so it can't be a name.")
+        } else if next.is_sym("-") && matches!(self.peek(n + 2).kind, Tk::Ident(_)) && self.peek(n + 3).is_sym("=") {
+            let Tk::Ident(rest) = &self.peek(n + 2).kind else { return None };
+            let joined = format!("{name}{}{}", rest[..1].to_uppercase(), &rest[1..]);
+            format!("names can't have - in them, since - takes away. Join the words with a capital: {joined}.")
+        } else {
+            return None;
+        };
+        Some(self.fail(at, msg))
+    }
+
     fn statement(&mut self) -> R<Stmt> {
         let t = self.cur().clone();
+        if let Some(r) = self.bad_name() {
+            return r;
+        }
         if let Tk::Ident(w) = &t.kind {
             if self.in_view && ELEMENTS.contains(&w.as_str()) {
                 return self.element();

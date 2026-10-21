@@ -37,7 +37,11 @@ fn sql_type(kind: &str, key: bool) -> String {
         "float" => "REAL",
         _ => "TEXT",
     };
-    if key {
+    if key && t == "INTEGER" && kind == "int" {
+        // New keys count on from the biggest there's ever been, as in a cMap: a removed row's
+        // key isn't handed out again.
+        format!("{t} PRIMARY KEY AUTOINCREMENT")
+    } else if key {
         format!("{t} PRIMARY KEY")
     } else {
         format!("{t} NOT NULL")

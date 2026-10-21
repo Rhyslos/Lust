@@ -1,0 +1,14 @@
+-- Questions about state options work whichever side the option is on (issue #44).
+state GameState = [MainMenu, ActiveGame [Exploration, Combat]];
+
+GameState now = GameState.MainMenu;
+now is GameState.ActiveGame.Combat;
+print(now);
+print(now == GameState.ActiveGame);
+print(GameState.ActiveGame == now);
+print(GameState.ActiveGame != now);
+print(now === GameState.ActiveGame);
+print(GameState.MainMenu == now);
+now = GameState.MainMenu;
+print(now);
+end
