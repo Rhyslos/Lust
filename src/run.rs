@@ -195,6 +195,8 @@ fn ui_styles(t: &mlua::Table) -> mlua::Result<Vec<(String, crate::native_ui::SV)
             mlua::Value::Integer(i) => SV::Num(i as f64),
             mlua::Value::String(s) => SV::Text(s.to_str()?.to_string()),
             mlua::Value::Table(n) => SV::Nested(ui_styles(&n)?),
+            // A style that's on only when something is true, and that's false now.
+            mlua::Value::Boolean(false) => SV::Truth(false),
             _ => SV::Flag,
         };
         out.push((name, v));

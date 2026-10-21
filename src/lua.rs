@@ -385,7 +385,8 @@ impl<'a> W<'a> {
             self.line(v.pos.line, &format!("function {table}:__settings() return {s} end"));
             self.line(v.pos.line, &format!("function {table}:__view()"));
             self.indent += 1;
-            self.line(v.pos.line, "local v0 = {k = \"view\", t = \"\", s = {}, c = {}}");
+            // The window's settings ride along, so a title can change with the data.
+            self.line(v.pos.line, "local v0 = {k = \"view\", t = \"\", s = self:__settings(), c = {}}");
             self.view_parent.push("v0".into());
             self.stmts(&v.body);
             self.view_parent.pop();

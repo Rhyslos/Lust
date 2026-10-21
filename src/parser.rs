@@ -325,9 +325,14 @@ impl<'a> Parser<'a> {
                 ended = true;
                 break;
             }
+            let at = self.p;
             let r = self.top_level(&mut items, &mut body, &mut seen_other);
             if r.is_err() {
                 self.recover();
+            }
+            // A stray } at the top stops recover where it is; step past it so parsing goes on.
+            if self.p == at {
+                self.next();
             }
         }
         if !ended {
@@ -797,7 +802,10 @@ impl<'a> Parser<'a> {
                 StyleValue::Nested(self.style_list()?)
             } else if self.at_sym(",") || self.at_sym("]") {
                 StyleValue::Flag
-            } else if matches!(self.cur().kind, Tk::Ident(_)) && (self.peek(1).is_sym(",") || self.peek(1).is_sym("]")) {
+            } else if matches!(self.cur().kind, Tk::Ident(_))
+                && (self.peek(1).is_sym(",") || self.peek(1).is_sym("]"))
+                && name != "disabled"
+            {
                 let Tk::Ident(w) = self.next().kind else { unreachable!() };
                 StyleValue::Word(w)
             } else {

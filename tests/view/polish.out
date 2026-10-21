@@ -1,0 +1,36 @@
+window "Notes (0 saved)" 360x200
+  column 0,0 360x106
+    input "" 16,16 328x33
+    row 16,57 144x33
+      button "Save" 16,57 64x33 (disabled)
+      button "Never" 88,57 72x33 (disabled)
+window "Notes (0 saved)" 360x200
+  column 0,0 360x106
+    input "Buy" 16,16 328x33 (focus, caret 3)
+    row 16,57 144x33
+      button "Save" 16,57 64x33
+      button "Never" 88,57 72x33 (disabled)
+window "Notes (0 saved)" 360x200
+  column 0,0 360x106
+    input "" 16,16 328x33 (focus, caret 0)
+    row 16,57 144x33
+      button "Save" 16,57 64x33 (disabled)
+      button "Never" 88,57 72x33 (disabled)
+window "Notes (0 saved)" 360x200
+  column 0,0 360x106
+    input "Buy milk" 16,16 328x33 (focus, caret 8)
+    row 16,57 144x33
+      button "Save" 16,57 64x33
+      button "Never" 88,57 72x33 (disabled)
+window "Notes (0 saved)" 360x200
+  column 0,0 360x106
+    input "Buy milk" 16,16 328x33 (focus, selected 0..8)
+    row 16,57 144x33
+      button "Save" 16,57 64x33
+      button "Never" 88,57 72x33 (disabled)
+window "Notes (1 saved)" 360x200
+  column 0,0 360x106
+    input "" 16,16 328x33
+    row 16,57 144x33
+      button "Save" 16,57 64x33 (disabled)
+      button "Never" 88,57 72x33 (disabled)

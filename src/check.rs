@@ -1140,6 +1140,17 @@ impl<'a> Checker<'a> {
             };
             match (n, &it.value) {
                 ("title", StyleValue::Expr(_)) if window => {}
+                ("disabled", StyleValue::Flag) if !window => {}
+                ("disabled", StyleValue::Expr(e)) if !window => {
+                    let t = self.info.ty(e);
+                    if !matches!(t, Ty::Truth | Ty::Error) {
+                        self.err(
+                            e.pos,
+                            format!("disabled takes a truth, like disabled not ready. This is {}.", self.a(&t)),
+                        );
+                    }
+                }
+                ("minWidth" | "minHeight", StyleValue::Expr(_)) if window => {}
                 ("placeholder", v) if !window => match v {
                     StyleValue::Expr(e) if matches!(self.info.ty(e), Ty::Str | Ty::Error) => {}
                     _ => self.err(it.pos, "placeholder takes text: placeholder \"Search…\"."),
@@ -1178,12 +1189,19 @@ impl<'a> Checker<'a> {
                 (f, StyleValue::Flag) if !window && (FLAGS.contains(&f) || colour_word || named) => {}
                 _ => {
                     let mut known: Vec<String> = if window {
-                        vec!["title".into(), "width".into(), "height".into(), "background".into()]
+                        vec![
+                            "title".into(),
+                            "width".into(),
+                            "height".into(),
+                            "minWidth".into(),
+                            "minHeight".into(),
+                            "background".into(),
+                        ]
                     } else {
                         NUMS.iter()
                             .chain(FLAGS)
                             .chain(COLOURED)
-                            .chain(["width", "height", "round", "border", "hover", "placeholder"].iter())
+                            .chain(["width", "height", "round", "border", "hover", "placeholder", "disabled"].iter())
                             .map(|s| s.to_string())
                             .collect()
                     };
@@ -1193,7 +1211,10 @@ impl<'a> Checker<'a> {
                     }
                     let s = suggest(n, known.clone());
                     if window {
-                        self.err(it.pos, format!("a window's view has title, width, height and background.{s}"));
+                        self.err(
+                            it.pos,
+                            format!("a window's view has title, width, height, minWidth, minHeight and background.{s}"),
+                        );
                     } else if FLAGS.contains(&n) || colour_word || named {
                         self.err(it.pos, format!("{n} is a word on its own, without a value."));
                     } else {

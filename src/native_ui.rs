@@ -94,7 +94,7 @@ thread_local! {
         .iter()
         .map(|b| fontdue::Font::from_bytes(*b, fontdue::FontSettings::default()).expect("Lust's font"))
         .collect();
-    static GLYPHS: std::cell::RefCell<HashMap<(usize, char, u32), (fontdue::Metrics, Vec<u8>)>> = std::cell::RefCell::new(HashMap::new());
+    static GLYPHS: std::cell::RefCell<HashMap<(usize, char, u32), std::rc::Rc<(fontdue::Metrics, Vec<u8>)>>> = std::cell::RefCell::new(HashMap::new());
 }
 
 fn face(weight: f32) -> usize {
@@ -325,6 +325,10 @@ struct Look {
     step: f32,
     /// A picture fills its box, cut to fit, instead of fitting inside it.
     cover: bool,
+    /// Greyed out, and not clicked, typed in or focused.
+    disabled: bool,
+    /// How much of the background shows, while it fades in or out.
+    bg_alpha: f32,
 }
 
 fn num(v: &SV) -> Option<f32> {
@@ -378,6 +382,8 @@ fn base_look(kind: &str) -> Look {
         to: 100.0,
         step: 1.0,
         cover: false,
+        disabled: false,
+        bg_alpha: 1.0,
     };
     match kind {
         "input" => {
@@ -416,6 +422,10 @@ fn base_look(kind: &str) -> Look {
 
 fn apply(l: &mut Look, kind: &str, style: &[(String, SV)]) {
     for (k, v) in style {
+        // A style that's on only when something is true, and it isn't.
+        if let SV::Truth(false) = v {
+            continue;
+        }
         match k.as_str() {
             "pad" => l.pad = [num(v).unwrap_or(8.0); 4],
             "padX" => {
@@ -495,6 +505,7 @@ fn apply(l: &mut Look, kind: &str, style: &[(String, SV)]) {
             "to" => l.to = num(v).unwrap_or(100.0),
             "step" => l.step = num(v).unwrap_or(1.0).max(0.0),
             "cover" => l.cover = true,
+            "disabled" => l.disabled = true,
             other => {
                 // A colour on its own: a button's colour, or text's.
                 if let Some(c) = colour(other) {
@@ -646,7 +657,12 @@ struct Laid {
 fn lay(n: &Node) -> Laid {
     let mut look = base_look(&n.kind);
     apply(&mut look, &n.kind, &n.style);
+    let disabled = look.disabled;
+    if disabled {
+        look.opacity *= 0.45;
+    }
     let hover = match hover_style(&n.style) {
+        _ if disabled => None,
         Some(h) => {
             let mut hl = look.clone();
             apply(&mut hl, &n.kind, h);
@@ -668,7 +684,7 @@ fn lay(n: &Node) -> Laid {
         lines: vec![],
         look,
         hover,
-        action: n.action,
+        action: if disabled { None } else { n.action },
         value: n.value.clone(),
         content_h: 0.0,
         scrolled: 0.0,
@@ -966,6 +982,8 @@ fn place(n: &mut Laid, x: f32, y: f32, w: f32, h: f32) {
 /// the window.
 fn lay_out(root: &Node, w: f32, h: f32) -> Laid {
     let mut top = lay(root);
+    // The root carries the window's settings, which aren't styles.
+    top.look = base_look("view");
     for c in &mut top.children {
         if (c.kind == "column" || c.kind == "row" || c.kind == "piece") && c.look.width == Size::Auto {
             c.look.width = Size::Fill;
@@ -1034,17 +1052,60 @@ impl Canvas {
         let (x0, y0, x1, y1) = (x * s, y * s, (x + w) * s, (y + h) * s);
         let r = (r * s).min((x1 - x0) / 2.0).min((y1 - y0) / 2.0).max(0.0);
         let b = ring.map(|b| (b * s).max(0.0));
-        for py in (y0.floor() as i64)..(y1.ceil() as i64) {
-            for px in (x0.floor() as i64)..(x1.ceil() as i64) {
-                let (fx, fy) = (px as f32 + 0.5, py as f32 + 0.5);
-                let mut cover = (0.5 - outside(fx, fy, x0, y0, x1, y1, r)).clamp(0.0, 1.0);
-                if let Some(b) = b {
-                    let inner = outside(fx, fy, x0 + b, y0 + b, x1 - b, y1 - b, (r - b).max(0.0));
-                    cover *= 1.0 - (0.5 - inner).clamp(0.0, 1.0);
+        // Only the pixels that can show are visited.
+        let [bx0, by0, bx1, by1] = self.bounds();
+        let (px0, px1) = ((x0.floor() as i64).max(bx0), (x1.ceil() as i64).min(bx1));
+        let (py0, py1) = ((y0.floor() as i64).max(by0), (y1.ceil() as i64).min(by1));
+        if px0 >= px1 || py0 >= py1 {
+            return;
+        }
+        let cover_at = |px: i64, py: i64| {
+            let (fx, fy) = (px as f32 + 0.5, py as f32 + 0.5);
+            let mut cover = (0.5 - outside(fx, fy, x0, y0, x1, y1, r)).clamp(0.0, 1.0);
+            if let Some(b) = b {
+                let inner = outside(fx, fy, x0 + b, y0 + b, x1 - b, y1 - b, (r - b).max(0.0));
+                cover *= 1.0 - (0.5 - inner).clamp(0.0, 1.0);
+            }
+            cover
+        };
+        // Away from the left and right edges (by more than the corners and the ring), how much
+        // of a pixel is covered depends only on its row, so it's worked out once a row.
+        let m = r.max(b.unwrap_or(0.0)) + 1.0;
+        let (s0, s1) = (((x0 + m - 0.5).ceil() as i64).max(px0), ((x1 - m - 0.5).floor() as i64 + 1).min(px1));
+        for py in py0..py1 {
+            if s0 >= s1 {
+                for px in px0..px1 {
+                    let cv = cover_at(px, py);
+                    self.blend(px, py, c, cv * alpha);
                 }
-                self.blend(px, py, c, cover * alpha);
+                continue;
+            }
+            for px in (px0..s0).chain(s1..px1) {
+                let cv = cover_at(px, py);
+                self.blend(px, py, c, cv * alpha);
+            }
+            let a = cover_at(s0, py) * alpha;
+            if a <= 0.0 {
+                continue;
+            }
+            if a * self.alpha >= 1.0 && self.clip.map_or(true, |k| py >= k[1] && py < k[3]) {
+                let row = py as usize * self.w;
+                self.px[row + s0 as usize..row + s1 as usize].fill(c);
+            } else {
+                for px in s0..s1 {
+                    self.blend(px, py, c, a);
+                }
             }
         }
+    }
+
+    /// The pixels that can be painted now: the canvas, within the clip.
+    fn bounds(&self) -> [i64; 4] {
+        let mut b = [0, 0, self.w as i64, self.h as i64];
+        if let Some(c) = self.clip {
+            b = [b[0].max(c[0]), b[1].max(c[1]), b[2].min(c[2]), b[3].min(c[3])];
+        }
+        b
     }
 
     /// Paints only inside this box (in the view's units) until `unclip`, within any box already set.
@@ -1082,19 +1143,31 @@ impl Canvas {
         let fi = face(weight);
         let mut pen = x * s;
         let base = (y * s + ascent).round();
+        // A line that's out of sight is skipped whole.
+        let [_, by0, _, by1] = self.bounds();
+        if (base + px_size) < by0 as f32 || (base - px_size * 1.2) > by1 as f32 {
+            return;
+        }
         let mut prev: Option<char> = None;
         for ch in text.chars() {
-            let (m, bmp) = GLYPHS.with(|g| {
+            let glyph = GLYPHS.with(|g| {
                 g.borrow_mut()
                     .entry((fi, ch, px_size.to_bits()))
-                    .or_insert_with(|| LOADED.with(|f| f[fi].rasterize(ch, px_size)))
+                    .or_insert_with(|| std::rc::Rc::new(LOADED.with(|f| f[fi].rasterize(ch, px_size))))
                     .clone()
             });
+            let (m, bmp) = (&glyph.0, &glyph.1);
             if let Some(p) = prev {
                 pen += LOADED.with(|f| f[fi].horizontal_kern(p, ch, px_size).unwrap_or(0.0));
             }
             let gx = (pen + m.xmin as f32).round() as i64;
             let gy = base as i64 - m.ymin as i64 - m.height as i64;
+            let [bx0, by0, bx1, by1] = self.bounds();
+            if gx + m.width as i64 <= bx0 || gx >= bx1 || gy + m.height as i64 <= by0 || gy >= by1 {
+                pen += m.advance_width;
+                prev = Some(ch);
+                continue;
+            }
             for row in 0..m.height {
                 for col in 0..m.width {
                     let a = bmp[row * m.width + col] as f32 / 255.0;
@@ -1118,9 +1191,40 @@ struct PaintState {
     /// How far the focused input's text is slid left, to keep the caret in view.
     scroll_x: f32,
     caret_on: bool,
+    /// How far each piece under the mouse has faded to its hover look (in a window); without
+    /// these, hover looks show straight away (tests).
+    fades: Option<HashMap<Vec<usize>, f32>>,
+    /// The button being held down.
+    pressed: Option<Vec<usize>>,
 }
 
 const RING: f32 = 3.0;
+
+/// A look part way to another: colours mixed, a background fading in or out.
+fn blend_look(a: &Look, b: &Look, t: f32) -> Look {
+    let mut l = if t < 0.5 { a.clone() } else { b.clone() };
+    l.color = mix(a.color, b.color, t);
+    match (a.background, b.background) {
+        (Some(x), Some(y)) => {
+            l.background = Some(mix(x, y, t));
+            l.bg_alpha = a.bg_alpha + (b.bg_alpha - a.bg_alpha) * t;
+        }
+        (None, Some(y)) => {
+            l.background = Some(y);
+            l.bg_alpha = b.bg_alpha * t;
+        }
+        (Some(x), None) => {
+            l.background = Some(x);
+            l.bg_alpha = a.bg_alpha * (1.0 - t);
+        }
+        (None, None) => {}
+    }
+    if let (Some(x), Some(y)) = (a.border, b.border) {
+        l.border = Some(mix(x, y, t));
+    }
+    l.opacity = a.opacity + (b.opacity - a.opacity) * t;
+    l
+}
 
 fn ring_around(c: &mut Canvas, n: &Laid, accent: u32) {
     let r = n.look.radius.min(n.w.min(n.h) / 2.0) + RING;
@@ -1249,8 +1353,9 @@ fn paint_image(c: &mut Canvas, n: &Laid, l: &Look) {
     let (x0, y0, x1, y1) = (dx.max(bx) * s, dy.max(by) * s, (dx + dw).min(bx + bw) * s, (dy + dh).min(by + bh) * s);
     let r = (l.radius * s).min((x1 - x0) / 2.0).min((y1 - y0) / 2.0).max(0.0);
     let per = 1.0 / (fit * s);
-    for py in (y0.floor() as i64)..(y1.ceil() as i64) {
-        for px in (x0.floor() as i64)..(x1.ceil() as i64) {
+    let [bx0, by0, bx1, by1] = c.bounds();
+    for py in (y0.floor() as i64).max(by0)..(y1.ceil() as i64).min(by1) {
+        for px in (x0.floor() as i64).max(bx0)..(x1.ceil() as i64).min(bx1) {
             let (fx, fy) = (px as f32 + 0.5, py as f32 + 0.5);
             let cover = (0.5 - outside(fx, fy, x0, y0, x1, y1, r)).clamp(0.0, 1.0);
             if cover <= 0.0 {
@@ -1293,7 +1398,34 @@ fn scroll_knob(n: &Laid) -> Option<(f32, f32)> {
 fn paint(c: &mut Canvas, n: &Laid, st: &PaintState, path: &mut Vec<usize>) {
     let hover = st.hover;
     let over = hover.map(|(hx, hy)| hx >= n.x && hy >= n.y && hx < n.x + n.w && hy < n.y + n.h).unwrap_or(false);
-    let l = if over { n.hover.as_ref().unwrap_or(&n.look) } else { &n.look };
+    let t = match &st.fades {
+        Some(f) => f.get(path.as_slice()).copied().unwrap_or(0.0),
+        None => {
+            if over {
+                1.0
+            } else {
+                0.0
+            }
+        }
+    };
+    let blended;
+    let pressed;
+    let mut l: &Look = match &n.hover {
+        Some(h) if t >= 1.0 => h,
+        Some(h) if t > 0.0 => {
+            blended = blend_look(&n.look, h, t);
+            &blended
+        }
+        _ => &n.look,
+    };
+    // A button held down under the mouse looks pressed in.
+    if over && st.pressed.as_deref() == Some(path.as_slice()) && n.kind == "button" {
+        let mut p = l.clone();
+        p.background = Some(mix(l.background.unwrap_or(0xe9ecef), 0x000000, 0.12));
+        p.bg_alpha = 1.0;
+        pressed = p;
+        l = &pressed;
+    }
     let focused = st.focus.as_deref() == Some(path.as_slice());
     let was = c.alpha;
     c.alpha *= l.opacity;
@@ -1311,7 +1443,7 @@ fn paint(c: &mut Canvas, n: &Laid, st: &PaintState, path: &mut Vec<usize>) {
                 ring_around(c, n, 0x1c7ed6);
             }
             if let Some(bg) = l.background {
-                c.rect(n.x, n.y, n.w, n.h, l.radius, bg, 1.0);
+                c.rect(n.x, n.y, n.w, n.h, l.radius, bg, l.bg_alpha);
             }
             if let Some(b) = l.border {
                 c.shape(n.x, n.y, n.w, n.h, l.radius, Some(l.border_w), b, 1.0);
@@ -1400,16 +1532,20 @@ pub struct Settings {
     pub title: String,
     pub width: f64,
     pub height: f64,
+    pub min_width: f64,
+    pub min_height: f64,
     pub background: u32,
 }
 
 pub fn settings(style: &[(String, SV)]) -> Settings {
-    let mut s = Settings { title: "Lust".into(), width: 640.0, height: 480.0, background: 0xffffff };
+    let mut s = Settings { title: "Lust".into(), width: 640.0, height: 480.0, min_width: 0.0, min_height: 0.0, background: 0xffffff };
     for (k, v) in style {
         match (k.as_str(), v) {
             ("title", SV::Text(t)) => s.title = t.clone(),
             ("width", SV::Num(n)) => s.width = *n,
             ("height", SV::Num(n)) => s.height = *n,
+            ("minWidth", SV::Num(n)) => s.min_width = *n,
+            ("minHeight", SV::Num(n)) => s.min_height = *n,
             ("background", SV::Text(t)) => s.background = colour(t).unwrap_or(0xffffff),
             _ => {}
         }
@@ -1513,6 +1649,17 @@ enum Nav {
     Copy,
     Cut,
     Paste,
+    Undo,
+    Redo,
+}
+
+/// One input's earlier texts, for undo and redo.
+#[derive(Default)]
+struct History {
+    undo: Vec<(String, Caret)>,
+    redo: Vec<(String, Caret)>,
+    /// What the last change was (typing or deleting) and when, so a run of typing undoes in one go.
+    last: Option<(bool, std::time::Instant)>,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -1621,6 +1768,30 @@ struct Ui<'a, 'b> {
     system_clipboard: bool,
     /// When the caret last started blinking; None keeps it showing (tests).
     blink: Option<std::time::Instant>,
+    /// The title changed with the data, and the window should show the new one.
+    title_changed: bool,
+    /// Undo and redo for each input, by its place in the tree.
+    history: HashMap<Vec<usize>, History>,
+    /// Hover looks fading in and out (in a window), and when they last moved on.
+    fades: HashMap<Vec<usize>, f32>,
+    faded_at: std::time::Instant,
+}
+
+const FADE_SECS: f32 = 0.12;
+
+/// Every piece with a hover look under this point.
+fn hover_targets(n: &Laid, x: f32, y: f32, path: &mut Vec<usize>, out: &mut Vec<Vec<usize>>) {
+    if x < n.x || y < n.y || x >= n.x + n.w || y >= n.y + n.h {
+        return;
+    }
+    if n.hover.is_some() {
+        out.push(path.clone());
+    }
+    for (i, c) in n.children.iter().enumerate() {
+        path.push(i);
+        hover_targets(c, x, y, path, out);
+        path.pop();
+    }
 }
 
 const BLINK_MS: u128 = 530;
@@ -1650,6 +1821,10 @@ impl<'a, 'b> Ui<'a, 'b> {
             clip: String::new(),
             system_clipboard: windowed,
             blink: windowed.then_some(now),
+            title_changed: false,
+            history: HashMap::new(),
+            fades: HashMap::new(),
+            faded_at: now,
         };
         ui.set_timers();
         Ok(ui)
@@ -1760,6 +1935,12 @@ impl<'a, 'b> Ui<'a, 'b> {
     /// Draws the view again from the data as it is now. Focus stays where it was, if it can.
     fn rebuild(&mut self) -> Result<(), String> {
         let (node, actions) = (self.build)()?;
+        let now = settings(&node.style);
+        if now.title != self.s.title {
+            self.s.title = now.title;
+            self.title_changed = true;
+        }
+        self.s.background = now.background;
         self.node = node;
         self.relayout();
         self.actions = actions;
@@ -1822,7 +2003,39 @@ impl<'a, 'b> Ui<'a, 'b> {
             Some(t) => (t.elapsed().as_millis() / BLINK_MS) % 2 == 0,
             None => true,
         };
+        if self.blink.is_some() {
+            st.fades = Some(self.fades.clone());
+        }
+        st.pressed = self.pressed.clone();
         st
+    }
+
+    /// What's under the mouse that has a hover look.
+    fn hovered(&self) -> Vec<Vec<usize>> {
+        let mut out = Vec::new();
+        if let Some((x, y)) = self.st.hover {
+            hover_targets(&self.tree, x, y, &mut vec![], &mut out);
+        }
+        out
+    }
+
+    /// Moves the hover fades on. Returns whether any is still moving.
+    fn step_fades(&mut self) -> bool {
+        let now = std::time::Instant::now();
+        let step = (now.duration_since(self.faded_at).as_secs_f32() / FADE_SECS).min(1.0);
+        self.faded_at = now;
+        let on = self.hovered();
+        for p in &on {
+            let t = self.fades.entry(p.clone()).or_insert(0.0);
+            *t = (*t + step).min(1.0);
+        }
+        self.fades.retain(|p, t| {
+            if !on.contains(p) {
+                *t -= step;
+            }
+            *t > 0.0
+        });
+        self.fades.iter().any(|(p, t)| if on.contains(p) { *t < 1.0 } else { *t > 0.0 })
     }
 
     /// When the caret next blinks, if an input has focus.
@@ -2008,9 +2221,24 @@ impl<'a, 'b> Ui<'a, 'b> {
             return Ok(());
         }
         let t = value_text(n).to_string();
+        let before = self.st.caret.clone();
         let changed = self.st.caret.key(&t, &k, mods.shift, mods.word);
         self.wake();
         if let Some(new) = changed {
+            // Remember the text before, unless this carries on a run of typing (or of deleting).
+            let typing = matches!(k, Key::Type(_));
+            let h = self.history.entry(path.clone()).or_default();
+            let now = std::time::Instant::now();
+            let carries_on = matches!(h.last, Some((was, at)) if was == typing && now.duration_since(at).as_millis() < 1000)
+                && !matches!(&k, Key::Type(s) if s.contains(' '));
+            if !carries_on || h.undo.is_empty() {
+                h.undo.push((t.clone(), before));
+                if h.undo.len() > 200 {
+                    h.undo.remove(0);
+                }
+            }
+            h.redo.clear();
+            h.last = Some((typing, now));
             let caret = self.st.caret.clone();
             self.run(&path, SV::Text(new))?;
             self.st.caret = caret;
@@ -2069,6 +2297,26 @@ impl<'a, 'b> Ui<'a, 'b> {
                         if k == Nav::Cut {
                             return self.edit(Key::Back, Mods::default());
                         }
+                        Ok(())
+                    }
+                    ("input", Nav::Undo | Nav::Redo) => {
+                        let current = (value_text(n).to_string(), self.st.caret.clone());
+                        let h = self.history.entry(path.clone()).or_default();
+                        let back = if k == Nav::Undo { h.undo.pop() } else { h.redo.pop() };
+                        let Some((text, caret)) = back else { return Ok(()) };
+                        if k == Nav::Undo {
+                            h.redo.push(current);
+                        } else {
+                            h.undo.push(current);
+                        }
+                        h.last = None;
+                        self.run(&path, SV::Text(text))?;
+                        self.st.caret = caret;
+                        if let Some(n) = self.focused() {
+                            let t = value_text(n).to_string();
+                            self.st.caret.fit(&t);
+                        }
+                        self.keep_caret_in_view();
                         Ok(())
                     }
                     ("input", Nav::Paste) => match self.clip_get() {
@@ -2162,6 +2410,12 @@ mod windowed {
                 self.error = Some(e);
                 el.exit();
             }
+            if self.ui.title_changed {
+                self.ui.title_changed = false;
+                if let Some(w) = &self.window {
+                    w.set_title(&self.ui.s.title);
+                }
+            }
             self.redraw();
         }
 
@@ -2175,6 +2429,9 @@ mod windowed {
                         "c" => Some(Nav::Copy),
                         "x" => Some(Nav::Cut),
                         "v" => Some(Nav::Paste),
+                        "z" if mods.shift => Some(Nav::Redo),
+                        "z" => Some(Nav::Undo),
+                        "y" => Some(Nav::Redo),
                         _ => None,
                     };
                     if let Some(n) = nav {
@@ -2221,7 +2478,8 @@ mod windowed {
             }
             let attrs = Window::default_attributes()
                 .with_title(self.ui.s.title.clone())
-                .with_inner_size(winit::dpi::LogicalSize::new(self.ui.s.width, self.ui.s.height));
+                .with_inner_size(winit::dpi::LogicalSize::new(self.ui.s.width, self.ui.s.height))
+                .with_min_inner_size(winit::dpi::LogicalSize::new(self.ui.s.min_width.max(1.0), self.ui.s.min_height.max(1.0)));
             let window = match el.create_window(attrs) {
                 Ok(w) => Rc::new(w),
                 Err(e) => {
@@ -2285,6 +2543,8 @@ mod windowed {
                     let (_, _, scale) = self.logical();
                     let p = (position.x as f32 / scale, position.y as f32 / scale);
                     self.mouse = Some(p);
+                    let before = (self.ui.hovered(), self.ui.pointer(p.0, p.1));
+                    let dragging = self.ui.drag != Drag::None;
                     let r = self.ui.moved(p.0, p.1);
                     if let Some(w) = &self.window {
                         w.set_cursor(match self.ui.pointer(p.0, p.1) {
@@ -2293,7 +2553,10 @@ mod windowed {
                             _ => CursorIcon::Default,
                         });
                     }
-                    self.check(r, el);
+                    // Only draw again when something under the mouse changed, or while dragging.
+                    if dragging || r.is_err() || before != (self.ui.hovered(), self.ui.pointer(p.0, p.1)) || self.ui.pressed.is_some() {
+                        self.check(r, el);
+                    }
                 }
                 WindowEvent::MouseWheel { delta, .. } => {
                     let Some((x, y)) = self.mouse else { return };
@@ -2334,6 +2597,9 @@ mod windowed {
                         return;
                     }
                     if (self.ui.tree.w - lw).abs() > 0.5 || (self.ui.tree.h - lh).abs() > 0.5 {
+                        win.request_redraw();
+                    }
+                    if self.ui.step_fades() {
                         win.request_redraw();
                     }
                     let c = render(&self.ui.tree, size.width as usize, size.height as usize, scale, &self.ui.paint_state(), self.ui.s.background);
@@ -2605,6 +2871,9 @@ fn dump(n: &Laid, depth: usize, path: &mut Vec<usize>, st: &PaintState, out: &mu
         None => String::new(),
     };
     let mut focus = String::new();
+    if n.look.disabled {
+        focus.push_str(" (disabled)");
+    }
     if n.kind == "scroll" {
         focus.push_str(&format!(" (scrolled {} of {})", n.scrolled as i64, (n.content_h - n.h).max(0.0) as i64));
     }
@@ -2631,7 +2900,7 @@ fn dump(n: &Laid, depth: usize, path: &mut Vec<usize>, st: &PaintState, out: &mu
 }
 
 fn find_button(n: &Laid, text: &str, path: &mut Vec<usize>) -> Option<Vec<usize>> {
-    if n.action.is_some() && n.kind == "button" && n.text == text {
+    if n.kind == "button" && n.text == text {
         return Some(path.clone());
     }
     for (i, c) in n.children.iter().enumerate() {
@@ -2683,6 +2952,9 @@ fn parse_key(spec: &str) -> Option<(Nav, Mods)> {
         "c" if mods.command => Nav::Copy,
         "x" if mods.command => Nav::Cut,
         "v" if mods.command => Nav::Paste,
+        "z" if mods.command && mods.shift => Nav::Redo,
+        "z" if mods.command => Nav::Undo,
+        "y" if mods.command => Nav::Redo,
         _ => return None,
     };
     Some((nav, mods))
@@ -2792,6 +3064,15 @@ fn test(s: Settings, build: &mut Build) -> Result<(), String> {
                 ui.st.hover = find_button(&ui.tree, rest, &mut vec![]).and_then(|p| node_at(&ui.tree, &p)).map(|b| (b.x + 1.0, b.y + 1.0));
             }
             "size" if nums.len() >= 2 => ui.resize(nums[0], nums[1])?,
+            // Paints the window N times without saving, to measure how long painting takes.
+            "paint" => {
+                let n = nums.first().copied().unwrap_or(1.0) as usize;
+                let t = std::time::Instant::now();
+                for _ in 0..n {
+                    render(&ui.tree, (ui.w * 2.0) as usize, (ui.h * 2.0) as usize, 2.0, &ui.paint_state(), ui.s.background);
+                }
+                eprintln!("painted {n} times in {} ms", t.elapsed().as_millis());
+            }
             "snapshot" => {
                 let scale = 2.0;
                 let c = render(&ui.tree, (ui.w * scale) as usize, (ui.h * scale) as usize, scale, &ui.paint_state(), ui.s.background);

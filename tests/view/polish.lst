@@ -1,0 +1,25 @@
+-- Polish: disabled pieces, a title that follows the data, undo and redo.
+assembly Notes {
+    has {
+        string note = "";
+        int kept = 0;
+    }
+
+    view [title "Notes (" + kept.text() + " saved)", width 360, height 200, minWidth 200] {
+        column [gap 8, pad 16] {
+            input note [placeholder "A note", width fill];
+            row [gap 8] {
+                button "Save" [blue, disabled note == ""] {
+                    kept = kept + 1;
+                    note = "";
+                }
+                button "Never" [disabled] {
+                    kept = 100;
+                }
+            }
+        }
+    }
+}
+
+Notes:open();
+end
