@@ -1,3 +1,3 @@
-lua-in-lust.lust:1:1  fetch lua; only works in LustScript (.lsc) files.
+lua-in-lust.lst:1:1  fetch lua; only works in LustScript (.lsc) files.
 
 1 mistake. Nothing was run.

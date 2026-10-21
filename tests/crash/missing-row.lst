@@ -1,0 +1,3 @@
+cMap(int id, string itemName) bag = [[1, "Sword"], [2, "Apple"]];
+print(bag[7].itemName);
+end

@@ -45,6 +45,8 @@ struct W<'a> {
     class: Option<usize>,
     loops: Vec<LoopFrame>,
     object_names: HashSet<String>,
+    /// A key-maker for the cMap about to be written.
+    maker: Option<String>,
 }
 
 pub fn write(prog: &Program, info: &Info) -> Output {
@@ -56,6 +58,7 @@ pub fn write(prog: &Program, info: &Info) -> Output {
         class: None,
         loops: vec![],
         object_names: HashSet::new(),
+        maker: None,
     };
     w.program(prog);
     // Strip the line markers into a line map.
@@ -245,7 +248,10 @@ impl<'a> W<'a> {
         }
         for f in &c.fields {
             let value = match &f.default {
-                Some(d) => self.expr(d),
+                Some(d) => match &f.ty {
+                    Some(t) => self.made(t, d),
+                    None => self.expr(d),
+                },
                 None => "nil".into(),
             };
             self.line(f.pos.line, &format!("self.{} = {value}", lname(&f.name)));
@@ -275,8 +281,8 @@ impl<'a> W<'a> {
     fn stmt(&mut self, s: &Stmt) {
         let ln = s.pos().line;
         match s {
-            Stmt::Var { name, value, .. } => {
-                let v = self.expr(value);
+            Stmt::Var { ty, name, value, .. } => {
+                let v = self.made(ty, value);
                 self.line(ln, &format!("local {} = {v}", lname(name)));
             }
             Stmt::Assign { target, value, .. } | Stmt::SetState { target, option: value, .. } => {
@@ -425,12 +431,11 @@ impl<'a> W<'a> {
                         self.indent -= 1;
                         close = vec!["end".into(), "end".into()];
                     }
-                    Ty::CArray(cols) => {
+                    Ty::CMap(cols) => {
                         let r = self.fresh("row");
                         self.line(ln, &format!("for _, {r} in ipairs(_L.rows({src})) do"));
                         self.indent += 1;
-                        let mut fields = vec![format!("{r}.id")];
-                        fields.extend(cols.iter().map(|(n, _)| format!("{r}.{}", lname(n))));
+                        let fields: Vec<String> = cols.iter().map(|(n, _)| format!("{r}.{}", lname(n))).collect();
                         self.line(
                             ln,
                             &format!(
@@ -560,7 +565,7 @@ impl<'a> W<'a> {
                 let ic = self.expr(i);
                 let f = match self.info.ty(t) {
                     Ty::Map(_) => "mget",
-                    Ty::CArray(_) => "cget",
+                    Ty::CMap(_) => "cget",
                     _ => "aget",
                 };
                 format!("_L.{f}({tc}, {ic})")
@@ -570,7 +575,7 @@ impl<'a> W<'a> {
                 match self.info.ty(inner) {
                     Ty::Str => format!("_L.slen({c})"),
                     Ty::Map(_) => format!("#({c}).keys"),
-                    Ty::CArray(_) => format!("#({c}).rows"),
+                    Ty::CMap(_) => format!("#({c}).rows"),
                     _ => format!("({c}).n"),
                 }
             }
@@ -589,7 +594,7 @@ impl<'a> W<'a> {
                 let bc = self.expr(b);
                 match self.info.ty(e) {
                     // These can never be false or nil, so Lua's and/or picks correctly.
-                    Ty::Int | Ty::Float | Ty::Str | Ty::State(_) | Ty::Array(_) | Ty::Map(_) | Ty::CArray(_) => {
+                    Ty::Int | Ty::Float | Ty::Str | Ty::State(_) | Ty::Array(_) | Ty::Map(_) | Ty::CMap(_) => {
                         format!("({cc} and {ac} or {bc})")
                     }
                     _ => format!("(function() if {cc} then return {ac} else return {bc} end end)()"),
@@ -601,10 +606,12 @@ impl<'a> W<'a> {
                     let vs: Vec<String> = items.iter().map(|v| self.expr(v)).collect();
                     format!("_L.map({{{}}}, {{{}}}, {})", ks.join(", "), vs.join(", "), items.len())
                 }
-                Ty::CArray(cols) => {
+                Ty::CMap(cols) => {
                     let names: Vec<String> = cols.iter().map(|(n, _)| lua_string(&lname(n))).collect();
                     let rows: Vec<String> = items.iter().map(|r| self.row(r)).collect();
-                    format!("_L.carr({{{}}}, {{{}}})", names.join(", "), rows.join(", "))
+                    let textkey = cols[0].1 == Ty::Str;
+                    let maker = self.maker.take().unwrap_or_else(|| "nil".into());
+                    format!("_L.carr({{{}}}, {textkey}, {{{}}}, {maker})", names.join(", "), rows.join(", "))
                 }
                 Ty::Row(_) => self.row(e),
                 _ => {
@@ -683,6 +690,20 @@ impl<'a> W<'a> {
         }
     }
 
+    /// A variable's or field's value. A cMap made with a key-maker in its type gets the
+    /// key-maker, before its first rows are added so they use it too.
+    fn made(&mut self, t: &TypeRef, value: &Expr) -> String {
+        let Some(m) = t.key_maker() else { return self.expr(value) };
+        let mc = self.expr(m);
+        if matches!(value.kind, ExprKind::List { .. }) {
+            self.maker = Some(mc);
+            self.expr(value)
+        } else {
+            let v = self.expr(value);
+            format!("_L.cmaker({v}, {mc})")
+        }
+    }
+
     fn row(&mut self, r: &Expr) -> String {
         match &r.kind {
             ExprKind::List { items, .. } => {
@@ -726,7 +747,7 @@ impl<'a> W<'a> {
             Ty::State(_) => "_L.stext".into(),
             Ty::Array(el) => format!("_L.ashow({})", self.fmt(el)),
             Ty::Map(v) => format!("_L.mshow({})", self.fmt(v)),
-            Ty::CArray(cols) => {
+            Ty::CMap(cols) => {
                 let f: Vec<String> = cols.iter().map(|(_, t)| self.fmt(t)).collect();
                 format!("_L.cshow({{{}}})", f.join(", "))
             }

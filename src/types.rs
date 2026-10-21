@@ -21,8 +21,8 @@ pub enum Ty {
     StateList(usize),
     Array(Box<Ty>),
     Map(Box<Ty>),
-    CArray(Rc<Vec<(String, Ty)>>),
-    /// One row of a cArray.
+    CMap(Rc<Vec<(String, Ty)>>),
+    /// One row of a cMap.
     Row(Rc<Vec<(String, Ty)>>),
     Hook(Rc<HookSig>),
 }
@@ -63,11 +63,11 @@ impl<'a> Names<'a> {
             Ty::StateList(s) => format!("the state {}", self.states[*s]),
             Ty::Array(e) => format!("{} array", self.show(e)),
             Ty::Map(e) => format!("{} map", self.show(e)),
-            Ty::CArray(cols) => {
+            Ty::CMap(cols) => {
                 let c: Vec<String> = cols.iter().map(|(n, t)| format!("{} {n}", self.show(t))).collect();
-                format!("cArray({})", c.join(", "))
+                format!("cMap({})", c.join(", "))
             }
-            Ty::Row(_) => "cArray row".into(),
+            Ty::Row(_) => "cMap row".into(),
             Ty::Hook(sig) => {
                 let mut s = String::from("hook");
                 if sig.ret != Ty::Void {

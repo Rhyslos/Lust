@@ -47,8 +47,8 @@ end
 function L.rshow(fs)
   return function(r, cols)
     cols = cols or r.__cols
-    local parts = { fmt("%d", r.id) }
-    for i, c in ipairs(cols) do parts[i + 1] = (r[c] == nil) and "nothing" or fs[i](r[c]) end
+    local parts = {}
+    for i, c in ipairs(cols) do parts[i] = (r[c] == nil) and "nothing" or fs[i](r[c]) end
     return "[" .. table.concat(parts, ", ") .. "]"
   end
 end
@@ -181,28 +181,54 @@ function L.mremove(m, k)
   end
 end
 
--- ----- cArrays: rows with ids, found by id -----
+-- ----- cMaps: rows found by their key, the first column -----
 
+local function keytext(c, k)
+  if c.textkey then return "\"" .. k .. "\"" end
+  return fmt("%d", k)
+end
+local function keys(c)
+  local list = {}
+  for i, r in ipairs(c.rows) do list[i] = keytext(c, r[c.key]) end
+  if #list == 0 then return "The cMap is empty." end
+  return "The " .. c.key .. "s are " .. table.concat(list, ", ") .. "."
+end
 local function addrow(c, values, level)
   local ncols = #c.cols
-  local id
+  local k
   local first = 1
-  if values.n == ncols + 1 then
-    id = values[1]
+  if values.n == ncols then
+    k = values[1]
     first = 2
-    if c.byId[id] then error(fmt("there's already a row with id %d.", id), level) end
+    if c.byKey[k] ~= nil then error("there's already a row with " .. c.key .. " " .. keytext(c, k) .. ".", level) end
+  elseif c.maker then
+    local tries = 0
+    repeat
+      k = c.maker()
+      tries = tries + 1
+      if tries > 100 then error("the key-maker keeps making " .. c.key .. "s that are already taken.", level) end
+    until c.byKey[k] == nil
+  elseif c.textkey then
+    error("this cMap's key (" .. c.key .. ") is text, so each new row needs it first.", level)
   else
-    id = c.next
+    k = c.next
   end
-  local row = { id = id, __cols = c.cols }
-  for i, col in ipairs(c.cols) do row[col] = values[first + i - 1] end
+  local row = { __cols = c.cols }
+  row[c.key] = k
+  for i = 2, ncols do row[c.cols[i]] = values[first + i - 2] end
   insert(c.rows, row)
-  c.byId[id] = row
-  if id >= c.next then c.next = id + 1 end
+  c.byKey[k] = row
+  if not c.textkey and k >= c.next then c.next = k + 1 end
 end
-function L.carr(cols, rows)
-  local c = { cols = cols, rows = {}, byId = {}, next = 1 }
+function L.carr(cols, textkey, rows, maker)
+  local c = { cols = cols, key = cols[1], textkey = textkey, rows = {}, byKey = {}, next = 1 }
+  if maker ~= nil then L.cmaker(c, maker) end
   for _, r in ipairs(rows) do addrow(c, r, 4) end
+  return c
+end
+-- Gives a cMap its key-maker, and gives the cMap back.
+function L.cmaker(c, maker)
+  c.maker = maker or function() error("the key-maker is nothing, so it can't make keys.", 0) end
   return c
 end
 function L.rows(c)
@@ -210,24 +236,18 @@ function L.rows(c)
   for i, r in ipairs(c.rows) do copy[i] = r end
   return copy
 end
-local function ids(c)
-  local list = {}
-  for i, r in ipairs(c.rows) do list[i] = fmt("%d", r.id) end
-  if #list == 0 then return "The cArray is empty." end
-  return "The ids are " .. table.concat(list, ", ") .. "."
-end
-function L.cget(c, id)
-  local r = c.byId[id]
-  if not r then error(fmt("there's no row with id %d. %s", id, ids(c)), 2) end
+function L.cget(c, k)
+  local r = c.byKey[k]
+  if not r then error("there's no row with " .. c.key .. " " .. keytext(c, k) .. ". " .. keys(c), 2) end
   return r
 end
 function L.cinject(c, values) addrow(c, values, 3) end
-function L.chas(c, id) return c.byId[id] ~= nil end
-function L.cremove(c, id)
-  if not c.byId[id] then error(fmt("there's no row with id %d to remove. %s", id, ids(c)), 2) end
-  c.byId[id] = nil
+function L.chas(c, k) return c.byKey[k] ~= nil end
+function L.cremove(c, k)
+  if not c.byKey[k] then error("there's no row with " .. c.key .. " " .. keytext(c, k) .. " to remove. " .. keys(c), 2) end
+  c.byKey[k] = nil
   for i, r in ipairs(c.rows) do
-    if r.id == id then remove(c.rows, i) break end
+    if r[c.key] == k then remove(c.rows, i) break end
   end
 end
 

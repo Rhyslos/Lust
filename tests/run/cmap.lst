@@ -1,0 +1,82 @@
+-- cMaps: the first column is the key.
+object Ids {
+    has {
+        int last = 100;
+        int spins = 0;
+    }
+}
+
+method int nextId() {
+    Ids.last = Ids.last + 7;
+    return Ids.last;
+}
+
+-- Keyed by text.
+cMap(string name, int price, int stock) shop = [
+    ["tea", 2, 10],
+    ["cake", 5, 3]
+];
+shop:inject(["bread", 3, 8]);
+shop["tea"].price = 3;
+print(shop["tea"].price);
+print(shop:has("cake"));
+shop:remove("cake");
+print(shop:has("cake"));
+print(shop);
+print(#shop);
+loop (string name, int price, int stock in shop) {
+    print(name + ": " + price.text() + " (" + stock.text() + " left)");
+}
+
+-- Numbered by Lust.
+cMap(int id, string item) bag = [];
+bag:inject(["Sword"]);
+bag:inject([10, "Shield"]);
+bag:inject(["Map"]);
+print(bag);
+print(bag[11].item);
+
+-- Numbered by a key-maker.
+cMap(int id = nextId, string item) chest = [["Gold"]];
+chest:inject(["Ruby"]);
+chest:inject([5, "Pearl"]);
+print(chest);
+
+-- A text key-maker, made by a hook.
+hook string() code = new hook {
+    Ids.spins = Ids.spins + 1;
+    return "C" + (Ids.spins % 3).text();
+};
+cMap(string code = code, int amount) codes = [];
+codes:inject([1]);
+codes:inject([2]);
+codes:inject([3]);
+print(codes);
+try {
+    codes:inject([4]);
+} error (string e) {
+    print(e);
+}
+
+-- Mistakes while running.
+try {
+    shop:inject([1, 1]);
+} error (string e) {
+    print(e);
+}
+try {
+    print(shop["milk"].price);
+} error (string e) {
+    print(e);
+}
+try {
+    bag:inject([10, "Bow"]);
+} error (string e) {
+    print(e);
+}
+try {
+    bag:remove(99);
+} error (string e) {
+    print(e);
+}
+end

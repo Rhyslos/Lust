@@ -38,18 +38,18 @@ This is **Lust 2**, a fresh start written in Rust. One language, two outputs:
 
 | Output | Files | For |
 | --- | --- | --- |
-| Rust, compiled to real programs | `.lust` | apps and tools on Windows, macOS and Linux |
+| Rust, compiled to real programs | `.lst` | apps and tools on Windows, macOS and Linux |
 | LustScript, turned into Lua | `.lsc` | scripting and modding inside other programs, like Garry's Mod, Aventail and Halberd |
 
-**What works today (alpha 2):** both outputs. Every file is checked before anything runs, with mistakes explained in plain words.
+**What works today (alpha 3):** both outputs. Every file is checked before anything runs, with mistakes explained in plain words.
 
 - `.lsc` files turn into plain Lua 5.1 that Garry's Mod (LuaJIT) and Luau can run.
-- `.lust` files turn into Rust, which builds into a real program (an `.exe` on Windows) that runs without Lust.
+- `.lst` files turn into Rust, which builds into a real program (an `.exe` on Windows) that runs without Lust.
 - `lust run` runs either kind straight away, with Lua built into `lust` itself, so nothing else needs installing. Building a real program needs Rust installed.
 
 Every test runs both ways, through Lua and as a real program, and both have to print exactly the same.
 
-The full rules are in **[LUST.md](LUST.md)**, and the long-term plan is in [IDEAS.md](IDEAS.md). Lust 1, the version that compiled to C#, lives on the [`v1`](https://github.com/Rhyslos/Lust/tree/v1) branch.
+The full rules are in **[LUST.md](LUST.md)**, and what gets built next is in **[ROADMAP.md](ROADMAP.md)**. Lust 1, the version that compiled to C#, lives on the [`v1`](https://github.com/Rhyslos/Lust/tree/v1) branch.
 
 ## Try it
 
@@ -57,8 +57,8 @@ You need [Rust](https://rustup.rs). Then:
 
 ```
 cargo build --release
-target/release/lust run tests/run/player.lust
-target/release/lust build tests/run/player.lust
+target/release/lust run tests/run/player.lst
+target/release/lust build tests/run/player.lst
 ```
 
 The second line makes `tests/run/player` (`player.exe` on Windows), a real program you can run on its own.
@@ -67,10 +67,10 @@ The second line makes `tests/run/player` (`player.exe` on Windows), a real progr
 | --- | --- |
 | `lust run file` | checks the file, then runs it straight away. `lust file` works too |
 | `lust check file` | only checks, and lists any mistakes |
-| `lust build file.lust` | builds a real program next to it, through Rust |
+| `lust build file.lst` | builds a real program next to it, through Rust |
 | `lust build file.lsc` | writes the Lua next to it, as `file.lua`, ready for Garry's Mod or any Lua host |
 | `lust lua file` | shows the Lua it turns into |
-| `lust rust file.lust` | shows the Rust it turns into |
+| `lust rust file.lst` | shows the Rust it turns into |
 | `lust test tests` | runs the test programs, both ways |
 
 Mistakes come out all at once, before anything runs:
@@ -84,7 +84,7 @@ classes.lsc:18:19  Dog has no field called nam. Did you mean name?
 Mistakes that only show up while running point at the Lust line, in Lua and in real programs alike:
 
 ```
-missing-row.lust:2  there's no row with id 7. The ids are 1, 2.
+missing-row.lst:2  there's no row with id 7. The ids are 1, 2.
 ```
 
 Every push builds a ready-made `lust.exe`: open the **Actions** tab, click the latest **Test** run, and download **lust-windows**.

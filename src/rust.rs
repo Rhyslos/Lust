@@ -4,7 +4,7 @@
 //! - Things made from classes are shared: `Option<Rc<RefCell<…>>>`, where None is `nothing`.
 //!   A class and everything `like` it share one struct, with a class number, so a Wizard
 //!   fits wherever a Player goes. Methods go through a dispatcher that picks the right version.
-//! - Arrays, maps and cArrays are shared too, like in Lua.
+//! - Arrays, maps and cMaps are shared too, like in Lua.
 //! - Hooks are `Option<Rc<dyn Fn(…) -> …>>`. A `new hook` takes copies of the variables it uses.
 //! - Every statement first records its Lust line, so errors while running can name it.
 
@@ -18,13 +18,15 @@ pub const RUNTIME: &str = include_str!("native_rt.rs");
 
 struct W<'a> {
     info: &'a Info,
-    /// Row structs for cArrays, by their columns.
+    /// Row structs for cMaps, by their columns.
     rows: Vec<Vec<(String, Ty)>>,
     tmp: usize,
     /// The class whose method is being written; `this` is in scope.
     class: Option<usize>,
     /// What the method or hook being written gives back.
     current_ret: Option<Ty>,
+    /// A key-maker for the cMap about to be written.
+    maker: Option<String>,
 }
 
 pub fn write(prog: &Program, info: &Info, file: &str) -> String {
@@ -34,6 +36,7 @@ pub fn write(prog: &Program, info: &Info, file: &str) -> String {
         tmp: 0,
         class: None,
         current_ret: None,
+        maker: None,
     };
     let mut defs = String::new();
     let mut body = String::new();
@@ -89,7 +92,10 @@ pub fn write(prog: &Program, info: &Info, file: &str) -> String {
             let Some(d) = &f.default else { continue };
             let Some(decl) = w.decl_class(ci, &f.name) else { continue };
             let want = info.field(ci, &f.name).map(|x| x.ty.clone()).unwrap_or(Ty::Error);
-            let v = w.coerced(d, &want);
+            let v = match &f.ty {
+                Some(t) => w.made(t, d, &want),
+                None => w.coerced(d, &want),
+            };
             init.push_str(&format!(
                 "    {{ let v = {v}; this.borrow_mut().{} = v; }}\n",
                 w.fname(decl, &f.name)
@@ -209,8 +215,10 @@ pub fn write(prog: &Program, info: &Info, file: &str) -> String {
         let cols = w.rows[i].clone();
         let fields: Vec<String> = cols.iter().map(|(n, t)| format!("    f_{n}: {},\n", w.ty(t))).collect();
         rows.push_str(&format!(
-            "#[derive(Default, Clone)]\nstruct Row{i} {{\n    id: i64,\n{}}}\nimpl rt::Row for Row{i} {{ fn id(&self) -> i64 {{ self.id }} fn set_id(&mut self, id: i64) {{ self.id = id; }} }}\n",
-            fields.concat()
+            "#[derive(Default, Clone)]\nstruct Row{i} {{\n{}}}\nimpl rt::Row for Row{i} {{ type K = {kt}; fn key(&self) -> {kt} {{ self.f_{kn}.clone() }} fn set_key(&mut self, k: {kt}) {{ self.f_{kn} = k; }} }}\n",
+            fields.concat(),
+            kt = w.ty(&cols[0].1),
+            kn = cols[0].0
         ));
         i += 1;
     }
@@ -416,7 +424,7 @@ impl<'a> W<'a> {
             Ty::Class(c) => format!("Option<Rc<RefCell<O{}>>>", self.root(*c)),
             Ty::Array(e) => format!("rt::Arr<{}>", self.ty(e)),
             Ty::Map(e) => format!("rt::Map<{}>", self.ty(e)),
-            Ty::CArray(cols) => format!("rt::CArray<Row{}>", self.row_index(cols)),
+            Ty::CMap(cols) => format!("rt::CMap<Row{}>", self.row_index(cols)),
             Ty::Row(cols) => format!("Rc<RefCell<Row{}>>", self.row_index(cols)),
             Ty::Hook(sig) => {
                 let p: Vec<String> = sig.params.iter().map(|(t, _)| self.ty(t)).collect();
@@ -455,9 +463,9 @@ impl<'a> W<'a> {
             out.push_str(&format!("{pad}rt::at({ln});\n"));
         }
         match s {
-            Stmt::Var { name, value, .. } => {
+            Stmt::Var { ty, name, value, .. } => {
                 let want = self.var_type(s);
-                let v = self.coerced(value, &want);
+                let v = self.made(ty, value, &want);
                 let rt = self.ty(&want);
                 out.push_str(&format!("{pad}let mut v_{name}: {rt} = {v};\n"));
             }
@@ -506,11 +514,11 @@ impl<'a> W<'a> {
                                 let v2 = vars.get(1).map(|v| format!("v_{}", v.1)).unwrap_or_else(|| "_".into());
                                 out.push_str(&format!("{pad}for (v_{}, {v2}) in rt::mentries(&{src}) {{\n", vars[0].1));
                             }
-                            Ty::CArray(cols) => {
+                            Ty::CMap(cols) => {
                                 let r = self.fresh();
                                 out.push_str(&format!("{pad}for r{r} in rt::rows(&{src}) {{\n"));
                                 for (i, (_, name, _)) in vars.iter().enumerate() {
-                                    let field = if i == 0 { "id".to_string() } else { format!("f_{}", cols[i - 1].0) };
+                                    let field = format!("f_{}", cols[i].0);
                                     out.push_str(&format!("{inner}let v_{name} = r{r}.borrow().{field}.clone();\n"));
                                 }
                             }
@@ -544,6 +552,20 @@ impl<'a> W<'a> {
                 out.push_str(&format!("{pad}}}\n"));
             }
             Stmt::Lua { .. } => out.push_str(&format!("{pad}rt::fail(\"lua blocks only run in LustScript.\".into());\n")),
+        }
+    }
+
+    /// A variable's or field's value. A cMap made with a key-maker in its type gets the
+    /// key-maker, before its first rows are added so they use it too.
+    fn made(&mut self, t: &TypeRef, value: &Expr, want: &Ty) -> String {
+        let Some(m) = t.key_maker() else { return self.coerced(value, want) };
+        let mc = self.expr(m);
+        if matches!(value.kind, ExprKind::List { .. }) {
+            self.maker = Some(mc);
+            self.expr(value)
+        } else {
+            let v = self.expr(value);
+            format!("rt::cmaker({v}, {mc})")
         }
     }
 
@@ -650,7 +672,7 @@ impl<'a> W<'a> {
                 let tc = self.expr(t);
                 match self.info.ty(t) {
                     Ty::Row(_) => {
-                        let field = if f == "id" { "id".to_string() } else { format!("f_{f}") };
+                        let field = format!("f_{f}");
                         format!("{{ let o = {tc}; let v = o.borrow().{field}.clone(); v }}")
                     }
                     Ty::Class(c) => {
@@ -684,13 +706,13 @@ impl<'a> W<'a> {
                         (Ty::Array(_), "remove") => format!("rt::aremove(&{tc}, {})", self.expr(&args[0])),
                         (Ty::Map(_), "has") => format!("rt::mhas(&{tc}, &{})", self.expr(&args[0])),
                         (Ty::Map(_), "remove") => format!("rt::mremove(&{tc}, &{})", self.expr(&args[0])),
-                        (Ty::CArray(cols), "inject") => {
+                        (Ty::CMap(cols), "inject") => {
                             let cols = cols.clone();
                             let row = self.row(&args[0], &cols);
                             format!("rt::cinject(&{tc}, {row})")
                         }
-                        (Ty::CArray(_), "has") => format!("rt::chas(&{tc}, {})", self.expr(&args[0])),
-                        (Ty::CArray(_), "remove") => format!("rt::cremove(&{tc}, {})", self.expr(&args[0])),
+                        (Ty::CMap(_), "has") => format!("rt::chas(&{tc}, {})", self.expr(&args[0])),
+                        (Ty::CMap(_), "remove") => format!("rt::cremove(&{tc}, {})", self.expr(&args[0])),
                         _ => "()".into(),
                     },
                     Some(CallRes::FieldHook) => {
@@ -750,7 +772,7 @@ impl<'a> W<'a> {
                 let ic = self.expr(i);
                 match self.info.ty(t) {
                     Ty::Map(_) => format!("rt::mget(&{tc}, &{ic})"),
-                    Ty::CArray(_) => format!("rt::cget(&{tc}, {ic})"),
+                    Ty::CMap(_) => format!("rt::cget(&{tc}, {ic})"),
                     _ => format!("rt::aget(&{tc}, {ic})"),
                 }
             }
@@ -759,7 +781,7 @@ impl<'a> W<'a> {
                 match self.info.ty(inner) {
                     Ty::Str => format!("rt::slen(&{c})"),
                     Ty::Map(_) => format!("rt::mlen(&{c})"),
-                    Ty::CArray(_) => format!("rt::clen(&{c})"),
+                    Ty::CMap(_) => format!("rt::clen(&{c})"),
                     _ => format!("rt::alen(&{c})"),
                 }
             }
@@ -786,10 +808,14 @@ impl<'a> W<'a> {
                     let pairs: Vec<String> = ks.iter().zip(&vs).map(|(k, v)| format!("({k}, {v})")).collect();
                     format!("rt::map::<{vt}>(vec![{}])", pairs.join(", "))
                 }
-                Ty::CArray(cols) => {
+                Ty::CMap(cols) => {
                     let ri = self.row_index(&cols);
                     let rows: Vec<String> = items.iter().map(|r| self.row(r, &cols)).collect();
-                    format!("rt::carr::<Row{ri}>(vec![{}])", rows.join(", "))
+                    let maker = match self.maker.take() {
+                        Some(m) => format!("Some({m})"),
+                        None => "None".into(),
+                    };
+                    format!("rt::carr::<Row{ri}>({:?}, {maker}, vec![{}])", cols[0].0, rows.join(", "))
                 }
                 _ => "()".into(),
             },
@@ -881,19 +907,19 @@ impl<'a> W<'a> {
         let ExprKind::List { items, .. } = &r.kind else {
             return "()".into();
         };
-        let with_id = items.len() == cols.len() + 1;
-        let start = if with_id { 1 } else { 0 };
-        let id = if with_id {
+        let with_key = items.len() == cols.len();
+        let start = if with_key { 1 } else { 0 };
+        let key = if with_key {
             format!("Some({})", self.expr(&items[0]))
         } else {
             "None".into()
         };
         let mut fields = Vec::new();
-        for (i, (n, t)) in cols.iter().enumerate() {
-            let v = self.coerced(&items[start + i], t);
-            fields.push(format!("f_{n}: {v}"));
+        for (i, (n, t)) in cols.iter().enumerate().skip(1) {
+            let v = self.coerced(&items[start + i - 1], t);
+            fields.push(format!("f_{n}: {v}, "));
         }
-        format!("({id}, Row{ri} {{ id: 0, {} }})", fields.join(", "))
+        format!("({key}, Row{ri} {{ {}..Default::default() }})", fields.concat())
     }
 
     fn new_hook(&mut self, e: &Expr, body: &[Stmt]) -> String {
@@ -983,15 +1009,15 @@ impl<'a> W<'a> {
                 let inner = self.fmt(el, true);
                 format!("|v: &{tt}| rt::mshow(v, {inner})")
             }
-            Ty::CArray(cols) | Ty::Row(cols) => {
+            Ty::CMap(cols) | Ty::Row(cols) => {
                 let ri = self.row_index(cols);
-                let mut parts = vec!["rt::itext(r.id)".to_string()];
+                let mut parts: Vec<String> = Vec::new();
                 for (n, ct) in cols.iter() {
                     let f = self.fmt(ct, true);
                     parts.push(format!("({f})(&r.f_{n})"));
                 }
                 let row = format!("|r: &Row{ri}| format!(\"[{{}}]\", vec![{}].join(\", \"))", parts.join(", "));
-                if matches!(t, Ty::CArray(_)) {
+                if matches!(t, Ty::CMap(_)) {
                     format!("|v: &{tt}| rt::cshow(v, {row})")
                 } else {
                     format!("|v: &{tt}| ({row})(&v.borrow())")
@@ -1036,7 +1062,7 @@ impl<'a> W<'a> {
                 let s = match t {
                     Ty::State(_) if matches!(op, BinOp::Eq | BinOp::Ne) => format!("rt::sin({lc}, {rc})"),
                     Ty::Class(_) | Ty::Hook(_) | Ty::Nothing => format!("rt::same(&{lc}, &{rc})"),
-                    Ty::Array(_) | Ty::Map(_) | Ty::CArray(_) => format!("Rc::ptr_eq(&{lc}, &{rc})"),
+                    Ty::Array(_) | Ty::Map(_) | Ty::CMap(_) => format!("Rc::ptr_eq(&{lc}, &{rc})"),
                     Ty::Row(_) => format!("Rc::ptr_eq(&{lc}, &{rc})"),
                     _ => format!("({lc} == {rc})"),
                 };

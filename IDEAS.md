@@ -13,19 +13,7 @@ Lust's long-term plan: everything we've talked about but haven't built yet. Some
 
 ## The long-term plan
 
-The order we'd build things in, so Lust grows into something real without biting off too much at once:
-
-1. **Native programs:** `lust build --native`. Small, and useful straight away.
-2. **`fetch web;`:** servers with routes and JSON. Useful straight away, and it's familiar ground.
-3. **LustScript:** Lust turned into Lua, to run inside other programs: Garry's Mod and Aventail first.
-4. **`view { }`:** describing screens Compose-style, with Tailwind-style `[ ]` styles, drawn by Lust itself in a window.
-5. **The same views on the web,** over a live connection.
-6. **The 2D engine,** on the same drawing layer as the views, then a sprite-placing editor written in Lust.
-7. **Our own machine code (LLVM),** only if .NET is ever what's holding Lust back.
-
-`view { }` is the heart of it: one way of describing screens serves desktop windows, web pages and the engine's editor. It's worth designing carefully before any of steps 4 to 6 are built.
-
-The smaller language additions below (hooks, `with`, `{ }` in text, `when`, LustQL, `+=`) can slot in between any of these steps.
+The build order now lives in [ROADMAP.md](ROADMAP.md).
 
 ## How big it is
 
