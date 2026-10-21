@@ -1420,14 +1420,56 @@ pub fn jr_object(v: &Json, at: &str) -> bool {
         _ => misfit(at, "an object", v),
     }
 }
-pub fn json_read<T>(text: String, f: &dyn Fn(&Json, &str) -> T) -> T {
+pub fn json_parse(text: &str) -> Json {
     let mut p = JP { b: text.as_bytes(), i: 0 };
     let v = p.value();
     p.skip();
     if p.i < p.b.len() {
         p.unexpected(p.i);
     }
-    f(&v, "")
+    v
+}
+
+pub fn json_read<T>(text: String, f: &dyn Fn(&Json, &str) -> T) -> T {
+    f(&json_parse(&text), "")
+}
+
+// ----- saves: readable JSON files, name.save -----
+
+pub fn save_exists(name: &str) -> bool {
+    std::path::Path::new(&format!("{name}.save")).is_file()
+}
+
+pub fn save_write(name: &str, text: String) {
+    if std::fs::write(format!("{name}.save"), text + "\n").is_err() {
+        fail(format!("can't write the save {name}.save."));
+    }
+}
+
+pub fn save_read(name: &str) -> Json {
+    let text = match std::fs::read_to_string(format!("{name}.save")) {
+        Ok(t) => t,
+        Err(_) => fail(format!("there's no saved {name} yet. Check first: is saved {name}?")),
+    };
+    let mut out = None;
+    if let Some(e) = attempt(|| out = Some(json_parse(&text))) {
+        fail(format!("{name}.save isn't a save Lust can read: {e}"));
+    }
+    out.unwrap()
+}
+
+/// One thing from a save. Anything that doesn't fit stops the load before anything changes.
+pub fn save_get<T>(d: &Json, name: &str, entry: &str, f: &dyn Fn(&Json, &str) -> T) -> T {
+    let Some(v) = jget(d, entry) else {
+        fail(format!(
+            "{name}'s save doesn't fit this program, so nothing was loaded: it has no {entry}."
+        ))
+    };
+    let mut out = None;
+    if let Some(e) = attempt(|| out = Some(f(v, entry))) {
+        fail(format!("{name}'s save doesn't fit this program, so nothing was loaded: {e}"));
+    }
+    out.unwrap()
 }
 
 fn jquote(s: &str) -> String {

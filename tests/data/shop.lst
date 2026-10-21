@@ -1,0 +1,63 @@
+-- A database, used like cMaps.
+state Kind = [Drink, Food [Sweet, Savoury]];
+
+database Shop in "shop.db" {
+    cMap(string name, float price, int stock, Kind kind, truth fresh) items;
+    cMap(int id, string who, string item) orders;
+}
+
+-- Start from an empty shop each run.
+Shop.items:where(true):remove();
+Shop.orders:where(true):remove();
+
+Shop.items:inject(["tea", 2.5, 10, Kind.Drink, true]);
+Shop.items:inject(["cake", 4, 3, Kind.Food.Sweet, true]);
+Shop.items:inject(["bun", 1.25, 0, Kind.Food.Sweet, false]);
+Shop.items:inject(["pie", 3.75, 5, Kind.Food.Savoury, true]);
+print(#Shop.items);
+print(Shop.items:has("tea"));
+print(Shop.items["cake"].price);
+Shop.items["cake"].stock = Shop.items["cake"].stock - 1;
+print(Shop.items["cake"].stock);
+print(Shop.items["bun"].fresh);
+print(Shop.items["pie"].kind);
+
+float most = 3.0;
+loop (string name, float price, int stock, Kind kind, truth fresh in Shop.items:where(price <= most && stock > 0)) {
+    print(name + " " + price.text());
+}
+print(Shop.items:where(kind == Kind.Food):orderBy(price));
+print(Shop.items:orderBy(price):reverse():first(2));
+print(Shop.items:where(name:startsWith("p") || name:contains("ak")):count());
+print(Shop.items:where(not fresh));
+print(#Shop.items:where(#name == 3 && name + "!" == "bun!"));
+
+cMap(string name, float price, int stock, Kind kind, truth fresh) copy = Shop.items:where(stock == 0);
+copy["bun"].stock = 99;
+print(Shop.items["bun"].stock);
+
+Shop.orders:inject(["Ada", "tea"]);
+Shop.orders:inject(["Bo", "pie"]);
+Shop.orders:inject([10, "Cy", "cake"]);
+Shop.orders:inject(["Di", "bun"]);
+print(Shop.orders);
+Shop.orders:remove(2);
+Shop.items:where(stock == 0):remove();
+print(#Shop.items);
+
+try {
+    Shop.items:inject(["tea", 1, 1, Kind.Drink, true]);
+} error (string e) {
+    print(e);
+}
+try {
+    print(Shop.items["milk"].price);
+} error (string e) {
+    print(e);
+}
+try {
+    Shop.orders:remove(2);
+} error (string e) {
+    print(e);
+}
+end

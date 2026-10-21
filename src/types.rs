@@ -25,6 +25,22 @@ pub enum Ty {
     /// One row of a cMap.
     Row(Rc<Vec<(String, Ty)>>),
     Hook(Rc<HookSig>),
+    /// A database table: `Shop.items`.
+    Table(Rc<TableTy>),
+    /// Some of a table's rows: `Shop.items:where(price < 3.0)`.
+    Query(Rc<TableTy>),
+    /// One row of a table, read and changed in the database itself: `Shop.items["tea"]`.
+    TableRow(Rc<TableTy>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TableTy {
+    pub db: usize,
+    pub table: usize,
+    /// As people see it: "Shop.items".
+    pub name: String,
+    /// The columns, the key first, like a cMap's.
+    pub cols: Rc<Vec<(String, Ty)>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -68,6 +84,9 @@ impl<'a> Names<'a> {
                 format!("cMap({})", c.join(", "))
             }
             Ty::Row(_) => "cMap row".into(),
+            Ty::Table(t) => format!("the table {}", t.name),
+            Ty::Query(t) => format!("query on {}", t.name),
+            Ty::TableRow(t) => format!("row of {}", t.name),
             Ty::Hook(sig) => {
                 let mut s = String::from("hook");
                 if sig.ret != Ty::Void {

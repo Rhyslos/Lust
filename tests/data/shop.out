@@ -1,0 +1,18 @@
+4
+true
+4.0
+2
+false
+Food.Savoury
+tea 2.5
+[["bun", 1.25, 0, Food.Sweet, false], ["pie", 3.75, 5, Food.Savoury, true], ["cake", 4.0, 2, Food.Sweet, true]]
+[["cake", 4.0, 2, Food.Sweet, true], ["pie", 3.75, 5, Food.Savoury, true]]
+2
+[["bun", 1.25, 0, Food.Sweet, false]]
+1
+0
+[[1, "Ada", "tea"], [2, "Bo", "pie"], [10, "Cy", "cake"], [11, "Di", "bun"]]
+3
+there's already a row with name "tea" in Shop.items.
+there's no row with name "milk" in Shop.items.
+there's no row with id 2 in Shop.orders to remove.

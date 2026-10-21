@@ -3,6 +3,9 @@
 
 use std::process::ExitCode;
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use mlua::Lua;
 
 use crate::lua::Output;
@@ -25,6 +28,91 @@ fn host(lua: &Lua) -> mlua::Result<()> {
     )?;
     h.set("mkdir", lua.create_function(|_, p: String| Ok(rt::fs_mkdir(&p).err()))?)?;
     h.set("now", lua.create_function(|_, ()| Ok(rt::time_now()))?)?;
+    // Databases: opened ones are kept here, and Lua holds their number.
+    let dbs: Rc<RefCell<Vec<crate::native_db::Db>>> = Rc::new(RefCell::new(Vec::new()));
+    let d = dbs.clone();
+    h.set(
+        "db_open",
+        lua.create_function(move |_, (path, tables): (String, mlua::Table)| {
+            let mut list: Vec<(String, Vec<(String, String)>)> = Vec::new();
+            for t in tables.sequence_values::<mlua::Table>() {
+                let t = t?;
+                let name: String = t.get(1)?;
+                let cols: mlua::Table = t.get(2)?;
+                let mut cs = Vec::new();
+                for c in cols.sequence_values::<mlua::Table>() {
+                    let c = c?;
+                    cs.push((c.get::<String>(1)?, c.get::<String>(2)?));
+                }
+                list.push((name, cs));
+            }
+            let owned: Vec<(&str, Vec<(&str, &str)>)> = list
+                .iter()
+                .map(|(n, cs)| (n.as_str(), cs.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect()))
+                .collect();
+            let refs: Vec<(&str, &[(&str, &str)])> = owned.iter().map(|(n, cs)| (*n, cs.as_slice())).collect();
+            match crate::native_db::open_db(&path, &refs) {
+                Ok(db) => {
+                    d.borrow_mut().push(db);
+                    Ok((Some(d.borrow().len()), None))
+                }
+                Err(e) => Ok((None, Some(e))),
+            }
+        })?,
+    )?;
+    fn params(t: mlua::Table) -> mlua::Result<Vec<crate::native_db::SqlVal>> {
+        use crate::native_db::SqlVal;
+        let mut out = Vec::new();
+        for v in t.sequence_values::<mlua::Value>() {
+            out.push(match v? {
+                mlua::Value::Number(n) if n.fract() == 0.0 && n.abs() < 9.0e15 => SqlVal::Int(n as i64),
+                mlua::Value::Number(n) => SqlVal::Real(n),
+                mlua::Value::Integer(i) => SqlVal::Int(i as i64),
+                mlua::Value::String(s) => SqlVal::Text(s.to_str()?.to_string()),
+                mlua::Value::Boolean(b) => SqlVal::Int(b as i64),
+                _ => SqlVal::Null,
+            });
+        }
+        Ok(out)
+    }
+    let d = dbs.clone();
+    h.set(
+        "db_exec",
+        lua.create_function(move |_, (id, sql, ps): (usize, String, mlua::Table)| {
+            let dbs = d.borrow();
+            match crate::native_db::exec(&dbs[id - 1], &sql, &params(ps)?) {
+                Ok(n) => Ok((Some(n), None)),
+                Err(e) => Ok((None, Some(e))),
+            }
+        })?,
+    )?;
+    let d = dbs.clone();
+    h.set(
+        "db_rows",
+        lua.create_function(move |lua, (id, sql, ps): (usize, String, mlua::Table)| {
+            use crate::native_db::SqlVal;
+            let dbs = d.borrow();
+            match crate::native_db::rows(&dbs[id - 1], &sql, &params(ps)?) {
+                Ok(rows) => {
+                    let out = lua.create_table()?;
+                    for (i, r) in rows.into_iter().enumerate() {
+                        let row = lua.create_table()?;
+                        for (j, v) in r.into_iter().enumerate() {
+                            match v {
+                                SqlVal::Int(x) => row.set(j + 1, x as f64)?,
+                                SqlVal::Real(x) => row.set(j + 1, x)?,
+                                SqlVal::Text(s) => row.set(j + 1, s)?,
+                                SqlVal::Null => {}
+                            }
+                        }
+                        out.set(i + 1, row)?;
+                    }
+                    Ok((Some(out), None))
+                }
+                Err(e) => Ok((None, Some(e))),
+            }
+        })?,
+    )?;
     h.set("clock", lua.create_function(move |_, ()| Ok(started.elapsed().as_secs_f64()))?)?;
     lua.globals().set("LUST_HOST", h)
 }

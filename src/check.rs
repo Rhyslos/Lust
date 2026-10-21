@@ -7,12 +7,27 @@ use std::rc::Rc;
 use crate::ast::*;
 use crate::diag::Diags;
 use crate::parser::BUILTINS;
-use crate::types::{HookSig, Names, Ty};
+use crate::types::{HookSig, Names, TableTy, Ty};
 
 pub struct StateInfo {
     pub name: String,
     /// Every option's full path, in the order written: "MainMenu", "ActiveGame", "ActiveGame.Combat".
     pub options: Vec<String>,
+}
+
+#[allow(dead_code)]
+pub struct DbInfo {
+    pub name: String,
+    pub path: String,
+    pub tables: Vec<(String, Rc<Vec<(String, Ty)>>)>,
+}
+
+#[derive(Clone, Debug)]
+pub enum SaveItem {
+    /// A variable at the top of the file, and its type.
+    Var(Ty),
+    /// An object, by class.
+    Object(usize),
 }
 
 pub struct FieldInfo {
@@ -73,6 +88,14 @@ pub struct Info {
     pub creates: HashMap<usize, (String, usize)>,
     /// Each assembly's recipes: class and the recipe's `new`.
     pub assemblies: HashMap<String, Vec<(usize, usize)>>,
+    pub databases: Vec<DbInfo>,
+    pub db_index: HashMap<String, usize>,
+    /// Names inside :where( ) and :orderBy( ) that are a table's columns.
+    pub columns: HashMap<usize, String>,
+    /// Calls on tables and queries: inject, where, orderBy and the rest.
+    pub table_ops: HashMap<usize, &'static str>,
+    /// Saves, by name: what each one holds.
+    pub saves: HashMap<String, Vec<(String, SaveItem)>>,
     pub states: Vec<StateInfo>,
     pub classes: Vec<ClassInfo>,
     pub methods: HashMap<String, MethodSig>,
@@ -292,6 +315,17 @@ impl<'a> Checker<'a> {
                     }
                     self.info.assemblies.insert(a.name.clone(), vec![]);
                 }
+                Item::Database(d) => {
+                    if self.name_taken(&d.name, d.pos) {
+                        continue;
+                    }
+                    self.info.db_index.insert(d.name.clone(), self.info.databases.len());
+                    self.info.databases.push(DbInfo {
+                        name: d.name.clone(),
+                        path: d.path.clone(),
+                        tables: vec![],
+                    });
+                }
                 Item::Method(m) => {
                     if self.name_taken(&m.name, m.pos) {
                         continue;
@@ -472,6 +506,37 @@ impl<'a> Checker<'a> {
                 }
             }
         }
+        // Database tables: cMaps whose columns hold plain values.
+        for item in &prog.items {
+            let Item::Database(d) = item else { continue };
+            let Some(&di) = self.info.db_index.get(&d.name) else { continue };
+            let mut tables = Vec::new();
+            for (ty, name, pos) in &d.tables {
+                if ty.key_maker().is_some() {
+                    self.err(*pos, "a table's keys come from the database, so a table has no key-maker.");
+                }
+                self.maker_ok = true;
+                let t = self.resolve(ty);
+                let Ty::CMap(cols) = t else { continue };
+                for (cn, ct) in cols.iter() {
+                    if !matches!(ct, Ty::Int | Ty::Float | Ty::Str | Ty::Truth | Ty::State(_) | Ty::Error) {
+                        self.err(
+                            *pos,
+                            format!(
+                                "a table's columns hold numbers, text, truths or state options, but {cn} is {}.",
+                                self.a(ct)
+                            ),
+                        );
+                    }
+                }
+                if tables.iter().any(|(n, _): &(String, Rc<Vec<(String, Ty)>>)| n == name) {
+                    self.err(*pos, format!("{} already has a table called {name}.", d.name));
+                    continue;
+                }
+                tables.push((name.clone(), cols));
+            }
+            self.info.databases[di].tables = tables;
+        }
         // Assembly recipes: each one a `new`, checked like a field's starting value.
         for item in &prog.items {
             let Item::Assembly(a) = item else { continue };
@@ -616,6 +681,8 @@ impl<'a> Checker<'a> {
             Some("a method")
         } else if self.info.assemblies.contains_key(name) {
             Some("an assembly")
+        } else if self.info.db_index.contains_key(name) {
+            Some("a database")
         } else {
             None
         };
@@ -1025,6 +1092,70 @@ impl<'a> Checker<'a> {
                 ctx.scopes.pop();
             }
             Stmt::Lua { .. } => {}
+            Stmt::SaveDecl { name, items, pos } => {
+                let top = ctx.class.is_none() && ctx.ret.is_none() && !ctx.in_hook;
+                if !top {
+                    self.err(*pos, "a save is set up at the top of the file: save gameSession = [Farm, player];");
+                    return;
+                }
+                if self.info.saves.contains_key(name) {
+                    self.err(*pos, format!("there's already a save called {name}."));
+                    return;
+                }
+                let mut list = Vec::new();
+                for (n, p) in items {
+                    if let Some(&c) = self.info.class_index.get(n) {
+                        let ci = &self.info.classes[c];
+                        if ci.is_node {
+                            self.err(
+                                *p,
+                                format!("{n} is a node, which opens and closes, so it can't be saved. Save what's in it instead."),
+                            );
+                        } else if !ci.is_object {
+                            self.err(
+                                *p,
+                                format!("{n} is a class. Save things made from it, like a variable holding one."),
+                            );
+                        } else {
+                            list.push((n.clone(), SaveItem::Object(c)));
+                        }
+                        continue;
+                    }
+                    match self.lookup(ctx, n).map(|l| l.ty.clone()) {
+                        Some(t) => {
+                            if let Some(p2) = crate::stdlib::json_problem(&t, &|t| self.a(t)) {
+                                self.err(
+                                    *p,
+                                    format!(
+                                        "{p2} Saves hold numbers, text, truths, states, arrays, maps, cMaps and things made from classes."
+                                    ),
+                                );
+                            } else {
+                                list.push((n.clone(), SaveItem::Var(t)));
+                            }
+                        }
+                        None => self.err(*p, format!("there's nothing called {n} to save. Declare it first, above the save.")),
+                    }
+                }
+                self.info.saves.insert(name.clone(), list);
+            }
+            Stmt::Save(name, pos) | Stmt::Load(name, pos) => {
+                let word = if matches!(s, Stmt::Save(..)) { "save" } else { "load" };
+                match self.info.saves.get(name).cloned() {
+                    None => self.err(
+                        *pos,
+                        format!("there's no save called {name}. Set one up first: save {name} = [Farm, player];"),
+                    ),
+                    Some(list) => {
+                        let top = ctx.class.is_none() && ctx.ret.is_none() && !ctx.in_hook;
+                        if !top {
+                            if let Some((v, _)) = list.iter().find(|(_, i)| matches!(i, SaveItem::Var(_))) {
+                                self.err(*pos, format!("{name} holds {v}, which only the top of the file can see. {word} it from there, or keep {v} in an object."));
+                            }
+                        }
+                    }
+                }
+            }
             Stmt::Keep { value, into, pos } => {
                 let t = self.expr(value, ctx, None);
                 if !matches!(t, Ty::Class(_) | Ty::Error) {
@@ -1078,6 +1209,7 @@ impl<'a> Checker<'a> {
             Ty::Array(e) => Some(vec![(**e).clone()]),
             Ty::Map(v) => Some(vec![Ty::Str, (**v).clone()]),
             Ty::CMap(cols) => Some(cols.iter().map(|(_, t)| t.clone()).collect()),
+            Ty::Table(t) | Ty::Query(t) => Some(t.cols.iter().map(|(_, t)| t.clone()).collect()),
             Ty::StateList(s) => Some(vec![Ty::State(*s)]),
             Ty::Error => None,
             other => {
@@ -1141,6 +1273,17 @@ impl<'a> Checker<'a> {
                 Some(_) => self.err(pos, format!("{n} can't be changed.")),
             },
             ExprKind::Field(t, f, fp) => {
+                if let Ty::TableRow(tt) = self.info.ty(t) {
+                    if tt.cols.first().map(|c| &c.0) == Some(f) {
+                        self.err(
+                            *fp,
+                            format!(
+                                "{f} is {}'s key, so it can't be changed. Remove the row and add it again with the new {f}.",
+                                tt.name
+                            ),
+                        );
+                    }
+                }
                 if let Ty::Row(cols) = self.info.ty(t) {
                     if cols.first().map(|c| &c.0) == Some(f) {
                         self.err(
@@ -1154,7 +1297,7 @@ impl<'a> Checker<'a> {
                 }
             }
             ExprKind::Index(t, _) => {
-                if matches!(self.info.ty(t), Ty::CMap(_)) {
+                if matches!(self.info.ty(t), Ty::CMap(_) | Ty::Table(_)) {
                     self.err(
                         pos,
                         "a whole row can't be replaced. Change its columns instead: bag[1].amount = 5;, or add a new row with :inject.",
@@ -1189,7 +1332,9 @@ impl<'a> Checker<'a> {
                 a.ret == b.ret && a.params.len() == b.params.len() && a.params.iter().zip(&b.params).all(|(x, y)| x.0 == y.0)
             }
             (Ty::Array(a), Ty::Array(b)) | (Ty::Map(a), Ty::Map(b)) => a == b,
-            (Ty::CMap(a), Ty::CMap(b)) => a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| x.1 == y.1),
+            (Ty::CMap(a), Ty::CMap(b)) => a == b,
+            // A table's rows, or a query's, copied into a cMap.
+            (Ty::Table(t) | Ty::Query(t), Ty::CMap(b)) => t.cols == *b,
             _ => false,
         }
     }
@@ -1230,6 +1375,15 @@ impl<'a> Checker<'a> {
             ExprKind::Float(_) => Ty::Float,
             ExprKind::Str(_) => Ty::Str,
             ExprKind::Bool(_) => Ty::Truth,
+            ExprKind::Saved(name) => {
+                if !self.info.saves.contains_key(name) {
+                    self.err(
+                        e.pos,
+                        format!("there's no save called {name}. Set one up first: save {name} = [Farm, player];"),
+                    );
+                }
+                Ty::Truth
+            }
             ExprKind::Nothing => match expected {
                 Some(t) if t.can_be_nothing() => t.clone(),
                 _ => Ty::Nothing,
@@ -1265,6 +1419,22 @@ impl<'a> Checker<'a> {
             ExprKind::Index(target, index) => {
                 let t = self.expr(target, ctx, None);
                 match t {
+                    Ty::Table(tt) => {
+                        let (kn, kt) = tt.cols[0].clone();
+                        let i = self.expr(index, ctx, Some(&kt));
+                        if i != kt && i != Ty::Error && kt != Ty::Error {
+                            self.err(
+                                index.pos,
+                                format!(
+                                    "{}'s rows are found by their {kn}, which is {}. This is {}.",
+                                    tt.name,
+                                    self.a(&kt),
+                                    self.a(&i)
+                                ),
+                            );
+                        }
+                        Ty::TableRow(tt)
+                    }
                     Ty::Array(el) => {
                         let i = self.expr(index, ctx, Some(&Ty::Int));
                         if i != Ty::Int && i != Ty::Error {
@@ -1324,7 +1494,7 @@ impl<'a> Checker<'a> {
             ExprKind::Len(inner) => {
                 let t = self.expr(inner, ctx, None);
                 match t {
-                    Ty::Str | Ty::Array(_) | Ty::Map(_) | Ty::CMap(_) | Ty::Error => Ty::Int,
+                    Ty::Str | Ty::Array(_) | Ty::Map(_) | Ty::CMap(_) | Ty::Table(_) | Ty::Query(_) | Ty::Error => Ty::Int,
                     other => {
                         self.err(
                             e.pos,
@@ -1607,6 +1777,15 @@ impl<'a> Checker<'a> {
             );
             return Ty::Error;
         }
+        if let Some(&d) = self.info.db_index.get(n) {
+            let first = self.info.databases[d]
+                .tables
+                .first()
+                .map(|t| t.0.clone())
+                .unwrap_or_else(|| "items".into());
+            self.err(e.pos, format!("{n} is a database. Use its tables: {n}.{first}"));
+            return Ty::Error;
+        }
         let mut known: Vec<String> = ctx.scopes.iter().flat_map(|s| s.keys().cloned()).collect();
         if let Some(c) = ctx.class {
             known.extend(self.all_fields(c));
@@ -1621,6 +1800,193 @@ impl<'a> Checker<'a> {
             self.err(e.pos, format!("there's nothing called {n} here.{s}"));
         }
         Ty::Error
+    }
+
+    /// Calls on tables and queries: Shop.items:inject([…]), :where(price < 3.0), :orderBy(name) and so on.
+    #[allow(clippy::too_many_arguments)]
+    fn table_call(&mut self, e: &Expr, t: &Ty, tt: &Rc<TableTy>, m: &str, args: &[Expr], mpos: Pos, ctx: &mut Ctx) -> Ty {
+        let is_table = matches!(t, Ty::Table(_));
+        let query = Ty::Query(tt.clone());
+        let n = tt.name.clone();
+        let fail = |me: &mut Self, ctx: &mut Ctx, msg: String| {
+            for a in args {
+                me.expr(a, ctx, None);
+            }
+            me.err(mpos, msg);
+            Ty::Error
+        };
+        let op: &'static str = match (m, is_table, args.len()) {
+            ("inject", true, 1) => "inject",
+            ("has", true, 1) => "has",
+            ("remove", true, 1) => "removeKey",
+            ("remove", false, 0) => "removeAll",
+            ("where", _, 1) => "where",
+            ("orderBy", _, 1) => "orderBy",
+            ("reverse", _, 0) => "reverse",
+            ("first", _, 1) => "first",
+            ("count", _, 0) => "count",
+            ("inject" | "has", false, _) => {
+                return fail(self, ctx, format!(":{m} works on the table itself: {n}:{m}(…). This is a query."));
+            }
+            ("remove", true, 0) => {
+                return fail(
+                    self,
+                    ctx,
+                    format!("remove takes a key: {n}:remove(…). To remove several rows, pick them first: {n}:where(…):remove()."),
+                );
+            }
+            ("remove", false, _) => {
+                return fail(
+                    self,
+                    ctx,
+                    "a query's remove takes nothing: it removes the rows the query picked.".into(),
+                )
+            }
+            ("inject" | "has" | "where" | "orderBy" | "first", _, _) => return fail(self, ctx, format!(":{m} takes one value.")),
+            ("reverse" | "count", _, _) => return fail(self, ctx, format!(":{m} takes nothing in its ( ).")),
+            _ => {
+                let what = if is_table {
+                    "Tables have inject, has, remove, where, orderBy, reverse, first and count."
+                } else {
+                    "Queries have where, orderBy, reverse, first, count and remove."
+                };
+                return fail(self, ctx, format!("{n} has no method called {m}. {what}"));
+            }
+        };
+        self.info.table_ops.insert(e.id, op);
+        self.info.calls.insert(e.id, CallRes::Builtin);
+        match op {
+            "inject" => {
+                self.row(&args[0], &tt.cols, ctx);
+                if let ExprKind::List { items, .. } = &args[0].kind {
+                    if items.len() + 1 == tt.cols.len() && tt.cols[0].1 == Ty::Str {
+                        self.err(
+                            args[0].pos,
+                            format!("{n}'s key ({}) is text, so each new row needs it first.", tt.cols[0].0),
+                        );
+                    }
+                }
+                Ty::Void
+            }
+            "has" | "removeKey" => {
+                let (kn, kt) = tt.cols[0].clone();
+                let got = self.expr(&args[0], ctx, Some(&kt));
+                self.expect_fits(&args[0], &got, &kt, &format!("{n}'s key, {kn}, is {}", self.a(&kt)));
+                if op == "has" {
+                    Ty::Truth
+                } else {
+                    Ty::Void
+                }
+            }
+            "where" => {
+                ctx.scopes.push(
+                    tt.cols
+                        .iter()
+                        .map(|(c, t)| {
+                            (
+                                c.clone(),
+                                Local {
+                                    ty: t.clone(),
+                                    readonly: true,
+                                    pos: mpos,
+                                },
+                            )
+                        })
+                        .collect(),
+                );
+                let got = self.expr(&args[0], ctx, Some(&Ty::Truth));
+                ctx.scopes.pop();
+                self.expect_truth(&args[0], &got, "where");
+                let names: Vec<String> = tt.cols.iter().map(|(c, _)| c.clone()).collect();
+                self.mark_columns(&args[0], &names);
+                if let Err((pos, msg)) = self.sql_ok(&args[0]) {
+                    self.err(pos, msg);
+                }
+                query
+            }
+            "orderBy" => {
+                match &args[0].kind {
+                    ExprKind::Name(c) if tt.cols.iter().any(|(x, _)| x == c) => {
+                        self.info.columns.insert(args[0].id, c.clone());
+                        let ct = tt.cols.iter().find(|(x, _)| x == c).unwrap().1.clone();
+                        self.info.types.insert(args[0].id, ct);
+                    }
+                    _ => {
+                        let cols: Vec<String> = tt.cols.iter().map(|(c, _)| c.clone()).collect();
+                        self.err(
+                            args[0].pos,
+                            format!("orderBy takes the name of one of {n}'s columns: {}.", cols.join(", ")),
+                        );
+                    }
+                }
+                query
+            }
+            "reverse" => query,
+            "first" => {
+                let got = self.expr(&args[0], ctx, Some(&Ty::Int));
+                self.expect_fits(&args[0], &got, &Ty::Int, "first's count is an int");
+                query
+            }
+            "count" => Ty::Int,
+            _ => Ty::Void,
+        }
+    }
+
+    /// Inside :where( ), the names that are the table's columns.
+    fn mark_columns(&mut self, e: &Expr, cols: &[String]) {
+        let mut found = Vec::new();
+        let names = &self.info.names;
+        crate::rust::walk_expr(e, &mut |x| {
+            if let ExprKind::Name(n) = &x.kind {
+                if cols.contains(n) && names.get(&x.id).map(|r| *r == NameRes::Local).unwrap_or(false) {
+                    found.push((x.id, n.clone()));
+                }
+            }
+        });
+        self.info.columns.extend(found);
+    }
+
+    pub fn mentions_column(info: &Info, e: &Expr) -> bool {
+        let mut found = false;
+        crate::rust::walk_expr(e, &mut |x| {
+            if info.columns.contains_key(&x.id) {
+                found = true;
+            }
+        });
+        found
+    }
+
+    /// Can this part of a :where( ) become SQL? Parts that don't use the columns are worked out by
+    /// Lust first, so anything goes there.
+    fn sql_ok(&self, e: &Expr) -> Result<(), (Pos, String)> {
+        if !Self::mentions_column(&self.info, e) {
+            return Ok(());
+        }
+        let bad = || {
+            Err((
+                e.pos,
+                "where can use a table's columns with maths, comparisons, &&, ||, not, # and :contains, :startsWith and :endsWith. Work anything else out first, in a variable.".to_string(),
+            ))
+        };
+        match &e.kind {
+            ExprKind::Name(_) => Ok(()),
+            ExprKind::Bin(_, l, r, _) => {
+                self.sql_ok(l)?;
+                self.sql_ok(r)
+            }
+            ExprKind::Not(x) | ExprKind::Neg(x) => self.sql_ok(x),
+            ExprKind::Len(x) if self.info.ty(x) == Ty::Str => self.sql_ok(x),
+            ExprKind::Method(t, m, args, _)
+                if matches!(m.as_str(), "contains" | "startsWith" | "endsWith") && self.info.ty(t) == Ty::Str =>
+            {
+                self.sql_ok(t)?;
+                if args.iter().any(|a| Self::mentions_column(&self.info, a)) {
+                    return bad();
+                }
+                Ok(())
+            }
+            _ => bad(),
+        }
     }
 
     /// LootSpawner:create(Item)
@@ -1823,6 +2189,28 @@ impl<'a> Checker<'a> {
                 return Ty::Error;
             }
         }
+        if let ExprKind::Name(n) = &target.kind {
+            if let Some(&d) = self.info.db_index.get(n) {
+                let db = &self.info.databases[d];
+                return match db.tables.iter().position(|(tn, _)| tn == f) {
+                    Some(t) => Ty::Table(Rc::new(TableTy {
+                        db: d,
+                        table: t,
+                        name: format!("{}.{f}", crate::ast::shown(n)),
+                        cols: db.tables[t].1.clone(),
+                    })),
+                    None => {
+                        let names: Vec<String> = db.tables.iter().map(|t| t.0.clone()).collect();
+                        let s = suggest(f, names.clone());
+                        self.err(
+                            fpos,
+                            format!("{n} has no table called {f}.{s} Its tables are {}.", names.join(", ")),
+                        );
+                        Ty::Error
+                    }
+                };
+            }
+        }
         let t = self.expr(target, ctx, None);
         // GameState.ActiveGame.Combat: walking down a state's options.
         if let Some((s, path)) = self.info.options.get(&target.id).cloned() {
@@ -1867,6 +2255,18 @@ impl<'a> Checker<'a> {
                         let s = suggest(f, self.all_fields(c));
                         self.err(fpos, format!("{cn} has no field called {f}.{s}"));
                     }
+                    Ty::Error
+                }
+            },
+            Ty::TableRow(tt) => match tt.cols.iter().find(|(n, _)| n == f) {
+                Some((_, t)) => t.clone(),
+                None => {
+                    let names: Vec<String> = tt.cols.iter().map(|(n, _)| n.clone()).collect();
+                    let s = suggest(f, names.clone());
+                    self.err(
+                        fpos,
+                        format!("{} has no column called {f}.{s} Its columns are {}.", tt.name, names.join(", ")),
+                    );
                     Ty::Error
                 }
             },
@@ -2056,6 +2456,10 @@ impl<'a> Checker<'a> {
                 self.info.calls.insert(e.id, CallRes::Builtin);
                 return if op == "isOpen" { Ty::Truth } else { Ty::Void };
             }
+        }
+        if let Ty::Table(tt) | Ty::Query(tt) = &t {
+            let tt = tt.clone();
+            return self.table_call(e, &t, &tt, m, args, mpos, ctx);
         }
         let builtin: Option<(Vec<(String, Ty)>, Ty)> = match (&t, m) {
             (Ty::Array(el), "inject") => Some((vec![("item".into(), (**el).clone())], Ty::Void)),

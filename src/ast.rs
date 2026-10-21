@@ -142,6 +142,15 @@ pub enum Item {
     Class(ClassDecl),
     Method(MethodDecl),
     Assembly(AssemblyDecl),
+    Database(DatabaseDecl),
+}
+
+/// database Shop in "shop.db" { cMap(string name, float price) items; }
+pub struct DatabaseDecl {
+    pub name: String,
+    pub pos: Pos,
+    pub path: String,
+    pub tables: Vec<(TypeRef, String, Pos)>,
 }
 
 /// assembly LootSpawner { create Item { name = "Potion"; } }
@@ -242,6 +251,16 @@ pub enum Stmt {
         code: String,
         pos: Pos,
     },
+    /// save gameSession = [Farm, player, currentDay];
+    SaveDecl {
+        name: String,
+        items: Vec<(String, Pos)>,
+        pos: Pos,
+    },
+    /// save gameSession;
+    Save(String, Pos),
+    /// load gameSession;
+    Load(String, Pos),
     /// keep sword in player.bag; or keep sword;
     Keep {
         value: Expr,
@@ -260,7 +279,9 @@ impl Stmt {
             | Stmt::Loop { pos, .. }
             | Stmt::Try { pos, .. }
             | Stmt::Lua { pos, .. }
-            | Stmt::Keep { pos, .. } => *pos,
+            | Stmt::Keep { pos, .. }
+            | Stmt::SaveDecl { pos, .. } => *pos,
+            Stmt::Save(_, p) | Stmt::Load(_, p) => *p,
             Stmt::Stop(p) | Stmt::Skip(p) | Stmt::Return(_, p) => *p,
             Stmt::Expr(e) => e.pos,
         }
@@ -372,4 +393,6 @@ pub enum ExprKind {
     NewHook(Vec<Stmt>),
     Like(Box<Expr>, String, Pos),
     Convert(Box<Expr>, Conv, Pos),
+    /// saved gameSession: is there a save to load?
+    Saved(String),
 }

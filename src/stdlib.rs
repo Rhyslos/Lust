@@ -154,7 +154,7 @@ pub fn json_fields(info: &crate::check::Info, c: usize) -> Vec<(usize, String, T
 }
 
 pub fn uses_json(info: &crate::check::Info) -> bool {
-    info.libs.values().any(|l| l.func.starts_with("json_"))
+    !info.saves.is_empty() || info.libs.values().any(|l| l.func.starts_with("json_"))
 }
 
 /// Can this be turned into JSON and back? Hooks can't, and neither can `nothing` on its own.

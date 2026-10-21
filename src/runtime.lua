@@ -879,6 +879,182 @@ function L.json_write(v, f, pretty)
   return r
 end
 
+-- ----- saves: readable JSON files, name.save -----
+
+function L.save_exists(name)
+  if not io or not io.open then return false end
+  local f = io.open(name .. ".save", "rb")
+  if f then f:close() return true end
+  return false
+end
+function L.save_write(name, names, encs, values)
+  local parts = {}
+  for i, n in ipairs(names) do
+    local ok, r = pcall(encs[i], values[i], 1)
+    if not ok then error(r, 2) end
+    parts[i] = pair(n, r, 1)
+  end
+  if not io or not io.open then needs("save") end
+  local f = io.open(name .. ".save", "wb")
+  if not f then error("can't write the save " .. name .. ".save.", 2) end
+  f:write(block("{", "}", parts, 0) .. "\n")
+  f:close()
+end
+function L.save_read(name)
+  if not io or not io.open then needs("load") end
+  local f = io.open(name .. ".save", "rb")
+  if not f then error("there's no saved " .. name .. " yet. Check first: is saved " .. name .. "?", 2) end
+  local text = f:read("*a")
+  f:close()
+  local ok, r = pcall(parse, text)
+  if not ok then error(name .. ".save isn't a save Lust can read: " .. r, 2) end
+  return r
+end
+function L.save_get(d, name, entry, f)
+  local v = d.vals and d.vals[entry]
+  if v == nil then error(name .. "'s save doesn't fit this program, so nothing was loaded: it has no " .. entry .. ".", 2) end
+  local ok, r = pcall(f, v, entry)
+  if not ok then error(name .. "'s save doesn't fit this program, so nothing was loaded: " .. r, 2) end
+  return r
+end
+function L.copy_fields(o, from)
+  for k, v in pairs(from) do o[k] = v end
+end
+
+-- ----- databases, on SQLite through lust -----
+
+local function dbcall(what, ...)
+  if not host or not host.db_open then error("databases need lust run, or a built program.", 3) end
+  local r, e = host[what](...)
+  if r == nil and e then error(e, 3) end
+  return r
+end
+local function sqlv(v)
+  if v == true then return 1 elseif v == false then return 0 end
+  return v
+end
+function L.db_open(path, tables)
+  local id = dbcall("db_open", path, tables)
+  local db = {}
+  for _, t in ipairs(tables) do
+    local cols, kinds = {}, {}
+    for i, c in ipairs(t[2]) do cols[i] = c[1]; kinds[i] = c[2] end
+    db[t[1]] = { id = id, table = t[1], shown = t[3], cols = cols, kinds = kinds, textkey = kinds[1] == "string", wheres = {}, params = {} }
+  end
+  return db
+end
+local function qcopy(q)
+  local n = {}
+  for k, v in pairs(q) do n[k] = v end
+  n.wheres = { unpack(q.wheres) }
+  n.params = { unpack(q.params) }
+  return n
+end
+local function keyof(q) return q.cols[1] end
+local function ktext(q, k)
+  if type(k) == "string" then return '"' .. k .. '"' end
+  return L.itext(k)
+end
+local function qselect(q, what)
+  local s = 'SELECT ' .. what .. ' FROM "' .. q.table .. '"'
+  if #q.wheres > 0 then
+    local w = {}
+    for i, x in ipairs(q.wheres) do w[i] = "(" .. x .. ")" end
+    s = s .. " WHERE " .. table.concat(w, " AND ")
+  end
+  local dir = q.desc and " DESC" or ""
+  if q.order and q.order ~= keyof(q) then
+    s = s .. ' ORDER BY "' .. q.order .. '"' .. dir .. ', "' .. keyof(q) .. '"' .. dir
+  else
+    s = s .. ' ORDER BY "' .. keyof(q) .. '"' .. dir
+  end
+  if q.limit then s = s .. " LIMIT " .. fmt("%d", q.limit) end
+  return s
+end
+local function convert(q, r)
+  for i, kind in ipairs(q.kinds) do
+    if kind == "truth" then r[i] = r[i] ~= 0
+    elseif kind == "float" then r[i] = r[i] + 0.0 end
+  end
+  return r
+end
+function L.q_where(q, sql, params)
+  local n = qcopy(q)
+  n.wheres[#n.wheres + 1] = sql
+  for _, p in ipairs(params) do n.params[#n.params + 1] = sqlv(p) end
+  return n
+end
+function L.q_order(q, col) local n = qcopy(q); n.order = col; n.desc = false; return n end
+function L.q_reverse(q) local n = qcopy(q); n.desc = not n.desc; return n end
+function L.q_first(q, count)
+  if count < 0 then error(fmt("first needs 0 or more, not %d.", count), 2) end
+  local n = qcopy(q); n.limit = count; return n
+end
+function L.q_rows(q)
+  local cols = {}
+  for i, c in ipairs(q.cols) do cols[i] = '"' .. c .. '"' end
+  local rows = dbcall("db_rows", q.id, qselect(q, table.concat(cols, ", ")), q.params)
+  for _, r in ipairs(rows) do convert(q, r) end
+  return rows
+end
+function L.q_count(q)
+  local rows = dbcall("db_rows", q.id, "SELECT COUNT(*) FROM (" .. qselect(q, '"' .. keyof(q) .. '"') .. ")", q.params)
+  return rows[1][1]
+end
+function L.q_delete(q)
+  dbcall("db_exec", q.id, 'DELETE FROM "' .. q.table .. '" WHERE "' .. keyof(q) .. '" IN (' .. qselect(q, '"' .. keyof(q) .. '"') .. ")", q.params)
+end
+function L.q_cmap(q)
+  local rows = L.q_rows(q)
+  for _, r in ipairs(rows) do r.n = #q.cols end
+  return L.carr(q.cols, q.textkey, rows)
+end
+function L.t_has(q, k)
+  local rows = dbcall("db_rows", q.id, 'SELECT 1 FROM "' .. q.table .. '" WHERE "' .. keyof(q) .. '" = ?', { k })
+  return #rows > 0
+end
+function L.t_inject(q, values)
+  local with_key = values.n == #q.cols
+  if with_key and L.t_has(q, values[1]) then
+    error("there's already a row with " .. keyof(q) .. " " .. ktext(q, values[1]) .. " in " .. q.shown .. ".", 2)
+  end
+  local cols, marks, params = {}, {}, {}
+  local first = with_key and 1 or 2
+  for i = first, #q.cols do
+    cols[#cols + 1] = '"' .. q.cols[i] .. '"'
+    marks[#marks + 1] = "?"
+    params[#params + 1] = sqlv(values[i - first + 1])
+  end
+  dbcall("db_exec", q.id, 'INSERT INTO "' .. q.table .. '" (' .. table.concat(cols, ", ") .. ") VALUES (" .. table.concat(marks, ", ") .. ")", params)
+end
+function L.t_remove(q, k)
+  local n = dbcall("db_exec", q.id, 'DELETE FROM "' .. q.table .. '" WHERE "' .. keyof(q) .. '" = ?', { k })
+  if n == 0 then error("there's no row with " .. keyof(q) .. " " .. ktext(q, k) .. " in " .. q.shown .. " to remove.", 2) end
+end
+function L.t_get(q, k)
+  if not L.t_has(q, k) then error("there's no row with " .. keyof(q) .. " " .. ktext(q, k) .. " in " .. q.shown .. ".", 2) end
+  return { q = q, k = k }
+end
+local function rowgone(r)
+  error("this row of " .. r.q.shown .. " (" .. keyof(r.q) .. " " .. ktext(r.q, r.k) .. ") has been removed.", 3)
+end
+function L.r_get(r, col)
+  local rows = dbcall("db_rows", r.q.id, 'SELECT "' .. col .. '" FROM "' .. r.q.table .. '" WHERE "' .. keyof(r.q) .. '" = ?', { r.k })
+  if #rows == 0 then rowgone(r) end
+  for i, c in ipairs(r.q.cols) do
+    if c == col then
+      local v = rows[1][1]
+      if r.q.kinds[i] == "truth" then return v ~= 0 end
+      if r.q.kinds[i] == "float" then return v + 0.0 end
+      return v
+    end
+  end
+end
+function L.r_set(r, col, v)
+  local n = dbcall("db_exec", r.q.id, 'UPDATE "' .. r.q.table .. '" SET "' .. col .. '" = ? WHERE "' .. keyof(r.q) .. '" = ?', { sqlv(v), r.k })
+  if n == 0 then rowgone(r) end
+end
+
 -- try … error (string message): just the message, without Lua's file and line.
 -- Lua's own messages are turned into plain words, the same ones lust run shows.
 function L.errtext(e)

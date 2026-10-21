@@ -21,6 +21,7 @@ enum Kind {
     State,
     Method,
     Assembly,
+    Database,
 }
 
 impl Kind {
@@ -31,6 +32,7 @@ impl Kind {
             Kind::State => "a state",
             Kind::Method => "a method",
             Kind::Assembly => "an assembly",
+            Kind::Database => "a database",
         }
     }
 }
@@ -256,6 +258,7 @@ fn declarations(p: &Program) -> HashMap<String, Kind> {
             Item::Class(c) => d.insert(c.name.clone(), if c.is_object { Kind::Object } else { Kind::Class }),
             Item::Method(m) => d.insert(m.name.clone(), Kind::Method),
             Item::Assembly(a) => d.insert(a.name.clone(), Kind::Assembly),
+            Item::Database(b) => d.insert(b.name.clone(), Kind::Database),
         };
     }
     d
@@ -313,7 +316,7 @@ fn value_names(p: &Program, out: &mut HashSet<String>) {
                 }
             }
             Item::Method(m) => method(m, out),
-            Item::State(_) | Item::Assembly(_) => {}
+            Item::State(_) | Item::Assembly(_) | Item::Database(_) => {}
         }
     }
     stmts(&p.body, out);
@@ -380,6 +383,12 @@ impl<'a> Renamer<'a> {
             Item::Method(m) => {
                 self.name(&mut m.name, m.pos, false);
                 self.method(m);
+            }
+            Item::Database(b) => {
+                self.name(&mut b.name, b.pos, false);
+                for (t, _, _) in &mut b.tables {
+                    self.ty(t);
+                }
             }
             Item::Assembly(a) => {
                 self.name(&mut a.name, a.pos, false);
@@ -471,6 +480,13 @@ impl<'a> Renamer<'a> {
             Stmt::Try { body, handler, .. } => {
                 self.stmts(body);
                 self.stmts(handler);
+            }
+            Stmt::SaveDecl { items, .. } => {
+                for (n, p) in items {
+                    if n.starts_with(|c: char| c.is_ascii_uppercase()) {
+                        self.name(n, *p, false);
+                    }
+                }
             }
             Stmt::Keep { value, into, .. } => {
                 self.expr(value);

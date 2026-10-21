@@ -1,3 +1,5 @@
 /target
 *.lua.out
 *.exe
+*.db
+*.save
