@@ -48,10 +48,10 @@ const SYMBOLS: &[&str] = &[
     "%", "<", ">", "=",
 ];
 
-pub fn lex(src: &str, diags: &mut Diags) -> Vec<Token> {
+pub fn lex(src: &str, file: usize, diags: &mut Diags) -> Vec<Token> {
     let chars: Vec<char> = src.chars().collect();
     let mut out: Vec<Token> = Vec::new();
-    let (mut i, mut line, mut col) = (0usize, 1u32, 1u32);
+    let (mut i, mut line, mut col) = (0usize, ((file as u32) << crate::ast::FILE_SHIFT) | 1, 1u32);
     let at = |i: usize| chars.get(i).copied().unwrap_or('\0');
 
     macro_rules! advance {

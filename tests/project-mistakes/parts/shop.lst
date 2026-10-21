@@ -1,0 +1,27 @@
+class Shop {
+    has {
+        int stock = 3;
+    }
+}
+
+class Secret {
+    has {
+        int code = 1;
+    }
+}
+
+class Helper {
+    has {
+        int n = 0;
+    }
+}
+
+method int price(int n) {
+    return n * 2;
+}
+
+pass Shop;
+pass price;
+pass Nope;
+
+end

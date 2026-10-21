@@ -7,7 +7,7 @@ use mlua::Lua;
 
 use crate::lua::Output;
 
-pub fn run(out: &Output, display: &str) -> ExitCode {
+pub fn run(out: &Output, files: &[String]) -> ExitCode {
     let lua = Lua::new();
     let result = lua.load(&out.code).set_name("=lust").exec();
     match result {
@@ -19,10 +19,13 @@ pub fn run(out: &Output, display: &str) -> ExitCode {
                 other => other.to_string(),
             };
             let (line, msg) = locate(&raw, &out.lines);
-            let msg = friendly(&msg);
+            let msg = crate::ast::unmark(&friendly(&msg));
             match line {
-                Some(l) => eprintln!("{display}:{l}  {msg}"),
-                None => eprintln!("{display}  {msg}"),
+                Some(l) => {
+                    let (f, row) = crate::ast::unpack(l);
+                    eprintln!("{}:{row}  {msg}", files.get(f).map(|s| s.as_str()).unwrap_or(""));
+                }
+                None => eprintln!("{}  {msg}", files[0]),
             }
             ExitCode::from(1)
         }

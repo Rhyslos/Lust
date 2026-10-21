@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (2.0 alpha 3):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks and the built-ins. Not yet: sharing between files (`pass`/`fetch`/`get`), `node`, `assembly`, `keep`, saves, `view`, `schema`/`route`, and LustQL. Lust v1 lives on the `v1` branch.
+> **What works today (2.0 alpha 4):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks and the built-ins. Sharing between files (`pass`/`fetch`/`get`) works too. Not yet: `node`, `assembly`, `keep`, saves, `view`, `schema`/`route`, and LustQL. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -391,16 +391,23 @@ Everything in a file is private until it's passed:
 
 ```
 pass Player;
-pass GameState;
+pass GameState, Mood;
 ```
 
-Another file brings things in with `fetch` (classes, objects, states) and `get` (single methods). The path is in quotes, from the project's root, without `.lst`:
+Another file brings things in with `fetch` (classes, objects, states) and `get` (methods). The path is in quotes, from the project's folder (the one with `main.lst` in it), with `/` between folders and without `.lst`:
 
 ```
 fetch "system/gameState":GameState;
 fetch "entities/player":[Player, Party];
 get "helpers/mathUtils":clamp;
 ```
+
+- Only what's brought in can be used. Lust says where something lives if a file forgets to bring it in.
+- Two files can each have a private thing with the same name. They never mix.
+- Files can bring things in from each other both ways.
+- **Only the file being run runs its code.** The code at the bottom of a fetched file is left out, so any file can be run on its own to try it out.
+- Mistakes and errors name the file they're in: `entities/player.lst:12  …`.
+- LustScript works the same way, with `.lsc` files. A LustScript program turns into one Lua file.
 
 ---
 

@@ -682,7 +682,7 @@ impl<'a> Checker<'a> {
                 pos,
                 format!(
                     "{name} is already declared on line {}. Pick another name, or leave out the type to change it: {name} = …;",
-                    prev.pos.line
+                    prev.pos.row()
                 ),
             );
         } else if let Some(w) = self.taken_by(name) {

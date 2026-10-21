@@ -1,0 +1,11 @@
+main.lst:1:27  parts/shop.lst keeps Secret to itself. To share it, add pass Secret; to parts/shop.lst.
+main.lst:1:35  parts/shop.lst has no Missing.
+main.lst:2:20  price is a method, so it's brought in with get "parts/shop":price;
+main.lst:3:18  Shop is a class, so it's brought in with fetch "parts/shop":Shop;
+main.lst:4:7  there's no file parts/nowhere.lst.
+main.lst:5:7  write the path from the project's folder, with / between folders and without .lst: "entities/player".
+main.lst:8:1  Helper is in parts/shop.lst, which keeps it to itself. To share it, add pass Helper; to parts/shop.lst, then fetch "parts/shop":Helper; here.
+main.lst:9:7  price is in parts/shop.lst. Bring it in at the top of this file: get "parts/shop":price;
+parts/shop.lst:25:6  this file has no Nope to pass.
+
+9 mistakes. Nothing was run.

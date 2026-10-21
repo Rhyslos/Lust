@@ -1,0 +1,13 @@
+object World {
+    has {
+        int day = 1;
+    }
+
+    method tick() {
+        day = day + 1;
+    }
+}
+
+pass World;
+
+end

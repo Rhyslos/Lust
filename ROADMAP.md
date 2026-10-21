@@ -7,8 +7,8 @@ The order Lust gets built in. Each step makes Lust more useful on its own, and n
 | ✅ | **LustScript:** `.lsc` checked and turned into Lua, `lust run` with Lua built in | Done (alpha 1) |
 | ✅ | **Real programs:** `.lst` built through Rust into a program of its own | Done (alpha 2) |
 | ✅ | **1. cMaps and `.lst`:** the key is the first column, key-makers; programs end in `.lst` | Done (alpha 3) |
-| | **2. Sharing between files:** `pass`, `fetch`, `get` | Next |
-| | **3. A basic standard library:** files and folders, time, maths, text tools, JSON | |
+| ✅ | **2. Sharing between files:** `pass`, `fetch`, `get` | Done (alpha 4) |
+| | **3. A basic standard library:** files and folders, time, maths, text tools, JSON | Next |
 | | 🏁 *Lust is a complete tool for console programs and Garry's Mod scripts.* | |
 | | **4. `keep`:** the memory rule for states | |
 | | **5. `node` and `assembly`** | |

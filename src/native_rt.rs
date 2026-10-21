@@ -64,7 +64,7 @@ fn payload_text(p: &(dyn std::any::Any + Send)) -> String {
 }
 
 /// Runs the program on a thread with a big stack, and turns failures into Lust messages.
-pub fn main(program: fn(), file: &'static str) {
+pub fn main(program: fn(), files: &'static [&'static str]) {
     std::panic::set_hook(Box::new(|_| {}));
     let t = std::thread::Builder::new()
         .stack_size(512 * 1024 * 1024)
@@ -74,7 +74,10 @@ pub fn main(program: fn(), file: &'static str) {
                 use std::io::Write;
                 let _ = std::io::stdout().flush();
                 let msg = payload_text(&*p);
-                let line = LINE.with(|c| c.get());
+                // The line has the file's number in its top bits.
+                let packed = LINE.with(|c| c.get());
+                let (f, line) = ((packed >> 20) as usize, packed & 0xFFFFF);
+                let file = files.get(f).copied().unwrap_or("");
                 if line > 0 {
                     eprintln!("{file}:{line}  {msg}");
                 } else {

@@ -2,8 +2,61 @@
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Pos {
+    /// The file's number in its top bits (see FILE_SHIFT), and its line in the rest,
+    /// so one number tells both and sorting goes file by file.
     pub line: u32,
     pub col: u32,
+}
+
+pub const FILE_SHIFT: u32 = 20;
+
+impl Pos {
+    /// Which file of the project this is in: 0 is the one being run.
+    pub fn file(&self) -> usize {
+        (self.line >> FILE_SHIFT) as usize
+    }
+    /// The line within its file.
+    pub fn row(&self) -> u32 {
+        self.line & ((1 << FILE_SHIFT) - 1)
+    }
+}
+
+/// Splits a packed line into its file and its line.
+pub fn unpack(line: u32) -> (usize, u32) {
+    let p = Pos { line, col: 0 };
+    (p.file(), p.row())
+}
+
+/// Things from other files that share a name get a mark and a number inside Lust, like
+/// Player·2. People only ever see the part before the mark.
+pub const MARK: char = '\u{b7}';
+
+pub fn shown(name: &str) -> &str {
+    name.split(MARK).next().unwrap_or(name)
+}
+
+/// Takes the marks out of a message.
+pub fn unmark(msg: &str) -> String {
+    let mut out = String::new();
+    let mut skipping = false;
+    for c in msg.chars() {
+        if c == MARK {
+            skipping = true;
+        } else if skipping && c.is_ascii_digit() {
+        } else {
+            skipping = false;
+            out.push(c);
+        }
+    }
+    out
+}
+
+pub struct Import {
+    pub path: String,
+    pub path_pos: Pos,
+    /// get brings methods; fetch brings classes, objects and states.
+    pub is_get: bool,
+    pub names: Vec<(String, Pos)>,
 }
 
 /// A type as written in the source: `int`, `Player array`, `hook int(int n)`.
@@ -78,6 +131,10 @@ pub struct Program {
     pub items: Vec<Item>,
     pub body: Vec<Stmt>,
     pub uses_lua: bool,
+    pub imports: Vec<Import>,
+    pub passes: Vec<(String, Pos)>,
+    /// The next expression id after this file's, so the next file's ids don't overlap.
+    pub next_id: usize,
 }
 
 pub enum Item {

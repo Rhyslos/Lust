@@ -1,0 +1,23 @@
+get "helpers/maths":clamp;
+
+state Mood = [Cheerful, Grumpy];
+
+class Player {
+    has {
+        string name = "Hero";
+        int hp = 20;
+        Mood mood = Mood.Cheerful;
+    }
+
+    method hurt(int damage) {
+        hp = clamp(hp - damage, 0, 20);
+        mood = Mood.Grumpy;
+    }
+}
+
+pass Player, Mood;
+
+-- Only runs when this file is run on its own.
+print("trying out the player");
+
+end

@@ -1,0 +1,10 @@
+fetch "parts/shop":[Shop, Secret, Missing];
+fetch "parts/shop":price;
+get "parts/shop":Shop;
+fetch "parts/nowhere":Thing;
+fetch "parts/shop.lst":Shop;
+
+Shop s = new Shop {};
+Helper h = nothing;
+print(price(2));
+end

@@ -1,0 +1,5 @@
+get "tools/split":share;
+
+print(share(10, 2));
+print(share(10, 0));
+end

@@ -1,0 +1,23 @@
+method string describe(int n) {
+    return "maths says " + n.text();
+}
+
+method int clamp(int n, int low, int high) {
+    is n < low? then {
+        return low;
+    }
+    is n > high? then {
+        return high;
+    }
+    return n;
+}
+
+method int twice(int n) {
+    print(describe(n));
+    return n * 2;
+}
+
+pass clamp;
+pass twice;
+
+end
