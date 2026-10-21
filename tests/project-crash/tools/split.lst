@@ -1,0 +1,8 @@
+-- Splits things evenly.
+method int share(int total, int people) {
+    return total / people;
+}
+
+pass share;
+
+end

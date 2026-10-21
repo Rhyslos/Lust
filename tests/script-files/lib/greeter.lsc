@@ -1,0 +1,13 @@
+class Greeter {
+    has {
+        string who = "world";
+    }
+
+    method hello() {
+        print("Hello, " + who + "!");
+    }
+}
+
+pass Greeter;
+
+end

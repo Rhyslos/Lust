@@ -21,7 +21,8 @@ pub fn lname(n: &str) -> String {
     if LUA_KEYWORDS.contains(&n) {
         format!("{n}_")
     } else {
-        n.to_string()
+        // Things from different files that share a name: Player·2 becomes Player__2.
+        n.replace(crate::ast::MARK, "__")
     }
 }
 
@@ -134,7 +135,7 @@ impl<'a> W<'a> {
     fn class_table(&self, c: usize) -> String {
         let ci = &self.info.classes[c];
         if ci.is_object {
-            format!("_O_{}", ci.name)
+            format!("_O_{}", lname(&ci.name))
         } else {
             lname(&ci.name)
         }
@@ -239,7 +240,10 @@ impl<'a> W<'a> {
             .parent
             .map(|p| self.class_table(p))
             .unwrap_or_else(|| "nil".into());
-        self.line(c.pos.line, &format!("local {table} = _L.class({}, {parent})", lua_string(&c.name)));
+        self.line(
+            c.pos.line,
+            &format!("local {table} = _L.class({}, {parent})", lua_string(crate::ast::shown(&c.name))),
+        );
         self.class = None;
         self.line(c.pos.line, &format!("function {table}.__fields(self)"));
         self.indent += 1;
@@ -323,7 +327,7 @@ impl<'a> W<'a> {
             Stmt::Return(v, _) => match v {
                 Some(e) => {
                     let code = self.expr(e);
-                    self.line(ln, &format!("do return {code} end"));
+                    self.line(ln, &format!("do return ({code}) end"));
                 }
                 None => self.line(ln, "do return end"),
             },

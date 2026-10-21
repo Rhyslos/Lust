@@ -1,0 +1,23 @@
+-- A program in several files.
+fetch "entities/player":[Player, Mood];
+fetch "entities/world":World;
+get "helpers/maths":[clamp, twice];
+
+-- This file's own describe; helpers/maths has a private one with the same name.
+method string describe(int n) {
+    return "main says " + n.text();
+}
+
+Player ada = new Player { name = "Ada" };
+ada:hurt(30);
+print(ada.hp);
+print(ada.mood == Mood.Grumpy);
+print(clamp(15, 0, 10));
+print(twice(4));
+print(describe(1));
+print(ada);
+World:tick();
+World:tick();
+print(World.day);
+
+end

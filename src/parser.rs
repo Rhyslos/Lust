@@ -114,14 +114,18 @@ pub struct Parser<'a> {
     uses_lua: bool,
     loop_depth: usize,
     last_field: Option<FieldDecl>,
+    imports: Vec<Import>,
+    passes: Vec<(String, Pos)>,
 }
 
-pub fn parse(toks: Vec<Token>, diags: &mut Diags, is_script: bool) -> Program {
+pub fn parse(toks: Vec<Token>, diags: &mut Diags, is_script: bool, first_id: usize) -> Program {
     let mut p = Parser {
         toks,
         p: 0,
         diags,
-        next_id: 0,
+        next_id: first_id,
+        imports: vec![],
+        passes: vec![],
         is_script,
         uses_lua: false,
         loop_depth: 0,
@@ -246,6 +250,48 @@ impl<'a> Parser<'a> {
 
     // ----- the file -----
 
+    /// After fetch or get: "path":Name; or "path":[A, B];
+    fn import(&mut self, is_get: bool) -> R<()> {
+        let example = if is_get {
+            "get \"helpers/maths\":clamp;"
+        } else {
+            "fetch \"entities/player\":Player;"
+        };
+        let t = self.cur().clone();
+        let Tk::Str(path) = &t.kind else {
+            return self.fail(
+                t.pos,
+                format!("the file's path goes in quotes, from the project's folder: {example}"),
+            );
+        };
+        let path = path.clone();
+        self.next();
+        self.expect_sym(":", &format!("after the path comes : and what to bring in: {example}"))?;
+        let mut names = Vec::new();
+        if self.at_sym("[") {
+            self.next();
+            while !self.at_sym("]") {
+                names.push(self.ident("a name to bring in")?);
+                if self.at_sym(",") {
+                    self.next();
+                } else if !self.at_sym("]") {
+                    let pos = self.cur().pos;
+                    return self.fail(pos, "expected , or ] here.");
+                }
+            }
+            self.next();
+        } else {
+            names.push(self.ident("a name to bring in")?);
+        }
+        self.imports.push(Import {
+            path,
+            path_pos: t.pos,
+            is_get,
+            names,
+        });
+        self.semi()
+    }
+
     fn program(&mut self) -> Program {
         let mut items = Vec::new();
         let mut body = Vec::new();
@@ -274,6 +320,9 @@ impl<'a> Parser<'a> {
             items,
             body,
             uses_lua: self.uses_lua,
+            imports: std::mem::take(&mut self.imports),
+            passes: std::mem::take(&mut self.passes),
+            next_id: self.next_id + 1,
         }
     }
 
@@ -301,18 +350,21 @@ impl<'a> Parser<'a> {
                 if word == "fetch" && self.at_word("cs") {
                     return self.fail(t.pos, "Lust v2 doesn't use .NET, so there's no fetch cs:.");
                 }
-                return self.fail(
-                    t.pos,
-                    "sharing between files (fetch, get and pass) isn't built yet. For now, a program is one file.",
-                );
+                return self.import(word == "get");
             }
             "pass" => {
                 self.next();
                 *seen_other = true;
-                return self.fail(
-                    t.pos,
-                    "sharing between files (fetch, get and pass) isn't built yet. For now, a program is one file.",
-                );
+                loop {
+                    let (name, pos) = self.ident("the name of something in this file to pass")?;
+                    self.passes.push((name, pos));
+                    if self.at_sym(",") {
+                        self.next();
+                    } else {
+                        break;
+                    }
+                }
+                return self.semi();
             }
             "state" if matches!(self.peek(1).kind, Tk::Ident(_)) && self.peek(2).is_sym("=") => {
                 *seen_other = true;

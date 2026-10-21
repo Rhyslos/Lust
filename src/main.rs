@@ -6,6 +6,7 @@ mod diag;
 mod lexer;
 mod lua;
 mod parser;
+mod project;
 mod run;
 mod rust;
 mod tests;
@@ -35,6 +36,8 @@ pub struct Compiled {
     pub out: lua::Output,
     /// The Rust version, for .lst files.
     pub rust: Option<String>,
+    /// The program's files, by number, as people see them.
+    pub files: Vec<String>,
 }
 
 /// Reads, checks and writes one file. Mistakes are printed, and give None.
@@ -61,24 +64,27 @@ pub fn compile(path: &Path, quiet: bool) -> Option<Compiled> {
     };
     let is_script = ext == "lsc";
     let mut diags = diag::Diags::default();
-    let toks = lexer::lex(&src, &mut diags);
-    let prog = parser::parse(toks, &mut diags, is_script);
+    let project = project::load(path, src, is_script, &mut diags);
+    let prog = project.program;
+    let files = project.files;
     let info = check::check(&prog, &mut diags, is_script);
     if !diags.is_empty() {
         if !quiet {
             let list = diags.sorted();
             for (pos, msg) in &list {
-                eprintln!("{display}:{}:{}  {msg}", pos.line, pos.col);
+                let file = files.get(pos.file()).cloned().unwrap_or_default();
+                eprintln!("{file}:{}:{}  {msg}", pos.row(), pos.col);
             }
             eprintln!();
             eprintln!("{} mistake{}. Nothing was run.", list.len(), if list.len() == 1 { "" } else { "s" });
         }
         return None;
     }
-    let rust = (!is_script).then(|| rust::write(&prog, &info, &display));
+    let rust = (!is_script).then(|| rust::write(&prog, &info, &files));
     Some(Compiled {
         out: lua::write(&prog, &info),
         rust,
+        files,
     })
 }
 
@@ -152,7 +158,7 @@ fn main() -> ExitCode {
             None => ExitCode::from(1),
         },
         "run" => match compile(path, false) {
-            Some(c) => run::run(&c.out, &display),
+            Some(c) => run::run(&c.out, &c.files),
             None => ExitCode::from(1),
         },
         other => {

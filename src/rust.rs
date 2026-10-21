@@ -29,7 +29,8 @@ struct W<'a> {
     maker: Option<String>,
 }
 
-pub fn write(prog: &Program, info: &Info, file: &str) -> String {
+pub fn write(prog: &Program, info: &Info, files: &[String]) -> String {
+    let file = &files[0];
     let mut w = W {
         info,
         rows: vec![],
@@ -63,7 +64,7 @@ pub fn write(prog: &Program, info: &Info, file: &str) -> String {
         ));
         let arms: Vec<String> = family
             .iter()
-            .map(|&c| format!("ID_{c} => {:?}.to_string(),", info.classes[c].name))
+            .map(|&c| format!("ID_{c} => {:?}.to_string(),", crate::ast::shown(&info.classes[c].name)))
             .collect();
         defs.push_str(&format!(
             "fn show{root}(o: &Option<Rc<RefCell<O{root}>>>) -> String {{ match o {{ None => \"nothing\".to_string(), Some(r) => {{ let c = r.borrow().class; match c {{ {} _ => \"?\".to_string() }} }} }} }}\n",
@@ -183,7 +184,12 @@ pub fn write(prog: &Program, info: &Info, file: &str) -> String {
             if sig.ret != Ty::Void {
                 b.push_str("    rt::unreachable()\n");
             }
-            defs.push_str(&format!("fn t_{}({}){} {{\n{b}}}\n", m.name, params.join(", "), w.ret(&sig.ret)));
+            defs.push_str(&format!(
+                "fn t_{}({}){} {{\n{b}}}\n",
+                ident(&m.name),
+                params.join(", "),
+                w.ret(&sig.ret)
+            ));
         }
     }
 
@@ -224,7 +230,8 @@ pub fn write(prog: &Program, info: &Info, file: &str) -> String {
     }
 
     format!(
-        "// Written by Lust from {file}. It's rewritten on every build, so don't edit it.\n#![allow(warnings)]\nuse std::cell::RefCell;\nuse std::rc::Rc;\n\nmod rt {{\n{RUNTIME}\n}}\n\n{rows}{defs}\nfn program() {{\n{body}}}\n\nfn main() {{\n    rt::main(program, {file:?});\n}}\n"
+        "// Written by Lust from {file}. It's rewritten on every build, so don't edit it.\n#![allow(warnings)]\nuse std::cell::RefCell;\nuse std::rc::Rc;\n\nmod rt {{\n{RUNTIME}\n}}\n\n{rows}{defs}\nfn program() {{\n{body}}}\n\nfn main() {{\n    rt::main(program, &[{files}]);\n}}\n",
+        files = files.iter().map(|f| format!("{f:?}")).collect::<Vec<_>>().join(", ")
     )
 }
 
@@ -651,7 +658,10 @@ impl<'a> W<'a> {
                         let sig = self.info.methods[n].clone();
                         let (params, args, types) = self.closure_params(&sig.params);
                         let r = self.ty(&sig.ret);
-                        format!("{{ let f: Rc<dyn Fn({types}) -> {r}> = Rc::new(move |{params}| t_{n}({args})); Some(f) }}")
+                        format!(
+                            "{{ let f: Rc<dyn Fn({types}) -> {r}> = Rc::new(move |{params}| t_{}({args})); Some(f) }}",
+                            ident(n)
+                        )
                     }
                     Some(NameRes::OwnMethod) => {
                         let c = self.class.unwrap();
@@ -739,7 +749,7 @@ impl<'a> W<'a> {
                 Some(CallRes::Top) => {
                     let sig = self.info.methods[name].clone();
                     let a = self.args(args, &sig.params.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>());
-                    format!("t_{name}({a})")
+                    format!("t_{}({a})", ident(name))
                 }
                 Some(CallRes::Own) => {
                     let c = self.class.unwrap();
@@ -1085,6 +1095,11 @@ fn text(code: &str, t: &Ty) -> String {
         Ty::State(_) => format!("{code}.to_string()"),
         _ => code.to_string(),
     }
+}
+
+/// A Lust name as a Rust one: Player·2 becomes Player__2.
+fn ident(n: &str) -> String {
+    n.replace(crate::ast::MARK, "__")
 }
 
 fn coerce(code: String, got: &Ty, want: &Ty) -> String {

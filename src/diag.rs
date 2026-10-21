@@ -9,7 +9,7 @@ pub struct Diags {
 
 impl Diags {
     pub fn add(&mut self, pos: Pos, msg: impl Into<String>) {
-        let msg = msg.into();
+        let msg = crate::ast::unmark(&msg.into());
         // One mistake per spot is plenty: later ones there are usually knock-on effects.
         if self.list.iter().any(|(p, m)| *p == pos && (m == &msg || pos.line > 0)) {
             return;

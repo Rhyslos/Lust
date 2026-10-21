@@ -1,0 +1,5 @@
+fetch "lib/greeter":Greeter;
+
+Greeter g = new Greeter { who = "Garry" };
+g:hello();
+end
