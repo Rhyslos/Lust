@@ -11,7 +11,7 @@ pub const RESERVED: &[&str] = &[
 ];
 /// The pieces a view is made of.
 pub const ELEMENTS: &[&str] = &[
-    "column", "row", "stack", "scroll", "space", "text", "button", "input", "checkbox", "slider", "image",
+    "column", "row", "stack", "scroll", "space", "text", "button", "input", "checkbox", "slider", "image", "every",
 ];
 
 /// The value an input hands over when it changes. Lust code can't write this name.

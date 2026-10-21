@@ -1,0 +1,60 @@
+-- Scrolling, pictures and timers.
+assembly Media {
+    has {
+        int seconds = 0;
+        truth running = false;
+        int ticks = 0;
+        string array lines = [];
+        truth filled = false;
+    }
+
+    method fill() {
+        loop 30 {
+            lines:inject("Line " + (#lines + 1).text());
+        }
+    }
+
+    view [title "Media", width 360, height 320] {
+        column [gap 8, pad 12] {
+            row [gap 8] {
+                image "sunset.png" [width 80, round 8];
+                image "flag.jpg" [height 40];
+                image "sunset.png" [width 60, height 60, cover, round 30];
+                image "nowhere.png" [width 50, height 40];
+            }
+            row [gap 8] {
+                text "Time: " + seconds.text();
+                button "Start" {
+                    running = true;
+                }
+                button "Stop" {
+                    running = false;
+                }
+            }
+            is running? then {
+                every 1.0 {
+                    seconds = seconds + 1;
+                }
+            }
+            every 0.5 {
+                ticks = ticks + 1;
+            }
+            text "ticks: " + ticks.text() [muted];
+            is not filled? then {
+                button "Fill" {
+                    fill();
+                    filled = true;
+                }
+            }
+            scroll [gap 4, background gray1] {
+                loop (string l in lines) {
+                    text l;
+                }
+                button "More" { fill(); }
+            }
+        }
+    }
+}
+
+Media:open();
+end

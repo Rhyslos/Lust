@@ -41,7 +41,7 @@ This is **Lust 2**, a fresh start written in Rust. One language, two outputs:
 | Rust, compiled to real programs | `.lst` | apps, tools and servers on Windows, macOS and Linux |
 | LustScript, turned into Lua | `.lsc` | scripting and modding inside other programs, like Garry's Mod, Aventail and Halberd |
 
-**What works today (alpha 14):** both outputs. Every file is checked before anything runs, with mistakes explained in plain words.
+**What works today (alpha 15):** both outputs. Every file is checked before anything runs, with mistakes explained in plain words.
 
 - `.lsc` files turn into plain Lua 5.1 that Garry's Mod (LuaJIT) and Luau can run.
 - `.lst` files turn into Rust, which builds into a real program (an `.exe` on Windows) that runs without Lust.
@@ -49,7 +49,7 @@ This is **Lust 2**, a fresh start written in Rust. One language, two outputs:
 - A standard library: text and array tools, plus `Maths`, `Files`, `Time` and `Json`.
 - Saves, and databases on SQLite whose tables work like cMaps.
 - Servers: `route` blocks answered by methods, with `schema`s for the data coming in, and `Web:get`/`Web:post` for asking other sites.
-- Windows: an assembly with a `view` opens a window drawn entirely by Lust, with text, buttons, layout, styles, pieces of your own made from other assemblies, and inputs, checkboxes and sliders that change fields as you use them. Scrolling and pictures are on the way.
+- Windows: an assembly with a `view` opens a window drawn entirely by Lust, with text, buttons, layout, styles, pieces of your own made from other assemblies, and inputs, checkboxes and sliders that change fields as you use them, scrolling, pictures and timers.
 - `lust run` runs either kind straight away, with Lua built into `lust` itself, so nothing else needs installing. Building a real program needs Rust installed.
 
 Every test runs both ways, through Lua and as a real program, and both have to print exactly the same.

@@ -1,0 +1,20 @@
+assembly Clock {
+    has {
+        int seconds = 0;
+    }
+
+    view {
+        column {
+            image 5;
+            image;
+            every "often" { seconds = seconds + 1; }
+            every 1.0;
+            every { seconds = 0; }
+            scroll [cover] {
+                text "a";
+            }
+            scroll;
+        }
+    }
+}
+end

@@ -323,6 +323,8 @@ struct Look {
     from: f32,
     to: f32,
     step: f32,
+    /// A picture fills its box, cut to fit, instead of fitting inside it.
+    cover: bool,
 }
 
 fn num(v: &SV) -> Option<f32> {
@@ -375,6 +377,7 @@ fn base_look(kind: &str) -> Look {
         from: 0.0,
         to: 100.0,
         step: 1.0,
+        cover: false,
     };
     match kind {
         "input" => {
@@ -396,6 +399,7 @@ fn base_look(kind: &str) -> Look {
             l.width = Size::Fixed(200.0);
             l.height = Size::Fixed(20.0);
         }
+        "scroll" => l.width = Size::Fill,
         "button" => {
             l.pad = [7.0, 14.0, 7.0, 14.0];
             l.background = Some(0xe9ecef);
@@ -490,6 +494,7 @@ fn apply(l: &mut Look, kind: &str, style: &[(String, SV)]) {
             "from" => l.from = num(v).unwrap_or(0.0),
             "to" => l.to = num(v).unwrap_or(100.0),
             "step" => l.step = num(v).unwrap_or(1.0).max(0.0),
+            "cover" => l.cover = true,
             other => {
                 // A colour on its own: a button's colour, or text's.
                 if let Some(c) = colour(other) {
@@ -553,6 +558,68 @@ fn wrap_lines(text: &str, size: f32, weight: f32, max_w: f32, wrap: bool) -> Vec
     out
 }
 
+// ----- pictures -----
+
+/// A picture read from a file: its size, and its pixels as red, green, blue and see-through.
+struct Picture {
+    w: usize,
+    h: usize,
+    px: Vec<[u8; 4]>,
+}
+
+thread_local! {
+    // Each file is read once. A file that can't be read is remembered as missing.
+    static PICTURES: std::cell::RefCell<HashMap<String, Option<std::rc::Rc<Picture>>>> = std::cell::RefCell::new(HashMap::new());
+}
+
+fn picture(path: &str) -> Option<std::rc::Rc<Picture>> {
+    if let Some(p) = PICTURES.with(|c| c.borrow().get(path).cloned()) {
+        return p;
+    }
+    let p = read_picture(path).map(std::rc::Rc::new);
+    PICTURES.with(|c| c.borrow_mut().insert(path.to_string(), p.clone()));
+    p
+}
+
+/// PNG and JPEG files.
+fn read_picture(path: &str) -> Option<Picture> {
+    let bytes = std::fs::read(path).ok()?;
+    if bytes.starts_with(b"\x89PNG") {
+        let mut dec = png::Decoder::new(std::io::Cursor::new(bytes));
+        dec.set_transformations(png::Transformations::normalize_to_color8());
+        let mut r = dec.read_info().ok()?;
+        let mut buf = vec![0; r.output_buffer_size()];
+        let info = r.next_frame(&mut buf).ok()?;
+        let (w, h) = (info.width as usize, info.height as usize);
+        let px: Vec<[u8; 4]> = match info.color_type {
+            png::ColorType::Rgba => buf.chunks_exact(4).map(|c| [c[0], c[1], c[2], c[3]]).collect(),
+            png::ColorType::Rgb => buf.chunks_exact(3).map(|c| [c[0], c[1], c[2], 255]).collect(),
+            png::ColorType::GrayscaleAlpha => buf.chunks_exact(2).map(|c| [c[0], c[0], c[0], c[1]]).collect(),
+            png::ColorType::Grayscale => buf.iter().map(|&g| [g, g, g, 255]).collect(),
+            _ => return None,
+        };
+        return (px.len() >= w * h).then_some(Picture { w, h, px });
+    }
+    let mut dec = jpeg_decoder::Decoder::new(std::io::Cursor::new(bytes));
+    let data = dec.decode().ok()?;
+    let info = dec.info()?;
+    let (w, h) = (info.width as usize, info.height as usize);
+    let px: Vec<[u8; 4]> = match info.pixel_format {
+        jpeg_decoder::PixelFormat::RGB24 => data.chunks_exact(3).map(|c| [c[0], c[1], c[2], 255]).collect(),
+        jpeg_decoder::PixelFormat::L8 => data.iter().map(|&g| [g, g, g, 255]).collect(),
+        jpeg_decoder::PixelFormat::CMYK32 => data
+            .chunks_exact(4)
+            .map(|c| {
+                let k = 255 - c[3] as u32;
+                let f = |x: u8| ((255 - x as u32) * k / 255) as u8;
+                [f(c[0]), f(c[1]), f(c[2]), 255]
+            })
+            .collect(),
+        _ => return None,
+    };
+    (px.len() >= w * h).then_some(Picture { w, h, px })
+}
+
 // ----- layout -----
 
 /// A node, worked out and placed.
@@ -566,6 +633,9 @@ struct Laid {
     action: Option<usize>,
     /// What an input, checkbox or slider shows.
     value: Option<SV>,
+    /// A scroll's content, top to bottom, and how far it's scrolled down.
+    content_h: f32,
+    scrolled: f32,
     x: f32,
     y: f32,
     w: f32,
@@ -600,11 +670,14 @@ fn lay(n: &Node) -> Laid {
         hover,
         action: n.action,
         value: n.value.clone(),
+        content_h: 0.0,
+        scrolled: 0.0,
         x: 0.0,
         y: 0.0,
         w: 0.0,
         h: 0.0,
-        children: n.children.iter().map(lay).collect(),
+        // Timers take no room on the screen.
+        children: n.children.iter().filter(|c| c.kind != "every").map(lay).collect(),
     }
 }
 
@@ -618,11 +691,18 @@ fn flex(c: &Laid, row: bool) -> Option<f32> {
         return if g > 0.0 { Some(g) } else { None };
     }
     let s = if row { c.look.width } else { c.look.height };
-    if s == Size::Fill || c.kind == "space" {
+    // A scroll takes the room left in a column, so there's something to scroll, and so does
+    // whatever holds one.
+    if s == Size::Fill || c.kind == "space" || (!row && s == Size::Auto && holds_scroll(c)) {
         Some(1.0)
     } else {
         None
     }
+}
+
+/// Whether this is a scroll, or holds one (not counting scrolls inside scrolls).
+fn holds_scroll(n: &Laid) -> bool {
+    n.kind == "scroll" || n.children.iter().any(holds_scroll)
 }
 
 /// Rows told `center`, `right` or `spread`, and columns and stacks told `center` or `right`, are
@@ -682,6 +762,21 @@ fn measure(n: &Laid, max_w: f32) -> (f32, f32) {
             (w.ceil(), lh * lines.len() as f32)
         }
         "space" | "checkbox" | "slider" => (0.0, 0.0),
+        "image" => {
+            let (pw, ph) = picture(&n.text).map(|p| (p.w as f32, p.h as f32)).unwrap_or((64.0, 64.0));
+            let ratio = ph / pw.max(1.0);
+            let w = match (l.width, l.height) {
+                (Size::Fixed(f), _) => f - padx,
+                (Size::Fill, _) if inner.is_finite() => inner,
+                (Size::Auto, Size::Fixed(g)) => (g - pady) / ratio.max(1e-6),
+                _ => pw.min(inner),
+            };
+            let h = match l.height {
+                Size::Fixed(g) => g - pady,
+                _ => w * ratio,
+            };
+            (w.max(0.0), h.max(0.0))
+        }
         "input" => (0.0, line_metrics(l.size, l.weight).1),
         "row" => {
             let sizes = row_sizes(n, inner);
@@ -798,6 +893,21 @@ fn place(n: &mut Laid, x: f32, y: f32, w: f32, h: f32) {
                 let (cx, cy) = (ix + offset(l.halign, iw - cw), iy + offset(l.valign, ih - ch));
                 place(c, cx.round(), cy.round(), cw.round(), ch.round());
             }
+        }
+        "scroll" => {
+            // Like a column, but as tall as its content: what doesn't fit is scrolled to.
+            let mut at = 0.0;
+            for c in n.children.iter_mut() {
+                let cw = cross_width(c, iw);
+                let ch = match c.look.height {
+                    Size::Fixed(f) => clamp_h(c, f),
+                    _ => natural(c, cw).1,
+                };
+                let cx = ix + offset(l.halign, iw - cw);
+                place(c, cx.round(), (iy + at).round(), cw.round(), ch.round());
+                at += ch + l.gap;
+            }
+            n.content_h = (at - l.gap).max(0.0) + l.pad[0] + l.pad[2];
         }
         "row" => {
             let sizes = row_sizes(n, iw);
@@ -1116,6 +1226,70 @@ fn paint_slider(c: &mut Canvas, n: &Laid, l: &Look, ring: bool) {
     c.shape(tx - THUMB, cy - THUMB, 2.0 * THUMB, 2.0 * THUMB, THUMB, Some(1.5), l.accent, 1.0);
 }
 
+/// A picture in its box: fitted inside it, or with `cover` filling it and cut to fit.
+fn paint_image(c: &mut Canvas, n: &Laid, l: &Look) {
+    let (bx, by) = (n.x + l.pad[3], n.y + l.pad[0]);
+    let (bw, bh) = ((n.w - l.pad[1] - l.pad[3]).max(0.0), (n.h - l.pad[0] - l.pad[2]).max(0.0));
+    let Some(p) = picture(&n.text) else {
+        // A picture that isn't there shows as a grey box with its name.
+        c.rect(bx, by, bw, bh, l.radius, 0xe9ecef, 1.0);
+        let name = n.text.rsplit(['/', '\\']).next().unwrap_or("");
+        let tw = text_width(name, 11.0, 400.0);
+        if tw < bw - 8.0 {
+            c.text(name, bx + (bw - tw) / 2.0, by + bh / 2.0 - 7.0, 11.0, 400.0, 0x868e96);
+        }
+        return;
+    };
+    let (pw, ph) = (p.w as f32, p.h as f32);
+    let fit = if l.cover { (bw / pw).max(bh / ph) } else { (bw / pw).min(bh / ph) };
+    let (dw, dh) = (pw * fit, ph * fit);
+    let (dx, dy) = (bx + (bw - dw) / 2.0, by + (bh - dh) / 2.0);
+    let s = c.scale;
+    // Only the part inside the box shows, with its corners rounded.
+    let (x0, y0, x1, y1) = (dx.max(bx) * s, dy.max(by) * s, (dx + dw).min(bx + bw) * s, (dy + dh).min(by + bh) * s);
+    let r = (l.radius * s).min((x1 - x0) / 2.0).min((y1 - y0) / 2.0).max(0.0);
+    let per = 1.0 / (fit * s);
+    for py in (y0.floor() as i64)..(y1.ceil() as i64) {
+        for px in (x0.floor() as i64)..(x1.ceil() as i64) {
+            let (fx, fy) = (px as f32 + 0.5, py as f32 + 0.5);
+            let cover = (0.5 - outside(fx, fy, x0, y0, x1, y1, r)).clamp(0.0, 1.0);
+            if cover <= 0.0 {
+                continue;
+            }
+            // Where this pixel falls in the picture, blended from the four nearest of its pixels.
+            let sx = ((fx - dx * s) * per - 0.5).clamp(0.0, pw - 1.0);
+            let sy = ((fy - dy * s) * per - 0.5).clamp(0.0, ph - 1.0);
+            let (ix, iy) = (sx.floor() as usize, sy.floor() as usize);
+            let (ix2, iy2) = ((ix + 1).min(p.w - 1), (iy + 1).min(p.h - 1));
+            let (tx, ty) = (sx - ix as f32, sy - iy as f32);
+            let at = |x: usize, y: usize| p.px[y * p.w + x];
+            let mut rgba = [0.0f32; 4];
+            for (q, wgt) in [(at(ix, iy), (1.0 - tx) * (1.0 - ty)), (at(ix2, iy), tx * (1.0 - ty)), (at(ix, iy2), (1.0 - tx) * ty), (at(ix2, iy2), tx * ty)] {
+                let a = q[3] as f32 / 255.0 * wgt;
+                rgba[0] += q[0] as f32 * a;
+                rgba[1] += q[1] as f32 * a;
+                rgba[2] += q[2] as f32 * a;
+                rgba[3] += a;
+            }
+            if rgba[3] <= 0.0 {
+                continue;
+            }
+            let colour = ((rgba[0] / rgba[3]) as u32) << 16 | ((rgba[1] / rgba[3]) as u32) << 8 | (rgba[2] / rgba[3]) as u32;
+            c.blend(px, py, colour, rgba[3] * cover);
+        }
+    }
+}
+
+/// The scroll bar's knob: top and height, when there's more to see than fits.
+fn scroll_knob(n: &Laid) -> Option<(f32, f32)> {
+    if n.content_h <= n.h + 0.5 {
+        return None;
+    }
+    let kh = (n.h * n.h / n.content_h).max(24.0).min(n.h);
+    let max = n.content_h - n.h;
+    Some((n.y + (n.scrolled / max) * (n.h - kh), kh))
+}
+
 fn paint(c: &mut Canvas, n: &Laid, st: &PaintState, path: &mut Vec<usize>) {
     let hover = st.hover;
     let over = hover.map(|(hx, hy)| hx >= n.x && hy >= n.y && hx < n.x + n.w && hy < n.y + n.h).unwrap_or(false);
@@ -1147,6 +1321,10 @@ fn paint(c: &mut Canvas, n: &Laid, st: &PaintState, path: &mut Vec<usize>) {
     if n.kind == "input" {
         paint_input(c, n, focused, st);
     }
+    if n.kind == "image" {
+        paint_image(c, n, l);
+    }
+    let unclipped = if n.kind == "scroll" { Some(c.clip_to(n.x, n.y, n.w, n.h)) } else { None };
     if shows_text(&n.kind) {
         let (_, lh) = line_metrics(l.size, l.weight);
         let inner_w = n.w - l.pad[1] - l.pad[3];
@@ -1166,6 +1344,12 @@ fn paint(c: &mut Canvas, n: &Laid, st: &PaintState, path: &mut Vec<usize>) {
         path.push(i);
         paint(c, ch, st, path);
         path.pop();
+    }
+    if let Some(was) = unclipped {
+        c.clip = was;
+        if let Some((ky, kh)) = scroll_knob(n) {
+            c.rect(n.x + n.w - 8.0, ky + 2.0, 5.0, kh - 4.0, 2.5, 0x000000, 0.28);
+        }
     }
     c.alpha = was;
 }
@@ -1331,11 +1515,74 @@ enum Nav {
     Paste,
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 enum Drag {
     None,
     Select,
     Slide,
+    /// A scroll bar's knob, grabbed at a height with the scroll where it was.
+    Scroll(Vec<usize>, f32, f32),
+}
+
+/// An `every` in the view: how often, which action, and when it's next due (in seconds).
+#[derive(Clone, Debug)]
+struct Timer {
+    secs: f64,
+    action: usize,
+    due: f64,
+}
+
+fn timers(n: &Node, out: &mut Vec<(f64, usize)>) {
+    if n.kind == "every" {
+        if let (Some(a), Some(SV::Num(s))) = (n.action, &n.value) {
+            out.push((s.max(0.016), a));
+        }
+    }
+    for c in &n.children {
+        timers(c, out);
+    }
+}
+
+/// Every scroll at this point, outermost first.
+fn scrolls_at(n: &Laid, x: f32, y: f32, path: &mut Vec<usize>, out: &mut Vec<Vec<usize>>) {
+    if x < n.x || y < n.y || x >= n.x + n.w || y >= n.y + n.h {
+        return;
+    }
+    if n.kind == "scroll" {
+        out.push(path.clone());
+    }
+    for (i, c) in n.children.iter().enumerate() {
+        path.push(i);
+        scrolls_at(c, x, y, path, out);
+        path.pop();
+    }
+}
+
+fn shift_down(n: &mut Laid, dy: f32) {
+    for c in n.children.iter_mut() {
+        c.y += dy;
+        shift_down(c, dy);
+    }
+}
+
+/// Moves each scroll's content up by how far it's scrolled, keeping that within what there is.
+fn apply_scrolls(n: &mut Laid, path: &mut Vec<usize>, offsets: &mut HashMap<Vec<usize>, f32>) {
+    if n.kind == "scroll" {
+        let max = (n.content_h - n.h).max(0.0);
+        let off = offsets.get(path.as_slice()).copied().unwrap_or(0.0).clamp(0.0, max).round();
+        if off > 0.0 {
+            offsets.insert(path.clone(), off);
+        } else {
+            offsets.remove(path.as_slice());
+        }
+        n.scrolled = off;
+        shift_down(n, -off);
+    }
+    for (i, c) in n.children.iter_mut().enumerate() {
+        path.push(i);
+        apply_scrolls(c, path, offsets);
+        path.pop();
+    }
 }
 
 /// A slider's value, kept in its range and on its steps.
@@ -1354,8 +1601,16 @@ struct Ui<'a, 'b> {
     build: &'a mut Build<'b>,
     w: f32,
     h: f32,
+    /// The view as last drawn, laid out again when only scrolling changes.
+    node: Node,
     tree: Laid,
     actions: Vec<Action>,
+    /// How far each scroll is scrolled down, by its place in the tree.
+    scrolls: HashMap<Vec<usize>, f32>,
+    timers: Vec<Timer>,
+    started: std::time::Instant,
+    /// Tests keep their own clock, moved on by `wait`.
+    test_clock: Option<f64>,
     st: PaintState,
     pressed: Option<Vec<usize>>,
     drag: Drag,
@@ -1376,13 +1631,18 @@ impl<'a, 'b> Ui<'a, 'b> {
         let (node, actions) = build()?;
         let tree = lay_out(&node, w, h);
         let now = std::time::Instant::now();
-        Ok(Ui {
+        let mut ui = Ui {
             s,
             build,
             w,
             h,
+            node,
             tree,
             actions,
+            scrolls: HashMap::new(),
+            timers: vec![],
+            started: now,
+            test_clock: (!windowed).then_some(0.0),
             st: PaintState { caret_on: true, ..Default::default() },
             pressed: None,
             drag: Drag::None,
@@ -1390,14 +1650,120 @@ impl<'a, 'b> Ui<'a, 'b> {
             clip: String::new(),
             system_clipboard: windowed,
             blink: windowed.then_some(now),
-        })
+        };
+        ui.set_timers();
+        Ok(ui)
+    }
+
+    /// Seconds since the window opened (or on the test's clock).
+    fn now(&self) -> f64 {
+        self.test_clock.unwrap_or_else(|| self.started.elapsed().as_secs_f64())
+    }
+
+    /// The view's timers, keeping when each is due if it was there last time too.
+    fn set_timers(&mut self) {
+        let mut found = Vec::new();
+        timers(&self.node, &mut found);
+        let now = self.now();
+        let old = std::mem::take(&mut self.timers);
+        self.timers = found
+            .into_iter()
+            .enumerate()
+            .map(|(i, (secs, action))| {
+                let due = match old.get(i) {
+                    Some(t) if t.secs == secs => t.due,
+                    _ => now + secs,
+                };
+                Timer { secs, action, due }
+            })
+            .collect();
+    }
+
+    /// Runs the timers that are due. Each runs once, however late it is.
+    fn fire_timers(&mut self) -> Result<bool, String> {
+        let now = self.now();
+        let due: Vec<usize> = (0..self.timers.len()).filter(|&i| self.timers[i].due <= now + 1e-9).collect();
+        if due.is_empty() {
+            return Ok(false);
+        }
+        for &i in &due {
+            let t = &mut self.timers[i];
+            t.due = if t.due + t.secs > now { t.due + t.secs } else { now + t.secs };
+        }
+        for &i in &due {
+            let a = self.timers[i].action;
+            run_with(&mut self.actions[a], SV::Flag)?;
+        }
+        self.rebuild()?;
+        Ok(true)
+    }
+
+    fn next_timer(&self) -> Option<f64> {
+        self.timers.iter().map(|t| t.due).fold(None, |m: Option<f64>, d| Some(m.map_or(d, |m| m.min(d))))
+    }
+
+    /// Moves the test's clock on, running timers as they come due.
+    fn wait(&mut self, secs: f64) -> Result<(), String> {
+        let end = self.now() + secs;
+        while let Some(d) = self.next_timer().filter(|&d| d <= end + 1e-9) {
+            self.test_clock = Some(d.max(self.now()));
+            self.fire_timers()?;
+        }
+        self.test_clock = Some(end);
+        Ok(())
+    }
+
+    /// Lays the last view out again, with each scroll where it was.
+    fn relayout(&mut self) {
+        self.tree = lay_out(&self.node, self.w, self.h);
+        apply_scrolls(&mut self.tree, &mut vec![], &mut self.scrolls);
+    }
+
+    /// Scrolls the scroll under the mouse, or the one around it if that one can't go further.
+    fn wheel(&mut self, x: f32, y: f32, dy: f32) -> bool {
+        let mut found = Vec::new();
+        scrolls_at(&self.tree, x, y, &mut vec![], &mut found);
+        for p in found.iter().rev() {
+            let Some(n) = node_at(&self.tree, p) else { continue };
+            let max = (n.content_h - n.h).max(0.0);
+            let next = (n.scrolled + dy).clamp(0.0, max);
+            if (next - n.scrolled).abs() >= 0.5 {
+                self.scrolls.insert(p.clone(), next);
+                self.relayout();
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Scrolls so what has focus can be seen.
+    fn reveal(&mut self) {
+        let Some(path) = self.st.focus.clone() else { return };
+        for depth in 0..path.len() {
+            let (Some(s), Some(t)) = (node_at(&self.tree, &path[..depth]), node_at(&self.tree, &path)) else { return };
+            if s.kind != "scroll" {
+                continue;
+            }
+            let mut off = s.scrolled;
+            if t.y < s.y {
+                off -= s.y - t.y + 4.0;
+            } else if t.y + t.h > s.y + s.h {
+                off += t.y + t.h - (s.y + s.h) + 4.0;
+            } else {
+                continue;
+            }
+            self.scrolls.insert(path[..depth].to_vec(), off);
+            self.relayout();
+        }
     }
 
     /// Draws the view again from the data as it is now. Focus stays where it was, if it can.
     fn rebuild(&mut self) -> Result<(), String> {
         let (node, actions) = (self.build)()?;
-        self.tree = lay_out(&node, self.w, self.h);
+        self.node = node;
+        self.relayout();
         self.actions = actions;
+        self.set_timers();
         if let Some(f) = self.st.focus.clone() {
             match node_at(&self.tree, &f) {
                 Some(n) if n.action.is_some() => {
@@ -1530,6 +1896,18 @@ impl<'a, 'b> Ui<'a, 'b> {
         let quick = now.duration_since(t) < std::time::Duration::from_millis(400) && (x - px).abs() < 4.0 && (y - py).abs() < 4.0;
         let count = if quick { n + 1 } else { 1 };
         self.clicks = (now, count, (x, y));
+        // The knob of a scroll bar, grabbed to drag.
+        let mut found = Vec::new();
+        scrolls_at(&self.tree, x, y, &mut vec![], &mut found);
+        for p in found.iter().rev() {
+            let Some(n) = node_at(&self.tree, p) else { continue };
+            if let Some((ky, kh)) = scroll_knob(n) {
+                if x >= n.x + n.w - 12.0 && y >= ky && y < ky + kh {
+                    self.drag = Drag::Scroll(p.clone(), y, n.scrolled);
+                    return Ok(());
+                }
+            }
+        }
         let at = hit(&self.tree, x, y);
         self.pressed = at.clone();
         let Some(path) = at else {
@@ -1573,7 +1951,16 @@ impl<'a, 'b> Ui<'a, 'b> {
 
     fn moved(&mut self, x: f32, y: f32) -> Result<(), String> {
         self.st.hover = Some((x, y));
-        match self.drag {
+        match self.drag.clone() {
+            Drag::Scroll(p, from_y, from) => {
+                if let Some(n) = node_at(&self.tree, &p) {
+                    if let Some((_, kh)) = scroll_knob(n) {
+                        let per = (n.content_h - n.h) / (n.h - kh).max(1.0);
+                        self.scrolls.insert(p.clone(), from + (y - from_y) * per);
+                        self.relayout();
+                    }
+                }
+            }
             Drag::Select => {
                 if let Some(n) = self.focused() {
                     let i = self.place_in_input(n, x);
@@ -1592,7 +1979,9 @@ impl<'a, 'b> Ui<'a, 'b> {
     }
 
     fn release(&mut self, x: f32, y: f32) -> Result<(), String> {
-        self.drag = Drag::None;
+        if let Drag::Scroll(..) = std::mem::replace(&mut self.drag, Drag::None) {
+            return Ok(());
+        }
         let at = hit(&self.tree, x, y);
         let pressed = self.pressed.take();
         let Some(path) = at.filter(|a| Some(a) == pressed.as_ref()) else { return Ok(()) };
@@ -1651,6 +2040,7 @@ impl<'a, 'b> Ui<'a, 'b> {
                     (Some(i), true) => (i + len - 1) % len,
                 };
                 self.set_focus(Some(all[next].clone()), true);
+                self.reveal();
                 // Tabbing into an input selects its text, ready to be typed over.
                 if let Some(n) = self.focused() {
                     if n.kind == "input" {
@@ -1729,7 +2119,7 @@ mod windowed {
     use std::num::NonZeroU32;
     use std::rc::Rc;
     use winit::application::ApplicationHandler;
-    use winit::event::{ElementState, MouseButton, StartCause, WindowEvent};
+    use winit::event::{ElementState, MouseButton, MouseScrollDelta, StartCause, WindowEvent};
     use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
     use winit::keyboard::{Key as WKey, ModifiersState, NamedKey};
     use winit::window::{CursorIcon, Window, WindowId};
@@ -1855,14 +2245,24 @@ mod windowed {
             self.check(r, el);
         }
 
-        fn new_events(&mut self, _: &ActiveEventLoop, cause: StartCause) {
+        fn new_events(&mut self, el: &ActiveEventLoop, cause: StartCause) {
             if let StartCause::ResumeTimeReached { .. } = cause {
-                self.redraw();
+                let r = self.ui.fire_timers().map(|_| ());
+                self.check(r, el);
             }
         }
 
         fn about_to_wait(&mut self, el: &ActiveEventLoop) {
-            match self.ui.next_blink() {
+            if self.error.is_some() {
+                return;
+            }
+            // Wake for the caret's next blink, or the next timer, whichever is sooner.
+            let timer = self.ui.next_timer().map(|d| self.ui.started + std::time::Duration::from_secs_f64(d.max(0.0)));
+            let wake = match (self.ui.next_blink(), timer) {
+                (Some(a), Some(b)) => Some(a.min(b)),
+                (a, b) => a.or(b),
+            };
+            match wake {
                 Some(t) => el.set_control_flow(ControlFlow::WaitUntil(t)),
                 None => el.set_control_flow(ControlFlow::Wait),
             }
@@ -1894,6 +2294,18 @@ mod windowed {
                         });
                     }
                     self.check(r, el);
+                }
+                WindowEvent::MouseWheel { delta, .. } => {
+                    let Some((x, y)) = self.mouse else { return };
+                    let (_, _, scale) = self.logical();
+                    let dy = match delta {
+                        MouseScrollDelta::LineDelta(_, lines) => -lines * 48.0,
+                        MouseScrollDelta::PixelDelta(p) => -(p.y as f32) / scale,
+                    };
+                    if self.ui.wheel(x, y, dy) {
+                        let _ = self.ui.moved(x, y);
+                        self.redraw();
+                    }
                 }
                 WindowEvent::CursorLeft { .. } => {
                     self.mouse = None;
@@ -2193,6 +2605,9 @@ fn dump(n: &Laid, depth: usize, path: &mut Vec<usize>, st: &PaintState, out: &mu
         None => String::new(),
     };
     let mut focus = String::new();
+    if n.kind == "scroll" {
+        focus.push_str(&format!(" (scrolled {} of {})", n.scrolled as i64, (n.content_h - n.h).max(0.0) as i64));
+    }
     if st.focus.as_deref() == Some(path.as_slice()) {
         focus.push_str(" (focus");
         if n.kind == "input" {
@@ -2349,6 +2764,28 @@ fn test(s: Settings, build: &mut Build) -> Result<(), String> {
                             ui.release(x, y)?;
                         }
                     }
+                }
+            }
+            "wait" => ui.wait(nums.first().copied().unwrap_or(0.0) as f64)?,
+            "scroll" if nums.len() >= 2 => {
+                let mut all = Vec::new();
+                fn every_scroll(n: &Laid, path: &mut Vec<usize>, out: &mut Vec<Vec<usize>>) {
+                    if n.kind == "scroll" {
+                        out.push(path.clone());
+                    }
+                    for (i, c) in n.children.iter().enumerate() {
+                        path.push(i);
+                        every_scroll(c, path, out);
+                        path.pop();
+                    }
+                }
+                every_scroll(&ui.tree, &mut vec![], &mut all);
+                match all.get((nums[0] as usize).saturating_sub(1)).and_then(|p| node_at(&ui.tree, p)) {
+                    Some(n) => {
+                        let (x, y) = (n.x + 4.0, n.y + 4.0);
+                        ui.wheel(x, y, nums[1]);
+                    }
+                    None => println!("(there's no scroll {})", nums[0]),
                 }
             }
             "hover" => {

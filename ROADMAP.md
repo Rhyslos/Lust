@@ -21,8 +21,8 @@ The order Lust gets built in. Each step makes Lust more useful on its own, and n
 | ✅ | **9.2 Layout and styles:** sizes that fill and share, alignment, `spread`, stacks, wrapping text, borders, opacity, nine shades of each colour | Done (alpha 12) |
 | ✅ | **9.3 Pieces:** assemblies used inside views (`TodoRow { label = task };`), from files in `ui/` folders, each row's piece found by its key | Done (alpha 13) |
 | ✅ | **9.4 Inputs:** `input`, `checkbox` and `slider` bound to fields, with typing, selecting, the clipboard, focus and the keyboard | Done (alpha 14) |
-| | **9.5 Scrolling, images and timers** | Next |
-| | **9.6 Polish:** animation, speed and the details | |
+| ✅ | **9.5 Scrolling, images and timers:** `scroll` with the wheel and a knob, `image` for PNG and JPEG files, `every` for timers | Done (alpha 15) |
+| | **9.6 Polish:** animation, speed and the details | Next |
 | | 🏁 *The Lust 2.0 release.* | |
 
 ## Decisions along the way

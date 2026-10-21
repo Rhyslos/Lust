@@ -941,10 +941,6 @@ impl<'a> Checker<'a> {
             self.err(pos, format!("{kind} is a piece of a screen, so it goes inside a view {{ }}."));
             return;
         }
-        if matches!(kind, "scroll" | "image") {
-            self.err(pos, format!("{kind} isn't built yet: it comes in one of the next steps of views."));
-            return;
-        }
         match (kind, arg) {
             ("piece", Some(a)) => {
                 if !self.loop_keys.is_empty() {
@@ -1018,6 +1014,35 @@ impl<'a> Checker<'a> {
                 self.err(pos, format!("{an} {kind} needs the field it changes: {kind} name;"));
                 ctx.scopes.push(HashMap::new());
             }
+            ("image", Some(a)) => {
+                let t = self.expr(a, ctx, Some(&Ty::Str));
+                if t != Ty::Str && t != Ty::Error {
+                    self.err(
+                        a.pos,
+                        format!(
+                            "image takes the picture's file name, but this is {}: image \"cat.png\";",
+                            self.a(&t)
+                        ),
+                    );
+                }
+            }
+            ("image", None) => self.err(pos, "image needs the picture's file: image \"cat.png\";"),
+            ("every", Some(a)) => {
+                let t = self.expr(a, ctx, Some(&Ty::Float));
+                if !matches!(t, Ty::Int | Ty::Float | Ty::Error) {
+                    self.err(
+                        a.pos,
+                        format!(
+                            "every takes how many seconds to wait, but this is {}: every 1.0 {{ … }}",
+                            self.a(&t)
+                        ),
+                    );
+                }
+                if action.is_none() {
+                    self.err(pos, "every runs its { } again and again: every 1.0 { seconds = seconds + 1; }");
+                }
+            }
+            ("every", None) => self.err(pos, "every needs how many seconds to wait: every 1.0 { … }"),
             ("text", None) => self.err(pos, "text needs something to show: text \"Hello\";"),
             ("button", None) => self.err(pos, "a button needs its words: button \"Start\" { … }"),
             (_, Some(a)) => self.err(
@@ -1040,7 +1065,7 @@ impl<'a> Checker<'a> {
         }
         let bound = matches!(kind, "input" | "checkbox" | "slider");
         if let Some(a) = action {
-            if kind != "button" && !bound {
+            if kind != "button" && kind != "every" && !bound {
                 self.err(pos, format!("a {kind} doesn't do anything when clicked, so it has no {{ }}."));
             }
             let was = std::mem::replace(&mut ctx.in_view, false);
@@ -1095,7 +1120,7 @@ impl<'a> Checker<'a> {
         ];
         const FLAGS: &[&str] = &[
             "tiny", "small", "large", "huge", "bold", "muted", "strike", "nowrap", "shadow", "pill", "left", "center", "right", "top",
-            "middle", "bottom", "spread", "subtle",
+            "middle", "bottom", "spread", "subtle", "cover",
         ];
         const COLOURED: &[&str] = &["color", "background"];
         let window = kind == "view";

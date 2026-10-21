@@ -544,8 +544,9 @@ impl<'a> W<'a> {
                 }
                 let v = self.fresh("v");
                 let bound = matches!(kind.as_str(), "input" | "checkbox" | "slider");
+                let valued = bound || kind == "every";
                 let t = match arg {
-                    Some(a) if !bound => self.expr(a),
+                    Some(a) if !valued => self.expr(a),
                     _ => "\"\"".into(),
                 };
                 let s = self.styles(style);
@@ -553,7 +554,7 @@ impl<'a> W<'a> {
                 self.indent += 1;
                 self.line(ln, &format!("local {v} = {{k = {}, t = {t}, s = {s}, c = {{}}}}", lua_string(kind)));
                 self.line(ln, &format!("{parent}.c[#{parent}.c + 1] = {v}"));
-                if let (true, Some(a)) = (bound, arg) {
+                if let (true, Some(a)) = (valued, arg) {
                     // What the input shows: the value it's bound to, as it is now.
                     let shown = self.expr(a);
                     self.line(ln, &format!("{v}.v = {shown}"));

@@ -1,0 +1,14 @@
+click Fill
+dump
+wait 2
+click Start
+wait 3.2
+click Stop
+wait 2
+dump
+scroll 1 100
+dump
+scroll 1 5000
+dump
+scroll 1 -40
+dump
