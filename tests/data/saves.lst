@@ -1,0 +1,70 @@
+-- Saves: readable files that hold a program's things.
+state Season = [Spring, Summer];
+
+class Animal {
+    has {
+        string name = "cow";
+        int age = 1;
+    }
+}
+
+object Farm {
+    has {
+        string farmName = "Green Acres";
+        Season season = Season.Spring;
+        Animal array animals = [];
+        hook() onDay = nothing;
+    }
+}
+
+int currentDay = 1;
+Animal pet = new Animal { name = "Rex", age = 3 };
+save gameSession = [Farm, pet, currentDay];
+
+is saved gameSession? then {
+    print("there's an old save; starting over");
+}
+Farm.animals:inject(new Animal { name = "Daisy" });
+Farm.season = Season.Summer;
+currentDay = 42;
+save gameSession;
+print(Files:read("gameSession.save"));
+
+currentDay = 0;
+pet = nothing;
+Farm.farmName = "changed";
+Farm.animals = [];
+load gameSession;
+print(currentDay);
+print(pet.name + " " + pet.age.text());
+print(Farm.farmName);
+print(Farm.season);
+print(Farm.animals[0].name);
+print(saved gameSession);
+
+Files:write("gameSession.save", "{\"Farm\": {}, \"pet\": null}");
+try {
+    load gameSession;
+} error (string e) {
+    print(e);
+}
+print(currentDay);
+Files:write("gameSession.save", "{\"Farm\": {\"farmName\": 5}, \"pet\": null, \"currentDay\": 1}");
+try {
+    load gameSession;
+} error (string e) {
+    print(e);
+}
+Files:write("gameSession.save", "not json");
+try {
+    load gameSession;
+} error (string e) {
+    print(e);
+}
+Files:remove("gameSession.save");
+try {
+    load gameSession;
+} error (string e) {
+    print(e);
+}
+end

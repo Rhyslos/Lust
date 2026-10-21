@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (2.0 alpha 7):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes and assemblies work too. Not yet: saves, `view`, `schema`/`route`, and LustQL. Lust v1 lives on the `v1` branch.
+> **What works today (2.0 alpha 8):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves and databases work too. Not yet: `view`, `schema`/`route`, and LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -443,9 +443,12 @@ get "helpers/mathUtils":clamp;
 
 ---
 
-## 14. Saving and loading
+## 14. Saves and databases
+
+### Saves
 
 ```
+int currentDay = 1;
 save gameSession = [Farm, player, currentDay];
 
 is saved gameSession? then {
@@ -455,8 +458,59 @@ is saved gameSession? then {
 save gameSession;
 ```
 
-- A save lists what it holds once, then `save` and `load` do the rest.
-- Save files are readable text. Loading is strict: if the save doesn't match the program, nothing changes and Lust says why.
+- A save lists what it holds once, at the top of the file: objects, and variables declared above it. Then `save` and `load` do the rest.
+- The file is `gameSession.save`, next to the program, as readable JSON.
+- Loading is strict: everything is read first, and if the save doesn't fit the program, nothing changes and the error says why, like `gameSession's save doesn't fit this program, so nothing was loaded: it has no currentDay.`
+- `saved gameSession` is true when there's a save to load.
+- Hooks aren't saved, and nodes can't be: save what's in them.
+- A save that holds variables can only be saved and loaded from the top of the file, where those variables are seen.
+
+### Databases
+
+A database is a file of tables, kept by SQLite. Each table is written like a cMap, and is used like one:
+
+```
+database Shop in "shop.db" {
+    cMap(string name, float price, int stock) items;
+    cMap(int id, string who, string item) orders;
+}
+
+Shop.items:inject(["tea", 2.5, 10]);
+Shop.items["tea"].stock = 9;            -- changes the database straight away
+print(Shop.items["tea"].price);
+print(#Shop.items);
+```
+
+- The first column is the key, as in a cMap. An `int` key counts up when a row leaves it out. A `string` key has to be given.
+- Columns hold numbers, text, truths and state options.
+- `:inject`, `:has(key)`, `:remove(key)` and `[key]` work as they do on cMaps. A row found with `[key]` reads and changes the database itself.
+- If a table is already in the file with other columns, Lust says so instead of guessing.
+
+**Queries** pick rows. They're written in Lust, and Lust turns them into SQL:
+
+```
+loop (string name, float price, int stock in Shop.items:where(price <= 3.0 && stock > 0)) {
+    print(name);
+}
+
+cMap(string name, float price, int stock) cheapest = Shop.items:orderBy(price):first(3);
+Shop.items:where(stock == 0):remove();
+```
+
+| | Gives |
+| --- | --- |
+| `:where(condition)` | the rows where it's true. The columns can be used by name |
+| `:orderBy(column)` | the rows in that column's order, smallest first |
+| `:reverse()` | the same rows the other way round |
+| `:first(n)` | only the first n |
+| `:count()`, or `#` | how many |
+| `:remove()` | removes the rows the query picked |
+
+- Queries can be chained: `Shop.items:where(stock > 0):orderBy(price):first(5)`.
+- Inside `:where`, the columns work with maths, comparisons, `&&`, `||`, `not`, `#`, and `:contains`, `:startsWith` and `:endsWith`. Anything that doesn't use the columns, like a variable or a method call, is worked out first.
+- Looping through a table or a query goes through its rows. Putting one in a cMap variable copies its rows into the cMap, so changing the cMap doesn't change the database.
+- Programs with a database are built with Cargo, Rust's builder, which gets SQLite. The first build on a computer takes a minute or two. After that it's quick.
+- In LustScript, databases work under `lust run`. Other programs, like Garry's Mod, don't have them yet.
 
 ---
 
@@ -708,7 +762,7 @@ Neither can the built-in objects: `Maths`, `Files`, `Time` and `Json`.
 
 ## 22. Still to design
 
-- **LustQL (`.lql`):** what queries look like. It runs on SQLite underneath (see [ROADMAP.md](ROADMAP.md)).
+- **LustQL (`.lql`):** a query language of its own, for later. Queries are written in Lust code for now (section 14).
 - **Web:** how route handlers take and give schemas.
 - **The standard library:** which Rust crates Lust wraps for files, networking, JSON, dates and sound, and how they look from Lust.
 - **From v1:** whether `with x { }`, `{ }` inside text and the word `when` come along.

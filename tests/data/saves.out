@@ -1,0 +1,29 @@
+{
+  "Farm": {
+    "farmName": "Green Acres",
+    "season": "Summer",
+    "animals": [
+      {
+        "name": "Daisy",
+        "age": 1
+      }
+    ]
+  },
+  "pet": {
+    "name": "Rex",
+    "age": 3
+  },
+  "currentDay": 42
+}
+
+42
+Rex 3
+Green Acres
+Summer
+Daisy
+true
+gameSession's save doesn't fit this program, so nothing was loaded: it has no currentDay.
+42
+gameSession's save doesn't fit this program, so nothing was loaded: the JSON at Farm.farmName should be text, but it's a number.
+gameSession.save isn't a save Lust can read: this isn't valid JSON (line 1): "n" is out of place.
+there's no saved gameSession yet. Check first: is saved gameSession?

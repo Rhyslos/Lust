@@ -164,6 +164,34 @@ impl<'a> W<'a> {
                 }
             }
         }
+        // Databases open first, so everything can use their tables.
+        for item in &prog.items {
+            if let Item::Database(d) = item {
+                let Some(&di) = self.info.db_index.get(&d.name) else { continue };
+                let mut tables = Vec::new();
+                for (tn, cols) in &self.info.databases[di].tables {
+                    let cs: Vec<String> = cols
+                        .iter()
+                        .map(|(c, t)| format!("{{{}, {}}}", lua_string(c), lua_string(kind(t))))
+                        .collect();
+                    tables.push(format!(
+                        "{{{}, {{{}}}, {}}}",
+                        lua_string(tn),
+                        cs.join(", "),
+                        lua_string(&format!("{}.{tn}", crate::ast::shown(&d.name)))
+                    ));
+                }
+                self.line(
+                    d.pos.line,
+                    &format!(
+                        "local {} = _L.db_open({}, {{{}}})",
+                        lname(&d.name),
+                        lua_string(&d.path),
+                        tables.join(", ")
+                    ),
+                );
+            }
+        }
         // Names first, so everything can use everything.
         let mut forward = Vec::new();
         for item in &prog.items {
@@ -384,6 +412,65 @@ impl<'a> W<'a> {
                 self.indent -= 1;
                 self.line(ln, "end");
             }
+            Stmt::SaveDecl { .. } => {}
+            Stmt::Save(name, _) => {
+                let list = self.info.saves.get(name).cloned().unwrap_or_default();
+                let names: Vec<String> = list.iter().map(|(n, _)| lua_string(crate::ast::shown(n))).collect();
+                let mut encs = Vec::new();
+                let mut vals = Vec::new();
+                for (n, item) in &list {
+                    let t = match item {
+                        crate::check::SaveItem::Var(t) => t.clone(),
+                        crate::check::SaveItem::Object(c) => Ty::Class(*c),
+                    };
+                    encs.push(self.jenc(&t));
+                    vals.push(lname(n));
+                }
+                self.line(
+                    ln,
+                    &format!(
+                        "_L.save_write({}, {{{}}}, {{{}}}, {{{}}})",
+                        lua_string(name),
+                        names.join(", "),
+                        encs.join(", "),
+                        vals.join(", ")
+                    ),
+                );
+            }
+            Stmt::Load(name, _) => {
+                let list = self.info.saves.get(name).cloned().unwrap_or_default();
+                let d = self.fresh("save");
+                self.line(ln, "do");
+                self.indent += 1;
+                self.line(ln, &format!("local {d} = _L.save_read({})", lua_string(name)));
+                // Everything is read first, so a save that doesn't fit changes nothing.
+                let mut temps = Vec::new();
+                for (n, item) in &list {
+                    let t = match item {
+                        crate::check::SaveItem::Var(t) => t.clone(),
+                        crate::check::SaveItem::Object(c) => Ty::Class(*c),
+                    };
+                    let dec = self.jdec(&t);
+                    let v = self.fresh("loaded");
+                    self.line(
+                        ln,
+                        &format!(
+                            "local {v} = _L.save_get({d}, {}, {}, {dec})",
+                            lua_string(name),
+                            lua_string(crate::ast::shown(n))
+                        ),
+                    );
+                    temps.push((n.clone(), item.clone(), v));
+                }
+                for (n, item, v) in temps {
+                    match item {
+                        crate::check::SaveItem::Var(_) => self.line(ln, &format!("{} = {v}", lname(&n))),
+                        crate::check::SaveItem::Object(_) => self.line(ln, &format!("_L.copy_fields({}, {v})", lname(&n))),
+                    }
+                }
+                self.indent -= 1;
+                self.line(ln, "end");
+            }
             Stmt::Keep { value, into, .. } => {
                 let v = self.expr(value);
                 let k = self.fresh("kept");
@@ -429,6 +516,13 @@ impl<'a> W<'a> {
             self.line(ln, &format!("_L.setstate({o}, {value})"));
             return;
         }
+        if let ExprKind::Field(t, f, _) = &target.kind {
+            if let Ty::TableRow(_) = self.info.ty(t) {
+                let r = self.expr(t);
+                self.line(ln, &format!("_L.r_set({r}, {}, {value})", lua_string(f)));
+                return;
+            }
+        }
         match &target.kind {
             ExprKind::Index(t, i) => {
                 let tc = self.expr(t);
@@ -464,7 +558,12 @@ impl<'a> W<'a> {
             LoopKind::Each { vars, source } => {
                 let src = self.expr(source);
                 let names: Vec<String> = vars.iter().map(|(_, n, _)| lname(n)).collect();
-                match self.info.ty(source) {
+                // A table or query goes through a copy of its rows, as a cMap.
+                let st = match self.info.ty(source) {
+                    Ty::Table(t) | Ty::Query(t) => Ty::CMap(t.cols.clone()),
+                    x => x,
+                };
+                match st {
                     Ty::Array(_) => {
                         let c = self.fresh("list");
                         let i = self.fresh("i");
@@ -550,7 +649,23 @@ impl<'a> W<'a> {
 
     // ----- expressions -----
 
+    /// An expression as a value. A table or a query used as a value is a copy of its rows, as a cMap.
     fn expr(&mut self, e: &Expr) -> String {
+        let c = self.raw(e);
+        match self.info.ty(e) {
+            Ty::Table(_) | Ty::Query(_) => format!("_L.q_cmap({c})"),
+            _ => c,
+        }
+    }
+
+    /// Where a table or query is wanted as itself, to ask the database.
+    fn raw(&mut self, e: &Expr) -> String {
+        if let Some(op) = self.info.table_ops.get(&e.id).copied() {
+            return self.table_op(e, op);
+        }
+        if let ExprKind::Saved(name) = &e.kind {
+            return format!("_L.save_exists({})", lua_string(name));
+        }
         if let Some(lib) = self.info.libs.get(&e.id) {
             return self.lib(e, lib);
         }
@@ -602,6 +717,13 @@ impl<'a> W<'a> {
                 if let Some((_, path)) = self.info.options.get(&e.id) {
                     return lua_string(path);
                 }
+                if let (Ty::Table(_), ExprKind::Name(db)) = (self.info.ty(e), &t.kind) {
+                    return format!("{}.{}", lname(db), lname(f));
+                }
+                if let Ty::TableRow(_) = self.info.ty(t) {
+                    let r = self.expr(t);
+                    return format!("_L.r_get({r}, {})", lua_string(f));
+                }
                 let tc = self.expr(t);
                 format!("{tc}.{}", lname(f))
             }
@@ -639,6 +761,11 @@ impl<'a> W<'a> {
                     _ => format!("{}({})", lname(name), a.join(", ")),
                 }
             }
+            ExprKind::Index(t, i) if matches!(self.info.ty(t), Ty::Table(_)) => {
+                let tc = self.raw(t);
+                let ic = self.expr(i);
+                format!("_L.t_get({tc}, {ic})")
+            }
             ExprKind::Index(t, i) => {
                 let tc = self.expr(t);
                 let ic = self.expr(i);
@@ -648,6 +775,9 @@ impl<'a> W<'a> {
                     _ => "aget",
                 };
                 format!("_L.{f}({tc}, {ic})")
+            }
+            ExprKind::Len(inner) if matches!(self.info.ty(inner), Ty::Table(_) | Ty::Query(_)) => {
+                format!("_L.q_count({})", self.raw(inner))
             }
             ExprKind::Len(inner) => {
                 let c = self.expr(inner);
@@ -711,6 +841,7 @@ impl<'a> W<'a> {
                 let made = format!("_L.new({})", parts.join(", "));
                 self.owned(made)
             }
+            ExprKind::Saved(_) => "false".into(),
             ExprKind::NewHook(body) => {
                 let params: Vec<String> = self
                     .info
@@ -770,6 +901,71 @@ impl<'a> W<'a> {
                     Conv::Trim => format!("_L.text_trim({c})"),
                 }
             }
+        }
+    }
+
+    /// Calls on tables and queries.
+    fn table_op(&mut self, e: &Expr, op: &str) -> String {
+        let ExprKind::Method(t, _, args, _) = &e.kind else {
+            return "nil".into();
+        };
+        let q = self.raw(t);
+        match op {
+            "inject" => format!("_L.t_inject({q}, {})", self.row(&args[0])),
+            "has" => format!("_L.t_has({q}, {})", self.expr(&args[0])),
+            "removeKey" => format!("_L.t_remove({q}, {})", self.expr(&args[0])),
+            "removeAll" => format!("_L.q_delete({q})"),
+            "reverse" => format!("_L.q_reverse({q})"),
+            "count" => format!("_L.q_count({q})"),
+            "first" => format!("_L.q_first({q}, {})", self.expr(&args[0])),
+            "orderBy" => {
+                let col = self.info.columns.get(&args[0].id).cloned().unwrap_or_default();
+                format!("_L.q_order({q}, {})", lua_string(&col))
+            }
+            _ => {
+                let mut params = Vec::new();
+                let sql = self.sql(&args[0], &mut params);
+                format!("_L.q_where({q}, {}, {{{}}})", lua_string(&sql), params.join(", "))
+            }
+        }
+    }
+
+    /// A :where( ) as SQL. Parts that don't use the columns are worked out by Lua and passed in.
+    fn sql(&mut self, e: &Expr, params: &mut Vec<String>) -> String {
+        if !crate::check::Checker::mentions_column(self.info, e) {
+            params.push(self.expr(e));
+            return "?".into();
+        }
+        match &e.kind {
+            ExprKind::Name(c) => format!("\"{c}\""),
+            ExprKind::Not(x) => format!("(NOT {})", self.sql(x, params)),
+            ExprKind::Neg(x) => format!("(-{})", self.sql(x, params)),
+            ExprKind::Len(x) => format!("length({})", self.sql(x, params)),
+            ExprKind::Method(t, m, args, _) => {
+                let a = &args[0];
+                match m.as_str() {
+                    "contains" => {
+                        let tc = self.sql(t, params);
+                        let ac = self.sql(a, params);
+                        format!("(instr({tc}, {ac}) > 0)")
+                    }
+                    "startsWith" => {
+                        let tc = self.sql(t, params);
+                        let a1 = self.sql(a, params);
+                        let a2 = self.sql(a, params);
+                        format!("(substr({tc}, 1, length({a1})) = {a2})")
+                    }
+                    _ => {
+                        let a1 = self.sql(a, params);
+                        let tc = self.sql(t, params);
+                        let a2 = self.sql(a, params);
+                        let a3 = self.sql(a, params);
+                        format!("(length({a1}) = 0 OR substr({tc}, -length({a2})) = {a3})")
+                    }
+                }
+            }
+            ExprKind::Bin(op, l, r, _) => sql_bin(*op, l, r, self.info, &mut |x, p| self.sql(x, p), params),
+            _ => "NULL".into(),
         }
     }
 
@@ -948,6 +1144,7 @@ impl<'a> W<'a> {
                 let f: Vec<String> = cols.iter().map(|(_, t)| self.fmt(t)).collect();
                 format!("_L.cshow({{{}}})", f.join(", "))
             }
+            Ty::Table(t) | Ty::Query(t) => self.fmt(&Ty::CMap(t.cols.clone())),
             Ty::Row(cols) => {
                 let f: Vec<String> = cols.iter().map(|(_, t)| self.fmt(t)).collect();
                 format!("_L.rshow({{{}}})", f.join(", "))
@@ -987,5 +1184,64 @@ impl<'a> W<'a> {
             BinOp::And => format!("({lc} and {rc})"),
             BinOp::Or => format!("({lc} or {rc})"),
         }
+    }
+}
+
+/// A :where( )'s operator as SQL, the same for both outputs. `part` writes one side.
+pub fn sql_bin(
+    op: BinOp,
+    l: &Expr,
+    r: &Expr,
+    info: &Info,
+    part: &mut dyn FnMut(&Expr, &mut Vec<String>) -> String,
+    params: &mut Vec<String>,
+) -> String {
+    let state = matches!(info.ty(l), Ty::State(_)) || matches!(info.ty(r), Ty::State(_));
+    match op {
+        BinOp::Eq | BinOp::Ne if state => {
+            // An option includes the options inside it, as in Lust.
+            let a = part(l, params);
+            let b1 = part(r, params);
+            let b2 = part(r, params);
+            let b3 = part(r, params);
+            let s = format!("({a} = {b1} OR substr({a}, 1, length({b2}) + 1) = {b3} || '.')");
+            if op == BinOp::Ne {
+                format!("(NOT {s})")
+            } else {
+                s
+            }
+        }
+        _ => {
+            let a = part(l, params);
+            let b = part(r, params);
+            let o = match op {
+                BinOp::Add if info.ty(l) == Ty::Str => "||",
+                BinOp::Add => "+",
+                BinOp::Sub => "-",
+                BinOp::Mul => "*",
+                BinOp::Div => "/",
+                BinOp::Mod => "%",
+                BinOp::Eq | BinOp::Same => "=",
+                BinOp::Ne | BinOp::NotSame => "<>",
+                BinOp::Lt => "<",
+                BinOp::Gt => ">",
+                BinOp::Le => "<=",
+                BinOp::Ge => ">=",
+                BinOp::And => "AND",
+                BinOp::Or => "OR",
+            };
+            format!("({a} {o} {b})")
+        }
+    }
+}
+
+/// A table column's kind, as the runtimes know them.
+pub fn kind(t: &Ty) -> &'static str {
+    match t {
+        Ty::Int => "int",
+        Ty::Float => "float",
+        Ty::Truth => "truth",
+        Ty::State(_) => "state",
+        _ => "string",
     }
 }

@@ -1,0 +1,29 @@
+class Item {
+    has {
+        string name = "x";
+    }
+}
+
+database Shop in "shop.db" {
+    cMap(string name, Item thing) items;
+    cMap(int id = 5, string who) people;
+    cMap(string name, float price) prices;
+}
+
+Shop.prices:inject([2.5]);
+print(Shop.prices[3]);
+Shop.prices["tea"].name = "coffee";
+print(Shop.prices:where(price:text() == "1"));
+print(Shop.prices:orderBy(cost));
+print(Shop.toys);
+print(Shop);
+Shop.prices:remove();
+Shop.prices:where(true):has("tea");
+
+method later() {
+    save game;
+}
+int day = 1;
+save game = [day, Item, nobody];
+save game2 = [day];
+end

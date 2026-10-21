@@ -41,12 +41,13 @@ This is **Lust 2**, a fresh start written in Rust. One language, two outputs:
 | Rust, compiled to real programs | `.lst` | apps and tools on Windows, macOS and Linux |
 | LustScript, turned into Lua | `.lsc` | scripting and modding inside other programs, like Garry's Mod, Aventail and Halberd |
 
-**What works today (alpha 7):** both outputs. Every file is checked before anything runs, with mistakes explained in plain words.
+**What works today (alpha 8):** both outputs. Every file is checked before anything runs, with mistakes explained in plain words.
 
 - `.lsc` files turn into plain Lua 5.1 that Garry's Mod (LuaJIT) and Luau can run.
 - `.lst` files turn into Rust, which builds into a real program (an `.exe` on Windows) that runs without Lust.
 - Programs can be split into many files that share with `pass`, `fetch` and `get`.
 - A standard library: text and array tools, plus `Maths`, `Files`, `Time` and `Json`.
+- Saves, and databases on SQLite whose tables work like cMaps.
 - `lust run` runs either kind straight away, with Lua built into `lust` itself, so nothing else needs installing. Building a real program needs Rust installed.
 
 Every test runs both ways, through Lua and as a real program, and both have to print exactly the same.
@@ -68,6 +69,7 @@ The second line makes `tests/run/player` (`player.exe` on Windows), a real progr
 | Command | Does |
 | --- | --- |
 | `lust run file` | checks the file, then runs it straight away. `lust file` works too |
+| `lust new name` | makes a project folder with a `main.lst`, and gets built programs ready |
 | `lust check file` | only checks, and lists any mistakes |
 | `lust build file.lst` | builds a real program next to it, through Rust |
 | `lust build file.lsc` | writes the Lua next to it, as `file.lua`, ready for Garry's Mod or any Lua host |

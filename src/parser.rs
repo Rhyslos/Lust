@@ -7,7 +7,7 @@ use crate::lexer::{Tk, Token};
 pub const RESERVED: &[&str] = &[
     "class", "object", "node", "assembly", "create", "has", "method", "hook", "return", "like", "new", "nothing", "schema", "route",
     "view", "style", "keep", "pass", "fetch", "get", "lua", "is", "then", "or", "either", "not", "true", "false", "loop", "stop", "skip",
-    "in", "try", "error", "state", "save", "load", "saved", "end", "int", "float", "string", "truth", "array", "cMap", "map",
+    "in", "try", "error", "state", "save", "load", "saved", "end", "database", "int", "float", "string", "truth", "array", "cMap", "map",
 ];
 pub const BUILTINS: &[&str] = &["print", "wait", "random", "ask"];
 
@@ -403,7 +403,13 @@ impl<'a> Parser<'a> {
                 items.push(Item::Assembly(a));
                 return Ok(());
             }
-            "schema" | "route" | "view" | "style" | "save" | "load" => {
+            "database" => {
+                *seen_other = true;
+                let d = self.database_decl()?;
+                items.push(Item::Database(d));
+                return Ok(());
+            }
+            "schema" | "route" | "view" | "style" => {
                 return self.fail(t.pos, format!("{word} is planned for Lust v2 but isn't built yet."));
             }
             _ => {}
@@ -520,6 +526,59 @@ impl<'a> Parser<'a> {
             fields,
             methods,
         })
+    }
+
+    /// database Shop in "shop.db" { cMap(string name, float price) items; }
+    fn database_decl(&mut self) -> R<DatabaseDecl> {
+        self.next();
+        let (name, pos) = self.ident("the database's name")?;
+        check_name(self.diags, &name, pos, NameKind::Type, "database");
+        if !self.at_word("in") {
+            let p = self.cur().pos;
+            return self.fail(
+                p,
+                format!("say which file it's in: database {name} in \"{}.db\" {{ … }}", name.to_lowercase()),
+            );
+        }
+        self.next();
+        let t = self.cur().clone();
+        let Tk::Str(path) = &t.kind else {
+            return self.fail(
+                t.pos,
+                format!(
+                    "the file's name goes in quotes: database {name} in \"{}.db\" {{ … }}",
+                    name.to_lowercase()
+                ),
+            );
+        };
+        let path = path.clone();
+        self.next();
+        let open = self.expect_sym("{", "expected { to start the database's tables.")?;
+        let mut tables = Vec::new();
+        loop {
+            if self.at_sym("}") {
+                self.next();
+                break;
+            }
+            if self.at_eof() {
+                return self.fail(open.pos, format!("this {{ is never closed. Add a }} where {name} ends."));
+            }
+            if !self.at_word("cMap") {
+                let p = self.cur().pos;
+                self.diags.add(
+                    p,
+                    "a database holds tables, each written like a cMap: cMap(string name, float price) items;",
+                );
+                self.recover();
+                continue;
+            }
+            let ty = self.ty()?;
+            let (tname, tpos) = self.ident("the table's name")?;
+            check_name(self.diags, &tname, tpos, NameKind::Value, "table");
+            self.semi()?;
+            tables.push((ty, tname, tpos));
+        }
+        Ok(DatabaseDecl { name, pos, path, tables })
     }
 
     /// assembly LootSpawner { create Item { name = "Potion"; value = 50; } }
@@ -861,6 +920,34 @@ impl<'a> Parser<'a> {
                     return Ok(Stmt::Return(value, t.pos));
                 }
                 "try" => return self.try_stmt(),
+                "save" | "load" if matches!(self.peek(1).kind, Tk::Ident(_)) => {
+                    self.next();
+                    let (name, npos) = self.ident("the save's name")?;
+                    if w == "save" && self.at_sym("=") {
+                        check_name(self.diags, &name, npos, NameKind::Value, "save");
+                        self.next();
+                        self.expect_sym("[", "a save lists what it holds: save gameSession = [Farm, player, currentDay];")?;
+                        let mut items = Vec::new();
+                        while !self.at_sym("]") {
+                            items.push(self.ident("something to save")?);
+                            if self.at_sym(",") {
+                                self.next();
+                            } else if !self.at_sym("]") {
+                                let pos = self.cur().pos;
+                                return self.fail(pos, "expected , or ] here.");
+                            }
+                        }
+                        self.next();
+                        self.semi()?;
+                        return Ok(Stmt::SaveDecl { name, items, pos: t.pos });
+                    }
+                    self.semi()?;
+                    return Ok(if w == "save" {
+                        Stmt::Save(name, t.pos)
+                    } else {
+                        Stmt::Load(name, t.pos)
+                    });
+                }
                 "keep" => {
                     self.next();
                     let value = self.expr()?;
@@ -1364,6 +1451,11 @@ impl<'a> Parser<'a> {
                         Ok(self.mk(t.pos, ExprKind::Nothing))
                     }
                     "new" => self.new_expr(),
+                    "saved" => {
+                        self.next();
+                        let (name, _) = self.ident("the save's name: saved gameSession")?;
+                        Ok(self.mk(t.pos, ExprKind::Saved(name)))
+                    }
                     "null" | "nil" | "None" => self.fail(t.pos, "Lust calls it nothing."),
                     "self" | "this" => {
                         let h = if self.peek(1).is_sym(".") {

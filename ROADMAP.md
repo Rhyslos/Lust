@@ -12,15 +12,16 @@ The order Lust gets built in. Each step makes Lust more useful on its own, and n
 | 🏁 | *Lust is a complete tool for console programs and Garry's Mod scripts.* | Reached |
 | ✅ | **4. `keep`:** things made in a state end with it, unless they're kept | Done (alpha 6) |
 | ✅ | **5. `node` and `assembly`:** objects that open and close, and factories with one recipe per class | Done (alpha 7) |
-| | **6. Databases (on SQLite), then saves** | Next |
-| | 🏁 *Programs keep their data.* | |
-| | **7. Servers:** `schema` and `route`, if they're still wanted by then | |
+| ✅ | **6. Databases (on SQLite), saves, and `lust new`:** tables used like cMaps, queries written in Lust, saves as readable JSON | Done (alpha 8) |
+| 🏁 | *Programs keep their data.* | Reached |
+| | **7. Servers:** `schema` and `route`, if they're still wanted by then | Next |
 | | **8. Ledger support and polish** | |
 | | **9. `view` and our own renderer,** starting with a small test run (a window, text, a button) | |
 | | 🏁 *The Lust 2.0 release.* | |
 
 ## Decisions along the way
 
-- **LustQL runs on SQLite.** SQLite does the hard part of a database (keeping data safe through crashes, indexes, one file per database), and it's free to use in anything. LustQL is a friendly language on top that Lust checks and turns into SQL. Garry's Mod has SQLite built in, so LustQL can work from LustScript too. Saves use it as well, so there's no save format of our own to design. A cMap's key matches a table's primary key.
+- **Databases run on SQLite.** For now, queries are written in Lust code (`Shop.items:where(price < 3.0)`); a `.lql` language of its own is designed later. SQLite does the hard part of a database (keeping data safe through crashes, indexes, one file per database), and it's free to use in anything. Lust checks queries and turns them into SQL. A cMap's key matches a table's primary key. Garry's Mod has SQLite built in, so LustScript there can get databases later.
+- **Saves are readable JSON files** (`name.save`), as the rulebook asked, not databases.
 - **`view` is our own, all the way down,** and it comes last, once everything it builds on has settled. Most of the remaining work is here.
 - **Servers come last.** They're on the list, but whether web servers are worth it gets decided when we get there.
