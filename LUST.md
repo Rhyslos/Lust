@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (2.0 alpha 14):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. `view` has its first four stages: windows with text, buttons, layout, styles, pieces of your own, and inputs, checkboxes and sliders. Not yet: the rest of `view`, and LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (2.0 alpha 15):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. `view` has its first five stages: windows with text, buttons, layout, styles, pieces of your own, inputs, checkboxes, sliders, scrolling, pictures and timers. Not yet: the rest of `view`, and LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -553,22 +553,21 @@ method registerHook() {
 
 ---
 
-## 17. Screens: view { } **(being built: stage 4 of 6)**
+## 17. Screens: view { } **(being built: stage 5 of 6)**
 
 A screen is described, not built step by step. `view` says what the window should look like right now, given the data. After anything happens (a click, a key, a timer), Lust looks at the view again and updates the window to match. You change data, never the screen.
 
 ### What works so far
 
-Stages 1 to 4 are built: an assembly with a `view` opens a window with `App:open();`, through `lust run` and as a built program.
+Stages 1 to 5 are built: an assembly with a `view` opens a window with `App:open();`, through `lust run` and as a built program.
 
 - **Pieces:** `column`, `row`, `stack`, `space`, `text` and `button`. A button's `{ }` runs when it's clicked, and the window redraws afterwards.
+- **Scrolling, pictures and timers:** `scroll`, `image` and `every` (see below).
 - **Inputs:** `input`, `checkbox` and `slider`, each bound to a field (see below), with the mouse, the keyboard and the clipboard.
 - **Your own pieces:** any assembly with a view, used inside another view as `TodoRow { label = task };`, from the same file or fetched from files in `ui/` folders (see below).
 - **Styles and layout:** every word in the list below, `hover:[ … ]` included, plus named styles (`style chip = [pad 6, round];`). Text wraps onto more lines when it doesn't fit.
 - **Questions and loops** inside a view.
 - **The window's settings:** `title`, `width`, `height` and `background`.
-
-`scroll` and `image` come in the next stage. Using one now says it isn't built yet.
 
 ```
 assembly App {
@@ -602,6 +601,8 @@ end
 | `check 1` | clicks the first checkbox |
 | `slide 1 70` | drags the first slider to 70 |
 | `press 40 20`, `move 90 20`, `release 90 20`, `dblclick 40 20` | the mouse, at a place in the window |
+| `scroll 1 100` | scrolls the first scroll down 100 (up with a minus) |
+| `wait 2.5` | lets 2.5 seconds go by on the test's own clock, running the timers that come due |
 | `size 800 600` | resizes the window |
 | `snapshot shot.png` | draws the window into a picture |
 
@@ -742,8 +743,33 @@ assembly Settings {
 | --- | --- |
 | Layout | `column`, `row`, `stack` (layers), `scroll`, `space` |
 | Content | `text`, `button`, `input`, `checkbox`, `slider`, `image` |
+| Time | `every` |
 
 Questions and loops work inside a view: showing something only sometimes is an `is … ? then`, and a list is a `loop`.
+
+### Scrolling
+
+`scroll { … }` is a column whose content can be taller than it is. The mouse wheel or touchpad scrolls it, a knob on its right shows where you are and can be dragged, and Tab scrolls to what it reaches.
+
+A scroll is as wide as it can be, and in a column it takes the room that's left (and so does whatever holds it), so `column { text "Title"; scroll { … } }` fills the window with a title above a list. Give it a `height` to make it a fixed size instead.
+
+### Pictures
+
+`image "cat.png";` shows a PNG or JPEG file, found the way `Files` finds files: from the folder the program runs in, or anywhere with its whole path. Without a size it's as big as its file, shrinking to fit if there isn't room. Give it a `width` or a `height` and the other follows, keeping its shape. Give both and it fits inside that box; add `cover` and it fills the box instead, cut to fit. `round` rounds its corners, so `[width 48, height 48, cover, round 24]` makes a round picture. A file that isn't there shows as a grey box.
+
+### Timers
+
+`every 1.0 { seconds = seconds + 1; }` runs its block every second, and the window redraws after. It runs only while it's in the view, so a timer inside a question starts and stops with it:
+
+```
+is running? then {
+    every 1.0 {
+        seconds = seconds + 1;
+    }
+}
+```
+
+A timer takes no room on the screen. If the program was busy and a timer is late, it runs once, not once for every time it missed.
 
 ### Styles
 
@@ -773,7 +799,7 @@ Name a style to reuse it: `style card = [pad 16, round, shadow];`, then `[card]`
 
 ### Underneath
 
-Lust draws everything itself, from the pixels up: layout, every piece, text editing, focus, scrolling, styles and animation. Small permissive libraries only open the window (winit), hand over the pixels (softbuffer), read font files (fontdue) and reach the system clipboard (arboard). Views are for `.lst` programs on Windows, macOS and Linux. Web pages stay HTML, CSS and JavaScript.
+Lust draws everything itself, from the pixels up: layout, every piece, text editing, focus, scrolling, styles and animation. Small permissive libraries only open the window (winit), hand over the pixels (softbuffer), read font files (fontdue), reach the system clipboard (arboard) and read PNG and JPEG files (png, jpeg-decoder). Views are for `.lst` programs on Windows, macOS and Linux. Web pages stay HTML, CSS and JavaScript.
 
 ---
 

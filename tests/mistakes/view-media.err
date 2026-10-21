@@ -1,0 +1,8 @@
+view-media.lsc:8:19  image takes the picture's file name, but this is an int: image "cat.png";
+view-media.lsc:9:13  image needs the picture's file: image "cat.png";
+view-media.lsc:10:19  every takes how many seconds to wait, but this is a string: every 1.0 { … }
+view-media.lsc:11:13  every runs its { } again and again: every 1.0 { seconds = seconds + 1; }
+view-media.lsc:12:13  every needs how many seconds to wait: every 1.0 { … }
+view-media.lsc:16:13  a scroll holds other pieces in { }: scroll { text "Hi"; }
+
+6 mistakes. Nothing was run.

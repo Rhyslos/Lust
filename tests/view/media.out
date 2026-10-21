@@ -1,0 +1,220 @@
+window "Media" 360x320
+  column 0,0 360x320
+    row 12,12 254x60
+      image "sunset.png" 12,12 80x60
+      image "flag.jpg" 100,22 40x40
+      image "sunset.png" 148,12 60x60
+      image "nowhere.png" 216,22 50x40
+    row 12,80 195x33
+      text "Time: 0" 12,87 54x19
+      button "Start" 74,80 63x33
+      button "Stop" 145,80 62x33
+    text "ticks: 0" 12,121 52x19
+    scroll 12,148 336x160 (scrolled 0 of 563)
+      text "Line 1" 12,148 41x19
+      text "Line 2" 12,171 44x19
+      text "Line 3" 12,194 44x19
+      text "Line 4" 12,217 44x19
+      text "Line 5" 12,240 44x19
+      text "Line 6" 12,263 44x19
+      text "Line 7" 12,286 43x19
+      text "Line 8" 12,309 44x19
+      text "Line 9" 12,332 44x19
+      text "Line 10" 12,355 50x19
+      text "Line 11" 12,378 47x19
+      text "Line 12" 12,401 50x19
+      text "Line 13" 12,424 50x19
+      text "Line 14" 12,447 50x19
+      text "Line 15" 12,470 50x19
+      text "Line 16" 12,493 50x19
+      text "Line 17" 12,516 49x19
+      text "Line 18" 12,539 50x19
+      text "Line 19" 12,562 50x19
+      text "Line 20" 12,585 53x19
+      text "Line 21" 12,608 50x19
+      text "Line 22" 12,631 53x19
+      text "Line 23" 12,654 53x19
+      text "Line 24" 12,677 53x19
+      text "Line 25" 12,700 53x19
+      text "Line 26" 12,723 53x19
+      text "Line 27" 12,746 52x19
+      text "Line 28" 12,769 53x19
+      text "Line 29" 12,792 53x19
+      text "Line 30" 12,815 53x19
+      button "More" 12,838 66x33
+window "Media" 360x320
+  column 0,0 360x320
+    row 12,12 254x60
+      image "sunset.png" 12,12 80x60
+      image "flag.jpg" 100,22 40x40
+      image "sunset.png" 148,12 60x60
+      image "nowhere.png" 216,22 50x40
+    row 12,80 195x33
+      text "Time: 3" 12,87 54x19
+      button "Start" 74,80 63x33
+      button "Stop" 145,80 62x33
+    text "ticks: 14" 12,121 58x19
+    scroll 12,148 336x160 (scrolled 0 of 563)
+      text "Line 1" 12,148 41x19
+      text "Line 2" 12,171 44x19
+      text "Line 3" 12,194 44x19
+      text "Line 4" 12,217 44x19
+      text "Line 5" 12,240 44x19
+      text "Line 6" 12,263 44x19
+      text "Line 7" 12,286 43x19
+      text "Line 8" 12,309 44x19
+      text "Line 9" 12,332 44x19
+      text "Line 10" 12,355 50x19
+      text "Line 11" 12,378 47x19
+      text "Line 12" 12,401 50x19
+      text "Line 13" 12,424 50x19
+      text "Line 14" 12,447 50x19
+      text "Line 15" 12,470 50x19
+      text "Line 16" 12,493 50x19
+      text "Line 17" 12,516 49x19
+      text "Line 18" 12,539 50x19
+      text "Line 19" 12,562 50x19
+      text "Line 20" 12,585 53x19
+      text "Line 21" 12,608 50x19
+      text "Line 22" 12,631 53x19
+      text "Line 23" 12,654 53x19
+      text "Line 24" 12,677 53x19
+      text "Line 25" 12,700 53x19
+      text "Line 26" 12,723 53x19
+      text "Line 27" 12,746 52x19
+      text "Line 28" 12,769 53x19
+      text "Line 29" 12,792 53x19
+      text "Line 30" 12,815 53x19
+      button "More" 12,838 66x33
+window "Media" 360x320
+  column 0,0 360x320
+    row 12,12 254x60
+      image "sunset.png" 12,12 80x60
+      image "flag.jpg" 100,22 40x40
+      image "sunset.png" 148,12 60x60
+      image "nowhere.png" 216,22 50x40
+    row 12,80 195x33
+      text "Time: 3" 12,87 54x19
+      button "Start" 74,80 63x33
+      button "Stop" 145,80 62x33
+    text "ticks: 14" 12,121 58x19
+    scroll 12,148 336x160 (scrolled 100 of 563)
+      text "Line 1" 12,48 41x19
+      text "Line 2" 12,71 44x19
+      text "Line 3" 12,94 44x19
+      text "Line 4" 12,117 44x19
+      text "Line 5" 12,140 44x19
+      text "Line 6" 12,163 44x19
+      text "Line 7" 12,186 43x19
+      text "Line 8" 12,209 44x19
+      text "Line 9" 12,232 44x19
+      text "Line 10" 12,255 50x19
+      text "Line 11" 12,278 47x19
+      text "Line 12" 12,301 50x19
+      text "Line 13" 12,324 50x19
+      text "Line 14" 12,347 50x19
+      text "Line 15" 12,370 50x19
+      text "Line 16" 12,393 50x19
+      text "Line 17" 12,416 49x19
+      text "Line 18" 12,439 50x19
+      text "Line 19" 12,462 50x19
+      text "Line 20" 12,485 53x19
+      text "Line 21" 12,508 50x19
+      text "Line 22" 12,531 53x19
+      text "Line 23" 12,554 53x19
+      text "Line 24" 12,577 53x19
+      text "Line 25" 12,600 53x19
+      text "Line 26" 12,623 53x19
+      text "Line 27" 12,646 52x19
+      text "Line 28" 12,669 53x19
+      text "Line 29" 12,692 53x19
+      text "Line 30" 12,715 53x19
+      button "More" 12,738 66x33
+window "Media" 360x320
+  column 0,0 360x320
+    row 12,12 254x60
+      image "sunset.png" 12,12 80x60
+      image "flag.jpg" 100,22 40x40
+      image "sunset.png" 148,12 60x60
+      image "nowhere.png" 216,22 50x40
+    row 12,80 195x33
+      text "Time: 3" 12,87 54x19
+      button "Start" 74,80 63x33
+      button "Stop" 145,80 62x33
+    text "ticks: 14" 12,121 58x19
+    scroll 12,148 336x160 (scrolled 563 of 563)
+      text "Line 1" 12,-415 41x19
+      text "Line 2" 12,-392 44x19
+      text "Line 3" 12,-369 44x19
+      text "Line 4" 12,-346 44x19
+      text "Line 5" 12,-323 44x19
+      text "Line 6" 12,-300 44x19
+      text "Line 7" 12,-277 43x19
+      text "Line 8" 12,-254 44x19
+      text "Line 9" 12,-231 44x19
+      text "Line 10" 12,-208 50x19
+      text "Line 11" 12,-185 47x19
+      text "Line 12" 12,-162 50x19
+      text "Line 13" 12,-139 50x19
+      text "Line 14" 12,-116 50x19
+      text "Line 15" 12,-93 50x19
+      text "Line 16" 12,-70 50x19
+      text "Line 17" 12,-47 49x19
+      text "Line 18" 12,-24 50x19
+      text "Line 19" 12,-1 50x19
+      text "Line 20" 12,22 53x19
+      text "Line 21" 12,45 50x19
+      text "Line 22" 12,68 53x19
+      text "Line 23" 12,91 53x19
+      text "Line 24" 12,114 53x19
+      text "Line 25" 12,137 53x19
+      text "Line 26" 12,160 53x19
+      text "Line 27" 12,183 52x19
+      text "Line 28" 12,206 53x19
+      text "Line 29" 12,229 53x19
+      text "Line 30" 12,252 53x19
+      button "More" 12,275 66x33
+window "Media" 360x320
+  column 0,0 360x320
+    row 12,12 254x60
+      image "sunset.png" 12,12 80x60
+      image "flag.jpg" 100,22 40x40
+      image "sunset.png" 148,12 60x60
+      image "nowhere.png" 216,22 50x40
+    row 12,80 195x33
+      text "Time: 3" 12,87 54x19
+      button "Start" 74,80 63x33
+      button "Stop" 145,80 62x33
+    text "ticks: 14" 12,121 58x19
+    scroll 12,148 336x160 (scrolled 523 of 563)
+      text "Line 1" 12,-375 41x19
+      text "Line 2" 12,-352 44x19
+      text "Line 3" 12,-329 44x19
+      text "Line 4" 12,-306 44x19
+      text "Line 5" 12,-283 44x19
+      text "Line 6" 12,-260 44x19
+      text "Line 7" 12,-237 43x19
+      text "Line 8" 12,-214 44x19
+      text "Line 9" 12,-191 44x19
+      text "Line 10" 12,-168 50x19
+      text "Line 11" 12,-145 47x19
+      text "Line 12" 12,-122 50x19
+      text "Line 13" 12,-99 50x19
+      text "Line 14" 12,-76 50x19
+      text "Line 15" 12,-53 50x19
+      text "Line 16" 12,-30 50x19
+      text "Line 17" 12,-7 49x19
+      text "Line 18" 12,16 50x19
+      text "Line 19" 12,39 50x19
+      text "Line 20" 12,62 53x19
+      text "Line 21" 12,85 50x19
+      text "Line 22" 12,108 53x19
+      text "Line 23" 12,131 53x19
+      text "Line 24" 12,154 53x19
+      text "Line 25" 12,177 53x19
+      text "Line 26" 12,200 53x19
+      text "Line 27" 12,223 52x19
+      text "Line 28" 12,246 53x19
+      text "Line 29" 12,269 53x19
+      text "Line 30" 12,292 53x19
+      button "More" 12,315 66x33

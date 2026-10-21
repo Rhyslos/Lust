@@ -1,6 +1,6 @@
 [package]
 name = "lust"
-version = "2.0.0-alpha.14"
+version = "2.0.0-alpha.15"
 edition = "2021"
 description = "The Lust programming language"
 license = "MIT"
@@ -19,6 +19,8 @@ winit = "0.30"
 softbuffer = "0.4"
 fontdue = "0.9"
 arboard = { version = "3", default-features = false }
+png = "0.17"
+jpeg-decoder = { version = "0.3", default-features = false }
 
 [profile.release]
 opt-level = 3

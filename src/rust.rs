@@ -836,6 +836,10 @@ impl<'a> W<'a> {
                 out.push_str(&format!("{pad}{{\n{pad}    let mut {v} = rt::ui::Node::new({kind:?});\n"));
                 let bound = matches!(kind.as_str(), "input" | "checkbox" | "slider");
                 match arg {
+                    Some(a) if kind == "every" => {
+                        let secs = self.coerced(a, &Ty::Float);
+                        out.push_str(&format!("{pad}    {v}.value = Some(rt::ui::SV::Num({secs}));\n"));
+                    }
                     Some(a) if bound => {
                         // What the input shows: the value it's bound to, as it is now.
                         let shown = self.expr(a);
