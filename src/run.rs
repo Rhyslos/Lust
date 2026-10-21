@@ -28,6 +28,16 @@ fn host(lua: &Lua) -> mlua::Result<()> {
     )?;
     h.set("mkdir", lua.create_function(|_, p: String| Ok(rt::fs_mkdir(&p).err()))?)?;
     h.set("now", lua.create_function(|_, ()| Ok(rt::time_now()))?)?;
+    h.set(
+        "serve",
+        lua.create_function(|_, (port, answer): (i64, mlua::Function)| {
+            let r = crate::native_web::serve_with(port, &mut |m, p, b| match answer.call::<(u16, String)>((m, p, b)) {
+                Ok(x) => x,
+                Err(e) => (500, format!("{{\"error\":{:?}}}", e.to_string())),
+            });
+            Ok(r.err())
+        })?,
+    )?;
     // Databases: opened ones are kept here, and Lua holds their number.
     let dbs: Rc<RefCell<Vec<crate::native_db::Db>>> = Rc::new(RefCell::new(Vec::new()));
     let d = dbs.clone();

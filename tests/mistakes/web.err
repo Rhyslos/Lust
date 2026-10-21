@@ -1,0 +1,9 @@
+web.lsc:5:12  a schema only holds fields: it's the shape of some data, so it has no methods.
+web.lsc:25:23  one takes more than one value that isn't in the path. Only one comes from the request's body: put them in a schema.
+web.lsc:26:28  the path has :missing, so two needs a value called missing: method two(int missing) { … }
+web.lsc:27:21  there's no method called three to answer GET /api/three.
+web.lsc:28:23  GET /api/one/:id is answered twice.
+web.lsc:29:5  a route answers get, post, put or delete: get "/user/:id" => getUser;
+web.lsc:32:15  Thing needs name filled in: new Thing { name = … }
+
+7 mistakes. Nothing was run.

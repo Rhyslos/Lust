@@ -1413,6 +1413,15 @@ pub fn jr_cmap<R: Row>(v: &Json, at: &str, key: &'static str, f: &dyn Fn(&Json, 
         _ => misfit(at, "an array", v),
     }
 }
+/// A schema's fields with no starting value must be in the JSON.
+pub fn jr_required(v: &Json, at: &str, required: &[&str]) {
+    for r in required {
+        if jget(v, r).is_none() {
+            fail(format!("{} is missing {r}.", place(at)));
+        }
+    }
+}
+
 pub fn jr_object(v: &Json, at: &str) -> bool {
     match v {
         Json::Null => false,
@@ -1432,6 +1441,148 @@ pub fn json_parse(text: &str) -> Json {
 
 pub fn json_read<T>(text: String, f: &dyn Fn(&Json, &str) -> T) -> T {
     f(&json_parse(&text), "")
+}
+
+// ----- web: routes answered by methods -----
+
+pub type Handler = fn(&str, &str, &str) -> (u16, String);
+
+thread_local! {
+    /// The status a failing request answers with: set by Web:fail, and for bad requests.
+    static STATUS: Cell<u16> = Cell::new(0);
+    static HANDLER: Cell<Option<Handler>> = Cell::new(None);
+}
+
+pub fn web_routes(h: Handler) {
+    HANDLER.with(|x| x.set(Some(h)));
+}
+
+pub fn web_fail(status: i64, msg: String) {
+    STATUS.with(|s| s.set(status.clamp(100, 999) as u16));
+    fail(msg)
+}
+
+fn bad(msg: String) -> ! {
+    STATUS.with(|s| s.set(400));
+    fail(msg)
+}
+
+/// The path without its ?query, and whether it fits a route's pattern: the :names' values if it does.
+pub fn web_match(pattern: &str, path: &str) -> Option<Vec<(String, String)>> {
+    let path = path.split('?').next().unwrap_or("");
+    let want: Vec<&str> = pattern.split('/').filter(|s| !s.is_empty()).collect();
+    let got: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    if want.len() != got.len() {
+        return None;
+    }
+    let mut p = Vec::new();
+    for (w, g) in want.iter().zip(&got) {
+        if let Some(name) = w.strip_prefix(':') {
+            p.push((name.to_string(), unescape(g)));
+        } else if w != g {
+            return None;
+        }
+    }
+    Some(p)
+}
+
+fn unescape(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' && i + 2 < b.len() {
+            if let Ok(n) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
+                out.push(n);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(b[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).to_string()
+}
+
+fn param<'a>(p: &'a [(String, String)], name: &str) -> &'a str {
+    p.iter().find(|(n, _)| n == name).map(|(_, v)| v.as_str()).unwrap_or("")
+}
+pub fn web_string(p: &[(String, String)], name: &str) -> String {
+    param(p, name).to_string()
+}
+pub fn web_int(p: &[(String, String)], name: &str) -> i64 {
+    let v = param(p, name);
+    if !isnum(v) {
+        bad(format!("the path's {name} should be a number, but it's \"{v}\"."));
+    }
+    let n: f64 = v.trim().parse().unwrap_or(0.0);
+    if n.fract() != 0.0 {
+        bad(format!("the path's {name} should be a whole number, but it's \"{v}\"."));
+    }
+    n as i64
+}
+pub fn web_float(p: &[(String, String)], name: &str) -> f64 {
+    let v = param(p, name);
+    if !isnum(v) {
+        bad(format!("the path's {name} should be a number, but it's \"{v}\"."));
+    }
+    v.trim().parse().unwrap_or(0.0)
+}
+pub fn web_body<T>(body: &str, f: &dyn Fn(&Json, &str) -> T) -> T {
+    let mut out = None;
+    if let Some(e) = attempt(|| out = Some(f(&json_parse(body), ""))) {
+        if STATUS.with(|s| s.get()) == 0 {
+            bad(format!("the request's body doesn't fit: {e}"));
+        }
+        fail(e);
+    }
+    out.unwrap()
+}
+
+fn errjson(msg: &str) -> String {
+    format!("{{\"error\":{}}}", jquote(msg))
+}
+
+/// Runs one route's method: 200 with what it gives back, 204 when it gives nothing, and the
+/// error's status otherwise.
+pub fn web_run(f: &dyn Fn() -> Option<String>) -> (u16, String) {
+    STATUS.with(|s| s.set(0));
+    let mut out = None;
+    match attempt(|| out = Some(f())) {
+        None => match out.unwrap() {
+            Some(s) => (200, s),
+            None => (204, String::new()),
+        },
+        Some(e) => {
+            let s = STATUS.with(|s| s.get());
+            (if s == 0 { 500 } else { s }, errjson(&e))
+        }
+    }
+}
+
+pub fn web_unanswered(method: &str, path: &str, allowed: &[&str]) -> (u16, String) {
+    let path = path.split('?').next().unwrap_or("");
+    if allowed.is_empty() {
+        (404, errjson(&format!("there's nothing at {path}.")))
+    } else {
+        (405, errjson(&format!("{path} answers {}, not {method}.", allowed.join(" and "))))
+    }
+}
+
+pub fn web_handle(method: &str, path: &str, body: &str) -> (u16, String) {
+    match HANDLER.with(|h| h.get()) {
+        Some(h) => h(method, path, body),
+        None => web_unanswered(method, path, &[]),
+    }
+}
+
+pub fn web_request(method: String, path: String, body: String) -> String {
+    let (status, text) = web_handle(&method.to_uppercase(), &path, &body);
+    if text.is_empty() {
+        status.to_string()
+    } else {
+        format!("{status} {text}")
+    }
 }
 
 // ----- saves: readable JSON files, name.save -----

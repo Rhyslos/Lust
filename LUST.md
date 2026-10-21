@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (2.0 alpha 8):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves and databases work too. Not yet: `view`, `schema`/`route`, and LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (2.0 alpha 9):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Not yet: `view`, and LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -591,31 +591,49 @@ Timer:open();
 
 ## 18. Web: schema and route
 
+A Lust program can be a server: it answers web requests with JSON. Pages in the browser stay HTML, CSS and JavaScript.
+
 ### schema: the shape of data
 
-A schema describes data coming in and going out. A field with no value must be filled in; a field with a value is optional:
+A schema describes data coming in. A field with no value must be filled in; a field with a value is optional:
 
 ```
-schema UserPayload {
+schema NewUser {
     has {
-        string username;
+        string name;
         int age = 0;
     }
 }
 ```
 
+- A schema is a type like a class, but it only holds fields: no methods, no `like`.
+- `new NewUser { name = "Ada" }` must fill in every field with no value.
+- When JSON is read into a schema, a missing field without a value is an error that says which field.
+
 ### route: answering requests
 
 ```
-route "/api/v1" {
-    get "/user/:id" => getUser;
-    post "/user" => createUser;
+method User getUser(int id) { … }
+method User createUser(NewUser body) { … }
+method removeAll() { … }
+
+route "/api" {
+    get "/users/:id" => getUser;
+    post "/users" => createUser;
+    delete "/users" => removeAll;
 }
 
-pass route;
+Web:serve(8080);
 ```
 
-How handlers receive a schema and send one back is **(to design)**.
+- A route block lists paths, each answered by a method. `get`, `post`, `put` and `delete` are the kinds of request. The text after `route` goes in front of every path, and can be left out.
+- **The method's values come from the request.** A value named like a `:name` in the path comes from the path: an `int`, a `float` or a `string`. Any other value comes from the request's body, read as JSON: usually a schema. There can be one of those at most.
+- **What the method gives back is the answer,** as JSON, with status 200. A method that gives nothing back answers 204.
+- **`Web:fail(404, "there's no user 9.");`** stops and answers with that status, as `{"error": "…"}`. A path value that isn't a number, or a body that doesn't fit, answers 400 by itself. Any other error answers 500 with its message.
+- A path nobody answers gives 404. One that's answered, but not for that kind of request, gives 405.
+- **`Web:serve(8080);`** answers requests on that port until the program is stopped. Every file's routes are served. `pass route;` is fine to write but not needed.
+- **`Web:request("GET", "/api/users/2", "")`** tries a route without a network, and gives back the status and the answer as text: `200 {"id":2,"name":"Bo"}`. Good for testing.
+- For now, a server answers one request at a time.
 
 ---
 
@@ -653,7 +671,7 @@ Positions count letters (not bytes), from 0, like arrays.
 
 ### Built-in objects
 
-Lust comes with four objects. Their methods are called like any object's: `Maths:sqrt(2.0)`.
+Lust comes with five objects. Their methods are called like any object's: `Maths:sqrt(2.0)`. The fifth, `Web`, is in section 18.
 
 **Maths**
 
@@ -756,13 +774,12 @@ The built-ins can't be used as names either:
 print      wait       random     ask
 ```
 
-Neither can the built-in objects: `Maths`, `Files`, `Time` and `Json`.
+Neither can the built-in objects: `Maths`, `Files`, `Time`, `Json` and `Web`.
 
 ---
 
 ## 22. Still to design
 
 - **LustQL (`.lql`):** a query language of its own, for later. Queries are written in Lust code for now (section 14).
-- **Web:** how route handlers take and give schemas.
 - **The standard library:** which Rust crates Lust wraps for files, networking, JSON, dates and sound, and how they look from Lust.
 - **From v1:** whether `with x { }`, `{ }` inside text and the word `when` come along.

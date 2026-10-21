@@ -272,6 +272,37 @@ impl<'a> W<'a> {
                 self.line(m.pos.line, "end");
             }
         }
+        // Routes: each one turns a request into its method's values, and its answer into JSON.
+        for r in &self.info.routes {
+            let mut lines = Vec::new();
+            let mut args = Vec::new();
+            for (i, (pn, pt, from_path)) in r.params.iter().enumerate() {
+                let v = if *from_path {
+                    format!("_L.web_param(p, {}, {})", lua_string(pn), lua_string(kind(pt)))
+                } else {
+                    format!("_L.web_body(body, {})", self.jdec(pt))
+                };
+                lines.push(format!("local a{i} = {v}"));
+                args.push(format!("a{i}"));
+            }
+            let call = format!("{}({})", lname(&r.handler), args.join(", "));
+            if r.ret == Ty::Void {
+                lines.push(call);
+                lines.push("return nil".into());
+            } else {
+                lines.push(format!("return {}({call}, nil)", self.jenc(&r.ret)));
+            }
+            self.line(
+                0,
+                &format!("_L.route({}, {}, function(p, body)", lua_string(&r.method), lua_string(&r.path)),
+            );
+            self.indent += 1;
+            for l in lines {
+                self.line(0, &l);
+            }
+            self.indent -= 1;
+            self.line(0, "end)");
+        }
         // Objects come to life once every class exists.
         for c in &classes {
             if c.is_object {
@@ -1076,8 +1107,14 @@ impl<'a> W<'a> {
             self.line(
                 0,
                 &format!(
-                    "function {t}.__jr(v, at) return _L.jr_fields(v, at, {t}, {{{names}}}, {{{}}}) end",
-                    dec.join(", ")
+                    "function {t}.__jr(v, at) return _L.jr_fields(v, at, {t}, {{{names}}}, {{{}}}, {{{}}}) end",
+                    dec.join(", "),
+                    self.info.classes[c]
+                        .required
+                        .iter()
+                        .map(|r| lua_string(r))
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 ),
             );
         }

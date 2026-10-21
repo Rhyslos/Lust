@@ -16,10 +16,10 @@ use crate::types::Ty;
 
 pub const RUNTIME: &str = include_str!("native_rt.rs");
 pub const DB_RUNTIME: &str = include_str!("native_db.rs");
+pub const WEB_RUNTIME: &str = include_str!("native_web.rs");
 
-/// Does this program need outside libraries (SQLite for its databases)? Then it's built with Cargo.
-pub fn needs_crates(info: &Info) -> bool {
-    !info.databases.is_empty()
+fn serves(info: &Info) -> bool {
+    info.libs.values().any(|l| l.func == "web_serve")
 }
 
 struct W<'a> {
@@ -276,6 +276,47 @@ pub fn write(prog: &Program, info: &Info, files: &[String]) -> String {
     // States aren't types in Rust: options are &'static str.
 
     w.class = None;
+    // Routes: one function that finds the route for a request and runs its method.
+    if !info.routes.is_empty() {
+        let mut arms = String::new();
+        let mut patterns: Vec<String> = Vec::new();
+        for r in &info.routes {
+            if !patterns.contains(&r.path) {
+                patterns.push(r.path.clone());
+            }
+        }
+        for pat in &patterns {
+            let mut inner = String::new();
+            for r in info.routes.iter().filter(|r| &r.path == pat) {
+                let mut lets = String::new();
+                let mut args = Vec::new();
+                for (i, (pn, pt, from_path)) in r.params.iter().enumerate() {
+                    let v = if *from_path {
+                        format!("rt::web_{}(&p, {pn:?})", crate::lua::kind(pt))
+                    } else {
+                        format!("rt::web_body(body, &{})", w.jdec(pt))
+                    };
+                    lets.push_str(&format!("let a{i} = {v}; "));
+                    args.push(format!("a{i}"));
+                }
+                let call = format!("t_{}({})", ident(&r.handler), args.join(", "));
+                let run = if r.ret == Ty::Void {
+                    format!("{call}; None")
+                } else {
+                    format!("let r = {call}; Some(({})(&r, None))", w.jenc(&r.ret))
+                };
+                inner.push_str(&format!(
+                    "        if method == {:?} {{ return rt::web_run(&|| {{ {lets}{run} }}); }}\n        allowed.push({:?});\n",
+                    r.method, r.method
+                ));
+            }
+            arms.push_str(&format!("    if let Some(p) = rt::web_match({pat:?}, path) {{\n{inner}    }}\n"));
+        }
+        defs.push_str(&format!(
+            "fn answer(method: &str, path: &str, body: &str) -> (u16, String) {{\n    let mut allowed: Vec<&str> = Vec::new();\n{arms}    rt::web_unanswered(method, path, &allowed)\n}}\n"
+        ));
+        body.push_str("    rt::web_routes(answer);\n");
+    }
     // Databases open first, so everything can use their tables.
     for (i, d) in info.databases.iter().enumerate() {
         defs.push_str(&format!(
@@ -316,7 +357,16 @@ pub fn write(prog: &Program, info: &Info, files: &[String]) -> String {
     format!(
         "// Written by Lust from {file}. It's rewritten on every build, so don't edit it.\n#![allow(warnings)]\nuse std::cell::RefCell;\nuse std::rc::Rc;\n\nmod rt {{\n{RUNTIME}\n{db}}}\n\n{rows}{defs}\nfn program() {{\n{body}}}\n\nfn main() {{\n    rt::main(program, &[{files}]);\n}}\n",
         files = files.iter().map(|f| format!("{f:?}")).collect::<Vec<_>>().join(", "),
-        db = if needs_crates(info) { format!("pub mod db {{\nuse super::*;\nuse std::rc::Rc;\n{DB_RUNTIME}\n}}\n") } else { String::new() }
+        db = {
+            let mut m = String::new();
+            if !info.databases.is_empty() {
+                m.push_str(&format!("pub mod db {{\nuse super::*;\nuse std::rc::Rc;\n{DB_RUNTIME}\n}}\n"));
+            }
+            if serves(info) {
+                m.push_str(&format!("pub mod web {{\nuse super::*;\n{WEB_RUNTIME}\n}}\n"));
+            }
+            m
+        }
     )
 }
 
@@ -1399,6 +1449,7 @@ impl<'a> W<'a> {
                 let dec = self.jdec(&lib.ret);
                 format!("rt::json_read({t}, &{dec})")
             }
+            "web_serve" => format!("rt::web::serve({})", self.expr(&args[0])),
             f => {
                 let mut a: Vec<String> = target.map(|t| self.expr(t)).into_iter().collect();
                 for (x, (_, pt)) in args.iter().zip(&lib.params) {
@@ -1527,7 +1578,11 @@ impl<'a> W<'a> {
                 ));
             }
             out.push_str(&format!(
-                "fn jr{c}(v: &rt::Json, at: &str) -> Option<Rc<RefCell<O{root}>>> {{ if !rt::jr_object(v, at) {{ return None; }} let o = new{c}(); {sets}Some(o) }}\n"
+                "fn jr{c}(v: &rt::Json, at: &str) -> Option<Rc<RefCell<O{root}>>> {{ if !rt::jr_object(v, at) {{ return None; }} {check}let o = new{c}(); {sets}Some(o) }}\n",
+                check = {
+                    let required: Vec<String> = info.classes[c].required.iter().map(|r| format!("{r:?}")).collect();
+                    if required.is_empty() { String::new() } else { format!("rt::jr_required(v, at, &[{}]); ", required.join(", ")) }
+                }
             ));
         }
         out
