@@ -13,7 +13,7 @@ class Player {
         string name = "Hero";
         int hp = 20;
         float speed = 1.5;
-        truth alive = true;
+        bool alive = true;
         Mood mood = Mood.Happy;
         string array titles = [];
         int map skills = [];

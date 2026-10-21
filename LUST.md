@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (2.0 alpha 17):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, checkboxes, sliders, scrolling, pictures and timers, all drawn by Lust itself. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (2.0 alpha 18):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, checkboxes, sliders, scrolling, pictures and timers, all drawn by Lust itself. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -76,7 +76,7 @@ A variable is declared with its type, its name and a value:
 int lives = 3;
 float speed = 1.5;
 string name = "Ada";
-truth alive = true;
+bool alive = true;
 ```
 
 | Type | Holds | Examples |
@@ -84,7 +84,7 @@ truth alive = true;
 | `int` | whole numbers | `0`, `42`, `-7` |
 | `float` | numbers with a point | `1.5`, `0.25` |
 | `string` | text, in double quotes | `"Ada"`, `"line\n"` |
-| `truth` | yes or no | `true`, `false`, `not true` |
+| `bool` | yes or no | `true`, `false`, `not true` |
 | a class name | one thing made from a class | `Player`, `Weapon` |
 | `T array` | a list of `T` | `int array` |
 | `cMap(...)` | a table of rows, found by their key (the first column) | `cMap(int id, string itemName, int amount)` |
@@ -102,10 +102,10 @@ truth alive = true;
 
 ---
 
-## 5. Truth and questions
+## 5. Bools and questions
 
-- Truth values are `true` and `false`. `not` flips one: `not alive`, `not true`.
-- The Lust way to write a negative check is with `not`: `is not alive?`.
+- A `bool` is `true` or `false`. `not` flips one: `not alive`, `not true`.
+- The Lust way to ask about a bool is to ask it straight: `is alive?` and `is not alive?`, rather than `is alive == true?` or `is alive == false?` (which work, but read worse).
 
 ### Questions
 
@@ -125,13 +125,13 @@ is hp == 0? then {
 
 | Write | Means |
 | --- | --- |
-| `a == b` | the same: equal numbers, text or truths, the very same thing, or for state options, the same option or one inside the other |
+| `a == b` | the same: equal numbers, text or bools, the very same thing, or for state options, the same option or one inside the other |
 | `a != b` | not the same |
 | `a === b` | exactly the same: for state options, only that very option |
 | `a !== b` | not exactly the same |
 | `<  >  <=  >=` | comparisons for numbers |
 
-- For numbers, text and truths, `===` means the same as `==`.
+- For numbers, text and bools, `===` means the same as `==`.
 - **Things made from classes** are compared by which thing they are, with either: two `new Hero`s with the same fields are two heroes, so `==` says false. To ask whether two are alike, compare their fields: `a.name == b.name`.
 - **State options:** `==` counts the options inside an option. During `ActiveGame.Combat`, `now == GameState.ActiveGame` is true, and so is `GameState.ActiveGame == now`. `===` asks for that very option: `now === GameState.ActiveGame` is false then.
 - Comparing different types (`"1" == 1`) is a mistake caught before running. Lust never converts types quietly.
@@ -493,7 +493,7 @@ print(#Shop.items);
 ```
 
 - The first column is the key, as in a cMap. An `int` key counts up when a row leaves it out, from the biggest key the table has ever had, so a removed row's key isn't given to a new row. (Tables made before alpha 17 give one more than the biggest key they have now.) A `string` key has to be given.
-- Columns hold numbers, text, truths and state options.
+- Columns hold numbers, text, bools and state options.
 - `:inject`, `:has(key)`, `:remove(key)` and `[key]` work as they do on cMaps. A row found with `[key]` reads and changes the database itself.
 - If a table is already in the file with other columns, Lust says so instead of guessing.
 
@@ -629,7 +629,7 @@ A piece of screen is an `assembly` with a `view`. Each piece goes in its own fil
 assembly TodoRow {
     has {
         string label = "";
-        truth done = false;
+        bool done = false;
         hook() onToggle = nothing;
         hook() onRemove = nothing;
     }
@@ -662,7 +662,7 @@ style card = [pad 16, round, shadow, background white];
 
 assembly App {
     has {
-        cMap(int id, string task, truth done) todos = [];
+        cMap(int id, string task, bool done) todos = [];
         string newTodo = "";
     }
 
@@ -683,7 +683,7 @@ assembly App {
             }
 
             column [card, gap 4] {
-                loop (int id, string task, truth done in todos) {
+                loop (int id, string task, bool done in todos) {
                     TodoRow {
                         label = task,
                         done = done,
@@ -724,7 +724,7 @@ end
 assembly Settings {
     has {
         string name = "";
-        truth dark = false;
+        bool dark = false;
         int volume = 50;
     }
 
@@ -744,7 +744,7 @@ assembly Settings {
 }
 ```
 
-- **What they change.** An `input` changes a string, a `checkbox` a truth, and a `slider` an int or a float. It's bound to a field (or a field of something, like `todos[id].task`), not a variable of the view, because the view's variables are made again each time it's drawn.
+- **What they change.** An `input` changes a string, a `checkbox` a bool, and a `slider` an int or a float. It's bound to a field (or a field of something, like `todos[id].task`), not a variable of the view, because the view's variables are made again each time it's drawn.
 - **Styles of their own:** `placeholder "…"` is what an empty input shows. A slider goes `from` one number `to` another, one `step` at a time (`step 0` slides smoothly). A colour word colours a checkbox's tick and a slider's bar: `slider volume [purple]`. Inputs are 220 wide and sliders 200 unless they're given a `width`.
 - **The mouse:** click to put the caret somewhere, drag to select, double-click for a word, three clicks for everything, Shift+click to select up to there. Drag a slider's knob, or click anywhere along it.
 - **The keyboard:** Tab and Shift+Tab move between inputs, checkboxes, sliders and buttons, and what has focus gets a ring. In an input: the arrows, Home and End (with Shift to select, and with Ctrl, or Option on a Mac, to go by words), Backspace and Delete, and Ctrl+A, C, X and V (Cmd on a Mac) to select all, copy, cut and paste. Space ticks a checkbox and presses a button, and so does Enter on a button. The arrows move a slider by one step. Escape takes focus away.
@@ -797,7 +797,7 @@ Short words in `[ ]`, in the spirit of Tailwind:
 | placement | `left`, `center`, `right` side to side; `top`, `middle`, `bottom` up and down; `spread` |
 | under the mouse | `hover:[ … ]` |
 | inputs and pictures | `placeholder "…"`, `from`, `to`, `step`, `cover` |
-| off | `disabled`, or `disabled` with a truth: `disabled not ready` |
+| off | `disabled`, or `disabled` with a bool: `disabled not ready` |
 
 **Colours** are `white`, `black`, `gray1` to `gray9`, and `red`, `orange`, `yellow`, `green`, `teal`, `blue`, `indigo`, `purple` and `pink`. Each of those has nine shades from light to dark: `blue1` is a pale blue for backgrounds, `blue9` a deep one. Any other colour is written `"#2f9e44"`. The shades are the Open Color palette.
 
@@ -809,7 +809,7 @@ A `stack` lays its children on top of each other, the later ones in front, place
 
 **Text wraps** onto more lines when it's wider than the room it has, breaking between words. `\n` in the text starts a new line, and `nowrap` keeps it on one line.
 
-**Values can come from the data.** After a style word, a value can be any number, text or truth: `[grow done, background shade, size 12 + extra, disabled not ready]`, with fields and variables. Only colour words (`red`, `gray3`…) and `fill` are read as words.
+**Values can come from the data.** After a style word, a value can be any number, text or bool: `[grow done, background shade, size 12 + extra, disabled not ready]`, with fields and variables. Only colour words (`red`, `gray3`…) and `fill` are read as words.
 
 Name a style to reuse it: `style card = [pad 16, round, shadow];`, then `[card]`.
 
@@ -923,7 +923,7 @@ Patterns are regular expressions, the kind most languages use: `[0-9]` is a digi
 | | Does |
 | --- | --- |
 | `words:join(", ")` | one text from a string array, with `", "` between the items |
-| `scores:has(10)`, `scores:find(10)` | whether it's there, and where (or -1). For arrays of numbers, text and truths |
+| `scores:has(10)`, `scores:find(10)` | whether it's there, and where (or -1). For arrays of numbers, text and bools |
 | `scores:sort();` | puts numbers or text in order, smallest first |
 | `scores:reverse();` | turns the array around |
 | `team:sortBy(score);` | puts an array of things in order by one of their fields. Things with the same value keep their order |
@@ -972,7 +972,7 @@ string nice = Json:pretty(player);    -- the same, over several lines
 Player back = Json:read(text);
 ```
 
-- JSON holds numbers, text, truths, state options (as their names), arrays, maps (as JSON objects), cMaps (as arrays of objects) and things made from classes (as objects of their fields). Hooks stay out.
+- JSON holds numbers, text, bools, state options (as their names), arrays, maps (as JSON objects), cMaps (as arrays of objects) and things made from classes (as objects of their fields). Hooks stay out.
 - `Json:read` needs a place to go, so Lust knows what it's reading: `Player back = Json:read(text);`.
 - A class's fields that are missing from the JSON keep their starting values. Anything extra is left out.
 - If the JSON doesn't fit, the error says where: `the JSON at bag[0] is missing item.`
@@ -1028,7 +1028,7 @@ fetch      get        lua        is         then       or
 either     not        true       false      loop       stop
 skip       in         try        error      state      save
 load       saved      end        database   int        float
-string     truth      array      cMap       map
+string     bool       array      cMap       map
 ```
 
 The built-ins can't be used as names either:

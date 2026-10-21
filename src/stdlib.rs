@@ -128,7 +128,7 @@ pub fn value_method(t: &Ty, m: &str) -> Option<Result<Lib, String>> {
                 lib(&format!("array_{m}"), vec![("item", (**el).clone())], ret)
             } else {
                 Err(format!(
-                    ":{m} works on arrays of numbers, text and truths. For other arrays, use a loop."
+                    ":{m} works on arrays of numbers, text and bools. For other arrays, use a loop."
                 ))
             }
         }

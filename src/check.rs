@@ -582,7 +582,7 @@ impl<'a> Checker<'a> {
                         self.err(
                             *pos,
                             format!(
-                                "a table's columns hold numbers, text, truths or state options, but {cn} is {}.",
+                                "a table's columns hold numbers, text, bools or state options, but {cn} is {}.",
                                 self.a(ct)
                             ),
                         );
@@ -846,7 +846,7 @@ impl<'a> Checker<'a> {
                 "int" => Ty::Int,
                 "float" => Ty::Float,
                 "string" => Ty::Str,
-                "truth" => Ty::Truth,
+                "bool" => Ty::Truth,
                 _ => {
                     if let Some(&c) = self.info.class_index.get(n) {
                         return Ty::Class(c);
@@ -859,10 +859,10 @@ impl<'a> Checker<'a> {
                         .iter()
                         .chain(self.state_names.iter())
                         .cloned()
-                        .chain(["int", "float", "string", "truth"].iter().map(|s| s.to_string()))
+                        .chain(["int", "float", "string", "bool"].iter().map(|s| s.to_string()))
                         .collect();
                     let s = suggest(n, known);
-                    self.err(*pos, format!("Lust doesn't have a type called {n}.{s} The types are int, float, string, truth, arrays, maps, cMaps, hooks, classes and states."));
+                    self.err(*pos, format!("Lust doesn't have a type called {n}.{s} The types are int, float, string, bool, arrays, maps, cMaps, hooks, classes and states."));
                     Ty::Error
                 }
             },
@@ -971,7 +971,7 @@ impl<'a> Checker<'a> {
                 let t = self.expr(a, ctx, None);
                 let (want, example) = match kind {
                     "input" => ("text", "input name;"),
-                    "checkbox" => ("a truth", "checkbox done;"),
+                    "checkbox" => ("a bool", "checkbox done;"),
                     _ => ("a number", "slider volume [from 0, to 100];"),
                 };
                 let fits = match kind {
@@ -1146,7 +1146,7 @@ impl<'a> Checker<'a> {
                     if !matches!(t, Ty::Truth | Ty::Error) {
                         self.err(
                             e.pos,
-                            format!("disabled takes a truth, like disabled not ready. This is {}.", self.a(&t)),
+                            format!("disabled takes a bool, like disabled not ready. This is {}.", self.a(&t)),
                         );
                     }
                 }
@@ -1610,7 +1610,7 @@ impl<'a> Checker<'a> {
                                 self.err(
                                     *p,
                                     format!(
-                                        "{p2} Saves hold numbers, text, truths, states, arrays, maps, cMaps and things made from classes."
+                                        "{p2} Saves hold numbers, text, bools, states, arrays, maps, cMaps and things made from classes."
                                     ),
                                 );
                             } else {
@@ -2173,7 +2173,7 @@ impl<'a> Checker<'a> {
                             self.err(
                                 *cpos,
                                 format!(
-                                    ".text() works on numbers, truths, text and state options, but this is {}.",
+                                    ".text() works on numbers, bools, text and state options, but this is {}.",
                                     self.a(&t)
                                 ),
                             );
@@ -2571,7 +2571,7 @@ impl<'a> Checker<'a> {
                     if let Some(p) = crate::stdlib::json_problem(&t, &|t| self.a(t)) {
                         self.err(
                             args[0].pos,
-                            format!("{p} JSON holds numbers, text, truths, states, arrays, maps, cMaps and things made from classes."),
+                            format!("{p} JSON holds numbers, text, bools, states, arrays, maps, cMaps and things made from classes."),
                         );
                     } else if t == Ty::Void || t == Ty::Nothing {
                         self.err(args[0].pos, "there's nothing here to turn into JSON.");
@@ -2604,7 +2604,7 @@ impl<'a> Checker<'a> {
                     if let Some(p) = crate::stdlib::json_problem(&want, &|t| self.a(t)) {
                         self.err(
                             mpos,
-                            format!("{p} JSON holds numbers, text, truths, states, arrays, maps, cMaps and things made from classes."),
+                            format!("{p} JSON holds numbers, text, bools, states, arrays, maps, cMaps and things made from classes."),
                         );
                         return Ty::Error;
                     }

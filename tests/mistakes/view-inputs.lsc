@@ -2,7 +2,7 @@ assembly Form {
     has {
         string name = "";
         int age = 0;
-        truth ok = false;
+        bool ok = false;
         string array tags = [];
     }
 

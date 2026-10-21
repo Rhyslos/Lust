@@ -21,7 +21,7 @@ class Player {
         int maxHp = 20;
         int level = 1;
         float speed = 1.5;
-        truth alive = true;
+        bool alive = true;
         state is Action.Idle;
         Mood mood = Mood.Cheerful;
         Player friend = nothing;

@@ -70,7 +70,7 @@ impl<'a> Names<'a> {
             Ty::Int => "int".into(),
             Ty::Float => "float".into(),
             Ty::Str => "string".into(),
-            Ty::Truth => "truth".into(),
+            Ty::Truth => "bool".into(),
             Ty::Nothing => "nothing".into(),
             Ty::Void => "nothing at all".into(),
             Ty::Error => "?".into(),

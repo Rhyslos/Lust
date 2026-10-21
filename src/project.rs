@@ -458,7 +458,7 @@ impl<'a> Renamer<'a> {
     fn ty(&mut self, t: &mut TypeRef) {
         match t {
             TypeRef::Named(n, pos) => {
-                if !matches!(n.as_str(), "int" | "float" | "string" | "truth") {
+                if !matches!(n.as_str(), "int" | "float" | "string" | "bool") {
                     self.name(n, *pos, false);
                 }
             }

@@ -2,7 +2,7 @@
 assembly TodoRow {
     has {
         string label = "";
-        truth done = false;
+        bool done = false;
         int opened = 0;
         hook() onToggle = nothing;
         hook() onRemove = nothing;

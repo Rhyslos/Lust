@@ -3,7 +3,7 @@ style box = [background gray3, round 4];
 
 assembly Layout {
     has {
-        truth wide = false;
+        bool wide = false;
     }
 
     view [title "Layout", width 400, height 600] {

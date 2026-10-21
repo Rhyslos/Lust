@@ -2,10 +2,10 @@
 assembly Media {
     has {
         int seconds = 0;
-        truth running = false;
+        bool running = false;
         int ticks = 0;
         string array lines = [];
-        truth filled = false;
+        bool filled = false;
     }
 
     method fill() {

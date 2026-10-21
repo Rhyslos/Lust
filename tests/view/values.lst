@@ -5,7 +5,7 @@ assembly Bar {
         int done = 1;
         int total = 4;
         string shade = "teal";
-        truth busy = false;
+        bool busy = false;
     }
 
     view [title "Bar", width 300, height 100] {

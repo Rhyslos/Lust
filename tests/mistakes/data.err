@@ -1,4 +1,4 @@
-data.lsc:8:35  a table's columns hold numbers, text, truths or state options, but thing is an Item.
+data.lsc:8:35  a table's columns hold numbers, text, bools or state options, but thing is an Item.
 data.lsc:9:34  a table's keys come from the database, so a table has no key-maker.
 data.lsc:13:20  Shop.prices's key (name) is text, so each new row needs it first.
 data.lsc:14:19  Shop.prices's rows are found by their name, which is a string. This is an int.

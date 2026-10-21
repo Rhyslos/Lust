@@ -1403,7 +1403,7 @@ impl<'a> JP<'a> {
 fn kind(v: &Json) -> &'static str {
     match v {
         Json::Null => "nothing (null)",
-        Json::Bool(_) => "a truth",
+        Json::Bool(_) => "a bool",
         Json::Num(_) => "a number",
         Json::Str(_) => "text",
         Json::Arr(_) => "an array",
@@ -1465,7 +1465,7 @@ pub fn jr_string(v: &Json, at: &str) -> String {
 pub fn jr_truth(v: &Json, at: &str) -> bool {
     match v {
         Json::Bool(b) => *b,
-        _ => misfit(at, "a truth (true or false)", v),
+        _ => misfit(at, "a bool (true or false)", v),
     }
 }
 pub fn jr_state(v: &Json, at: &str, opts: &[&'static str]) -> &'static str {
