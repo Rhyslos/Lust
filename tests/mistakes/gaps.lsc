@@ -1,7 +1,7 @@
 class Player {
     has {
         string name = "";
-        truth ready = false;
+        bool ready = false;
     }
 }
 int a = random(1, 6);

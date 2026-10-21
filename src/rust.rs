@@ -1943,7 +1943,7 @@ impl<'a> W<'a> {
     }
 }
 
-/// Text for .text(): numbers, truths, states and text itself.
+/// Text for .text(): numbers, bools, states and text itself.
 fn text(code: &str, t: &Ty) -> String {
     match t {
         Ty::Int => format!("rt::itext({code})"),

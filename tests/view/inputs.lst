@@ -3,7 +3,7 @@ assembly Form {
     has {
         string name = "";
         string shout = "";
-        truth agree = false;
+        bool agree = false;
         int volume = 30;
         float zoom = 1.0;
         int changes = 0;

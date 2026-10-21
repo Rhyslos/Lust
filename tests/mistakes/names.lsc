@@ -6,4 +6,6 @@ int max-hp = 3;
 int MAX_HP = 3;
 int Random = 2;
 int print = 1;
+truth ready = true;
+boolean done = false;
 end

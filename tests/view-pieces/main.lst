@@ -4,7 +4,7 @@ fetch "ui/header":Header;
 
 assembly App {
     has {
-        cMap(int id, string task, truth done) todos = [];
+        cMap(int id, string task, bool done) todos = [];
     }
 
     method fill() {
@@ -16,7 +16,7 @@ assembly App {
     view [title "To do", width 420, height 400] {
         column [gap 4, pad 16] {
             Header { title = "To do", count = #todos };
-            loop (int id, string task, truth done in todos) {
+            loop (int id, string task, bool done in todos) {
                 TodoRow {
                     label = task,
                     done = done,

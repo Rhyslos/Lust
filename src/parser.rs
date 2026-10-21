@@ -7,7 +7,7 @@ use crate::lexer::{Tk, Token};
 pub const RESERVED: &[&str] = &[
     "class", "object", "node", "assembly", "create", "has", "method", "hook", "return", "like", "new", "nothing", "schema", "route",
     "view", "style", "keep", "pass", "fetch", "get", "lua", "is", "then", "or", "either", "not", "true", "false", "loop", "stop", "skip",
-    "in", "try", "error", "state", "save", "load", "saved", "end", "database", "int", "float", "string", "truth", "array", "cMap", "map",
+    "in", "try", "error", "state", "save", "load", "saved", "end", "database", "int", "float", "string", "bool", "array", "cMap", "map",
 ];
 /// The pieces a view is made of.
 pub const ELEMENTS: &[&str] = &[
@@ -35,7 +35,7 @@ fn hint_for(word: &str) -> Option<&'static str> {
         "switch" | "match" | "case" => "Lust asks questions: is x == 1? then { } or is x == 2? then { }",
         "enum" => "Lust calls it a state: state Mood = [Happy, Grumpy];",
         "extends" | "inherits" => "Lust uses like: class Wizard like Player { }",
-        "bool" | "boolean" => "Lust calls it truth: truth alive = true;",
+        "truth" | "boolean" | "Boolean" => "Lust calls it bool: bool alive = true;",
         "double" => "Lust calls it float.",
         "str" => "Lust calls it string.",
         "void" => "Lust has no void. Leave the return type out when nothing comes back.",
@@ -1163,7 +1163,7 @@ impl<'a> Parser<'a> {
     /// A declaration whose name can't be one: int loop = 3; or int max-hp = 3;
     fn bad_name(&mut self) -> Option<R<Stmt>> {
         let Tk::Ident(w) = &self.cur().kind else { return None };
-        let typed = matches!(w.as_str(), "int" | "float" | "string" | "truth") || w.starts_with(|c: char| c.is_ascii_uppercase());
+        let typed = matches!(w.as_str(), "int" | "float" | "string" | "bool") || w.starts_with(|c: char| c.is_ascii_uppercase());
         if !typed {
             return None;
         }

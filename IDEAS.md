@@ -66,9 +66,9 @@ Talked through and liked, but the exact syntax still needs working out:
 - **LustQL: a cArray that lives in SQLite.** Practical, not a second language to learn:
 
   ```
-  cArray(string title, truth done) notes in "notes.db";
+  cArray(string title, bool done) notes in "notes.db";
 
-  loop (int id, string title, truth done in notes where done not true) {
+  loop (int id, string title, bool done in notes where done not true) {
       print(title);
   }
   ```
@@ -179,7 +179,7 @@ fetch web;
 class Todo {
     has {
         string[title ""];
-        truth[done not true];
+        bool[done not true];
     }
 }
 

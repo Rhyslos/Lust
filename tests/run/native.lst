@@ -20,7 +20,7 @@ class Animal {
 class Bird like Animal {
     has {
         int legs = 2;
-        truth flies = true;
+        bool flies = true;
     }
 
     method string sound() {
@@ -140,11 +140,11 @@ float map prices = ["tea" 1.5, "cake" 3];
 prices:remove("tea");
 print(prices);
 print(prices:has("tea"));
-cMap(int id, string who, truth here) people = [["Ana", true], [5, "Bo", false]];
+cMap(int id, string who, bool here) people = [["Ana", true], [5, "Bo", false]];
 people:inject(["Cy", true]);
 people:remove(1);
 print(people);
-loop (int id, string who, truth here in people) {
+loop (int id, string who, bool here in people) {
     print(id.text() + " " + who + " " + here.text());
 }
 

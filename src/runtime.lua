@@ -838,7 +838,7 @@ end
 local function kind(v)
   if v == L.NULL then return "nothing (null)" end
   local t = type(v)
-  if t == "boolean" then return "a truth" end
+  if t == "boolean" then return "a bool" end
   if t == "number" then return "a number" end
   if t == "string" then return "text" end
   if v.__arr then return "an array" end
@@ -868,7 +868,7 @@ function L.jr.string(v, at)
   return v
 end
 function L.jr.truth(v, at)
-  if type(v) ~= "boolean" then misfit(at, "a truth (true or false)", v) end
+  if type(v) ~= "boolean" then misfit(at, "a bool (true or false)", v) end
   return v
 end
 function L.jr_state(opts)

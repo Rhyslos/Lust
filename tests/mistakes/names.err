@@ -5,5 +5,7 @@ names.lsc:5:5  names can't have - in them, since - takes away. Join the words wi
 names.lsc:6:5  names can't be in capitals. Try maxHp.
 names.lsc:7:5  Random is one of Lust's built-in objects, so it can't be a name.
 names.lsc:8:5  print is a built-in, so it can't be a name.
+names.lsc:9:1  Lust calls it bool: bool alive = true;
+names.lsc:10:1  Lust calls it bool: bool alive = true;
 
-7 mistakes. Nothing was run.
+9 mistakes. Nothing was run.
