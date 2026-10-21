@@ -462,6 +462,12 @@ impl<'a> Renamer<'a> {
                 self.stmts(body);
                 self.stmts(handler);
             }
+            Stmt::Keep { value, into, .. } => {
+                self.expr(value);
+                if let Some(i) = into {
+                    self.expr(i);
+                }
+            }
             _ => {}
         }
     }

@@ -1,0 +1,6 @@
+keep.lsc:18:20  sword is made while this Hero is in a state, so it ends when the state does. To store it, keep it: keep sword in bag;
+keep.lsc:19:16  this new Item is made while this Hero is in a state, so it ends when the state does. To store it, keep it: Item thing = new Item { … }; keep thing in hand;
+keep.lsc:22:14  only things made from classes are kept. This is an int, which is copied wherever it goes.
+keep.lsc:23:20  keep puts it in an array, a field or a variable: keep sword in player.bag;
+
+4 mistakes. Nothing was run.

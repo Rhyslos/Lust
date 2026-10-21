@@ -74,6 +74,27 @@ pub struct Info {
 }
 
 impl Info {
+    /// Does this class have a state of its own (state is …; in its has)? Things its methods
+    /// make belong to that state.
+    pub fn stateful(&self, c: usize) -> bool {
+        self.field(c, "state").is_some()
+    }
+
+    /// If this is an object's own state (its `state` field), the object it belongs to:
+    /// None for `this`, Some(target) for `player.state`.
+    pub fn state_owner<'e>(&self, target: &'e Expr, class: Option<usize>) -> Option<Option<&'e Expr>> {
+        match &target.kind {
+            ExprKind::Name(n) if n == "state" && self.names.get(&target.id) == Some(&NameRes::Field) => {
+                class.filter(|&c| self.stateful(c)).map(|_| None)
+            }
+            ExprKind::Field(t, f, _) if f == "state" => match self.ty(t) {
+                Ty::Class(c) if self.stateful(c) => Some(Some(&**t)),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
     pub fn ty(&self, e: &Expr) -> Ty {
         self.types.get(&e.id).cloned().unwrap_or(Ty::Error)
     }
@@ -129,6 +150,8 @@ struct Ctx {
     in_hook: bool,
     /// Inside a `new hook { }`: the scopes from this index on belong to the hook.
     hook_base: usize,
+    /// Variables holding things this method made while its object is in a state.
+    made: std::collections::HashSet<String>,
 }
 
 pub struct Checker<'a> {
@@ -347,6 +370,7 @@ impl<'a> Checker<'a> {
                             in_try: false,
                             in_hook: false,
                             hook_base: 0,
+                            made: Default::default(),
                         };
                         let d = f.default.as_ref().unwrap();
                         match self.expr(d, &mut ctx, None) {
@@ -428,6 +452,7 @@ impl<'a> Checker<'a> {
                             in_try: false,
                             in_hook: false,
                             hook_base: 0,
+                            made: Default::default(),
                         };
                         let got = self.expr(d, &mut ctx, Some(&want));
                         self.expect_fits(d, &got, &want, &format!("{} is {}", f.name, self.a(&want)));
@@ -455,6 +480,7 @@ impl<'a> Checker<'a> {
             in_try: false,
             in_hook: false,
             hook_base: 0,
+            made: Default::default(),
         };
         self.block_in(&prog.body, &mut top, true);
         for (k, v) in &top.scopes[0] {
@@ -619,6 +645,7 @@ impl<'a> Checker<'a> {
             in_try: false,
             in_hook: false,
             hook_base: 0,
+            made: Default::default(),
         };
         for (p, (_, ty)) in m.params.iter().zip(&sig.params) {
             if let Some(c) = class {
@@ -701,6 +728,43 @@ impl<'a> Checker<'a> {
         ctx.scopes.last_mut().unwrap().insert(name.to_string(), Local { ty, readonly, pos });
     }
 
+    /// Does this class have a state of its own (state is …; in its has)?
+    pub fn stateful(&self, c: usize) -> bool {
+        self.info.field(c, "state").is_some()
+    }
+
+    /// Is this a new thing, made in a method of a class with a state, so it belongs to that state?
+    fn makes_owned(&self, e: &Expr, ctx: &Ctx) -> bool {
+        let in_state = ctx.class.map(|c| self.stateful(c)).unwrap_or(false);
+        in_state && matches!(e.kind, ExprKind::New { .. })
+    }
+
+    /// Storing something made in a state somewhere that outlasts the state needs keep.
+    fn store_check(&mut self, value: &Expr, place: &str, inject: bool, ctx: &Ctx) {
+        let made = match &value.kind {
+            ExprKind::Name(n) => ctx.made.contains(n),
+            _ => self.makes_owned(value, ctx),
+        };
+        if !made {
+            return;
+        }
+        let Some(c) = ctx.class else { return };
+        let cn = self.info.classes[c].name.clone();
+        let _ = inject;
+        let (start, how) = match &value.kind {
+            ExprKind::Name(n) => (n.clone(), format!("keep {n} in {place};")),
+            ExprKind::New { class, .. } => (
+                format!("this new {class}"),
+                format!("{class} thing = new {class} {{ … }}; keep thing in {place};"),
+            ),
+            _ => ("this".to_string(), format!("keep it in {place};")),
+        };
+        self.err(
+            value.pos,
+            format!("{start} is made while this {cn} is in a state, so it ends when the state does. To store it, keep it: {how}"),
+        );
+    }
+
     fn taken_by(&self, name: &str) -> Option<String> {
         if self.info.methods.contains_key(name) {
             return Some(format!("there's already a method called {name}"));
@@ -718,6 +782,11 @@ impl<'a> Checker<'a> {
                 self.expect_fits(value, &got, &want, &format!("{name} is {}", self.a(&want)));
                 self.info.decl_types.insert(value.id, want.clone());
                 self.declare(ctx, name, want, *pos, false);
+                if self.makes_owned(value, ctx) {
+                    ctx.made.insert(name.clone());
+                } else {
+                    ctx.made.remove(name);
+                }
             }
             Stmt::Assign { target, value, pos } => {
                 let want = self.expr(target, ctx, None);
@@ -737,6 +806,18 @@ impl<'a> Checker<'a> {
                 self.writable(target, ctx, *pos);
                 let got = self.expr(value, ctx, Some(&want));
                 self.expect_fits(value, &got, &want, &format!("{} is {}", describe(target), self.a(&want)));
+                let to_local = matches!(&target.kind, ExprKind::Name(_)) && self.info.names.get(&target.id) == Some(&NameRes::Local);
+                if to_local {
+                    if let ExprKind::Name(n) = &target.kind {
+                        if self.makes_owned(value, ctx) {
+                            ctx.made.insert(n.clone());
+                        } else {
+                            ctx.made.remove(n);
+                        }
+                    }
+                } else {
+                    self.store_check(value, &describe(target), false, ctx);
+                }
             }
             Stmt::SetState { target, option, pos } => {
                 let t = self.expr(target, ctx, None);
@@ -875,6 +956,49 @@ impl<'a> Checker<'a> {
                 ctx.scopes.pop();
             }
             Stmt::Lua { .. } => {}
+            Stmt::Keep { value, into, pos } => {
+                let t = self.expr(value, ctx, None);
+                if !matches!(t, Ty::Class(_) | Ty::Error) {
+                    self.err(
+                        value.pos,
+                        format!(
+                            "only things made from classes are kept. This is {}, which is copied wherever it goes.",
+                            self.a(&t)
+                        ),
+                    );
+                }
+                if let ExprKind::Name(n) = &value.kind {
+                    ctx.made.remove(n);
+                }
+                if let Some(into) = into {
+                    let place = self.expr(into, ctx, None);
+                    match &place {
+                        Ty::Array(el) => {
+                            if !self.fits(&t, el) {
+                                self.err(
+                                    into.pos,
+                                    format!("{} holds {}, so {} can't go in it.", describe(into), self.a(el), self.a(&t)),
+                                );
+                            }
+                        }
+                        Ty::Error => {}
+                        _ => {
+                            self.writable(into, ctx, *pos);
+                            if !matches!(&into.kind, ExprKind::Name(_) | ExprKind::Field(..) | ExprKind::Index(..)) {
+                                self.err(
+                                    into.pos,
+                                    "keep puts it in an array, a field or a variable: keep sword in player.bag;",
+                                );
+                            } else if !self.fits(&t, &place) {
+                                self.err(
+                                    into.pos,
+                                    format!("{} is {}, so {} can't go in it.", describe(into), self.a(&place), self.a(&t)),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -1823,6 +1947,9 @@ impl<'a> Checker<'a> {
         if let Some((params, ret)) = builtin {
             self.info.calls.insert(e.id, CallRes::Builtin);
             self.args(args, &params, m, e.pos, ctx);
+            if m == "inject" && matches!(t, Ty::Array(_)) && args.len() == 1 {
+                self.store_check(&args[0], &describe(target), true, ctx);
+            }
             return ret;
         }
         if let Some(found) = crate::stdlib::value_method(&t, m) {

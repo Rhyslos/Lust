@@ -291,6 +291,55 @@ function L.bind(o, name)
   return function(...) return o[name](o, ...) end
 end
 
+-- ----- things made in a state end with it -----
+-- owner -> { thing = the owner's state option when it was made }. Weak, so nothing is held on to.
+local owners = setmetatable({}, { __mode = "k" })
+function L.own(owner, thing)
+  local opt = owner and owner.state
+  if thing == nil or opt == nil then return thing end
+  local list = owners[owner]
+  if not list then
+    list = setmetatable({}, { __mode = "k" })
+    owners[owner] = list
+  end
+  list[thing] = opt
+  return thing
+end
+function L.keep(thing)
+  if thing == nil then return end
+  for _, list in pairs(owners) do list[thing] = nil end
+end
+-- The thing is gone: its fields are let go, and using it says why.
+local function finish(thing, msg)
+  local name = (getmetatable(thing) or {}).__name
+  for k in pairs(thing) do thing[k] = nil end
+  local function gone() error(msg, 2) end
+  setmetatable(thing, { __name = name, __index = gone, __newindex = gone, __ended = msg })
+  local list = owners[thing]
+  owners[thing] = nil
+  if list then
+    for t in pairs(list) do finish(t, msg) end
+  end
+end
+L.finish = finish
+function L.ended(state)
+  return "this was made during " .. state .. ", and ended with it. To hold onto something made in a state, keep it, like keep sword in player.bag;"
+end
+function L.setstate(o, new)
+  if o == nil then error("this is nothing, so it has no fields or methods. Check first: is it !== nothing?", 2) end
+  o.state = new
+  local list = owners[o]
+  if not list then return end
+  local over = {}
+  for thing, opt in pairs(list) do
+    if not L.sin(new, opt) then over[#over + 1] = { thing, opt } end
+  end
+  for _, x in ipairs(over) do
+    list[x[1]] = nil
+    finish(x[1], L.ended(x[2]))
+  end
+end
+
 -- ----- built-ins that need the outside world -----
 
 function L.ask(q)

@@ -58,9 +58,11 @@ pub fn write(prog: &Program, info: &Info, files: &[String]) -> String {
                 fields.push_str(&format!("    {}: {},\n", w.fname(c, &f.name), w.ty(&f.ty)));
             }
         }
-        defs.push_str(&format!("#[derive(Default)]\nstruct O{root} {{\n    class: u32,\n{fields}}}\n"));
         defs.push_str(&format!(
-            "impl rt::HasClass for O{root} {{ fn class_id(&self) -> u32 {{ self.class }} }}\n"
+            "#[derive(Default)]\nstruct O{root} {{\n    class: u32,\n    ended: Option<String>,\n{fields}}}\n"
+        ));
+        defs.push_str(&format!(
+            "impl rt::HasClass for O{root} {{ fn class_id(&self) -> u32 {{ self.class }} fn ended(&self) -> Option<&str> {{ self.ended.as_deref() }} }}\nimpl rt::Endable for O{root} {{ fn end(&mut self, msg: String) {{ let class = self.class; *self = O{root} {{ class, ended: Some(msg), ..Default::default() }}; }} }}\n"
         ));
         let arms: Vec<String> = family
             .iter()
@@ -251,6 +253,10 @@ fn has_this(stmts: &[Stmt], info: &Info) -> bool {
                 found = true;
             }
         }
+        // Things made in a hook may belong to the object's state.
+        if let ExprKind::New { .. } = e.kind {
+            found = true;
+        }
     });
     found
 }
@@ -283,6 +289,12 @@ fn walk_stmts(stmts: &[Stmt], f: &mut dyn FnMut(&Expr)) {
                 walk_stmts(body, f);
             }
             Stmt::Return(Some(e), _) => walk_expr(e, f),
+            Stmt::Keep { value, into, .. } => {
+                walk_expr(value, f);
+                if let Some(i) = into {
+                    walk_expr(i, f);
+                }
+            }
             Stmt::Try { body, handler, .. } => {
                 walk_stmts(body, f);
                 walk_stmts(handler, f);
@@ -563,6 +575,20 @@ impl<'a> W<'a> {
                 self.stmts(handler, out, depth + 1);
                 out.push_str(&format!("{pad}}}\n"));
             }
+            Stmt::Keep { value, into, .. } => {
+                let v = self.expr(value);
+                out.push_str(&format!("{pad}{{\n{pad}    let k = {v};\n{pad}    rt::keep(&k);\n"));
+                if let Some(into) = into {
+                    let inner = format!("{pad}    ");
+                    if matches!(self.info.ty(into), Ty::Array(_)) {
+                        let t = self.expr(into);
+                        out.push_str(&format!("{inner}rt::ainject(&{t}, k);\n"));
+                    } else {
+                        self.assign(into, "k".into(), out, &inner);
+                    }
+                }
+                out.push_str(&format!("{pad}}}\n"));
+            }
             Stmt::Lua { .. } => out.push_str(&format!("{pad}rt::fail(\"lua blocks only run in LustScript.\".into());\n")),
         }
     }
@@ -593,6 +619,21 @@ impl<'a> W<'a> {
     }
 
     fn assign(&mut self, target: &Expr, v: String, out: &mut String, pad: &str) {
+        if let Some(owner) = self.info.state_owner(target, self.class) {
+            // An object's own state: things made in the old one may end.
+            let (o, c) = match owner {
+                Some(t) => {
+                    let Ty::Class(c) = self.info.ty(t) else { return };
+                    (format!("rt::obj(&{})", self.expr(t)), c)
+                }
+                None => ("this.clone()".to_string(), self.class.unwrap()),
+            };
+            let sf = self.field_of(c, "state");
+            out.push_str(&format!(
+                "{pad}{{ let v = {v}; let o = {o}; o.borrow_mut().{sf} = v; rt::set_state(&o, v); }}\n"
+            ));
+            return;
+        }
         match &target.kind {
             ExprKind::Name(n) => match self.info.names.get(&target.id) {
                 Some(NameRes::Field) => {
@@ -849,7 +890,14 @@ impl<'a> W<'a> {
                     s.push_str(&format!("{{ let v = {vc}; o.borrow_mut().{fname} = v; }} "));
                 }
                 s.push_str("Some(o) }");
-                s
+                match self.class {
+                    // Made in a method while its object is in a state: it belongs to that state.
+                    Some(c) if self.info.stateful(c) => {
+                        let sf = self.field_of(c, "state");
+                        format!("rt::own(this, {{ let s = this.borrow().{sf}; s }}, {s})")
+                    }
+                    _ => s,
+                }
             }
             ExprKind::NewHook(body) => self.new_hook(e, body),
             ExprKind::Like(inner, class, _) => {

@@ -1,0 +1,73 @@
+-- Things made in a state end with it, unless they're kept.
+state Phase = [Calm, Battle [Melee, Ranged]];
+
+class Item {
+    has {
+        string name = "thing";
+    }
+}
+
+class Hero {
+    has {
+        state is Phase.Calm;
+        Item array bag = [];
+        Item hand = nothing;
+        Item lastLoot = nothing;
+    }
+
+    method Item loot(string name) {
+        Item found = new Item { name = name };
+        return found;
+    }
+
+    method grab(string name) {
+        Item sword = new Item { name = name };
+        keep sword in bag;
+    }
+
+    method hold(string name) {
+        Item torch = new Item { name = name };
+        keep torch in hand;
+    }
+
+    method fight() {
+        state is Phase.Battle.Melee;
+    }
+}
+
+Hero h = new Hero {};
+Item early = h:loot("stick");
+print(early.name);
+h:fight();
+Item a = h:loot("arrow");
+h:grab("sword");
+h:hold("torch");
+Item b = h:loot("bandage");
+keep b;
+h.state is Phase.Battle.Ranged;
+-- Melee is over, so the arrow made during it has ended.
+try {
+    print(a.name);
+} error (string e) {
+    print(e);
+}
+Item c = h:loot("quiver");
+h.state is Phase.Calm;
+-- The stick was made while the hero was Calm. Calm ended when the fight began.
+try {
+    print(early.name);
+} error (string e) {
+    print(e);
+}
+print(h.bag[0].name);
+print(h.hand.name);
+print(b.name);
+try {
+    print(c.name);
+} error (string e) {
+    print(e);
+}
+print(a like Item);
+print(a === nothing);
+print(#h.bag);
+end
