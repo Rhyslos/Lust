@@ -1,0 +1,42 @@
+dump
+focus input 1
+type Ada
+dump
+key left
+key left
+type x
+dump
+key shift+end
+dump
+key backspace
+key ctrl+a
+key ctrl+c
+key end
+key ctrl+v
+dump
+key ctrl+left
+key ctrl+backspace
+dump
+key home
+key delete
+dump
+check 1
+check 1
+check 1
+slide 1 70
+key right
+slide 2 1.5
+key tab
+key tab
+key space
+key tab
+key left
+dump
+click Clear
+dump
+key tab
+type Lovelace
+press 40 20
+dump
+dblclick 40 20
+dump

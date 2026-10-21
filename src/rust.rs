@@ -834,9 +834,23 @@ impl<'a> W<'a> {
                 }
                 let v = format!("p{}", self.fresh());
                 out.push_str(&format!("{pad}{{\n{pad}    let mut {v} = rt::ui::Node::new({kind:?});\n"));
-                if let Some(a) = arg {
-                    let t = self.coerced(a, &Ty::Str);
-                    out.push_str(&format!("{pad}    {v}.text = {t};\n"));
+                let bound = matches!(kind.as_str(), "input" | "checkbox" | "slider");
+                match arg {
+                    Some(a) if bound => {
+                        // What the input shows: the value it's bound to, as it is now.
+                        let shown = self.expr(a);
+                        let sv = match self.info.ty(a) {
+                            Ty::Str => format!("rt::ui::SV::Text({shown})"),
+                            Ty::Truth => format!("rt::ui::SV::Truth({shown})"),
+                            _ => format!("rt::ui::SV::Num(({shown}) as f64)"),
+                        };
+                        out.push_str(&format!("{pad}    {v}.value = Some({sv});\n"));
+                    }
+                    Some(a) => {
+                        let t = self.coerced(a, &Ty::Str);
+                        out.push_str(&format!("{pad}    {v}.text = {t};\n"));
+                    }
+                    None => {}
                 }
                 if !style.is_empty() {
                     let s = self.styles(style);
@@ -849,13 +863,23 @@ impl<'a> W<'a> {
                     // The action keeps copies of the view's variables it uses, and the piece itself.
                     let inner = "    ".repeat(depth + 1);
                     out.push_str(&format!("{inner}{{\n"));
-                    for c in captures(a, &[], self.info) {
+                    let value = crate::parser::VALUE.to_string();
+                    for c in captures(a, std::slice::from_ref(&value), self.info) {
                         out.push_str(&format!("{inner}    let v_{c} = v_{c}.clone();\n"));
                     }
                     out.push_str(&format!("{inner}    let this = this.clone();\n"));
                     out.push_str(&format!(
                         "{inner}    actions.push(Box::new(move || match rt::attempt(|| {{\n{inner}        let this = &this;\n"
                     ));
+                    if let (true, Some(b)) = (bound, arg) {
+                        let get = match self.info.ty(b) {
+                            Ty::Str => "rt::ui::incoming_text()",
+                            Ty::Truth => "rt::ui::incoming_truth()",
+                            Ty::Int => "rt::ui::incoming_num().round() as i64",
+                            _ => "rt::ui::incoming_num()",
+                        };
+                        out.push_str(&format!("{inner}        let v_{value} = {get};\n"));
+                    }
                     let saved = self.current_ret.take();
                     self.stmts(a, out, depth + 3);
                     self.current_ret = saved;

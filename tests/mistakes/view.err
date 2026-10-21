@@ -1,7 +1,7 @@
 view.lsc:9:23  Lust has no style called glow. Did you mean grow?
 view.lsc:10:18  text shows text, but this is an int. Use count.text() to turn it into text.
-view.lsc:14:13  slider isn't built yet: it comes in one of the next steps of views.
-view.lsc:15:13  Lust has no screen piece called texty. The pieces so far are column, row, stack, space, text and button.
+view.lsc:14:13  a slider needs the field it changes: slider name;
+view.lsc:15:13  Lust has no screen piece called texty. The pieces are column, row, stack, scroll, space, text, button, input, checkbox, slider, image, and assemblies with a view.
 view.lsc:26:1  text puts something on the screen, so it goes inside a view { }.
 view.lsc:27:7  Plain has no view, so it can't open a window. Give it one: view [title "Plain"] { … }
 

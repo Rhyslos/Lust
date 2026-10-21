@@ -543,17 +543,27 @@ impl<'a> W<'a> {
                     return;
                 }
                 let v = self.fresh("v");
-                let t = arg.as_ref().map(|a| self.expr(a)).unwrap_or_else(|| "\"\"".into());
+                let bound = matches!(kind.as_str(), "input" | "checkbox" | "slider");
+                let t = match arg {
+                    Some(a) if !bound => self.expr(a),
+                    _ => "\"\"".into(),
+                };
                 let s = self.styles(style);
                 self.line(ln, "do");
                 self.indent += 1;
                 self.line(ln, &format!("local {v} = {{k = {}, t = {t}, s = {s}, c = {{}}}}", lua_string(kind)));
                 self.line(ln, &format!("{parent}.c[#{parent}.c + 1] = {v}"));
+                if let (true, Some(a)) = (bound, arg) {
+                    // What the input shows: the value it's bound to, as it is now.
+                    let shown = self.expr(a);
+                    self.line(ln, &format!("{v}.v = {shown}"));
+                }
                 self.view_parent.push(v.clone());
                 self.stmts(children);
                 self.view_parent.pop();
                 if let Some(a) = action {
-                    self.line(ln, &format!("{v}.f = function()"));
+                    let param = if bound { lname(crate::parser::VALUE) } else { String::new() };
+                    self.line(ln, &format!("{v}.f = function({param})"));
                     self.indent += 1;
                     let saved = std::mem::take(&mut self.loops);
                     self.stmts(a);
