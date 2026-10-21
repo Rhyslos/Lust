@@ -1,0 +1,26 @@
+-- Style values can come from fields: a name after a style word is a value, unless it's a
+-- colour word or fill.
+assembly Bar {
+    has {
+        int done = 1;
+        int total = 4;
+        string shade = "teal";
+        truth busy = false;
+    }
+
+    view [title "Bar", width 300, height 100] {
+        column [gap 8, pad 10] {
+            row [width fill, height 8, background gray3] {
+                row [grow done, height 8, background shade] {}
+                space [grow total - done];
+            }
+            button "More" [background shade, disabled busy] {
+                done = done + 1;
+                busy = done == total;
+            }
+        }
+    }
+}
+
+Bar:open();
+end

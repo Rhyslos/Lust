@@ -1,5 +1,5 @@
 view-styles.lsc:7:32  minWidth takes a number, like minWidth 12. This is a string.
-view-styles.lsc:7:40  opacity takes a number, like opacity 0.5.
+view-styles.lsc:7:48  opacity takes a number, like opacity 0.5. This is a string.
 view-styles.lsc:7:54  middle is a word on its own, without a value.
 view-styles.lsc:8:24  Lust has no style called blue10. Did you mean blue1?
 view-styles.lsc:8:45  borderWidth takes a number, like borderWidth 12.

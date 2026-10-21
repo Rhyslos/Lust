@@ -1,0 +1,12 @@
+window "Bar" 300x100
+  column 0,0 300x69
+    row 10,10 280x8
+      row 10,10 70x8
+      space 80,14 210x0
+    button "More" 10,26 66x33
+window "Bar" 300x100
+  column 0,0 300x69
+    row 10,10 280x8
+      row 10,10 280x8
+      space 290,14 0x0
+    button "More" 10,26 66x33 (disabled)

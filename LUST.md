@@ -809,6 +809,8 @@ A `stack` lays its children on top of each other, the later ones in front, place
 
 **Text wraps** onto more lines when it's wider than the room it has, breaking between words. `\n` in the text starts a new line, and `nowrap` keeps it on one line.
 
+**Values can come from the data.** After a style word, a value can be any number, text or truth: `[grow done, background shade, size 12 + extra, disabled not ready]`, with fields and variables. Only colour words (`red`, `gray3`…) and `fill` are read as words.
+
 Name a style to reuse it: `style card = [pad 16, round, shadow];`, then `[card]`.
 
 ### Underneath
