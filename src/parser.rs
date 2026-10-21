@@ -802,10 +802,10 @@ impl<'a> Parser<'a> {
                 StyleValue::Nested(self.style_list()?)
             } else if self.at_sym(",") || self.at_sym("]") {
                 StyleValue::Flag
-            } else if matches!(self.cur().kind, Tk::Ident(_))
+            } else if matches!(&self.cur().kind, Tk::Ident(w) if w == "fill" || crate::native_ui::colour(w).is_some())
                 && (self.peek(1).is_sym(",") || self.peek(1).is_sym("]"))
-                && name != "disabled"
             {
+                // Colour words and fill are words; any other name is a value: [grow done].
                 let Tk::Ident(w) = self.next().kind else { unreachable!() };
                 StyleValue::Word(w)
             } else {
