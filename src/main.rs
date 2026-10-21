@@ -122,7 +122,7 @@ pub fn compile(path: &Path, quiet: bool) -> Option<Compiled> {
     }
     let rust = (!is_script).then(|| rust::write(&prog, &info, &files));
     Some(Compiled {
-        out: lua::write(&prog, &info),
+        out: lua::write(&prog, &info, !is_script),
         rust,
         files,
     })

@@ -7,7 +7,6 @@ local ipairs = ipairs
 
 -- ----- text -----
 
-function L.itext(v) return fmt("%d", v) end
 function L.ftext(v)
   if v ~= v then return "not a number" end
   if v == math.huge then return "infinity" end
@@ -91,9 +90,27 @@ function L.imod(a, b)
   return math.fmod(a, b)
 end
 function L.fmod(a, b) return math.fmod(a, b) end
+-- Programs (.lst) run by lust check that whole numbers stay ones Lua holds exactly: up to 2^53 - 1.
+-- Built programs go up to 9223372036854775807. LustScript (.lsc) numbers are plain Lua numbers.
+local EXACT = 9007199254740991
+local function too_big(level)
+  error("this whole number is too big for lust run, which holds ints exactly only up to 9007199254740991. "
+    .. "A built program (lust build) holds them up to 9223372036854775807.", level + 1)
+end
+function L.I(x)
+  if x > EXACT or x < -EXACT then too_big(2) end
+  return x
+end
+-- Whole numbers are checked when they become text (print, .text()), which costs nothing extra, so
+-- one that has grown past what Lua holds exactly never shows up wrong.
+function L.itext(v)
+  if L.exact and (v > EXACT or v < -EXACT) then too_big(2) end
+  return fmt("%d", v)
+end
 function L.toint(v)
   if v ~= v then error("this float isn't a number, so it can't be an int.", 2) end
   if v == math.huge or v == -math.huge then error(L.ftext(v) .. " is too big to be an int.", 2) end
+  if L.exact and (v > EXACT or v < -EXACT) then too_big(2) end
   if v >= 0 then return floor(v) else return -floor(-v) end
 end
 function L.isnum(s)

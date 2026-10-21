@@ -40,6 +40,8 @@ struct LoopFrame {
 
 struct W<'a> {
     info: &'a Info,
+    /// Check that whole numbers stay ones Lua holds exactly (.lst programs).
+    exact: bool,
     buf: String,
     indent: usize,
     tmp: usize,
@@ -55,9 +57,15 @@ struct W<'a> {
     named_styles: HashMap<String, Vec<StyleItem>>,
 }
 
-pub fn write(prog: &Program, info: &Info) -> Output {
+/// `exact` is for .lst programs run by lust: whole numbers that Lua can't hold exactly stop the
+/// program with a plain message, instead of quietly coming out wrong. LustScript (.lsc) is plain Lua.
+/// The biggest whole number Lua's numbers hold exactly: 2^53 - 1.
+const MAX_EXACT: u64 = 9_007_199_254_740_991;
+
+pub fn write(prog: &Program, info: &Info, exact: bool) -> Output {
     let mut w = W {
         info,
+        exact,
         buf: String::new(),
         indent: 0,
         tmp: 0,
@@ -76,6 +84,9 @@ pub fn write(prog: &Program, info: &Info) -> Output {
             })
             .collect(),
     };
+    if exact {
+        w.line(0, "_L.exact = true");
+    }
     w.program(prog);
     // Strip the line markers into a line map.
     let mut code = String::new();
@@ -847,7 +858,9 @@ impl<'a> W<'a> {
         }
         match &e.kind {
             ExprKind::Int(v) => {
-                if *v < 0 {
+                if self.exact && v.unsigned_abs() > MAX_EXACT {
+                    format!("_L.I({v})")
+                } else if *v < 0 {
                     format!("({v})")
                 } else {
                     v.to_string()
