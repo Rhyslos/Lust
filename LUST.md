@@ -90,6 +90,7 @@ truth alive = true;
 
 - A variable keeps its type forever.
 - An `int` fits where a `float` goes. The other way needs `.int()`.
+- **How big an `int` can be.** A built program holds whole numbers up to 9223372036854775807 (and down to minus that), and stops with a message if a sum goes past it. `lust run` runs programs through Lua, whose numbers only hold whole numbers exactly up to 9007199254740991, so there a bigger one stops the program with a message saying so (when it's written out, printed, or turned into text) instead of quietly showing a wrong number. Build the program to use bigger ones.
 - A variable declared inside `{ }` only exists inside those braces.
 - A name can't be declared twice while it still exists.
 - **`nothing`** means "no thing here yet". Only class-typed values can be `nothing`. Using a field or method on `nothing` stops the program with an error naming the line.
