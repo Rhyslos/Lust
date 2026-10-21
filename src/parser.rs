@@ -391,7 +391,19 @@ impl<'a> Parser<'a> {
                 items.push(Item::Method(m));
                 return Ok(());
             }
-            "node" | "assembly" | "schema" | "route" | "view" | "style" | "save" | "load" => {
+            "node" => {
+                *seen_other = true;
+                let c = self.class_decl()?;
+                items.push(Item::Class(c));
+                return Ok(());
+            }
+            "assembly" => {
+                *seen_other = true;
+                let a = self.assembly_decl()?;
+                items.push(Item::Assembly(a));
+                return Ok(());
+            }
+            "schema" | "route" | "view" | "style" | "save" | "load" => {
                 return self.fail(t.pos, format!("{word} is planned for Lust v2 but isn't built yet."));
             }
             _ => {}
@@ -448,8 +460,15 @@ impl<'a> Parser<'a> {
 
     fn class_decl(&mut self) -> R<ClassDecl> {
         let word = self.next();
-        let is_object = word.is_word("object");
-        let what = if is_object { "object" } else { "class" };
+        let is_node = word.is_word("node");
+        let is_object = word.is_word("object") || is_node;
+        let what = if is_node {
+            "node"
+        } else if is_object {
+            "object"
+        } else {
+            "class"
+        };
         let (name, pos) = self.ident(&format!("the {what}'s name"))?;
         check_name(self.diags, &name, pos, NameKind::Type, what);
         let mut parent = None;
@@ -496,10 +515,63 @@ impl<'a> Parser<'a> {
             name,
             pos,
             is_object,
+            is_node,
             parent,
             fields,
             methods,
         })
+    }
+
+    /// assembly LootSpawner { create Item { name = "Potion"; value = 50; } }
+    fn assembly_decl(&mut self) -> R<AssemblyDecl> {
+        self.next();
+        let (name, pos) = self.ident("the assembly's name")?;
+        check_name(self.diags, &name, pos, NameKind::Type, "assembly");
+        let open = self.expect_sym("{", "expected { to start the assembly's recipes.")?;
+        let mut recipes = Vec::new();
+        loop {
+            if self.at_sym("}") {
+                self.next();
+                break;
+            }
+            if self.at_eof() {
+                return self.fail(open.pos, format!("this {{ is never closed. Add a }} where {name} ends."));
+            }
+            if !self.at_word("create") {
+                let pos = self.cur().pos;
+                self.diags.add(pos, "an assembly holds recipes: create Item { name = \"Potion\"; }");
+                self.recover();
+                continue;
+            }
+            let start = self.next();
+            let (class, cpos) = self.ident("the class this recipe makes")?;
+            self.expect_sym(
+                "{",
+                &format!("expected {{ to start the recipe: create {class} {{ name = \"Potion\"; }}"),
+            )?;
+            let mut inits = Vec::new();
+            while !self.at_sym("}") {
+                if self.at_eof() {
+                    return self.fail(start.pos, "this recipe's { is never closed.");
+                }
+                let (f, fpos) = self.ident("a field's name")?;
+                self.expect_sym("=", &format!("a recipe sets fields: {f} = …;"))?;
+                let v = self.expr()?;
+                self.semi()?;
+                inits.push((f, fpos, v));
+            }
+            self.next();
+            let made = self.mk(
+                start.pos,
+                ExprKind::New {
+                    class: class.clone(),
+                    class_pos: cpos,
+                    inits,
+                },
+            );
+            recipes.push((class, cpos, made));
+        }
+        Ok(AssemblyDecl { name, pos, recipes })
     }
 
     fn has_block(&mut self, fields: &mut Vec<FieldDecl>) -> R<()> {

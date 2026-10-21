@@ -1,0 +1,99 @@
+-- Nodes open and close; assemblies make ready-filled things.
+class Item {
+    has {
+        string name = "thing";
+        int value = 1;
+    }
+}
+
+class Sword like Item {
+    has {
+        int sharpness = 3;
+    }
+}
+
+assembly Loot {
+    create Item {
+        name = "Potion";
+        value = 50;
+    }
+    create Sword {
+        name = "Old sword";
+        value = 10 * 12;
+        sharpness = random(2, 2);
+    }
+}
+
+node Cave {
+    has {
+        Item chest = new Item { name = "chest" };
+        Item array floor = [];
+        int visits = 0;
+    }
+
+    method onOpen() {
+        print("You enter the cave.");
+    }
+
+    method onClose() {
+        print("You leave the cave with " + (#floor).text() + " things left on the floor.");
+    }
+
+    method drop() {
+        floor:inject(Loot:create(Item));
+    }
+
+    method Item treasure() {
+        Item t = Loot:create(Sword);
+        return t;
+    }
+}
+
+Item p = Loot:create(Item);
+print(p.name + " is worth " + p.value.text());
+Sword s = Loot:create(Sword);
+print(s.name + ", sharpness " + s.sharpness.text());
+print(s like Item);
+
+print(Cave:isOpen());
+try {
+    print(Cave.visits);
+} error (string e) {
+    print(e);
+}
+Cave:open();
+Cave.visits = Cave.visits + 1;
+Cave:drop();
+Cave:drop();
+Item chest = Cave.chest;
+Item gold = Cave:treasure();
+Item kept = Cave:treasure();
+keep kept;
+print(chest.name + ", " + gold.name);
+Cave:close();
+print(Cave:isOpen());
+try {
+    print(gold.name);
+} error (string e) {
+    print(e);
+}
+try {
+    print(chest.name);
+} error (string e) {
+    print(e);
+}
+print(kept.name);
+try {
+    Cave:close();
+} error (string e) {
+    print(e);
+}
+Cave:open();
+print(Cave.visits);
+print(#Cave.floor);
+try {
+    Cave:open();
+} error (string e) {
+    print(e);
+}
+end

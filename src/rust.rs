@@ -27,6 +27,8 @@ struct W<'a> {
     current_ret: Option<Ty>,
     /// A key-maker for the cMap about to be written.
     maker: Option<String>,
+    /// Writing a node's starting values: what's made belongs to the node.
+    owner_label: Option<String>,
 }
 
 pub fn write(prog: &Program, info: &Info, files: &[String]) -> String {
@@ -38,6 +40,7 @@ pub fn write(prog: &Program, info: &Info, files: &[String]) -> String {
         class: None,
         current_ret: None,
         maker: None,
+        owner_label: None,
     };
     let mut defs = String::new();
     let mut body = String::new();
@@ -91,6 +94,7 @@ pub fn write(prog: &Program, info: &Info, files: &[String]) -> String {
             init.push_str(&format!("    init{p}(this);\n"));
         }
         w.class = None;
+        w.owner_label = c.is_node.then(|| format!("{:?}", crate::ast::shown(&c.name)));
         for f in &c.fields {
             let Some(d) = &f.default else { continue };
             let Some(decl) = w.decl_class(ci, &f.name) else { continue };
@@ -104,7 +108,32 @@ pub fn write(prog: &Program, info: &Info, files: &[String]) -> String {
                 w.fname(decl, &f.name)
             ));
         }
+        w.owner_label = None;
         defs.push_str(&format!("fn init{ci}(this: &Rc<RefCell<O{root}>>) {{\n{init}}}\n"));
+        if c.is_node {
+            // Nodes open and close: opening starts them fresh, closing ends what they made.
+            let name = crate::ast::shown(&c.name);
+            let on_open = if c.methods.iter().any(|m| m.name == "onOpen") {
+                format!("d{root}_onOpen(&o); ")
+            } else {
+                String::new()
+            };
+            let on_close = if c.methods.iter().any(|m| m.name == "onClose") {
+                format!("d{root}_onClose(&o); ")
+            } else {
+                String::new()
+            };
+            let closed = format!("{name} is closed. Open it first: {name}:open();");
+            let ended = format!("this was made in {name}, and ended when it closed. To hold onto something made in a node, keep it.");
+            defs.push_str(&format!(
+                "fn open{ci}() {{ let o = obj{ci}(); if o.borrow().ended.is_none() {{ rt::fail({:?}.into()); }} *o.borrow_mut() = O{root} {{ class: ID_{ci}, ..Default::default() }}; init{ci}(&o); {on_open}}}\n",
+                format!("{name} is already open.")
+            ));
+            defs.push_str(&format!(
+                "fn close{ci}() {{ let o = obj{ci}(); if o.borrow().ended.is_some() {{ rt::fail({:?}.into()); }} {on_close}rt::end_owned(&o, {ended:?}); rt::Endable::end(&mut *o.borrow_mut(), {closed:?}.to_string()); }}\n",
+                format!("{name} is already closed.")
+            ));
+        }
         defs.push_str(&format!(
             "fn new{ci}() -> Rc<RefCell<O{root}>> {{ let this = Rc::new(RefCell::new(O{root} {{ class: ID_{ci}, ..Default::default() }})); init{ci}(&this); this }}\n"
         ));
@@ -174,6 +203,22 @@ pub fn write(prog: &Program, info: &Info, files: &[String]) -> String {
         defs.push_str(&j);
     }
 
+    // Assembly recipes, each a function that makes one thing.
+    for item in &prog.items {
+        if let Item::Assembly(a) = item {
+            w.class = None;
+            for (_, _, made) in &a.recipes {
+                let Ty::Class(c) = info.ty(made) else { continue };
+                let root = w.root(c);
+                let v = w.expr(made);
+                defs.push_str(&format!(
+                    "fn a_{}_{c}() -> Option<Rc<RefCell<O{root}>>> {{\n    {v}\n}}\n",
+                    ident(&a.name)
+                ));
+            }
+        }
+    }
+
     // Methods on their own.
     for item in &prog.items {
         if let Item::Method(m) = item {
@@ -211,9 +256,16 @@ pub fn write(prog: &Program, info: &Info, files: &[String]) -> String {
         defs.push_str(&format!(
             "thread_local! {{ static OBJ{ci}: RefCell<Option<Rc<RefCell<O{root}>>>> = RefCell::new(None); }}\nfn obj{ci}() -> Rc<RefCell<O{root}>> {{ OBJ{ci}.with(|o| o.borrow().clone().expect(\"object\")) }}\n"
         ));
-        objects.push_str(&format!(
-            "    {{ let o = new{ci}(); OBJ{ci}.with(|x| *x.borrow_mut() = Some(o)); }}\n"
-        ));
+        let make = if c.is_node {
+            let name = crate::ast::shown(&c.name);
+            format!(
+                "Rc::new(RefCell::new(O{root} {{ class: ID_{ci}, ended: Some({:?}.to_string()), ..Default::default() }}))",
+                format!("{name} is closed. Open it first: {name}:open();")
+            )
+        } else {
+            format!("new{ci}()")
+        };
+        objects.push_str(&format!("    {{ let o = {make}; OBJ{ci}.with(|x| *x.borrow_mut() = Some(o)); }}\n"));
     }
     // States aren't types in Rust: options are &'static str.
 
@@ -681,6 +733,19 @@ impl<'a> W<'a> {
         if let Some(lib) = self.info.libs.get(&e.id) {
             return self.lib(e, lib);
         }
+        if let Some(op) = self.info.node_ops.get(&e.id) {
+            let ExprKind::Method(t, ..) = &e.kind else { return "()".into() };
+            let Ty::Class(c) = self.info.ty(t) else { return "()".into() };
+            return match *op {
+                "open" => format!("open{c}()"),
+                "close" => format!("close{c}()"),
+                _ => format!("obj{c}().borrow().ended.is_none()"),
+            };
+        }
+        if let Some((asm, c)) = self.info.creates.get(&e.id) {
+            let f = format!("a_{}_{c}()", ident(asm));
+            return self.owned(f);
+        }
         match &e.kind {
             ExprKind::Int(v) => format!("({v}i64)"),
             ExprKind::Float(v) => format!("({v:?}f64)"),
@@ -890,14 +955,7 @@ impl<'a> W<'a> {
                     s.push_str(&format!("{{ let v = {vc}; o.borrow_mut().{fname} = v; }} "));
                 }
                 s.push_str("Some(o) }");
-                match self.class {
-                    // Made in a method while its object is in a state: it belongs to that state.
-                    Some(c) if self.info.stateful(c) => {
-                        let sf = self.field_of(c, "state");
-                        format!("rt::own(this, {{ let s = this.borrow().{sf}; s }}, {s})")
-                    }
-                    _ => s,
-                }
+                self.owned(s)
             }
             ExprKind::NewHook(body) => self.new_hook(e, body),
             ExprKind::Like(inner, class, _) => {
@@ -1055,6 +1113,24 @@ impl<'a> W<'a> {
                 let f = self.fmt(t, false);
                 format!("({f})(&{code})")
             }
+        }
+    }
+
+    /// Something just made, given to whatever owns what's made here: the object's state
+    /// option, or the node it's in.
+    fn owned(&mut self, made: String) -> String {
+        if let Some(l) = &self.owner_label {
+            return format!("rt::own(this, {l}, {made})");
+        }
+        match self.class {
+            Some(c) if self.info.stateful(c) => {
+                let sf = self.field_of(c, "state");
+                format!("rt::own(this, {{ let s = this.borrow().{sf}; s }}, {made})")
+            }
+            Some(c) if self.info.classes[c].is_node => {
+                format!("rt::own(this, {:?}, {made})", crate::ast::shown(&self.info.classes[c].name))
+            }
+            _ => made,
         }
     }
 

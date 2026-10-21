@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (2.0 alpha 6):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`) and things ending with their state (`keep`) work too. Not yet: `node`, `assembly`, saves, `view`, `schema`/`route`, and LustQL. Lust v1 lives on the `v1` branch.
+> **What works today (2.0 alpha 7):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes and assemblies work too. Not yet: saves, `view`, `schema`/`route`, and LustQL. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -268,35 +268,59 @@ class Hero {
 
 ## 9. node and assembly
 
-### node: a short-lived group
+### node: an object that opens and closes
 
-A node bundles things that live and die together, like a room in a game. Leaving or closing the node frees everything inside it:
+A node is like an object, but it can be opened and closed again and again: a room in a game, a level, a menu. Closing it ends everything it made.
 
 ```
-node RoomOne {
-    state is Active;
-    Player guard = new Player { name = "Guard" };
+node Cave {
+    has {
+        Item chest = new Item { name = "chest" };
+        int visits = 0;
+    }
+
+    method onOpen() {
+        print("You enter the cave.");
+    }
+
+    method onClose() {
+        print("You leave the cave.");
+    }
 }
+
+Cave:open();
+Cave.visits = Cave.visits + 1;
+Cave:close();
 ```
 
-How nodes and state memory work together is **(to design)**.
+- A node starts closed. `Cave:open();` starts it fresh, with its starting values, then runs `onOpen` if it has one.
+- `Cave:close();` runs `onClose`, then ends everything the node made: its starting values and anything its methods made. Using one afterwards says `this was made in Cave, and ended when it closed.` Use `keep` to hold onto something.
+- While it's closed, using its fields or methods says to open it first. `Cave:isOpen()` asks.
+- Opening an open node, or closing a closed one, is an error.
+- A node can't be `like` a class. `onOpen` and `onClose` take nothing and give nothing back.
 
 ### assembly: a factory
 
-An assembly makes ready-filled things without constructors:
+An assembly makes ready-filled things. It holds one recipe per class:
 
 ```
-assembly LootSpawner {
+assembly Loot {
     create Item {
         name = "Potion";
         value = 50;
     }
+    create Sword {
+        name = "Old sword";
+        sharpness = random(1, 5);
+    }
 }
 
-Item drop = LootSpawner:create(Item);
+Item drop = Loot:create(Item);
+Sword blade = Loot:create(Sword);
 ```
 
-The exact shape of `create` (several recipes per assembly, choosing between them, collections) is **(to design)**.
+- A recipe sets fields, and its values are worked out each time something is made, so `random` gives each sword its own sharpness.
+- What an assembly makes in a method of an object with a state, or of a node, belongs to it, just like `new`.
 
 ---
 
@@ -684,8 +708,6 @@ Neither can the built-in objects: `Maths`, `Files`, `Time` and `Json`.
 
 ## 22. Still to design
 
-- **State memory:** how nodes and states share memory.
-- **assembly:** several recipes, choosing between them, and making collections.
 - **LustQL (`.lql`):** what queries look like. It runs on SQLite underneath (see [ROADMAP.md](ROADMAP.md)).
 - **Web:** how route handlers take and give schemas.
 - **The standard library:** which Rust crates Lust wraps for files, networking, JSON, dates and sound, and how they look from Lust.

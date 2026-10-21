@@ -294,8 +294,7 @@ end
 -- ----- things made in a state end with it -----
 -- owner -> { thing = the owner's state option when it was made }. Weak, so nothing is held on to.
 local owners = setmetatable({}, { __mode = "k" })
-function L.own(owner, thing)
-  local opt = owner and owner.state
+function L.own(owner, thing, opt)
   if thing == nil or opt == nil then return thing end
   local list = owners[owner]
   if not list then
@@ -339,6 +338,42 @@ function L.setstate(o, new)
     finish(x[1], L.ended(x[2]))
   end
 end
+
+-- ----- nodes: objects that open and close -----
+
+local function shut(n, class)
+  for k in pairs(n) do n[k] = nil end
+  local msg = class.__node .. " is closed. Open it first: " .. class.__node .. ":open();"
+  local function gone() error(msg, 2) end
+  setmetatable(n, { __index = gone, __newindex = gone, __name = class.__name, __class = class, __closed = true })
+end
+function L.node(class, name)
+  class.__node = name
+  local n = {}
+  shut(n, class)
+  return n
+end
+function L.node_open(n)
+  local mt = getmetatable(n)
+  if not mt.__closed then error(mt.__node .. " is already open.", 2) end
+  local class = mt.__class
+  setmetatable(n, class)
+  class.__fields(n)
+  if class.onOpen then n:onOpen() end
+end
+function L.node_close(n)
+  local class = getmetatable(n)
+  if class.__closed then error(class.__class.__node .. " is already closed.", 2) end
+  if class.onClose then n:onClose() end
+  local msg = "this was made in " .. class.__node .. ", and ended when it closed. To hold onto something made in a node, keep it."
+  local list = owners[n]
+  owners[n] = nil
+  if list then
+    for t in pairs(list) do finish(t, msg) end
+  end
+  shut(n, class)
+end
+function L.node_isopen(n) return not getmetatable(n).__closed end
 
 -- ----- built-ins that need the outside world -----
 

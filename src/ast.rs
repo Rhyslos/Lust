@@ -141,6 +141,15 @@ pub enum Item {
     State(StateDecl),
     Class(ClassDecl),
     Method(MethodDecl),
+    Assembly(AssemblyDecl),
+}
+
+/// assembly LootSpawner { create Item { name = "Potion"; } }
+pub struct AssemblyDecl {
+    pub name: String,
+    pub pos: Pos,
+    /// One recipe per class: its class, and a `new` with the recipe's values.
+    pub recipes: Vec<(String, Pos, Expr)>,
 }
 
 pub struct StateDecl {
@@ -160,6 +169,8 @@ pub struct ClassDecl {
     pub name: String,
     pub pos: Pos,
     pub is_object: bool,
+    /// A node is an object that opens and closes.
+    pub is_node: bool,
     pub parent: Option<(String, Pos)>,
     pub fields: Vec<FieldDecl>,
     pub methods: Vec<MethodDecl>,

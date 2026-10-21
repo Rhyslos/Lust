@@ -29,6 +29,7 @@ pub struct MethodSig {
 pub struct ClassInfo {
     pub name: String,
     pub is_object: bool,
+    pub is_node: bool,
     pub parent: Option<usize>,
     pub fields: Vec<FieldInfo>,
     pub methods: HashMap<String, MethodSig>,
@@ -66,6 +67,12 @@ pub struct Info {
     pub decl_types: HashMap<usize, Ty>,
     /// Standard library calls, by expression.
     pub libs: HashMap<usize, crate::stdlib::Lib>,
+    /// RoomOne:open(), :close() and :isOpen(), by expression.
+    pub node_ops: HashMap<usize, &'static str>,
+    /// LootSpawner:create(Item), by expression: the assembly and the class.
+    pub creates: HashMap<usize, (String, usize)>,
+    /// Each assembly's recipes: class and the recipe's `new`.
+    pub assemblies: HashMap<String, Vec<(usize, usize)>>,
     pub states: Vec<StateInfo>,
     pub classes: Vec<ClassInfo>,
     pub methods: HashMap<String, MethodSig>,
@@ -273,10 +280,17 @@ impl<'a> Checker<'a> {
                     self.info.classes.push(ClassInfo {
                         name: c.name.clone(),
                         is_object: c.is_object,
+                        is_node: c.is_node,
                         parent: None,
                         fields: vec![],
                         methods: HashMap::new(),
                     });
+                }
+                Item::Assembly(a) => {
+                    if self.name_taken(&a.name, a.pos) {
+                        continue;
+                    }
+                    self.info.assemblies.insert(a.name.clone(), vec![]);
                 }
                 Item::Method(m) => {
                     if self.name_taken(&m.name, m.pos) {
@@ -296,6 +310,29 @@ impl<'a> Checker<'a> {
         for item in &prog.items {
             if let Item::Class(c) = item {
                 let Some(&ci) = self.info.class_index.get(&c.name) else { continue };
+                if c.is_node {
+                    for m in &c.methods {
+                        if matches!(m.name.as_str(), "open" | "close" | "isOpen") {
+                            self.err(
+                                m.pos,
+                                format!(
+                                    "every node has {} already: Lust opens and closes nodes. Use onOpen and onClose to do things then.",
+                                    m.name
+                                ),
+                            );
+                        }
+                        if matches!(m.name.as_str(), "onOpen" | "onClose") && (!m.params.is_empty() || m.ret.is_some()) {
+                            self.err(
+                                m.pos,
+                                format!("{} takes nothing and gives nothing back: method {}() {{ … }}", m.name, m.name),
+                            );
+                        }
+                    }
+                }
+                if let (Some((_, pos)), true) = (&c.parent, c.is_node) {
+                    self.err(*pos, "a node can't be like a class. It stands on its own, like an object.");
+                    continue;
+                }
                 if let Some((p, pos)) = &c.parent {
                     match self.info.class_index.get(p) {
                         Some(&pi) if self.info.classes[pi].is_object => {
@@ -435,6 +472,36 @@ impl<'a> Checker<'a> {
                 }
             }
         }
+        // Assembly recipes: each one a `new`, checked like a field's starting value.
+        for item in &prog.items {
+            let Item::Assembly(a) = item else { continue };
+            if !self.info.assemblies.contains_key(&a.name) {
+                continue;
+            }
+            let mut made: Vec<(usize, usize)> = Vec::new();
+            for (class, cpos, e) in &a.recipes {
+                let mut ctx = Ctx {
+                    class: None,
+                    ret: None,
+                    scopes: vec![HashMap::new()],
+                    in_try: false,
+                    in_hook: false,
+                    hook_base: 0,
+                    made: Default::default(),
+                };
+                if let Ty::Class(c) = self.expr(e, &mut ctx, None) {
+                    if made.iter().any(|(x, _)| *x == c) {
+                        self.err(
+                            *cpos,
+                            format!("{} already has a recipe for {class}. An assembly has one recipe per class.", a.name),
+                        );
+                    } else {
+                        made.push((c, e.id));
+                    }
+                }
+            }
+            self.info.assemblies.insert(a.name.clone(), made);
+        }
         // 3. Field starting values.
         for c in &order {
             let Some(&ci) = self.info.class_index.get(&c.name) else { continue };
@@ -547,6 +614,8 @@ impl<'a> Checker<'a> {
             Some("a state")
         } else if self.info.methods.contains_key(name) {
             Some("a method")
+        } else if self.info.assemblies.contains_key(name) {
+            Some("an assembly")
         } else {
             None
         };
@@ -736,7 +805,7 @@ impl<'a> Checker<'a> {
     /// Is this a new thing, made in a method of a class with a state, so it belongs to that state?
     fn makes_owned(&self, e: &Expr, ctx: &Ctx) -> bool {
         let in_state = ctx.class.map(|c| self.stateful(c)).unwrap_or(false);
-        in_state && matches!(e.kind, ExprKind::New { .. })
+        in_state && (matches!(e.kind, ExprKind::New { .. }) || self.info.creates.contains_key(&e.id))
     }
 
     /// Storing something made in a state somewhere that outlasts the state needs keep.
@@ -1531,6 +1600,13 @@ impl<'a> Checker<'a> {
             );
             return Ty::Error;
         }
+        if self.info.assemblies.contains_key(n) {
+            self.err(
+                e.pos,
+                format!("{n} is an assembly. Make things with it like this: {n}:create(Item)"),
+            );
+            return Ty::Error;
+        }
         let mut known: Vec<String> = ctx.scopes.iter().flat_map(|s| s.keys().cloned()).collect();
         if let Some(c) = ctx.class {
             known.extend(self.all_fields(c));
@@ -1545,6 +1621,43 @@ impl<'a> Checker<'a> {
             self.err(e.pos, format!("there's nothing called {n} here.{s}"));
         }
         Ty::Error
+    }
+
+    /// LootSpawner:create(Item)
+    fn create_call(&mut self, e: &Expr, asm: &str, recipes: &[(usize, usize)], m: &str, args: &[Expr], mpos: Pos) -> Ty {
+        let makes: Vec<String> = recipes.iter().map(|(c, _)| self.info.classes[*c].name.clone()).collect();
+        let example = makes.first().cloned().unwrap_or_else(|| "Item".into());
+        if m != "create" {
+            self.err(mpos, format!("an assembly makes things with create: {asm}:create({example})"));
+            return Ty::Error;
+        }
+        let class = match args {
+            [a] => match &a.kind {
+                ExprKind::Name(n) => Some((n.clone(), a.pos)),
+                _ => None,
+            },
+            _ => None,
+        };
+        let Some((class, cpos)) = class else {
+            self.err(mpos, format!("create takes the name of the class to make: {asm}:create({example})"));
+            return Ty::Error;
+        };
+        match recipes.iter().find(|(c, _)| self.info.classes[*c].name == class) {
+            Some(&(c, _)) => {
+                self.info.creates.insert(e.id, (asm.to_string(), c));
+                self.info.calls.insert(e.id, CallRes::Builtin);
+                Ty::Class(c)
+            }
+            None => {
+                let list = if makes.is_empty() {
+                    "nothing yet".to_string()
+                } else {
+                    makes.join(", ")
+                };
+                self.err(cpos, format!("{asm} has no recipe for {class}. It makes {list}."));
+                Ty::Error
+            }
+        }
     }
 
     /// A call to the standard library, once it's known which one: checks the arguments.
@@ -1924,8 +2037,26 @@ impl<'a> Checker<'a> {
             if crate::stdlib::OBJECTS.contains(&n.as_str()) {
                 return self.object_call(e, n, m, args, mpos, ctx, expected);
             }
+            if let Some(recipes) = self.info.assemblies.get(n).cloned() {
+                return self.create_call(e, n, &recipes, m, args, mpos);
+            }
         }
         let t = self.expr(target, ctx, None);
+        if let Ty::Class(c) = t {
+            if self.info.classes[c].is_node && matches!(m, "open" | "close" | "isOpen") {
+                if !args.is_empty() {
+                    self.err(mpos, format!("{m} takes nothing in its ( )."));
+                }
+                let op: &'static str = match m {
+                    "open" => "open",
+                    "close" => "close",
+                    _ => "isOpen",
+                };
+                self.info.node_ops.insert(e.id, op);
+                self.info.calls.insert(e.id, CallRes::Builtin);
+                return if op == "isOpen" { Ty::Truth } else { Ty::Void };
+            }
+        }
         let builtin: Option<(Vec<(String, Ty)>, Ty)> = match (&t, m) {
             (Ty::Array(el), "inject") => Some((vec![("item".into(), (**el).clone())], Ty::Void)),
             (Ty::Array(_), "remove") => Some((vec![("position".into(), Ty::Int)], Ty::Void)),

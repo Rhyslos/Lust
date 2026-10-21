@@ -1,0 +1,33 @@
+class Item {
+    has {
+        string name = "thing";
+    }
+}
+
+node Room like Item {
+    method open() {
+        print("hi");
+    }
+    method onOpen(int x) {
+        print(x);
+    }
+}
+
+assembly Loot {
+    create Item {
+        name = 5;
+    }
+    create Item {
+        name = "again";
+    }
+    create Item {
+        colour = "red";
+    }
+}
+
+Item a = Loot:make(Item);
+Item b = Loot:create(Sword);
+Item c = Loot:create("Item");
+print(Loot);
+Room:open(1);
+end
