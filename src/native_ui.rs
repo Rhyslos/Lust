@@ -122,13 +122,94 @@ fn named(name: &str) -> Option<u32> {
         "indigo" => 0x4263eb,
         "purple" => 0x7048e8,
         "pink" => 0xd6336c,
+        "red1" => 0xffe3e3,
+        "red2" => 0xffc9c9,
+        "red3" => 0xffa8a8,
+        "red4" => 0xff8787,
+        "red5" => 0xff6b6b,
+        "red6" => 0xfa5252,
+        "red7" => 0xf03e3e,
+        "red8" => 0xe03131,
+        "red9" => 0xc92a2a,
+        "orange1" => 0xffe8cc,
+        "orange2" => 0xffd8a8,
+        "orange3" => 0xffc078,
+        "orange4" => 0xffa94d,
+        "orange5" => 0xff922b,
+        "orange6" => 0xfd7e14,
+        "orange7" => 0xf76707,
+        "orange8" => 0xe8590c,
+        "orange9" => 0xd9480f,
+        "yellow1" => 0xfff3bf,
+        "yellow2" => 0xffec99,
+        "yellow3" => 0xffe066,
+        "yellow4" => 0xffd43b,
+        "yellow5" => 0xfcc419,
+        "yellow6" => 0xfab005,
+        "yellow7" => 0xf59f00,
+        "yellow8" => 0xf08c00,
+        "yellow9" => 0xe67700,
+        "green1" => 0xd3f9d8,
+        "green2" => 0xb2f2bb,
+        "green3" => 0x8ce99a,
+        "green4" => 0x69db7c,
+        "green5" => 0x51cf66,
+        "green6" => 0x40c057,
+        "green7" => 0x37b24d,
+        "green8" => 0x2f9e44,
+        "green9" => 0x2b8a3e,
+        "teal1" => 0xc5f6fa,
+        "teal2" => 0x99e9f2,
+        "teal3" => 0x66d9e8,
+        "teal4" => 0x3bc9db,
+        "teal5" => 0x22b8cf,
+        "teal6" => 0x15aabf,
+        "teal7" => 0x1098ad,
+        "teal8" => 0x0c8599,
+        "teal9" => 0x0b7285,
+        "blue1" => 0xd0ebff,
+        "blue2" => 0xa5d8ff,
+        "blue3" => 0x74c0fc,
+        "blue4" => 0x4dabf7,
+        "blue5" => 0x339af0,
+        "blue6" => 0x228be6,
+        "blue7" => 0x1c7ed6,
+        "blue8" => 0x1971c2,
+        "blue9" => 0x1864ab,
+        "indigo1" => 0xdbe4ff,
+        "indigo2" => 0xbac8ff,
+        "indigo3" => 0x91a7ff,
+        "indigo4" => 0x748ffc,
+        "indigo5" => 0x5c7cfa,
+        "indigo6" => 0x4c6ef5,
+        "indigo7" => 0x4263eb,
+        "indigo8" => 0x3b5bdb,
+        "indigo9" => 0x364fc7,
+        "purple1" => 0xe5dbff,
+        "purple2" => 0xd0bfff,
+        "purple3" => 0xb197fc,
+        "purple4" => 0x9775fa,
+        "purple5" => 0x845ef7,
+        "purple6" => 0x7950f2,
+        "purple7" => 0x7048e8,
+        "purple8" => 0x6741d9,
+        "purple9" => 0x5f3dc4,
+        "pink1" => 0xffdeeb,
+        "pink2" => 0xfcc2d7,
+        "pink3" => 0xfaa2c1,
+        "pink4" => 0xf783ac,
+        "pink5" => 0xf06595,
+        "pink6" => 0xe64980,
+        "pink7" => 0xd6336c,
+        "pink8" => 0xc2255c,
+        "pink9" => 0xa61e4d,
         _ => return None,
     })
 }
 
 pub const COLOURS: &[&str] = &[
     "white", "black", "gray1", "gray2", "gray3", "gray4", "gray5", "gray6", "gray7", "gray8", "gray9", "red", "orange", "yellow", "green",
-    "teal", "blue", "indigo", "purple", "pink",
+    "teal", "blue", "indigo", "purple", "pink", "red1", "red2", "red3", "red4", "red5", "red6", "red7", "red8", "red9", "orange1", "orange2", "orange3", "orange4", "orange5", "orange6", "orange7", "orange8", "orange9", "yellow1", "yellow2", "yellow3", "yellow4", "yellow5", "yellow6", "yellow7", "yellow8", "yellow9", "green1", "green2", "green3", "green4", "green5", "green6", "green7", "green8", "green9", "teal1", "teal2", "teal3", "teal4", "teal5", "teal6", "teal7", "teal8", "teal9", "blue1", "blue2", "blue3", "blue4", "blue5", "blue6", "blue7", "blue8", "blue9", "indigo1", "indigo2", "indigo3", "indigo4", "indigo5", "indigo6", "indigo7", "indigo8", "indigo9", "purple1", "purple2", "purple3", "purple4", "purple5", "purple6", "purple7", "purple8", "purple9", "pink1", "pink2", "pink3", "pink4", "pink5", "pink6", "pink7", "pink8", "pink9",
 ];
 
 pub fn colour(v: &str) -> Option<u32> {
@@ -171,19 +252,33 @@ enum Align {
 
 #[derive(Clone, Debug)]
 struct Look {
+    /// top, right, bottom, left
     pad: [f32; 4],
     gap: f32,
     width: Size,
     height: Size,
+    /// A share of the leftover room along its row or column; `width fill` is grow 1.
+    grow: Option<f32>,
+    min_w: f32,
+    max_w: f32,
+    min_h: f32,
+    max_h: f32,
     size: f32,
     weight: f32,
     color: u32,
     background: Option<u32>,
     radius: f32,
     border: Option<u32>,
+    border_w: f32,
     shadow: bool,
-    align: Align,
+    /// left, center, right: for children (and a text's lines) side to side.
+    halign: Align,
+    /// top, middle, bottom: for children up and down.
+    valign: Align,
+    spread: bool,
+    wrap: bool,
     strike: bool,
+    opacity: f32,
 }
 
 fn num(v: &SV) -> Option<f32> {
@@ -200,27 +295,49 @@ fn text_of(v: &SV) -> Option<&str> {
     }
 }
 
+/// Light colours get dark words on them, dark colours white ones.
+fn light(c: u32) -> bool {
+    let (r, g, b) = (((c >> 16) & 255) as f32, ((c >> 8) & 255) as f32, (c & 255) as f32);
+    (0.299 * r + 0.587 * g + 0.114 * b) / 255.0 > 0.6
+}
+
 fn base_look(kind: &str) -> Look {
     let mut l = Look {
         pad: [0.0; 4],
         gap: 0.0,
         width: Size::Auto,
         height: Size::Auto,
+        grow: None,
+        min_w: 0.0,
+        max_w: f32::INFINITY,
+        min_h: 0.0,
+        max_h: f32::INFINITY,
         size: 15.0,
         weight: 400.0,
         color: INK,
         background: None,
         radius: 0.0,
         border: None,
+        border_w: 1.0,
         shadow: false,
-        align: Align::Start,
+        halign: Align::Start,
+        valign: Align::Start,
+        spread: false,
+        wrap: true,
         strike: false,
+        opacity: 1.0,
     };
-    if kind == "button" {
-        l.pad = [7.0, 14.0, 7.0, 14.0];
-        l.background = Some(0xe9ecef);
-        l.radius = 6.0;
-        l.weight = 500.0;
+    match kind {
+        "button" => {
+            l.pad = [7.0, 14.0, 7.0, 14.0];
+            l.background = Some(0xe9ecef);
+            l.radius = 6.0;
+            l.weight = 500.0;
+            l.halign = Align::Center;
+        }
+        // A row's children sit in the middle, up and down.
+        "row" => l.valign = Align::Center,
+        _ => {}
     }
     l
 }
@@ -228,10 +345,7 @@ fn base_look(kind: &str) -> Look {
 fn apply(l: &mut Look, kind: &str, style: &[(String, SV)]) {
     for (k, v) in style {
         match k.as_str() {
-            "pad" => {
-                let p = num(v).unwrap_or(8.0);
-                l.pad = [p; 4];
-            }
+            "pad" => l.pad = [num(v).unwrap_or(8.0); 4],
             "padX" => {
                 let p = num(v).unwrap_or(8.0);
                 l.pad[1] = p;
@@ -242,6 +356,10 @@ fn apply(l: &mut Look, kind: &str, style: &[(String, SV)]) {
                 l.pad[0] = p;
                 l.pad[2] = p;
             }
+            "padTop" => l.pad[0] = num(v).unwrap_or(8.0),
+            "padRight" => l.pad[1] = num(v).unwrap_or(8.0),
+            "padBottom" => l.pad[2] = num(v).unwrap_or(8.0),
+            "padLeft" => l.pad[3] = num(v).unwrap_or(8.0),
             "gap" => l.gap = num(v).unwrap_or(8.0),
             "width" | "height" => {
                 let s = match v {
@@ -256,13 +374,21 @@ fn apply(l: &mut Look, kind: &str, style: &[(String, SV)]) {
                     l.height = s
                 }
             }
+            "grow" => l.grow = Some(num(v).unwrap_or(1.0).max(0.0)),
+            "minWidth" => l.min_w = num(v).unwrap_or(0.0),
+            "maxWidth" => l.max_w = num(v).unwrap_or(f32::INFINITY),
+            "minHeight" => l.min_h = num(v).unwrap_or(0.0),
+            "maxHeight" => l.max_h = num(v).unwrap_or(f32::INFINITY),
             "size" => l.size = num(v).unwrap_or(15.0),
+            "tiny" => l.size = 11.0,
             "small" => l.size = 13.0,
             "large" => l.size = 18.0,
+            "huge" => l.size = 24.0,
             "weight" => l.weight = num(v).unwrap_or(400.0),
             "bold" => l.weight = 700.0,
             "muted" => l.color = MUTED,
             "strike" => l.strike = true,
+            "nowrap" => l.wrap = false,
             "color" => {
                 if let Some(c) = text_of(v).and_then(colour) {
                     l.color = c
@@ -270,18 +396,34 @@ fn apply(l: &mut Look, kind: &str, style: &[(String, SV)]) {
             }
             "background" => l.background = text_of(v).and_then(colour),
             "round" => l.radius = num(v).unwrap_or(8.0),
-            "border" => l.border = Some(text_of(v).and_then(colour).unwrap_or(0xdee2e6)),
+            "pill" => l.radius = f32::INFINITY,
+            "border" => match v {
+                SV::Num(n) => {
+                    l.border_w = *n as f32;
+                    l.border = Some(l.border.unwrap_or(0xdee2e6));
+                }
+                _ => l.border = Some(text_of(v).and_then(colour).unwrap_or(0xdee2e6)),
+            },
+            "borderWidth" => {
+                l.border_w = num(v).unwrap_or(1.0);
+                l.border = Some(l.border.unwrap_or(0xdee2e6));
+            }
             "shadow" => l.shadow = true,
-            "center" => l.align = Align::Center,
-            "left" => l.align = Align::Start,
-            "right" => l.align = Align::End,
+            "opacity" => l.opacity = num(v).unwrap_or(1.0).clamp(0.0, 1.0),
+            "left" => l.halign = Align::Start,
+            "center" => l.halign = Align::Center,
+            "right" => l.halign = Align::End,
+            "top" => l.valign = Align::Start,
+            "middle" => l.valign = Align::Center,
+            "bottom" => l.valign = Align::End,
+            "spread" => l.spread = true,
             "subtle" => l.background = None,
             other => {
                 // A colour on its own: a button's colour, or text's.
                 if let Some(c) = colour(other) {
                     if kind == "button" {
                         l.background = Some(c);
-                        l.color = if c == 0xffffff || c == 0xf8f9fa || c == 0xf1f3f5 || c == 0xe9ecef { INK } else { 0xffffff };
+                        l.color = if light(c) { INK } else { 0xffffff };
                     } else {
                         l.color = c;
                     }
@@ -298,12 +440,53 @@ fn hover_style(style: &[(String, SV)]) -> Option<&Vec<(String, SV)>> {
     })
 }
 
+// ----- text in lines -----
+
+/// Breaks text into lines: at each \n, and between words where a line would be wider than
+/// `max_w`. A word too long for a line on its own is broken between letters.
+fn wrap_lines(text: &str, size: f32, weight: f32, max_w: f32, wrap: bool) -> Vec<String> {
+    let fits = |s: &str| text_width(s, size, weight) <= max_w + 0.5;
+    let mut out = Vec::new();
+    for para in text.split('\n') {
+        if !wrap || !max_w.is_finite() || fits(para) {
+            out.push(para.to_string());
+            continue;
+        }
+        let mut line = String::new();
+        for word in para.split(' ') {
+            let joined = if line.is_empty() { word.to_string() } else { format!("{line} {word}") };
+            if fits(&joined) {
+                line = joined;
+                continue;
+            }
+            if !line.is_empty() {
+                out.push(std::mem::take(&mut line));
+            }
+            // The word starts a line of its own; if it's still too wide, break it up.
+            for ch in word.chars() {
+                let mut longer = line.clone();
+                longer.push(ch);
+                if !line.is_empty() && !fits(&longer) {
+                    out.push(std::mem::take(&mut line));
+                    line.push(ch);
+                } else {
+                    line = longer;
+                }
+            }
+        }
+        out.push(line);
+    }
+    out
+}
+
 // ----- layout -----
 
 /// A node, worked out and placed.
 struct Laid {
     kind: String,
     text: String,
+    /// A text's or button's words, broken into the lines it shows.
+    lines: Vec<String>,
     look: Look,
     hover: Option<Look>,
     action: Option<usize>,
@@ -336,6 +519,7 @@ fn lay(n: &Node) -> Laid {
     Laid {
         kind: n.kind.clone(),
         text: n.text.clone(),
+        lines: vec![],
         look,
         hover,
         action: n.action,
@@ -347,38 +531,161 @@ fn lay(n: &Node) -> Laid {
     }
 }
 
-fn is_row(kind: &str) -> bool {
-    kind == "row"
+fn shows_text(kind: &str) -> bool {
+    kind == "text" || kind == "button"
 }
 
-/// The size a node would like to be.
-fn natural(n: &Laid) -> (f32, f32) {
+/// How much of the leftover room a child takes along its row (or column), if any.
+fn flex(c: &Laid, row: bool) -> Option<f32> {
+    if let Some(g) = c.look.grow {
+        return if g > 0.0 { Some(g) } else { None };
+    }
+    let s = if row { c.look.width } else { c.look.height };
+    if s == Size::Fill || c.kind == "space" {
+        Some(1.0)
+    } else {
+        None
+    }
+}
+
+/// Rows told `center`, `right` or `spread`, and columns and stacks told `center` or `right`, are
+/// as wide as they can be, so there's room to place their children in.
+fn wants_width(n: &Laid) -> bool {
+    match n.kind.as_str() {
+        "row" => n.look.halign != Align::Start || n.look.spread,
+        "column" | "stack" => n.look.halign != Align::Start,
+        _ => false,
+    }
+}
+
+/// Columns in a row told `middle`, `bottom` or `spread` are as tall as the row.
+fn wants_height(n: &Laid) -> bool {
+    match n.kind.as_str() {
+        "column" => n.look.valign != Align::Start || n.look.spread,
+        "stack" => n.look.valign != Align::Start,
+        _ => false,
+    }
+}
+
+fn clamp_w(c: &Laid, w: f32) -> f32 {
+    w.min(c.look.max_w).max(c.look.min_w)
+}
+
+fn clamp_h(c: &Laid, h: f32) -> f32 {
+    h.min(c.look.max_h).max(c.look.min_h)
+}
+
+thread_local! {
+    // Sizes already measured while laying out, by node and the width it may use.
+    static MEASURED: std::cell::RefCell<HashMap<(usize, u32), (f32, f32)>> = std::cell::RefCell::new(HashMap::new());
+}
+
+/// The size a node would like to be when it may be at most `max_w` wide.
+fn natural(n: &Laid, max_w: f32) -> (f32, f32) {
+    let key = (n as *const Laid as usize, max_w.to_bits());
+    if let Some(s) = MEASURED.with(|m| m.borrow().get(&key).copied()) {
+        return s;
+    }
+    let s = measure(n, max_w);
+    MEASURED.with(|m| m.borrow_mut().insert(key, s));
+    s
+}
+
+fn measure(n: &Laid, max_w: f32) -> (f32, f32) {
     let l = &n.look;
+    let (padx, pady) = (l.pad[1] + l.pad[3], l.pad[0] + l.pad[2]);
+    let outer = clamp_w(n, if let Size::Fixed(f) = l.width { f } else { max_w });
+    let inner = (outer - padx).max(0.0);
+    let gaps = l.gap * (n.children.len().saturating_sub(1)) as f32;
     let (mut w, mut h) = match n.kind.as_str() {
-        "text" | "button" => {
+        k if shows_text(k) => {
+            let lines = wrap_lines(&n.text, l.size, l.weight, inner, l.wrap);
             let (_, lh) = line_metrics(l.size, l.weight);
-            (text_width(&n.text, l.size, l.weight).ceil(), lh)
+            let w = lines.iter().map(|s| text_width(s, l.size, l.weight)).fold(0.0, f32::max);
+            (w.ceil(), lh * lines.len() as f32)
         }
         "space" => (0.0, 0.0),
+        "row" => {
+            let sizes = row_sizes(n, inner);
+            (sizes.iter().map(|s| s.0).sum::<f32>() + gaps, sizes.iter().map(|s| s.1).fold(0.0, f32::max))
+        }
+        "stack" => n.children.iter().map(|c| natural(c, inner)).fold((0.0f32, 0.0f32), |a, s| (a.0.max(s.0), a.1.max(s.1))),
         _ => {
-            let sizes: Vec<(f32, f32)> = n.children.iter().map(natural).collect();
-            let gaps = l.gap * (sizes.len().saturating_sub(1)) as f32;
-            if is_row(&n.kind) {
-                (sizes.iter().map(|s| s.0).sum::<f32>() + gaps, sizes.iter().map(|s| s.1).fold(0.0, f32::max))
-            } else {
-                (sizes.iter().map(|s| s.0).fold(0.0, f32::max), sizes.iter().map(|s| s.1).sum::<f32>() + gaps)
-            }
+            let sizes: Vec<(f32, f32)> = n.children.iter().map(|c| natural(c, inner)).collect();
+            (sizes.iter().map(|s| s.0).fold(0.0, f32::max), sizes.iter().map(|s| s.1).sum::<f32>() + gaps)
         }
     };
-    w += l.pad[1] + l.pad[3];
-    h += l.pad[0] + l.pad[2];
+    // A group told where to put its children side to side takes the whole width to do it in.
+    if wants_width(n) && inner.is_finite() {
+        w = w.max(inner);
+    }
+    w += padx;
+    h += pady;
     if let Size::Fixed(f) = l.width {
         w = f;
     }
     if let Size::Fixed(f) = l.height {
         h = f;
     }
-    (w, h)
+    (clamp_w(n, w), clamp_h(n, h))
+}
+
+/// Each child's width and height in a row `iw` wide: children that fill share what's left.
+fn row_sizes(n: &Laid, iw: f32) -> Vec<(f32, f32)> {
+    let gaps = n.look.gap * (n.children.len().saturating_sub(1)) as f32;
+    let widths: Vec<Option<f32>> =
+        n.children.iter().map(|c| if flex(c, true).is_some() { None } else { Some(natural(c, iw).0) }).collect();
+    let fixed: f32 = widths.iter().flatten().sum();
+    let total: f32 = n.children.iter().filter_map(|c| flex(c, true)).sum();
+    let room = (iw - fixed - gaps).max(0.0);
+    n.children
+        .iter()
+        .zip(widths)
+        .map(|(c, w)| {
+            let w = match w {
+                Some(w) => w,
+                None if iw.is_finite() => clamp_w(c, room * flex(c, true).unwrap_or(0.0) / total),
+                None => natural(c, f32::INFINITY).0,
+            };
+            let h = match c.look.height {
+                Size::Fixed(f) => clamp_h(c, f),
+                _ => natural(c, w).1,
+            };
+            (w, h)
+        })
+        .collect()
+}
+
+/// Where a piece goes in `room` to spare: at the start, the middle or the end.
+fn offset(a: Align, room: f32) -> f32 {
+    match a {
+        Align::Start => 0.0,
+        Align::Center => (room / 2.0).max(0.0),
+        Align::End => room.max(0.0),
+    }
+}
+
+/// Along a row or column: where the first child starts, and extra room between children.
+fn spread_out(a: Align, spread: bool, room: f32, count: usize) -> (f32, f32) {
+    if room <= 0.0 {
+        return (0.0, 0.0);
+    }
+    if spread {
+        return if count > 1 { (0.0, room / (count - 1) as f32) } else { (0.0, 0.0) };
+    }
+    (offset(a, room), 0.0)
+}
+
+/// A child's size across a column or stack `iw` wide.
+fn cross_width(c: &Laid, iw: f32) -> f32 {
+    clamp_w(
+        c,
+        match c.look.width {
+            Size::Fill => iw,
+            Size::Fixed(f) => f,
+            Size::Auto => natural(c, iw).0.min(iw),
+        },
+    )
 }
 
 /// Places a node in the space it's given, then its children inside it.
@@ -387,51 +694,83 @@ fn place(n: &mut Laid, x: f32, y: f32, w: f32, h: f32) {
     n.y = y;
     n.w = w;
     n.h = h;
-    if n.children.is_empty() {
-        return;
-    }
     let l = n.look.clone();
     let (ix, iy) = (x + l.pad[3], y + l.pad[0]);
     let (iw, ih) = ((w - l.pad[1] - l.pad[3]).max(0.0), (h - l.pad[0] - l.pad[2]).max(0.0));
-    let row = is_row(&n.kind);
-    let main = |s: (f32, f32)| if row { s.0 } else { s.1 };
-    let cross = |s: (f32, f32)| if row { s.1 } else { s.0 };
-    let main_size = |c: &Laid| if row { c.look.width } else { c.look.height };
-    let cross_size = |c: &Laid| if row { c.look.height } else { c.look.width };
-    let flexible = |c: &Laid| c.kind == "space" || main_size(c) == Size::Fill;
-    let nat: Vec<(f32, f32)> = n.children.iter().map(natural).collect();
-    let gaps = l.gap * (n.children.len().saturating_sub(1)) as f32;
-    let fixed: f32 = n.children.iter().zip(&nat).filter(|(c, _)| !flexible(c)).map(|(_, s)| main(*s)).sum();
-    let flex = n.children.iter().filter(|c| flexible(c)).count();
-    let room = (if row { iw } else { ih }) - fixed - gaps;
-    let share = if flex > 0 { (room / flex as f32).max(0.0) } else { 0.0 };
-    // Along the main way, extra room goes before the children when they're centered (or to the right).
-    let mut at = match (flex, l.align) {
-        (0, Align::Center) => (room / 2.0).max(0.0),
-        (0, Align::End) if row => room.max(0.0),
-        _ => 0.0,
-    };
-    let inner_cross = if row { ih } else { iw };
-    for (c, s) in n.children.iter_mut().zip(nat) {
-        let m = if flexible(c) { share } else { main(s) };
-        let cr = match cross_size(c) {
-            Size::Fill => inner_cross,
-            Size::Fixed(f) => f,
-            Size::Auto => cross(s).min(inner_cross),
-        };
-        // Across: a row's children are centered up and down; a column's follow its alignment.
-        let off = if row {
-            ((inner_cross - cr) / 2.0).max(0.0)
-        } else {
-            match l.align {
-                Align::Start => 0.0,
-                Align::Center => ((inner_cross - cr) / 2.0).max(0.0),
-                Align::End => (inner_cross - cr).max(0.0),
+    if shows_text(&n.kind) {
+        n.lines = wrap_lines(&n.text, l.size, l.weight, iw, l.wrap);
+        return;
+    }
+    if n.children.is_empty() {
+        return;
+    }
+    let count = n.children.len();
+    match n.kind.as_str() {
+        "stack" => {
+            for c in n.children.iter_mut() {
+                let cw = cross_width(c, iw);
+                let ch = clamp_h(
+                    c,
+                    match c.look.height {
+                        Size::Fill => ih,
+                        Size::Fixed(f) => f,
+                        Size::Auto => natural(c, cw).1,
+                    },
+                );
+                let (cx, cy) = (ix + offset(l.halign, iw - cw), iy + offset(l.valign, ih - ch));
+                place(c, cx.round(), cy.round(), cw.round(), ch.round());
             }
-        };
-        let (cx, cy, cw, ch) = if row { (ix + at, iy + off, m, cr) } else { (ix + off, iy + at, cr, m) };
-        place(c, cx.round(), cy.round(), cw.round(), ch.round());
-        at += m + l.gap;
+        }
+        "row" => {
+            let sizes = row_sizes(n, iw);
+            let used: f32 = sizes.iter().map(|s| s.0).sum::<f32>() + l.gap * (count - 1) as f32;
+            let (mut at, extra) = spread_out(l.halign, l.spread, iw - used, count);
+            for (c, (cw, nh)) in n.children.iter_mut().zip(sizes) {
+                let ch = clamp_h(
+                    c,
+                    match c.look.height {
+                        Size::Fill => ih,
+                        Size::Fixed(f) => f,
+                        Size::Auto if wants_height(c) => ih,
+                        Size::Auto => nh.min(ih),
+                    },
+                );
+                let cy = iy + offset(l.valign, ih - ch);
+                place(c, (ix + at).round(), cy.round(), cw.round(), ch.round());
+                at += cw + l.gap + extra;
+            }
+        }
+        _ => {
+            // A column, and the view itself.
+            let widths: Vec<f32> = n.children.iter().map(|c| cross_width(c, iw)).collect();
+            let heights: Vec<Option<f32>> = n
+                .children
+                .iter()
+                .zip(&widths)
+                .map(|(c, &cw)| match (flex(c, false), c.look.height) {
+                    (Some(_), _) => None,
+                    (None, Size::Fixed(f)) => Some(clamp_h(c, f)),
+                    (None, _) => Some(natural(c, cw).1),
+                })
+                .collect();
+            let gaps = l.gap * (count - 1) as f32;
+            let fixed: f32 = heights.iter().flatten().sum();
+            let total: f32 = n.children.iter().filter_map(|c| flex(c, false)).sum();
+            let room = (ih - fixed - gaps).max(0.0);
+            let heights: Vec<f32> = n
+                .children
+                .iter()
+                .zip(heights)
+                .map(|(c, h)| h.unwrap_or_else(|| clamp_h(c, room * flex(c, false).unwrap_or(0.0) / total)))
+                .collect();
+            let used: f32 = heights.iter().sum::<f32>() + gaps;
+            let (mut at, extra) = spread_out(l.valign, l.spread, ih - used, count);
+            for ((c, cw), ch) in n.children.iter_mut().zip(widths).zip(heights) {
+                let cx = ix + offset(l.halign, iw - cw);
+                place(c, cx.round(), (iy + at).round(), cw.round(), ch.round());
+                at += ch + l.gap + extra;
+            }
+        }
     }
 }
 
@@ -444,7 +783,9 @@ fn lay_out(root: &Node, w: f32, h: f32) -> Laid {
             c.look.width = Size::Fill;
         }
     }
+    MEASURED.with(|m| m.borrow_mut().clear());
     place(&mut top, 0.0, 0.0, w, h);
+    MEASURED.with(|m| m.borrow_mut().clear());
     top
 }
 
@@ -454,15 +795,31 @@ struct Canvas {
     w: usize,
     h: usize,
     scale: f32,
+    /// How see-through everything painted now is (opacity), 1 for solid.
+    alpha: f32,
     px: Vec<u32>,
+}
+
+/// How far a point is outside a rounded rectangle: below zero inside.
+fn outside(fx: f32, fy: f32, x0: f32, y0: f32, x1: f32, y1: f32, r: f32) -> f32 {
+    let qx = (x0 + r - fx).max(fx - (x1 - r)).max(0.0);
+    let qy = (y0 + r - fy).max(fy - (y1 - r)).max(0.0);
+    if r > 0.0 && qx > 0.0 && qy > 0.0 {
+        (qx * qx + qy * qy).sqrt() - r
+    } else {
+        let ex = (x0 - fx).max(fx - x1);
+        let ey = (y0 - fy).max(fy - y1);
+        ex.max(ey).max(if r > 0.0 { qx.max(qy) - r } else { f32::MIN })
+    }
 }
 
 impl Canvas {
     fn new(w: usize, h: usize, scale: f32) -> Canvas {
-        Canvas { w, h, scale, px: vec![0xffffff; w * h] }
+        Canvas { w, h, scale, alpha: 1.0, px: vec![0xffffff; w * h] }
     }
 
     fn blend(&mut self, x: i64, y: i64, c: u32, a: f32) {
+        let a = a * self.alpha;
         if x < 0 || y < 0 || x >= self.w as i64 || y >= self.h as i64 || a <= 0.0 {
             return;
         }
@@ -472,23 +829,24 @@ impl Canvas {
 
     /// A rectangle with rounded corners, smooth at the edges. Sizes are in the view's units.
     fn rect(&mut self, x: f32, y: f32, w: f32, h: f32, r: f32, c: u32, alpha: f32) {
+        self.shape(x, y, w, h, r, None, c, alpha);
+    }
+
+    /// A rounded rectangle, or with `ring` only its edge that many units thick.
+    #[allow(clippy::too_many_arguments)]
+    fn shape(&mut self, x: f32, y: f32, w: f32, h: f32, r: f32, ring: Option<f32>, c: u32, alpha: f32) {
         let s = self.scale;
         let (x0, y0, x1, y1) = (x * s, y * s, (x + w) * s, (y + h) * s);
         let r = (r * s).min((x1 - x0) / 2.0).min((y1 - y0) / 2.0).max(0.0);
+        let b = ring.map(|b| (b * s).max(0.0));
         for py in (y0.floor() as i64)..(y1.ceil() as i64) {
             for px in (x0.floor() as i64)..(x1.ceil() as i64) {
                 let (fx, fy) = (px as f32 + 0.5, py as f32 + 0.5);
-                // Distance outside the rounded shape: <= 0 inside.
-                let qx = (x0 + r - fx).max(fx - (x1 - r)).max(0.0);
-                let qy = (y0 + r - fy).max(fy - (y1 - r)).max(0.0);
-                let d = if r > 0.0 && qx > 0.0 && qy > 0.0 {
-                    (qx * qx + qy * qy).sqrt() - r
-                } else {
-                    let ex = (x0 - fx).max(fx - x1);
-                    let ey = (y0 - fy).max(fy - y1);
-                    ex.max(ey).max(if r > 0.0 { qx.max(qy) - r } else { f32::MIN })
-                };
-                let cover = (0.5 - d).clamp(0.0, 1.0);
+                let mut cover = (0.5 - outside(fx, fy, x0, y0, x1, y1, r)).clamp(0.0, 1.0);
+                if let Some(b) = b {
+                    let inner = outside(fx, fy, x0 + b, y0 + b, x1 - b, y1 - b, (r - b).max(0.0));
+                    cover *= 1.0 - (0.5 - inner).clamp(0.0, 1.0);
+                }
                 self.blend(px, py, c, cover * alpha);
             }
         }
@@ -529,33 +887,39 @@ impl Canvas {
 fn paint(c: &mut Canvas, n: &Laid, hover: Option<(f32, f32)>) {
     let over = hover.map(|(hx, hy)| hx >= n.x && hy >= n.y && hx < n.x + n.w && hy < n.y + n.h).unwrap_or(false);
     let l = if over { n.hover.as_ref().unwrap_or(&n.look) } else { &n.look };
+    let was = c.alpha;
+    c.alpha *= l.opacity;
     if l.shadow {
         for i in 1..=6 {
             let e = i as f32;
             c.rect(n.x - e + 0.0, n.y - e + 3.0, n.w + 2.0 * e, n.h + 2.0 * e, l.radius + e, 0x000000, 0.012);
         }
     }
-    if let Some(b) = l.border {
-        c.rect(n.x, n.y, n.w, n.h, l.radius, b, 1.0);
-        let inner = l.background.unwrap_or_else(|| c.px.first().copied().unwrap_or(0xffffff));
-        c.rect(n.x + 1.0, n.y + 1.0, n.w - 2.0, n.h - 2.0, (l.radius - 1.0).max(0.0), inner, 1.0);
-    } else if let Some(bg) = l.background {
+    if let Some(bg) = l.background {
         c.rect(n.x, n.y, n.w, n.h, l.radius, bg, 1.0);
     }
-    if n.kind == "text" || n.kind == "button" {
-        let tw = text_width(&n.text, l.size, l.weight);
+    if let Some(b) = l.border {
+        c.shape(n.x, n.y, n.w, n.h, l.radius, Some(l.border_w), b, 1.0);
+    }
+    if shows_text(&n.kind) {
         let (_, lh) = line_metrics(l.size, l.weight);
         let inner_w = n.w - l.pad[1] - l.pad[3];
-        let tx = n.x + l.pad[3] + if n.kind == "button" { ((inner_w - tw) / 2.0).max(0.0) } else { 0.0 };
-        let ty = n.y + l.pad[0] + ((n.h - l.pad[0] - l.pad[2] - lh) / 2.0).max(0.0);
-        c.text(&n.text, tx, ty, l.size, l.weight, l.color);
-        if l.strike {
-            c.rect(tx, ty + lh * 0.55, tw, (l.size / 14.0).max(1.0), 0.0, l.color, 1.0);
+        let block = lh * n.lines.len() as f32;
+        let top = n.y + l.pad[0] + ((n.h - l.pad[0] - l.pad[2] - block) / 2.0).max(0.0);
+        for (i, line) in n.lines.iter().enumerate() {
+            let tw = text_width(line, l.size, l.weight);
+            let tx = n.x + l.pad[3] + offset(l.halign, inner_w - tw);
+            let ty = top + lh * i as f32;
+            c.text(line, tx, ty, l.size, l.weight, l.color);
+            if l.strike {
+                c.rect(tx, ty + lh * 0.55, tw, (l.size / 14.0).max(1.0), 0.0, l.color, 1.0);
+            }
         }
     }
     for ch in &n.children {
         paint(c, ch, hover);
     }
+    c.alpha = was;
 }
 
 fn render(tree: &Laid, w: usize, h: usize, scale: f32, hover: Option<(f32, f32)>, background: u32) -> Canvas {

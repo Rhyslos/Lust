@@ -1,0 +1,17 @@
+assembly Styles {
+    has {
+        string name = "";
+    }
+
+    view [title "Styles"] {
+        column [grow, minWidth "wide", opacity name, middle 3] {
+            text "hi" [blue10, teal4, pill, borderWidth, tiny, huge, spread, nowrap];
+            row [padTop 2, padSide 3, bottom, maxHeight 10, border 2] {
+                text "x" [colour red];
+            }
+        }
+    }
+}
+
+Styles:open();
+end
