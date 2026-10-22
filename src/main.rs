@@ -243,8 +243,12 @@ fn build_with_cargo(path: &Path, rust: &str, exe: &Path) -> Result<(), String> {
     let target = cache.join("target");
     std::fs::create_dir_all(project.join("src")).map_err(|e| format!("couldn't make a build folder: {e}"))?;
     let toml = project.join("Cargo.toml");
-    if std::fs::read_to_string(&toml).ok().as_deref() != Some(CARGO_TOML) {
-        std::fs::write(&toml, CARGO_TOML).map_err(|e| format!("couldn't write {}: {e}", toml.display()))?;
+    // Each project's program has a name of its own in the shared target folder, so two builds at
+    // once can't copy out each other's program.
+    let bin = format!("lust_{hash:016x}");
+    let manifest = format!("{CARGO_TOML}\n[[bin]]\nname = \"{bin}\"\npath = \"src/main.rs\"\n");
+    if std::fs::read_to_string(&toml).ok().as_deref() != Some(manifest.as_str()) {
+        std::fs::write(&toml, &manifest).map_err(|e| format!("couldn't write {}: {e}", toml.display()))?;
     }
     std::fs::write(project.join("src").join("main.rs"), rust).map_err(|e| format!("couldn't write the program: {e}"))?;
     // Views draw with Lust's font, which goes into the program.
@@ -278,7 +282,7 @@ fn build_with_cargo(path: &Path, rust: &str, exe: &Path) -> Result<(), String> {
             project.join("src").join("main.rs").display()
         ));
     }
-    let built = target.join("release").join(format!("lust_program{}", std::env::consts::EXE_SUFFIX));
+    let built = target.join("release").join(format!("{bin}{}", std::env::consts::EXE_SUFFIX));
     std::fs::copy(&built, exe).map_err(|e| format!("couldn't copy the program to {}: {e}", exe.display()))?;
     Ok(())
 }
