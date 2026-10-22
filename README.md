@@ -4,6 +4,8 @@
 
 A small, strict language for apps, games, tools and scripting. Checks are written as questions, states are built in, and every file ends with `end`.
 
+<img src="assets/icons/lst.svg" width="28" alt="Lt"> programs (`.lst`) &nbsp; <img src="assets/icons/lsc.svg" width="28" alt="Ls"> LustScript (`.lsc`) &nbsp; <img src="assets/icons/lql.svg" width="28" alt="Lq"> LustQL (`.lql`)
+
 ```
 state Mood = [Cheerful, Grumpy];
 
