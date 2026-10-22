@@ -67,7 +67,7 @@ const USAGE: &str = "Lust 2 (alpha)
   lust new <name> app  the same, starting with a window and a piece in ui/
   lust build <file> --library
                        .lst: make a Rust library from it, for a Rust program to use
-  lust test <folder>   run the test programs in a folder
+  lust test <folder>   run the test programs in a folder (or one test file)
   lust version         show which Lust this is
 
 lust <file> is the same as lust run <file>.
