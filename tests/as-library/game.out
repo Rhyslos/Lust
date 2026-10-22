@@ -1,0 +1,17 @@
+game code loaded
+entity 7 says: Blaster fires, 2 left
+t=0.0 fired=true ammo=2
+entity 7 says: click
+t=0.2 fired=false ammo=2
+entity 7 says: click
+t=0.4 fired=false ammo=2
+entity 7 says: Blaster fires, 1 left
+t=0.6 fired=true ammo=1
+entity 7 says: click
+t=0.8 fired=false ammo=1
+entity 7 says: click
+t=1.0 fired=false ammo=1
+player x = -0.5
+damage = 10, critical = 20
+shots = 3
+Lust said: game.lst:25  this is nothing, so it has no fields or methods. Check first: is it !== nothing?

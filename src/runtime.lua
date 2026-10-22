@@ -329,6 +329,21 @@ function L.sin(a, b)
   return a == b or (a ~= nil and b ~= nil and (inside(a, b) or inside(b, a)))
 end
 
+-- ----- native methods: their bodies are outside Lust -----
+
+-- In LustScript, the host program's Lua offers a function by the method's name (Class_method for
+-- a class's). lust run has no host, so it says where the body lives.
+function L.native(global, shown, ...)
+  local f = rawget(_G, global)
+  if type(f) ~= "function" then
+    if rawget(_G, "LUST_HOST") then
+      error(shown .. " is native: its body is in the Rust program that uses this Lust as a library (lust build --library), so it can't run on its own.", 3)
+    end
+    error(shown .. " is native, but there's no Lua function called " .. global .. " to run it.", 3)
+  end
+  return f(...)
+end
+
 -- ----- classes -----
 
 function L.class(name, parent)

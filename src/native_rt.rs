@@ -87,19 +87,52 @@ fn run_program(program: fn(), files: &'static [&'static str]) -> i32 {
                 Err(p) => {
                     use std::io::Write;
                     let _ = std::io::stdout().flush();
-                    let msg = payload_text(&*p);
-                    // The line has the file's number in its top bits.
-                    let packed = LINE.with(|c| c.get());
-                    let (f, line) = ((packed >> 20) as usize, packed & 0xFFFFF);
-                    let file = files.get(f).copied().unwrap_or("");
-                    if line > 0 {
-                        eprintln!("{file}:{line}  {msg}");
-                    } else {
-                        eprintln!("{file}  {msg}");
-                    }
+                    eprintln!("{}", failure_text(&*p, files));
                     1
                 }
             }
+}
+
+/// A failure as Lust shows it: "player.lst:12  there's no row with id 7."
+fn failure_text(p: &(dyn std::any::Any + Send), files: &[&str]) -> String {
+    let msg = payload_text(p);
+    // The line has the file's number in its top bits.
+    let packed = LINE.with(|c| c.get());
+    let (f, line) = ((packed >> 20) as usize, packed & 0xFFFFF);
+    let file = files.get(f).copied().unwrap_or("");
+    if line > 0 {
+        format!("{file}:{line}  {msg}")
+    } else {
+        format!("{file}  {msg}")
+    }
+}
+
+/// For Lust built as a library: runs Lust code for the program using it, and gives back a
+/// failure as text instead of stopping that program.
+pub fn catch<R>(files: &[&str], f: impl FnOnce() -> R) -> Result<R, String> {
+    quiet();
+    let depth = DEPTH.with(|c| c.get());
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+        Ok(r) => Ok(r),
+        Err(p) => {
+            DEPTH.with(|c| c.set(depth));
+            Err(failure_text(&*p, files))
+        }
+    }
+}
+
+/// Lust's own failures are caught and passed back as text, so Rust doesn't print them too. The
+/// program's own panics still print as they did.
+fn quiet() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let before = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            if info.payload().downcast_ref::<Fail>().is_none() {
+                before(info);
+            }
+        }));
+    });
 }
 
 /// try { … } error (string message) { … }: the message, if something failed.

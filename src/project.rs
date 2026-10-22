@@ -221,6 +221,8 @@ pub fn load(entry: &Path, src: String, is_script: bool, diags: &mut Diags) -> Pr
         value_names(&f.prog, &mut values);
     }
 
+    // What the first file passes: what a library made from it shows to the program using it.
+    let exports: Vec<(String, Pos)> = files[0].prog.passes.iter().map(|(n, p)| (inner(0, n), *p)).collect();
     let mut items = Vec::new();
     let mut body = Vec::new();
     let mut uses_lua = false;
@@ -250,7 +252,7 @@ pub fn load(entry: &Path, src: String, is_script: bool, diags: &mut Diags) -> Pr
             body,
             uses_lua,
             imports: vec![],
-            passes: vec![],
+            passes: exports,
             next_id,
         },
         files: shown,

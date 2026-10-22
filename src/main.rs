@@ -50,7 +50,7 @@ mod stdlib;
 mod tests;
 mod types;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -65,6 +65,8 @@ const USAGE: &str = "Lust 2 (alpha)
                        .lsc: write the Lua next to it, as file.lua
   lust new <name>      make a new project folder, with a main.lst
   lust new <name> app  the same, starting with a window and a piece in ui/
+  lust build <file> --library
+                       .lst: make a Rust library from it, for a Rust program to use
   lust test <folder>   run the test programs in a folder
   lust version         show which Lust this is
 
@@ -78,10 +80,17 @@ pub struct Compiled {
     pub rust: Option<String>,
     /// The program's files, by number, as people see them.
     pub files: Vec<String>,
+    /// Whether it has native methods, whose bodies are outside Lust.
+    pub natives: bool,
 }
 
 /// Reads, checks and writes one file. Mistakes are printed, and give None.
 pub fn compile(path: &Path, quiet: bool) -> Option<Compiled> {
+    compile_as(path, quiet, false)
+}
+
+/// The same, with `library` writing the Rust as a library for another Rust program.
+pub fn compile_as(path: &Path, quiet: bool, library: bool) -> Option<Compiled> {
     let display = path.file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_default();
     let ext = path.extension().map(|e| e.to_string_lossy().to_string()).unwrap_or_default();
     if ext == "lust" {
@@ -120,11 +129,12 @@ pub fn compile(path: &Path, quiet: bool) -> Option<Compiled> {
         }
         return None;
     }
-    let rust = (!is_script).then(|| rust::write(&prog, &info, &files));
+    let rust = (!is_script).then(|| rust::write(&prog, &info, &files, library));
     Some(Compiled {
         out: lua::write(&prog, &info, !is_script),
         rust,
         files,
+        natives: !info.natives.is_empty(),
     })
 }
 
@@ -176,7 +186,38 @@ fn main() -> ExitCode {
             }
             None => ExitCode::from(1),
         },
+        "build" if args.iter().any(|a| a == "--library") => match compile_as(path, false, true) {
+            Some(Compiled { rust: Some(r), .. }) => match build_library(path, &r) {
+                Ok(dir) => {
+                    let name = crate_name(path);
+                    println!("Made {}, a Rust library.", dir.display());
+                    println!("A Rust program uses it with this line under [dependencies] in its Cargo.toml:");
+                    println!();
+                    println!("  {name} = {{ path = {:?} }}", dir.display().to_string().replace('\\', "/"));
+                    ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    ExitCode::from(1)
+                }
+            },
+            Some(_) => {
+                eprintln!("{display} is LustScript, which turns into Lua. Only .lst files can be built as Rust libraries.");
+                ExitCode::from(1)
+            }
+            None => ExitCode::from(1),
+        },
         "build" => match compile(path, false) {
+            Some(Compiled {
+                natives: true,
+                rust: Some(_),
+                ..
+            }) => {
+                eprintln!(
+                    "{display} has native methods, whose bodies are in the Rust program that uses it, so it can't be a program of its own. Build it as a library: lust build {display} --library"
+                );
+                ExitCode::from(1)
+            }
             Some(Compiled { rust: Some(r), .. }) => match build_native(path, &r) {
                 Ok(exe) => {
                     println!("Built {}.", exe.file_name().unwrap().to_string_lossy());
@@ -365,7 +406,7 @@ fn new_project(name: &str, app: bool) -> ExitCode {
         .and_then(|_| {
             std::fs::write(
                 dir.join(".gitignore"),
-                "# What lust build makes, and saves.\n/main\n/main.exe\n*.save\n*.db\n",
+                "# What lust build makes, and saves.\n/main\n/main.exe\n*_library/\n*.save\n*.db\n",
             )
         });
     if let Err(e) = made {
@@ -396,6 +437,127 @@ fn new_project(name: &str, app: bool) -> ExitCode {
     println!("  lust run main.lst");
     println!("  lust build main.lst");
     ExitCode::SUCCESS
+}
+
+/// The name a Lust file's library has in Rust: game.lst is the crate game.
+fn crate_name(path: &Path) -> String {
+    let stem = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
+    let mut name = String::new();
+    for (i, ch) in stem.chars().enumerate() {
+        if ch.is_ascii_uppercase() {
+            if i > 0 {
+                name.push('_');
+            }
+            name.push(ch.to_ascii_lowercase());
+        } else if ch.is_ascii_alphanumeric() {
+            name.push(ch);
+        } else {
+            name.push('_');
+        }
+    }
+    if name.starts_with(|c: char| c.is_ascii_digit()) || name.is_empty() {
+        name.insert_str(0, "lust_");
+    }
+    name
+}
+
+/// lust build file.lst --library: a Rust library in a folder next to the file (file_library), for a
+/// Rust program to use. It's checked with Cargo, so a mistake in it shows up here.
+pub fn build_library(path: &Path, rust: &str) -> Result<PathBuf, String> {
+    let name = crate_name(path);
+    let dir = path.parent().unwrap_or(Path::new(".")).join(format!("{name}_library"));
+    build_library_in(path, rust, &dir)?;
+    Ok(dir)
+}
+
+/// The same, into a folder of its own choosing (lust test keeps them in the cache).
+pub fn build_library_in(path: &Path, rust: &str, dir: &Path) -> Result<(), String> {
+    let name = crate_name(path);
+    std::fs::create_dir_all(dir.join("src")).map_err(|e| format!("couldn't make {}: {e}", dir.display()))?;
+    // Only the libraries the Lust code uses.
+    let has = |m: &str| rust.contains(&format!("\npub mod {m} {{\n"));
+    let mut deps = String::new();
+    if has("db") {
+        deps.push_str("rusqlite = { version = \"0.40\", features = [\"bundled\"] }\n");
+    }
+    if has("web") {
+        deps.push_str("tiny_http = \"0.12\"\n");
+    }
+    if has("net") {
+        deps.push_str("ureq = \"3\"\n");
+    }
+    if has("pat") {
+        deps.push_str("regex = \"1\"\n");
+    }
+    if has("ui") {
+        deps.push_str("winit = \"0.30\"\nsoftbuffer = \"0.4\"\nfontdue = \"0.9\"\narboard = { version = \"3\", default-features = false }\npng = \"0.17\"\njpeg-decoder = { version = \"0.3\", default-features = false }\n");
+        let fonts = dir.join("assets").join("fonts");
+        std::fs::create_dir_all(&fonts).map_err(|e| format!("couldn't make {}: {e}", fonts.display()))?;
+        for (file, bytes) in native_ui::FONT_FILES.iter().zip(native_ui::FONTS.iter()) {
+            std::fs::write(fonts.join(file), bytes).map_err(|e| format!("couldn't write the font {file}: {e}"))?;
+        }
+    }
+    let toml = format!(
+        "# Made by Lust from {}. lust build --library writes it again, so don't edit it.\n[package]\nname = \"{name}\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[lib]\npath = \"src/lib.rs\"\n\n[dependencies]\n{deps}",
+        path.file_name().unwrap_or_default().to_string_lossy()
+    );
+    std::fs::write(dir.join("Cargo.toml"), toml).map_err(|e| format!("couldn't write Cargo.toml: {e}"))?;
+    std::fs::write(dir.join("src").join("lib.rs"), rust).map_err(|e| format!("couldn't write lib.rs: {e}"))?;
+    let out = std::process::Command::new("cargo")
+        .args(["check", "--quiet", "--manifest-path"])
+        .arg(dir.join("Cargo.toml"))
+        .env("CARGO_TARGET_DIR", cache_dir().join("target"))
+        .output()
+        .map_err(|_| "building needs Rust, and it isn't installed. Get it from https://rustup.rs, then try again.".to_string())?;
+    if !out.status.success() {
+        return Err(format!(
+            "Lust made Rust that doesn't build. That's a bug in Lust, not your program. Rust said:\n{}\nThe Rust is in {}.",
+            String::from_utf8_lossy(&out.stderr),
+            dir.join("src").join("lib.rs").display()
+        ));
+    }
+    Ok(())
+}
+
+/// Builds a Rust program (lust test's name.host.rs) that uses a Lust file as a library.
+pub fn build_host(path: &Path, host: &Path) -> Result<PathBuf, String> {
+    let rust = compile_as(path, true, true).and_then(|c| c.rust).ok_or("it has mistakes")?;
+    let full = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let mut hash: u64 = 1469598103934665603;
+    for b in full.to_string_lossy().bytes() {
+        hash = (hash ^ b as u64).wrapping_mul(1099511628211);
+    }
+    let cache = cache_dir();
+    let lib = cache.join("projects").join(format!("lib-{hash:016x}"));
+    build_library_in(path, &rust, &lib)?;
+    let proj = cache.join("projects").join(format!("host-{hash:016x}"));
+    std::fs::create_dir_all(proj.join("src")).map_err(|e| e.to_string())?;
+    let bin = format!("host_{hash:016x}");
+    std::fs::write(
+        proj.join("Cargo.toml"),
+        format!(
+            "[package]\nname = \"{bin}\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\n{} = {{ path = {:?} }}\n\n[workspace]\n",
+            crate_name(path),
+            lib.display().to_string().replace('\\', "/")
+        ),
+    )
+    .map_err(|e| e.to_string())?;
+    let src = std::fs::read_to_string(host).map_err(|e| e.to_string())?;
+    std::fs::write(proj.join("src").join("main.rs"), src).map_err(|e| e.to_string())?;
+    let target = cache.join("target");
+    let out = std::process::Command::new("cargo")
+        .args(["build", "--release", "--quiet", "--manifest-path"])
+        .arg(proj.join("Cargo.toml"))
+        .env("CARGO_TARGET_DIR", &target)
+        .output()
+        .map_err(|_| "building needs Rust, and it isn't installed.".to_string())?;
+    if !out.status.success() {
+        return Err(format!(
+            "the Rust program using it didn't build:\n{}",
+            String::from_utf8_lossy(&out.stderr)
+        ));
+    }
+    Ok(target.join("release").join(format!("{bin}{}", std::env::consts::EXE_SUFFIX)))
 }
 
 pub fn build_native(path: &Path, rust: &str) -> Result<std::path::PathBuf, String> {

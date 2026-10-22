@@ -1,0 +1,44 @@
+-- A game's logic in Lust, built as a Rust library and used by a Rust program (game.host.rs)
+-- standing in for an engine. Entity's native methods have their bodies in that program.
+fetch "engine/entity":Entity;
+get "engine/entity":now;
+
+class Weapon {
+    has {
+        string name = "Pistol";
+        int ammo = 3;
+        float lastShot = -10.0;
+        float cooldown = 0.5;
+    }
+
+    method bool canFire() {
+        return ammo > 0 && now() - lastShot >= cooldown;
+    }
+
+    method bool fire(Entity by) {
+        is not canFire()? then {
+            by:say("click");
+            return false;
+        }
+        ammo = ammo - 1;
+        lastShot = now();
+        by:moveBy(-0.25);
+        by:say(name + " fires, " + ammo.text() + " left");
+        return true;
+    }
+}
+
+object Score {
+    has {
+        int shots = 0;
+    }
+}
+
+method int damage(int base, bool critical) {
+    return either critical? base * 2 or base;
+}
+
+print("game code loaded");
+
+pass Weapon, Score, damage;
+end

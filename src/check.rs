@@ -117,6 +117,8 @@ pub struct Info {
     pub view_opens: HashMap<usize, usize>,
     /// A piece in a loop over a map or cMap: the loop keys that tell its pieces apart.
     pub piece_keys: HashMap<usize, Vec<String>>,
+    /// Where native methods are declared: their bodies are outside Lust.
+    pub natives: std::collections::HashSet<Pos>,
     /// Saves, by name: what each one holds.
     pub saves: HashMap<String, Vec<(String, SaveItem)>>,
     pub states: Vec<StateInfo>,
@@ -1233,6 +1235,35 @@ impl<'a> Checker<'a> {
             None => self.info.methods.get(&m.name).cloned(),
         };
         let Some(sig) = sig else { return };
+        if m.native {
+            // Its body is in Rust (or the host's Lua), so what goes in and out has to be something
+            // both sides know.
+            let plain = |t: &Ty| matches!(t, Ty::Int | Ty::Float | Ty::Str | Ty::Truth | Ty::Class(_) | Ty::Void | Ty::Error);
+            for (p, (_, ty)) in m.params.iter().zip(&sig.params) {
+                if !plain(ty) {
+                    self.err(
+                        p.pos,
+                        format!(
+                            "a native method takes ints, floats, text, bools and things made from classes, but {} is {}.",
+                            p.name,
+                            self.a(ty)
+                        ),
+                    );
+                }
+            }
+            if !plain(&sig.ret) {
+                self.err(
+                    m.pos,
+                    format!(
+                        "a native method gives back an int, a float, text, a bool or a thing made from a class, but {} gives back {}.",
+                        m.name,
+                        self.a(&sig.ret)
+                    ),
+                );
+            }
+            self.info.natives.insert(m.pos);
+            return;
+        }
         let mut ctx = Ctx {
             class,
             ret: Some(sig.ret.clone()),

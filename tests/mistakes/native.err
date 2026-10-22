@@ -1,0 +1,6 @@
+native.lsc:7:29  a native method takes ints, floats, text, bools and things made from classes, but names is a string array.
+native.lsc:8:20  a native method gives back an int, a float, text, a bool or a thing made from a class, but hits gives back an int map.
+native.lsc:9:36  missing ; at the end of this line.
+native.lsc:12:12  native is one of Lust's own words, so it can't be a name.
+
+4 mistakes. Nothing was run.

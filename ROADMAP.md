@@ -23,6 +23,7 @@ The order Lust gets built in. Each step makes Lust more useful on its own, and n
 | ✅ | **9.4 Inputs:** `input`, `checkbox` and `slider` bound to fields, with typing, selecting, the clipboard, focus and the keyboard | Done (alpha 14) |
 | ✅ | **9.5 Scrolling, images and timers:** `scroll` with the wheel and a knob, `image` for PNG and JPEG files, `every` for timers | Done (alpha 15) |
 | ✅ | **9.6 Polish:** painting several times faster, hover fades and pressed buttons, `disabled`, undo and redo in inputs, titles that follow the data, `lust new name app` | Done (alpha 16) |
+| ✅ | **10. Lust inside other programs:** `native` methods whose bodies are in the program using Lust, and `lust build --library` for a Rust library (the first step towards Solis) | Done (alpha 20) |
 | | 🏁 *The Lust 2.0 release.* | Next |
 
 ## Decisions along the way
@@ -31,3 +32,4 @@ The order Lust gets built in. Each step makes Lust more useful on its own, and n
 - **Saves are readable JSON files** (`name.save`), as the rulebook asked, not databases.
 - **`view` is our own, all the way down,** and it comes last, once everything it builds on has settled. Most of the remaining work is here.
 - **Servers read and answer requests several at once,** while the methods that answer run one at a time.
+- **An engine describes itself in ordinary Lust files,** with `native` methods, instead of Lust having a special `fetch solis;`. The engine writes the files (one per topic, like `solis/entity.lst`), games fetch them like any other file, and the same works for any program Lust is part of.
