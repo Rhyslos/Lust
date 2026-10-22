@@ -36,13 +36,28 @@ fn clean(s: &str) -> String {
     s.replace("\r\n", "\n").trim_end().to_string()
 }
 
-pub fn run_folder(folder: &Path) -> ExitCode {
-    if !folder.is_dir() {
-        eprintln!("there's no folder called {}.", folder.display());
+pub fn run_folder(path: &Path) -> ExitCode {
+    // A full path, so a test given as just player.lst still has a folder to run in.
+    let full = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
+    let path = full.as_path();
+    // One test file (lust test tests/player.lst) runs on its own; a folder runs every test in it.
+    let one = path.is_file() && matches!(path.extension().and_then(|e| e.to_str()), Some("lst" | "lsc"));
+    if !one && !path.is_dir() {
+        eprintln!("there's no folder called {}.", path.display());
         return ExitCode::from(2);
     }
+    if one && !(path.with_extension("out").exists() || path.with_extension("err").exists()) {
+        eprintln!("{} isn't a test: it needs a .out file next to it with what it should print, or a .err with the mistakes it should report.", path.display());
+        return ExitCode::from(2);
+    }
+    let parent = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
+    let folder = if one { parent } else { path };
     let mut files = Vec::new();
-    find(folder, &mut files);
+    if one {
+        files.push(path.to_path_buf());
+    } else {
+        find(folder, &mut files);
+    }
     let exe = std::env::current_exe().expect("lust's own path");
     let mut failed = 0;
     for f in &files {

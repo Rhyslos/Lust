@@ -84,7 +84,7 @@ The second line makes `tests/run/player` (`player.exe` on Windows), a real progr
 | `lust build file.lsc` | writes the Lua next to it, as `file.lua`, ready for Garry's Mod or any Lua host |
 | `lust lua file` | shows the Lua it turns into |
 | `lust rust file.lst` | shows the Rust it turns into |
-| `lust test tests` | runs the test programs, both ways |
+| `lust test tests` | runs the test programs, both ways. `lust test tests/player.lst` runs one |
 
 Mistakes come out all at once, before anything runs:
 
