@@ -1,0 +1,15 @@
+-- What a native method takes and gives back has to be something Rust and Lust both know.
+class Entity {
+    has {
+        int id = 0;
+    }
+
+    method tag(string array names) native;
+    method int map hits() native;
+    method say(string words) native
+}
+
+method int native() {
+    return 1;
+}
+end

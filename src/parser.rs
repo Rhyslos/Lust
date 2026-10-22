@@ -7,7 +7,8 @@ use crate::lexer::{Tk, Token};
 pub const RESERVED: &[&str] = &[
     "class", "object", "node", "assembly", "create", "has", "method", "hook", "return", "like", "new", "nothing", "schema", "route",
     "view", "style", "keep", "pass", "fetch", "get", "lua", "is", "then", "or", "either", "not", "true", "false", "loop", "stop", "skip",
-    "in", "try", "error", "state", "save", "load", "saved", "end", "database", "int", "float", "string", "bool", "array", "cMap", "map",
+    "in", "try", "error", "state", "save", "load", "saved", "end", "database", "int", "float", "string", "bool", "array", "native", "cMap",
+    "map",
 ];
 /// The pieces a view is made of.
 pub const ELEMENTS: &[&str] = &[
@@ -991,6 +992,18 @@ impl<'a> Parser<'a> {
             }
         }
         self.next();
+        if self.at_word("native") {
+            self.next();
+            self.semi()?;
+            return Ok(MethodDecl {
+                name,
+                pos,
+                ret,
+                params,
+                body: vec![],
+                native: true,
+            });
+        }
         let body = self.block("the method")?;
         Ok(MethodDecl {
             name,
@@ -998,6 +1011,7 @@ impl<'a> Parser<'a> {
             ret,
             params,
             body,
+            native: false,
         })
     }
 

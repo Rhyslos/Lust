@@ -1,0 +1,24 @@
+-- In LustScript, a native method's body is the host's own Lua function: one with the same
+-- name, or Class_method for a class's method, given the thing first.
+fetch lua;
+
+class Entity {
+    has {
+        int id = 0;
+    }
+
+    method say(string words) native;
+}
+
+method int roll() native;
+
+-- Here this file plays the host, and makes those functions itself.
+lua {
+    function roll() return 4 end
+    function Entity_say(self, words) print("entity " .. self.id .. " says " .. words) end
+};
+
+Entity e = new Entity { id = 3 };
+e:say("hello");
+print(roll() + 1);
+end

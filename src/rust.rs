@@ -31,6 +31,8 @@ fn serves(info: &Info) -> bool {
 
 struct W<'a> {
     info: &'a Info,
+    /// Writing a library for another Rust program, not a program of its own.
+    library: bool,
     /// Row structs for cMaps, by their columns.
     rows: Vec<Vec<(String, Ty)>>,
     tmp: usize,
@@ -47,10 +49,15 @@ struct W<'a> {
     named_styles: std::collections::HashMap<String, Vec<StyleItem>>,
 }
 
-pub fn write(prog: &Program, info: &Info, files: &[String]) -> String {
+/// `library`: a Rust library for another Rust program to use (lust build --library), instead of a
+/// program of its own.
+pub fn write(prog: &Program, info: &Info, files: &[String], library: bool) -> String {
     let file = &files[0];
+    // What native methods ask of the program using the library: one function each.
+    let mut host_fns: Vec<String> = Vec::new();
     let mut w = W {
         info,
+        library,
         rows: vec![],
         tmp: 0,
         class: None,
@@ -174,8 +181,20 @@ pub fn write(prog: &Program, info: &Info, files: &[String]) -> String {
             let ret = w.ret(&sig.ret);
             let mut b = String::from("    let _depth = rt::Depth::enter();\n");
             w.current_ret = Some(sig.ret.clone());
+            if m.native {
+                let name = format!("{}_{}", snake(&c.name), snake(&m.name));
+                let mut decl = vec!["&self".to_string(), format!("this: &{}", ident(&c.name))];
+                let mut args = vec![format!("&{}(this.clone())", ident(&c.name))];
+                for (p, (_, t)) in m.params.iter().zip(&sig.params) {
+                    decl.push(format!("{}: {}", snake(&p.name), w.api_ty(t)));
+                    args.push(w.to_api(&format!("v_{}", p.name), t));
+                }
+                host_fns.push(format!("    fn {name}({}){};\n", decl.join(", "), w.api_ret(&sig.ret)));
+                let shown = format!("{}:{}", crate::ast::shown(&c.name), m.name);
+                b.push_str(&w.native_body(&name, &shown, &args, &sig.ret));
+            }
             w.stmts(&m.body, &mut b, 1);
-            if sig.ret != Ty::Void {
+            if sig.ret != Ty::Void && !m.native {
                 b.push_str("    rt::unreachable()\n");
             }
             let mut all = vec![format!("this: &Rc<RefCell<O{root}>>")];
@@ -276,8 +295,19 @@ pub fn write(prog: &Program, info: &Info, files: &[String]) -> String {
             let mut b = String::from("    let _depth = rt::Depth::enter();\n");
             w.class = None;
             w.current_ret = Some(sig.ret.clone());
+            if m.native {
+                let name = snake(&m.name);
+                let mut decl = vec!["&self".to_string()];
+                let mut args = Vec::new();
+                for (p, (_, t)) in m.params.iter().zip(&sig.params) {
+                    decl.push(format!("{}: {}", snake(&p.name), w.api_ty(t)));
+                    args.push(w.to_api(&format!("v_{}", p.name), t));
+                }
+                host_fns.push(format!("    fn {name}({}){};\n", decl.join(", "), w.api_ret(&sig.ret)));
+                b.push_str(&w.native_body(&name, crate::ast::shown(&m.name), &args, &sig.ret));
+            }
             w.stmts(&m.body, &mut b, 1);
-            if sig.ret != Ty::Void {
+            if sig.ret != Ty::Void && !m.native {
                 b.push_str("    rt::unreachable()\n");
             }
             defs.push_str(&format!(
@@ -392,9 +422,38 @@ pub fn write(prog: &Program, info: &Info, files: &[String]) -> String {
         i += 1;
     }
 
+    // Native methods: their bodies are in the program that uses this as a library.
+    let mut host = String::new();
+    if !host_fns.is_empty() && library {
+        let vis = "pub ";
+        host.push_str(&format!(
+            "/// What this Lust code's native methods need from the program using it: implement it,\n/// then hand it over with set_host before start.\n{vis}trait Host {{\n{}}}\nthread_local! {{ static HOST: RefCell<Option<Rc<dyn Host>>> = RefCell::new(None); }}\n",
+            host_fns.concat()
+        ));
+        if library {
+            host.push_str("/// Gives the Lust code the program's side of its native methods. Call it before start.\npub fn set_host(h: impl Host + 'static) {\n    HOST.with(|x| *x.borrow_mut() = Some(Rc::new(h)));\n}\n");
+        }
+        host.push_str(&format!(
+            "fn host() -> Rc<dyn Host> {{\n    HOST.with(|x| x.borrow().clone()).unwrap_or_else(|| rt::fail({:?}.into()))\n}}\n",
+            if library {
+                "a native method was called before set_host gave Lust the program's side of it."
+            } else {
+                "native methods only work in a library (lust build --library), used by the program that has their bodies."
+            }
+        ));
+    }
+    let files_list = files.iter().map(|f| format!("{f:?}")).collect::<Vec<_>>().join(", ");
+    let ending = if library {
+        let api = w.library_api(prog, &class_decls);
+        format!(
+            "{host}{api}\nconst FILES: &[&str] = &[{files_list}];\n\n/// Runs the Lust code's own start: makes its objects, then runs the code written outside\n/// classes and methods. Call it once, before anything else.\npub fn start() -> Result<(), String> {{\n    rt::catch(FILES, || {{ rt::started(); program() }})\n}}\n\nfn program() {{\n{body}}}\n"
+        )
+    } else {
+        format!("{host}\nfn program() {{\n{body}}}\n\nfn main() {{\n    rt::main(program, &[{files_list}]);\n}}\n")
+    };
+    let what = if library { "a Rust library" } else { "a program" };
     format!(
-        "// Written by Lust from {file}. It's rewritten on every build, so don't edit it.\n#![allow(warnings)]\nuse std::cell::RefCell;\nuse std::rc::Rc;\n\nmod rt {{\n{RUNTIME}\n{db}}}\n\n{rows}{defs}\nfn program() {{\n{body}}}\n\nfn main() {{\n    rt::main(program, &[{files}]);\n}}\n",
-        files = files.iter().map(|f| format!("{f:?}")).collect::<Vec<_>>().join(", "),
+        "// Written by Lust from {file}, as {what}. It's rewritten on every build, so don't edit it.\n#![allow(warnings)]\nuse std::cell::RefCell;\nuse std::rc::Rc;\n\nmod rt {{\n{RUNTIME}\n{db}}}\n\n{rows}{defs}{ending}",
         db = {
             let mut m = format!("pub const UI_PROGRAM: bool = {};\n", views(info));
             if !info.databases.is_empty() {
@@ -415,6 +474,36 @@ pub fn write(prog: &Program, info: &Info, files: &[String]) -> String {
             m
         }
     )
+}
+
+/// What a native method says when it's run without a program to give its body.
+pub fn native_alone(shown: &str) -> String {
+    format!("{shown} is native: its body is in the Rust program that uses this Lust as a library (lust build --library), so it can't run on its own.")
+}
+
+/// A Lust name as Rust writes names of functions and fields: moveTo becomes move_to.
+fn snake(name: &str) -> String {
+    let mut out = String::new();
+    for (i, ch) in crate::ast::shown(name).chars().enumerate() {
+        if ch.is_ascii_uppercase() {
+            if i > 0 {
+                out.push('_');
+            }
+            out.push(ch.to_ascii_lowercase());
+        } else {
+            out.push(ch);
+        }
+    }
+    const KEYWORDS: &[&str] = &[
+        "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum", "extern", "false", "fn", "for", "if", "impl",
+        "in", "let", "loop", "match", "mod", "move", "mut", "pub", "ref", "return", "static", "struct", "super", "trait", "true", "type",
+        "unsafe", "use", "where", "while", "box", "final", "macro", "override", "priv", "typeof", "unsized", "virtual", "yield", "try",
+    ];
+    if KEYWORDS.contains(&out.as_str()) {
+        format!("r#{out}")
+    } else {
+        out
+    }
 }
 
 /// Whether the program has anything to do with screens.
@@ -672,6 +761,175 @@ impl<'a> W<'a> {
             String::new()
         } else {
             format!(" -> {}", self.ty(t))
+        }
+    }
+
+    // ----- a library's side that the program using it sees -----
+
+    /// The Rust the program using a library sees. Every class gets a type of its own (so native
+    /// methods can name them), and what the first file passes gets made, read, changed and called.
+    /// Each call gives back Lust's failure as text instead of stopping the program.
+    fn library_api(&mut self, prog: &Program, class_decls: &[&ClassDecl]) -> String {
+        let info = self.info;
+        let exported = |n: &str| prog.passes.iter().any(|(p, _)| p == n);
+        let plain = |t: &Ty| matches!(t, Ty::Int | Ty::Float | Ty::Str | Ty::Truth | Ty::Class(_));
+        let mut out = String::new();
+        for (ci, c) in info.classes.iter().enumerate() {
+            let root = self.root(ci);
+            let w = ident(&c.name);
+            let shown = crate::ast::shown(&c.name).to_string();
+            let an = if shown.starts_with(['A', 'E', 'I', 'O', 'U']) { "An" } else { "A" };
+            out.push_str(&format!(
+                "\n/// {an} {shown} from Lust.\n#[derive(Clone)]\npub struct {w}(Rc<RefCell<O{root}>>);\n"
+            ));
+            // Classes with native methods belong to the program using the library, so it always
+            // sees all of them. Otherwise, what the first file passes.
+            let owned = class_decls.iter().any(|d| d.name == c.name && d.methods.iter().any(|m| m.native));
+            if !exported(&c.name) && !owned {
+                continue;
+            }
+            let mut items = String::new();
+            if c.is_object {
+                items.push_str(&format!(
+                    "    /// The one {shown}. start must have run first.\n    pub fn get() -> {w} {{\n        {w}(obj{ci}())\n    }}\n"
+                ));
+            } else if !c.is_node && !class_decls.iter().any(|d| d.name == c.name && d.is_schema) {
+                items.push_str(&format!(
+                    "    /// A new {shown}, with its fields' starting values.\n    pub fn new() -> Result<{w}, String> {{\n        rt::catch(FILES, || {w}(new{ci}()))\n    }}\n"
+                ));
+            }
+            let mut seen: Vec<String> = Vec::new();
+            let mut methods: Vec<(usize, String, crate::check::MethodSig)> = Vec::new();
+            let mut cur = Some(ci);
+            while let Some(k) = cur {
+                let mut names: Vec<&String> = info.classes[k].methods.keys().collect();
+                names.sort();
+                for m in names {
+                    if !methods.iter().any(|(_, n, _)| n == m) {
+                        methods.push((k, m.clone(), info.classes[k].methods[m].clone()));
+                    }
+                }
+                cur = info.classes[k].parent;
+            }
+            let mut cur = Some(ci);
+            while let Some(k) = cur {
+                for f in &info.classes[k].fields {
+                    if !plain(&f.ty) || seen.contains(&f.name) || methods.iter().any(|(_, n, _)| *n == f.name) {
+                        continue;
+                    }
+                    seen.push(f.name.clone());
+                    let field = self.fname(k, &f.name);
+                    let ty = self.api_ty(&f.ty);
+                    let get = snake(&f.name);
+                    let set = snake(&format!("set{}{}", f.name[..1].to_uppercase(), &f.name[1..]));
+                    items.push_str(&format!(
+                        "    pub fn {get}(&self) -> Result<{ty}, String> {{\n        rt::catch(FILES, || {{ let v = self.0.borrow().{field}.clone(); {} }})\n    }}\n",
+                        self.to_api("v", &f.ty)
+                    ));
+                    items.push_str(&format!(
+                        "    pub fn {set}(&self, v: {ty}) -> Result<(), String> {{\n        rt::catch(FILES, || {{ let v = {}; self.0.borrow_mut().{field} = v; }})\n    }}\n",
+                        self.from_api("v", &f.ty)
+                    ));
+                }
+                cur = info.classes[k].parent;
+            }
+            for (_, m, sig) in &methods {
+                if !sig.params.iter().all(|(_, t)| plain(t)) || !(sig.ret == Ty::Void || plain(&sig.ret)) {
+                    continue;
+                }
+                let mut decl = vec!["&self".to_string()];
+                let mut args = vec!["&self.0".to_string()];
+                for (p, t) in &sig.params {
+                    decl.push(format!("{}: {}", snake(p), self.api_ty(t)));
+                    args.push(self.from_api(&snake(p), t));
+                }
+                let ret = self.api_ty(&sig.ret);
+                items.push_str(&format!(
+                    "    pub fn {}({}) -> Result<{ret}, String> {{\n        rt::catch(FILES, || {{ let out = d{root}_{m}({}); {} }})\n    }}\n",
+                    snake(m),
+                    decl.join(", "),
+                    args.join(", "),
+                    self.to_api("out", &sig.ret)
+                ));
+            }
+            out.push_str(&format!("impl {w} {{\n{items}}}\n"));
+        }
+        for item in &prog.items {
+            let Item::Method(m) = item else { continue };
+            if !exported(&m.name) {
+                continue;
+            }
+            let sig = info.methods[&m.name].clone();
+            if !sig.params.iter().all(|(_, t)| plain(t)) || !(sig.ret == Ty::Void || plain(&sig.ret)) {
+                continue;
+            }
+            let mut decl = Vec::new();
+            let mut args = Vec::new();
+            for (p, t) in &sig.params {
+                decl.push(format!("{}: {}", snake(p), self.api_ty(t)));
+                args.push(self.from_api(&snake(p), t));
+            }
+            let ret = self.api_ty(&sig.ret);
+            out.push_str(&format!(
+                "\npub fn {}({}) -> Result<{ret}, String> {{\n    rt::catch(FILES, || {{ let out = t_{}({}); {} }})\n}}\n",
+                snake(&m.name),
+                decl.join(", "),
+                ident(&m.name),
+                args.join(", "),
+                self.to_api("out", &sig.ret)
+            ));
+        }
+        out
+    }
+
+    /// A type as the program using a library sees it: plain Rust, and classes by name.
+    fn api_ty(&mut self, t: &Ty) -> String {
+        match t {
+            Ty::Int => "i64".into(),
+            Ty::Float => "f64".into(),
+            Ty::Str => "String".into(),
+            Ty::Truth => "bool".into(),
+            Ty::Class(c) => format!("Option<{}>", ident(&self.info.classes[*c].name)),
+            Ty::Void => "()".into(),
+            other => self.ty(other),
+        }
+    }
+
+    fn api_ret(&mut self, t: &Ty) -> String {
+        if *t == Ty::Void {
+            String::new()
+        } else {
+            format!(" -> {}", self.api_ty(t))
+        }
+    }
+
+    /// A Lust value handed out: things made from classes get their class's own Rust type.
+    fn to_api(&self, code: &str, t: &Ty) -> String {
+        match t {
+            Ty::Class(c) => format!("{code}.clone().map({})", ident(&self.info.classes[*c].name)),
+            _ => code.to_string(),
+        }
+    }
+
+    /// A value coming in from the program using the library.
+    fn from_api(&self, code: &str, t: &Ty) -> String {
+        match t {
+            Ty::Class(_) => format!("{code}.map(|w| w.0)"),
+            _ => code.to_string(),
+        }
+    }
+
+    /// A native method's body: the program using the library does the work. A program of its own
+    /// has no such program, so it stops with the same message lust run gives.
+    fn native_body(&self, name: &str, shown: &str, args: &[String], ret: &Ty) -> String {
+        if !self.library {
+            return format!("    rt::fail({:?}.into());\n", native_alone(shown));
+        }
+        let call = format!("host().{name}({})", args.join(", "));
+        if *ret == Ty::Void {
+            format!("    {call};\n")
+        } else {
+            format!("    let r = {call};\n    return {};\n", self.from_api("r", ret))
         }
     }
 

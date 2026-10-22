@@ -6,6 +6,9 @@
 //!
 //! A program with neither .out nor .err is a helper, and is skipped.
 //!
+//! A program with a name.host.rs next to it is built as a Rust library instead, and that Rust
+//! program, which uses it, is run.
+//!
 //! Database files (.db) next to a test are removed before each run, so every run starts fresh.
 //!
 //! A .lst program without mistakes runs twice: through Lua, then built for real
@@ -46,6 +49,20 @@ pub fn run_folder(folder: &Path) -> ExitCode {
         let rel = f.strip_prefix(folder).unwrap_or(f).display().to_string();
         let dir = f.parent().unwrap();
         let name = f.file_name().unwrap();
+        // name.host.rs: a Rust program that uses this Lust file as a library.
+        let host = f.with_extension("host.rs");
+        if host.exists() {
+            let problems = match crate::build_host(f, &host) {
+                Ok(built) => {
+                    let mut cmd = Command::new(&built);
+                    cmd.current_dir(dir);
+                    compare(f, cmd).into_iter().map(|p| format!("as a library, {p}")).collect()
+                }
+                Err(e) => vec![format!("it didn't build as a library:\n{}", indent(&e))],
+            };
+            report(&rel, problems, &mut failed);
+            continue;
+        }
         let mut cmd = Command::new(&exe);
         cmd.arg("run").arg(name).current_dir(dir);
         let mut problems = compare(f, cmd);
@@ -64,15 +81,7 @@ pub fn run_folder(folder: &Path) -> ExitCode {
                 None => {}
             }
         }
-        if problems.is_empty() {
-            println!("  ok    {rel}");
-        } else {
-            failed += 1;
-            println!("  FAIL  {rel}");
-            for p in problems {
-                println!("{}", indent(&p));
-            }
-        }
+        report(&rel, problems, &mut failed);
     }
     println!();
     if failed == 0 {
@@ -81,6 +90,18 @@ pub fn run_folder(folder: &Path) -> ExitCode {
     } else {
         println!("{failed} of {} tests failed.", files.len());
         ExitCode::from(1)
+    }
+}
+
+fn report(rel: &str, problems: Vec<String>, failed: &mut usize) {
+    if problems.is_empty() {
+        println!("  ok    {rel}");
+    } else {
+        *failed += 1;
+        println!("  FAIL  {rel}");
+        for p in problems {
+            println!("{}", indent(&p));
+        }
     }
 }
 

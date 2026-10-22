@@ -290,6 +290,13 @@ impl<'a> W<'a> {
                 let params: Vec<String> = m.params.iter().map(|p| lname(&p.name)).collect();
                 self.line(m.pos.line, &format!("{} = function({})", lname(&m.name), params.join(", ")));
                 self.indent += 1;
+                if m.native {
+                    // The host's own Lua function with the same name does the work.
+                    let shown = crate::ast::shown(&m.name);
+                    let mut args = vec![lua_string(shown), lua_string(shown)];
+                    args.extend(params.iter().cloned());
+                    self.line(m.pos.line, &format!("return _L.native({})", args.join(", ")));
+                }
                 self.stmts(&m.body);
                 self.indent -= 1;
                 self.line(m.pos.line, "end");
@@ -386,6 +393,18 @@ impl<'a> W<'a> {
             let params: Vec<String> = m.params.iter().map(|p| lname(&p.name)).collect();
             self.line(m.pos.line, &format!("function {table}:{}({})", lname(&m.name), params.join(", ")));
             self.indent += 1;
+            if m.native {
+                // The host's own Lua function, Class_method, does the work, given the thing first.
+                let cn = crate::ast::shown(&c.name);
+                let shown = crate::ast::shown(&m.name);
+                let mut args = vec![
+                    lua_string(&format!("{cn}_{shown}")),
+                    lua_string(&format!("{cn}:{shown}")),
+                    "self".to_string(),
+                ];
+                args.extend(params.iter().cloned());
+                self.line(m.pos.line, &format!("return _L.native({})", args.join(", ")));
+            }
             self.stmts(&m.body);
             self.indent -= 1;
             self.line(m.pos.line, "end");

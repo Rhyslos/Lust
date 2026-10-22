@@ -1,0 +1,15 @@
+-- A native method's body is in the Rust program that uses this as a library, so on its own
+-- (through Lua, or built as a program) calling it stops with a message that says so.
+class Entity {
+    has {
+        int id = 0;
+    }
+
+    method say(string words) native;
+}
+
+Entity e = new Entity { id = 3 };
+print("before");
+e:say("hi");
+print("never");
+end

@@ -1,0 +1,15 @@
+-- What the engine offers: made by the engine, bodies in Rust.
+class Entity {
+    has {
+        int id = 0;
+    }
+
+    method float x() native;
+    method moveBy(float dx) native;
+    method say(string words) native;
+}
+
+method float now() native;
+
+pass Entity, now;
+end

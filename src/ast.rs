@@ -247,6 +247,9 @@ pub struct MethodDecl {
     pub ret: Option<TypeRef>,
     pub params: Vec<Param>,
     pub body: Vec<Stmt>,
+    /// `method Vector3 position() native;`: the body is outside Lust, in the program that uses
+    /// this Lust as a library (or, in LustScript, the host's Lua).
+    pub native: bool,
 }
 
 #[derive(Clone)]

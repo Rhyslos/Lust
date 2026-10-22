@@ -1,0 +1,1 @@
+native-alone.lst:13  Entity:say is native: its body is in the Rust program that uses this Lust as a library (lust build --library), so it can't run on its own.

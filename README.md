@@ -41,7 +41,7 @@ This is **Lust 2**, a fresh start written in Rust. One language, two outputs:
 | Rust, compiled to real programs | `.lst` | apps, tools and servers on Windows, macOS and Linux |
 | LustScript, turned into Lua | `.lsc` | scripting and modding inside other programs, like Garry's Mod, Aventail and Halberd |
 
-**What works today (alpha 19):** both outputs. Every file is checked before anything runs, with mistakes explained in plain words.
+**What works today (alpha 20):** both outputs. Every file is checked before anything runs, with mistakes explained in plain words.
 
 - `.lsc` files turn into plain Lua 5.1 that Garry's Mod (LuaJIT) and Luau can run.
 - `.lst` files turn into Rust, which builds into a real program (an `.exe` on Windows) that runs without Lust.
@@ -50,6 +50,7 @@ This is **Lust 2**, a fresh start written in Rust. One language, two outputs:
 - Saves, and databases on SQLite whose tables work like cMaps.
 - Servers: `route` blocks answered by methods, with `schema`s for the data coming in, and `Web:get`/`Web:post` for asking other sites.
 - Windows: an assembly with a `view` opens a window drawn entirely by Lust, with text, buttons, layout, styles, pieces of your own made from other assemblies, and inputs, checkboxes and sliders that change fields as you use them, scrolling, pictures and timers.
+- Lust inside other programs: `lust build --library` makes a Rust library for a Rust program (like a game engine) to use, and `native` methods have their bodies in that program.
 - `lust run` runs either kind straight away, with Lua built into `lust` itself, so nothing else needs installing. Building a real program needs Rust installed.
 
 Every test runs both ways, through Lua and as a real program, and both have to print exactly the same.
@@ -77,6 +78,7 @@ The second line makes `tests/run/player` (`player.exe` on Windows), a real progr
 | `lust new name app` | the same, starting with a window and a piece of it in `ui/` |
 | `lust check file` | only checks, and lists any mistakes |
 | `lust build file.lst` | builds a real program next to it, through Rust |
+| `lust build file.lst --library` | makes a Rust library from it, for a Rust program (like a game engine) to use. See LUST.md section 21 |
 | `lust build file.lsc` | writes the Lua next to it, as `file.lua`, ready for Garry's Mod or any Lua host |
 | `lust lua file` | shows the Lua it turns into |
 | `lust rust file.lst` | shows the Rust it turns into |
