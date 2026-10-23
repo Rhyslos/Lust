@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (2.0 alpha 23):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (2.0 alpha 24):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -576,7 +576,7 @@ An assembly with a `view` opens a window with `App:open();`, through `lust run` 
 - **Your own pieces:** any assembly with a view, used inside another view as `TodoRow { label = task };`, from the same file or fetched from files in `ui/` folders (see below).
 - **Styles and layout:** every word in the list below, `hover:[ … ]` included, plus named styles (`style chip = [pad 6, round];`). Text wraps onto more lines when it doesn't fit.
 - **Questions and loops** inside a view.
-- **The window's settings:** `title`, `width`, `height`, `minWidth`, `minHeight` and `background`. They're worked out each time the view is drawn, so a title can show the data: `view [title "To do (" + (#todos).text() + ")"]`.
+- **The window's settings:** `title`, `width`, `height`, `minWidth`, `minHeight`, `background`, `font` and `dark`. They're worked out each time the view is drawn, so a title can show the data: `view [title "To do (" + (#todos).text() + ")"]`.
 - **`disabled`** greys out a piece and stops it being clicked, typed in or reached with Tab. It can depend on the data: `button "Save" [disabled name == ""] { … }`.
 - **Undo and redo** in inputs: Ctrl+Z, and Ctrl+Shift+Z or Ctrl+Y (Cmd on a Mac). A run of typing undoes in one go.
 - **Enter and shortcuts:** `input newTodo enter { add(); }` runs a block when Enter is pressed in the input, and `key "ctrl+s" { save(); }` is a keyboard shortcut (see below).
@@ -838,6 +838,14 @@ dialog confirming [width 320] {
 
 A dialog is a column with a white background, rounded corners and room around what it holds; styles change it like any other piece. It takes no room where it's written, so it can go anywhere in the view. Tab goes round the dialog's own pieces, and its `key` shortcuts and timers work only while it's open.
 
+### Dark mode
+
+`dark` in the view's `[ ]` turns the whole window dark. It can depend on the data, so a checkbox or a setting can switch it: `view [title "Notes", dark darkMode]`.
+
+In dark mode the greys turn round: `white` backgrounds become dark ones, the `gray` shades swap ends (so `gray1`, the palest, becomes the darkest), and dark words become light. The window, inputs, buttons, lists and dialogs follow. Other colours stay as they are, except as backgrounds, where their palest shades (`blue1` to `blue3`, and so on) become deep tints of the colour, so a pale background stays a quiet one.
+
+`dark:[ … ]` on a piece holds styles it has only in dark mode, for anything that needs a different colour there: `text "New" [background green1, color green8, dark:[color green3]]`.
+
 ### Tips
 
 `tip "…"` on any piece shows a small note below it when the mouse rests on it for a moment, and hides it when the mouse moves away or clicks: `button "↻" [tip "Load the list again"] { reload(); }`.
@@ -916,6 +924,7 @@ Short words in `[ ]`, in the spirit of Tailwind:
 | shape | `round`, `round 12`, `pill`, `border`, `border red`, `borderWidth 2`, `shadow`, `opacity 0.5` |
 | placement | `left`, `center`, `right` side to side; `top`, `middle`, `bottom` up and down; `spread` |
 | under the mouse | `hover:[ … ]`, `tip "…"` |
+| in dark mode | `dark:[ … ]` |
 | inputs and pictures | `placeholder "…"`, `from`, `to`, `step`, `cover` |
 | words | `font "file.ttf"` |
 | off | `disabled`, or `disabled` with a bool: `disabled not ready` |

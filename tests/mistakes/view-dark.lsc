@@ -1,0 +1,15 @@
+-- Mistakes with dark mode.
+assembly App {
+    has {
+        int night = 1;
+    }
+
+    view [dark night] {
+        column [dark:[glow 2]] {
+            text "Hi" [dark 5];
+        }
+    }
+}
+
+App:open();
+end

@@ -1,0 +1,37 @@
+-- Dark mode: the view's [dark] turns the greys round, and dark:[ … ] fine-tunes a piece.
+assembly App {
+    has {
+        bool night = true;
+        string name = "Ada";
+        int level = 40;
+        bool pick = true;
+    }
+
+    view [title "Dark", width 380, height 320, dark night, background gray1] {
+        column [gap 10, pad 16] {
+            column [pad 14, gap 8, round 10, background white, shadow, width fill] {
+                text "Settings" [bold, large];
+                text "Words are light in the dark" [muted];
+                input name [width fill];
+                row [gap 8] {
+                    checkbox pick;
+                    text "Night";
+                    space;
+                    slider level [width 120];
+                }
+                row [gap 8] {
+                    button "Save" [blue] { night = night; }
+                    button "Later" { night = night; }
+                    text "tag" [pad 4, round, background blue1, color blue7, dark:[color blue3]];
+                }
+            }
+            row [gap 8] {
+                checkbox night;
+                text "Dark mode";
+            }
+        }
+    }
+}
+
+App:open();
+end

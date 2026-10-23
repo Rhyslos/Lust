@@ -447,11 +447,66 @@ pub fn colour(v: &str) -> Option<u32> {
         };
         return u32::from_str_radix(&full, 16).ok();
     }
-    named(v)
+    // In dark mode the greys turn round.
+    named(v).map(nt)
+}
+
+/// A colour for a background. In dark mode the palest shades of a colour (1 to 3) become deep
+/// tints of it, so a light background stays a quiet one.
+fn bg_colour(v: &str) -> Option<u32> {
+    let c = colour(v)?;
+    let shade = v.chars().last().and_then(|d| d.to_digit(10)).filter(|&d| (1..=3).contains(&d) && !v.starts_with("gray"));
+    Some(match shade {
+        Some(d) if dark() => mix(named(&format!("{}8", &v[..v.len() - 1])).unwrap_or(c), 0x1a1b1e, [0.78, 0.66, 0.52][d as usize - 1]),
+        _ => c,
+    })
 }
 
 const INK: u32 = 0x1f2328;
 const MUTED: u32 = 0x6b7280;
+
+thread_local! {
+    /// Whether the window is in dark mode, from its view's [dark].
+    static DARK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+fn dark() -> bool {
+    DARK.with(|d| d.get())
+}
+
+/// A light neutral colour as it is in dark mode: the greys turn round, so white backgrounds become
+/// dark ones and dark words light ones. Other colours stay as they are.
+fn nt(c: u32) -> u32 {
+    if !dark() {
+        return c;
+    }
+    match c {
+        0xffffff => 0x25262b,
+        0xf8f9fa => 0x1a1b1e,
+        0xf1f3f5 => 0x2c2e33,
+        0xe9ecef => 0x373a40,
+        0xdee2e6 => 0x41444b,
+        0xced4da => 0x5c5f66,
+        0xadb5bd => 0x75787f,
+        0x868e96 => 0x909296,
+        0x495057 => 0xa6a7ab,
+        0x212529 => 0xc1c2c5,
+        0x000000 => 0xf1f3f5,
+        INK => 0xdcdde0,
+        MUTED => 0x95979c,
+        0xe7f5ff => 0x1d3a57,
+        other => other,
+    }
+}
+
+/// The colour a scroll bar's knob is drawn in, and how strongly.
+fn knob() -> (u32, f32) {
+    if dark() {
+        (0xffffff, 0.3)
+    } else {
+        (0x000000, 0.28)
+    }
+}
 
 fn mix(a: u32, b: u32, t: f32) -> u32 {
     let ch = |s: u32| -> [f32; 3] { [((s >> 16) & 255) as f32, ((s >> 8) & 255) as f32, (s & 255) as f32] };
@@ -656,6 +711,14 @@ fn base_look(kind: &str) -> Look {
         "row" => l.valign = Align::Center,
         _ => {}
     }
+    l.color = nt(l.color);
+    l.background = l.background.map(nt);
+    l.border = l.border.map(nt);
+    // A tip stays dark, a little lighter than the window, in dark mode.
+    if kind == "tip" && dark() {
+        l.color = 0xffffff;
+        l.background = Some(0x3f434a);
+    }
     l
 }
 
@@ -715,19 +778,19 @@ fn apply(l: &mut Look, kind: &str, style: &[(String, SV)]) {
                     l.color = c
                 }
             }
-            "background" => l.background = text_of(v).and_then(colour),
+            "background" => l.background = text_of(v).and_then(bg_colour),
             "round" => l.radius = num(v).unwrap_or(8.0),
             "pill" => l.radius = f32::INFINITY,
             "border" => match v {
                 SV::Num(n) => {
                     l.border_w = *n as f32;
-                    l.border = Some(l.border.unwrap_or(0xdee2e6));
+                    l.border = Some(l.border.unwrap_or(nt(0xdee2e6)));
                 }
-                _ => l.border = Some(text_of(v).and_then(colour).unwrap_or(0xdee2e6)),
+                _ => l.border = Some(text_of(v).and_then(colour).unwrap_or(nt(0xdee2e6))),
             },
             "borderWidth" => {
                 l.border_w = num(v).unwrap_or(1.0);
-                l.border = Some(l.border.unwrap_or(0xdee2e6));
+                l.border = Some(l.border.unwrap_or(nt(0xdee2e6)));
             }
             "shadow" => l.shadow = true,
             "opacity" => l.opacity = num(v).unwrap_or(1.0).clamp(0.0, 1.0),
@@ -755,6 +818,7 @@ fn apply(l: &mut Look, kind: &str, style: &[(String, SV)]) {
                 // A colour on its own: a button's colour, or text's.
                 if let Some(c) = colour(other) {
                     if kind == "button" {
+                        let c = bg_colour(other).unwrap_or(c);
                         l.background = Some(c);
                         l.color = if light(c) { INK } else { 0xffffff };
                     } else if matches!(kind, "checkbox" | "slider" | "input") {
@@ -957,6 +1021,15 @@ struct Laid {
 fn lay(n: &Node) -> Laid {
     let mut look = base_look(&n.kind);
     apply(&mut look, &n.kind, &n.style);
+    // dark:[ … ] changes it in dark mode.
+    if dark() {
+        if let Some(d) = n.style.iter().find_map(|(k, v)| match (k.as_str(), v) {
+            ("dark", SV::Nested(d)) => Some(d),
+            _ => None,
+        }) {
+            apply(&mut look, &n.kind, d);
+        }
+    }
     let disabled = look.disabled;
     if disabled {
         look.opacity *= 0.45;
@@ -971,8 +1044,9 @@ fn lay(n: &Node) -> Laid {
         None if n.kind == "button" => {
             let mut hl = look.clone();
             hl.background = Some(match look.background {
+                Some(b) if dark() => mix(b, 0xffffff, 0.08),
                 Some(b) => mix(b, 0x000000, 0.08),
-                None => 0xf1f3f5,
+                None => nt(0xf1f3f5),
             });
             Some(hl)
         }
@@ -1405,18 +1479,18 @@ fn popup_layer(owner: &Laid, hl: Option<usize>, w: f32, h: f32) -> Laid {
         }
         if r.action.is_some() && r.hover.is_none() {
             let mut over = r.look.clone();
-            over.background = Some(0xf1f3f5);
+            over.background = Some(nt(0xf1f3f5));
             r.hover = Some(over);
         }
         if Some(i) == hl {
-            r.look.background = Some(0xe7f5ff);
+            r.look.background = Some(nt(0xe7f5ff));
             r.hover = None;
         }
         r.look.width = Size::Fill;
     }
     let mut list = lay(&Node::new("scroll"));
-    list.look.background = Some(0xffffff);
-    list.look.border = Some(0xdee2e6);
+    list.look.background = Some(nt(0xffffff));
+    list.look.border = Some(nt(0xdee2e6));
     list.look.radius = 8.0;
     list.look.shadow = true;
     list.look.pad = [4.0; 4];
@@ -1697,7 +1771,7 @@ fn blend_look(a: &Look, b: &Look, t: f32) -> Look {
 
 fn ring_around(c: &mut Canvas, n: &Laid, accent: u32) {
     let r = n.look.radius.min(n.w.min(n.h) / 2.0) + RING;
-    c.shape(n.x - RING, n.y - RING, n.w + 2.0 * RING, n.h + 2.0 * RING, r, Some(RING), mix(accent, 0xffffff, 0.65), 1.0);
+    c.shape(n.x - RING, n.y - RING, n.w + 2.0 * RING, n.h + 2.0 * RING, r, Some(RING), mix(accent, nt(0xffffff), 0.65), 1.0);
 }
 
 fn value_text(n: &Laid) -> &str {
@@ -1745,14 +1819,14 @@ fn paint_input(c: &mut Canvas, n: &Laid, focused: bool, st: &PaintState) {
     let scroll = if focused { st.scroll_x } else { 0.0 };
     let was = c.clip_to(ix - 1.0, n.y, iw + 2.0, n.h);
     if text.is_empty() {
-        c.text(&l.placeholder, ix, top, l.size, l.face(), 0x868e96);
+        c.text(&l.placeholder, ix, top, l.size, l.face(), nt(0x868e96));
     } else {
         if focused {
             let (a, b) = st.caret.range();
             if a != b && b <= text.len() {
                 let xa = text_width(&text[..a], l.size, l.face()) - scroll;
                 let xb = text_width(&text[..b], l.size, l.face()) - scroll;
-                c.rect(ix + xa, top, xb - xa, lh, 0.0, mix(l.accent, 0xffffff, 0.7), 1.0);
+                c.rect(ix + xa, top, xb - xa, lh, 0.0, mix(l.accent, nt(0xffffff), 0.7), 1.0);
             }
         }
         c.text(text, ix - scroll, top, l.size, l.face(), l.color);
@@ -1786,7 +1860,7 @@ fn paint_textarea(c: &mut Canvas, n: &Laid, focused: bool, st: &PaintState) {
     let (ix, iy) = (n.x + l.pad[3], n.y + l.pad[0]);
     let was = c.clip_to(ix - 1.0, iy - 2.0, n.w - l.pad[1] - l.pad[3] + 2.0, (n.h - l.pad[0] - l.pad[2] + 4.0).max(0.0));
     if t.is_empty() {
-        c.text(&l.placeholder, ix, iy, l.size, l.face(), 0x868e96);
+        c.text(&l.placeholder, ix, iy, l.size, l.face(), nt(0x868e96));
     }
     let (a, b) = if focused { st.caret.range() } else { (0, 0) };
     for (i, &(s, e)) in n.spans.iter().enumerate() {
@@ -1800,7 +1874,7 @@ fn paint_textarea(c: &mut Canvas, n: &Laid, focused: bool, st: &PaintState) {
             let xa = text_width(&t[s..from], l.size, l.face());
             let xb = text_width(&t[s..to], l.size, l.face()) + if b > e { 4.0 } else { 0.0 };
             if xb > xa {
-                c.rect(ix + xa, y, xb - xa, lh, 0.0, mix(l.accent, 0xffffff, 0.7), 1.0);
+                c.rect(ix + xa, y, xb - xa, lh, 0.0, mix(l.accent, nt(0xffffff), 0.7), 1.0);
             }
         }
         c.text(&t[s..e], ix, y, l.size, l.face(), l.color);
@@ -1811,7 +1885,7 @@ fn paint_textarea(c: &mut Canvas, n: &Laid, focused: bool, st: &PaintState) {
     }
     c.clip = was;
     if let Some((ky, kh)) = scroll_knob(n) {
-        c.rect(n.x + n.w - 7.0, ky + 3.0, 4.0, kh - 6.0, 2.0, 0x000000, 0.28);
+        c.rect(n.x + n.w - 7.0, ky + 3.0, 4.0, kh - 6.0, 2.0, knob().0, knob().1);
     }
 }
 
@@ -1840,10 +1914,10 @@ fn paint_slider(c: &mut Canvas, n: &Laid, l: &Look, ring: bool) {
     let cy = n.y + n.h / 2.0;
     let (x0, x1) = (n.x + THUMB, n.x + n.w - THUMB);
     let tx = x0 + f * (x1 - x0);
-    c.rect(x0, cy - 2.0, x1 - x0, 4.0, 2.0, 0xe9ecef, 1.0);
+    c.rect(x0, cy - 2.0, x1 - x0, 4.0, 2.0, nt(0xe9ecef), 1.0);
     c.rect(x0, cy - 2.0, tx - x0, 4.0, 2.0, l.accent, 1.0);
     if ring {
-        c.shape(tx - THUMB - RING, cy - THUMB - RING, 2.0 * (THUMB + RING), 2.0 * (THUMB + RING), THUMB + RING, Some(RING), mix(l.accent, 0xffffff, 0.65), 1.0);
+        c.shape(tx - THUMB - RING, cy - THUMB - RING, 2.0 * (THUMB + RING), 2.0 * (THUMB + RING), THUMB + RING, Some(RING), mix(l.accent, nt(0xffffff), 0.65), 1.0);
     }
     c.rect(tx - THUMB, cy - THUMB + 1.0, 2.0 * THUMB, 2.0 * THUMB, THUMB, 0x000000, 0.12);
     c.rect(tx - THUMB, cy - THUMB, 2.0 * THUMB, 2.0 * THUMB, THUMB, 0xffffff, 1.0);
@@ -1856,11 +1930,11 @@ fn paint_image(c: &mut Canvas, n: &Laid, l: &Look) {
     let (bw, bh) = ((n.w - l.pad[1] - l.pad[3]).max(0.0), (n.h - l.pad[0] - l.pad[2]).max(0.0));
     let Some(p) = picture(&n.text) else {
         // A picture that isn't there shows as a grey box with its name.
-        c.rect(bx, by, bw, bh, l.radius, 0xe9ecef, 1.0);
+        c.rect(bx, by, bw, bh, l.radius, nt(0xe9ecef), 1.0);
         let name = n.text.rsplit(['/', '\\']).next().unwrap_or("");
         let tw = text_width(name, 11.0, 0);
         if tw < bw - 8.0 {
-            c.text(name, bx + (bw - tw) / 2.0, by + bh / 2.0 - 7.0, 11.0, 0, 0x868e96);
+            c.text(name, bx + (bw - tw) / 2.0, by + bh / 2.0 - 7.0, 11.0, 0, nt(0x868e96));
         }
         return;
     };
@@ -1941,7 +2015,7 @@ fn paint(c: &mut Canvas, n: &Laid, st: &PaintState, path: &mut Vec<usize>) {
     // A button held down under the mouse looks pressed in.
     if over && st.pressed.as_deref() == Some(path.as_slice()) && n.kind == "button" {
         let mut p = l.clone();
-        p.background = Some(mix(l.background.unwrap_or(0xe9ecef), 0x000000, 0.12));
+        p.background = Some(mix(l.background.unwrap_or(nt(0xe9ecef)), if dark() { 0xffffff } else { 0x000000 }, 0.12));
         p.bg_alpha = 1.0;
         pressed = p;
         l = &pressed;
@@ -1979,11 +2053,11 @@ fn paint(c: &mut Canvas, n: &Laid, st: &PaintState, path: &mut Vec<usize>) {
     // A dropdown's arrow, and the line of a divider in a menu.
     if n.kind == "dropdown" {
         let (cx, cy) = (n.x + n.w - 16.0, n.y + n.h / 2.0);
-        c.line(cx - 4.0, cy - 2.0, cx, cy + 2.0, 1.5, mix(l.color, 0xffffff, 0.35));
-        c.line(cx, cy + 2.0, cx + 4.0, cy - 2.0, 1.5, mix(l.color, 0xffffff, 0.35));
+        c.line(cx - 4.0, cy - 2.0, cx, cy + 2.0, 1.5, mix(l.color, nt(0xffffff), 0.35));
+        c.line(cx, cy + 2.0, cx + 4.0, cy - 2.0, 1.5, mix(l.color, nt(0xffffff), 0.35));
     }
     if n.kind == "divider" {
-        c.rect(n.x + 6.0, n.y + (n.h / 2.0).floor(), (n.w - 12.0).max(0.0), 1.0, 0.0, 0xe9ecef, 1.0);
+        c.rect(n.x + 6.0, n.y + (n.h / 2.0).floor(), (n.w - 12.0).max(0.0), 1.0, 0.0, nt(0xe9ecef), 1.0);
     }
     if n.kind == "image" {
         paint_image(c, n, l);
@@ -2012,7 +2086,7 @@ fn paint(c: &mut Canvas, n: &Laid, st: &PaintState, path: &mut Vec<usize>) {
     if let Some(was) = unclipped {
         c.clip = was;
         if let Some((ky, kh)) = scroll_knob(n) {
-            c.rect(n.x + n.w - 8.0, ky + 2.0, 5.0, kh - 4.0, 2.5, 0x000000, 0.28);
+            c.rect(n.x + n.w - 8.0, ky + 2.0, 5.0, kh - 4.0, 2.5, knob().0, knob().1);
         }
     }
     c.alpha = was;
@@ -2075,10 +2149,15 @@ pub struct Settings {
     pub background: u32,
     /// The font every piece uses unless it has its own.
     pub font: Option<usize>,
+    /// Dark mode: dark backgrounds and light words.
+    pub dark: bool,
 }
 
 pub fn settings(style: &[(String, SV)]) -> Settings {
-    let mut s = Settings { title: "Lust".into(), width: 640.0, height: 480.0, min_width: 0.0, min_height: 0.0, background: 0xffffff, font: None };
+    // Dark mode first, since the colours depend on it.
+    let dark = style.iter().any(|(k, v)| k == "dark" && !matches!(v, SV::Truth(false)));
+    DARK.with(|d| d.set(dark));
+    let mut s = Settings { title: "Lust".into(), width: 640.0, height: 480.0, min_width: 0.0, min_height: 0.0, background: nt(0xffffff), font: None, dark };
     for (k, v) in style {
         match (k.as_str(), v) {
             ("title", SV::Text(t)) => s.title = t.clone(),
@@ -2086,7 +2165,7 @@ pub fn settings(style: &[(String, SV)]) -> Settings {
             ("height", SV::Num(n)) => s.height = *n,
             ("minWidth", SV::Num(n)) => s.min_width = *n,
             ("minHeight", SV::Num(n)) => s.min_height = *n,
-            ("background", SV::Text(t)) => s.background = colour(t).unwrap_or(0xffffff),
+            ("background", SV::Text(t)) => s.background = bg_colour(t).unwrap_or(nt(0xffffff)),
             ("font", SV::Text(t)) => s.font = font_file(t),
             _ => {}
         }

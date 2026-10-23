@@ -799,7 +799,7 @@ impl<'a> Parser<'a> {
         let mut items = Vec::new();
         while !self.at_sym("]") {
             let (name, pos) = self.ident("a style, like pad 16 or round")?;
-            let value = if name == "hover" && self.at_sym(":") {
+            let value = if (name == "hover" || name == "dark") && self.at_sym(":") {
                 self.next();
                 StyleValue::Nested(self.style_list()?)
             } else if self.at_sym(",") || self.at_sym("]") {
