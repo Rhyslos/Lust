@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (2.0 alpha 30):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (2.0 alpha 31):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -1375,6 +1375,7 @@ pass Gun;
 - **`update(float dt)`** runs once a tick, with how long a tick is. The engine runs the entities in order of their IDs, and an entity's components in order of their names, so a game runs the same way every time.
 - **`entity`** is a value the engine hands over: an entity, or `nothing`. Entities can be compared with `==`, and `.text()` gives the 13 letters and digits Solis writes them as. Lust can't make one; it gets them from the engine's native methods and from `me`.
 - A component can't be `like` another one yet.
+- A component's methods can't be called `handle`, `schema`, `toData`, `setData`, `fromData` or `setMe`: the engine uses those on every component.
 
 Built as a library, each component also has what the engine needs to keep, show and run it, in the same kinds as Solis's own (`reflect`):
 
@@ -1383,6 +1384,51 @@ Built as a library, each component also has what the engine needs to keep, show 
 - `gun.set_data(&data)` changes only the fields `data` has, so an edit made in the editor while the game runs keeps the rest, like ammo left and cooldowns.
 - `gun.set_me(Some(id))` puts it on an entity, and `gun.update(dt)` runs a tick. An entity is its 64-bit ID, `Option<u64>`, with `None` for nothing.
 - `Value` is `Bool`, `Int`, `Float`, `Text`, `List` (a vec3's three numbers, a rotation's four) and `Entity`, and `FieldKind` is `Bool`, `Int`, `Float`, `Text`, `Choice` (with the options), `Vec3`, `Rotation` and `Entity`.
+
+### Events
+
+Components tell each other things with events. An event says what it carries; a component handles it with `on`, and anything sends it to an entity with `send`:
+
+```
+event Hit(entity by, float damage);
+event Died();
+
+component Health {
+    has {
+        float hp = 10;
+    }
+
+    on Hit(entity by, float damage) {
+        hp = hp - damage;
+        is hp <= 0? then {
+            send Died() to me;
+        }
+    }
+}
+
+component Gun {
+    has {
+        entity target = nothing;
+    }
+
+    method update(float dt) {
+        send Hit(me, 6) to target;
+    }
+}
+```
+
+- **`event Name(…)`** says what an event carries, in order. It carries the same kinds a component's fields hold: `bool`, `int`, `float`, `string`, a state, `vec3`, `rotation` and `entity`.
+- **`on Name(…) { … }`** in a component runs when the event reaches the entity it's on. It takes what the event carries, in the same order (the names can be its own). Only components handle events, and each one handles an event once.
+- **`send Name(…) to target;`** hands the event to the engine, which queues it. Nothing runs straight away: the engine delivers the queue in order, to each component on the entity in order of their names. Events sent while delivering (Hit sends Damaged, which sends Died) join the end of the same tick's queue, so a game runs the same way every time.
+- The engine knows events by their names, so two files can't each have an event with the same name. A program with `send` needs the engine, so like native methods it's built with `lust build --library`; `lust run` on its own stops at the first `send`.
+
+Built as a library:
+
+- The engine's `Host` has `send_event(&self, to: Option<u64>, event: &str, values: Vec<Value>)`, which `send` calls.
+- Each component has `HANDLES`, the events it handles, and `handle(&self, event, &values)`, which runs its handler: `Ok(false)` if it has none for that event, and an error if the values are the wrong count or kind.
+- `game::events()` lists every event and what it carries, as `EventSchema { name, values }`.
+
+In LustScript, `send` calls the host's Lua function `send_event(to, name, values)`, with the values in a list (its count in `n`), and a component's `handle(event, values)` runs its handler.
 
 ## 22. Reserved words
 

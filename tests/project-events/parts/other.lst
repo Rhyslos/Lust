@@ -1,0 +1,4 @@
+event Hit(string s);
+method int x() { return 1; }
+pass x;
+end

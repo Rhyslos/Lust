@@ -417,6 +417,31 @@ impl<'a> W<'a> {
             self.indent -= 1;
             self.line(m.pos.line, "end");
         }
+        // A component's handlers run through handle(event, values).
+        let handlers: Vec<&MethodDecl> = c.methods.iter().filter(|m| m.on.is_some()).collect();
+        if c.is_component {
+            self.line(c.pos.line, &format!("function {table}:handle(event, values)"));
+            self.indent += 1;
+            for m in handlers {
+                let (ev, _) = m.on.as_ref().unwrap();
+                let sig = self.info.classes[ci].methods[&m.name].clone();
+                let args: Vec<String> = sig
+                    .params
+                    .iter()
+                    .enumerate()
+                    .map(|(i, (_, t))| host_in(t, format!("values[{}]", i + 1)))
+                    .collect();
+                self.line(m.pos.line, &format!("if event == {} then", lua_string(crate::ast::shown(ev))));
+                self.indent += 1;
+                self.line(m.pos.line, &format!("self:{}({})", lname(&m.name), args.join(", ")));
+                self.line(m.pos.line, "return true");
+                self.indent -= 1;
+                self.line(m.pos.line, "end");
+            }
+            self.line(c.pos.line, "return false");
+            self.indent -= 1;
+            self.line(c.pos.line, "end");
+        }
         if let Some(v) = &c.view {
             // The window's settings, and the view: a tree of tables Lust draws.
             let s = self.styles(&v.settings);
@@ -698,6 +723,16 @@ impl<'a> W<'a> {
                 }
                 self.indent -= 1;
                 self.line(ln, "end");
+            }
+            Stmt::Send { event, args, to, .. } => {
+                let vals: Vec<String> = args.iter().map(|a| self.expr(a)).collect();
+                let t = self.expr(to);
+                let mut parts = vec![format!("n = {}", vals.len())];
+                parts.extend(vals);
+                self.line(
+                    ln,
+                    &format!("_L.send({t}, {}, {{ {} }})", lua_string(crate::ast::shown(event)), parts.join(", ")),
+                );
             }
             Stmt::Keep { value, into, .. } => {
                 let v = self.expr(value);

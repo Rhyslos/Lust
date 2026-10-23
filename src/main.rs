@@ -139,7 +139,7 @@ pub fn compile_as(path: &Path, quiet: bool, library: bool) -> Option<Compiled> {
         out: lua::write(&prog, &info, !is_script),
         rust,
         files,
-        natives: !info.natives.is_empty(),
+        natives: !info.natives.is_empty() || !info.sends.is_empty(),
     })
 }
 
@@ -219,7 +219,7 @@ fn main() -> ExitCode {
                 ..
             }) => {
                 eprintln!(
-                    "{display} has native methods, whose bodies are in the Rust program that uses it, so it can't be a program of its own. Build it as a library: lust build {display} --library"
+                    "{display} has native methods or sends events, which need the Rust program that uses it, so it can't be a program of its own. Build it as a library: lust build {display} --library"
                 );
                 ExitCode::from(1)
             }

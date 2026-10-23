@@ -1,0 +1,15 @@
+events.lst:9:7  there's already an event called Hit. Two things can't share a name.
+events.lst:10:17  an event carries what the engine can keep and show: bool, int, float, string, a state, vec3, rotation and entity. bag is a Bag.
+events.lst:10:32  an event carries what the engine can keep and show: bool, int, float, string, a state, vec3, rotation and entity. numbers is an int array.
+events.lst:17:8  a handler takes what its event carries, in the same order: on Hit(entity by, float damage) { … }
+events.lst:21:8  Health already handles Hit.
+events.lst:24:8  there's no event called Missing. Say what it carries first: event Missing(entity by);
+events.lst:27:12  handle is something the engine uses on every component, so a component's method can't use that name.
+events.lst:32:5  only a component handles events with on, since events go to the entities components are on. Plain is a class.
+events.lst:37:10  Hit carries 2 values, (entity by, float damage), but this sends 1.
+events.lst:38:17  Hit's damage is a float, but this is a string. Use .float() to turn text into a number.
+events.lst:39:10  there's no event called Nope. Say what it carries first: event Nope(entity by);
+events.lst:40:23  an event goes to an entity, but this is an int.
+events.lst:41:19  send says which entity the event goes to: send Hit(…) to target;
+
+13 mistakes. Nothing was run.

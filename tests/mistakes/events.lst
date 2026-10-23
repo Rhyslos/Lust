@@ -1,0 +1,43 @@
+-- Mistakes with events.
+class Bag {
+    has {
+        int size = 1;
+    }
+}
+
+event Hit(entity by, float damage);
+event Hit(int twice);
+event Carry(Bag bag, int array numbers);
+
+component Health {
+    has {
+        float hp = 10;
+    }
+
+    on Hit(entity by) {
+        hp = hp - 1;
+    }
+
+    on Hit(entity by, float damage) {
+    }
+
+    on Missing() {
+    }
+
+    method handle() {
+    }
+}
+
+class Plain {
+    on Hit(entity by, float damage) {
+    }
+}
+
+method go(entity e) {
+    send Hit(e) to e;
+    send Hit(e, "lots") to e;
+    send Nope() to e;
+    send Hit(e, 1) to 5;
+    send Hit(e, 1);
+}
+end

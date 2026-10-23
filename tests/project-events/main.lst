@@ -1,0 +1,16 @@
+-- Two files with an event of the same name: the engine knows events by name, so that's a mistake.
+fetch "parts/events":Hit;
+get "parts/other":[x];
+
+component Counter {
+    has {
+        int count = 0;
+    }
+
+    on Hit(int n) {
+        count = count + n;
+    }
+}
+
+print(x());
+end

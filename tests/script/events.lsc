@@ -1,0 +1,48 @@
+-- Events in LustScript: the host's Lua offers send_event, and calls a component's handle.
+fetch lua;
+
+event Hit(entity by, float damage);
+event Pushed(vec3 push);
+
+component Health {
+    has {
+        float hp = 10;
+    }
+
+    on Hit(entity by, float damage) {
+        hp = hp - damage;
+        print(me.text() + " hit by " + by.text() + ", " + hp.text() + " left");
+        is hp <= 0? then {
+            send Pushed([0, 0, 1]) to by;
+        }
+    }
+
+    on Pushed(vec3 push) {
+        print("pushed " + push.text());
+    }
+}
+
+object World {
+    method entity find(int n) native;
+}
+
+lua {
+    function World_find(self, n) return string.rep("0", 12) .. n end
+    queue = {}
+    function send_event(to, name, values) queue[#queue + 1] = { to, name, values } end
+};
+
+Health h = new Health { hp = 5 };
+send Hit(nothing, 3) to World:find(2);
+send Hit(World:find(1), 4) to nothing;
+
+lua {
+    h.me = World:find(2)
+    for _, e in ipairs(queue) do print(e[1], e[2], e[3].n, e[3][1], e[3][2]) end
+    print(h:handle("Hit", { "0000000000001", 2.5 }))
+    print(h:handle("Hit", { "0000000000003", 9 }))
+    print(h:handle("Pushed", { { x = 1, y = 2, z = 0.1 } }))
+    print(h:handle("Nope", {}))
+    print(queue[3][1], queue[3][2], queue[3][3][1].z)
+};
+end
