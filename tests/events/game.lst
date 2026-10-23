@@ -1,0 +1,65 @@
+-- Events: components send them to entities, and handle them with on.
+method log(string words) native;
+
+state Kind = [Fire, Ice];
+
+event Hit(entity by, float damage, Kind kind);
+event Damaged(float amount);
+event Died();
+event Pushed(vec3 push, rotation turn);
+
+component Health {
+    has {
+        float hp = 10;
+    }
+
+    on Hit(entity by, float damage, Kind kind) {
+        hp = hp - damage;
+        log(me.text() + " Health: hit by " + by.text() + " for " + damage.text() + " " + kind.text());
+        send Damaged(damage) to me;
+        is hp <= 0? then {
+            send Died() to me;
+        }
+    }
+
+    on Died() {
+        log(me.text() + " Health: died");
+    }
+}
+
+component Armor {
+    has {
+        int dents = 0;
+    }
+
+    on Hit(entity by, float damage, Kind kind) {
+        dents = dents + 1;
+        log(me.text() + " Armor: dent " + dents.text());
+    }
+
+    on Damaged(float amount) {
+        log(me.text() + " Armor: took " + amount.text());
+    }
+}
+
+component Gun {
+    has {
+        entity target = nothing;
+        float cooldown = 0;
+    }
+
+    method update(float dt) {
+        cooldown = cooldown - dt;
+        is cooldown <= 0 && target != nothing? then {
+            cooldown = 1;
+            send Hit(me, 6, Kind.Fire) to target;
+        }
+    }
+
+    on Pushed(vec3 push, rotation turn) {
+        log(me.text() + " Gun: pushed " + push.text() + " turned " + (turn * [1, 0, 0]).text());
+    }
+}
+
+pass log;
+end

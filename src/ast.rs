@@ -146,6 +146,15 @@ pub enum Item {
     Route(RouteDecl),
     /// style card = [pad 16, round, shadow];
     Style(StyleDecl),
+    /// event Hit(entity by, float damage);
+    Event(EventDecl),
+}
+
+/// An event a game sends to entities, and its components handle with on: what it carries.
+pub struct EventDecl {
+    pub name: String,
+    pub pos: Pos,
+    pub params: Vec<Param>,
 }
 
 pub struct StyleDecl {
@@ -252,6 +261,8 @@ pub struct MethodDecl {
     /// `method Vector3 position() native;`: the body is outside Lust, in the program that uses
     /// this Lust as a library (or, in LustScript, the host's Lua).
     pub native: bool,
+    /// `on Hit(entity by, float damage) { … }` in a component: the event it handles.
+    pub on: Option<(String, Pos)>,
 }
 
 #[derive(Clone)]
@@ -328,6 +339,14 @@ pub enum Stmt {
         choices: Option<Expr>,
         pos: Pos,
     },
+    /// send Hit(me, 10.0) to target;
+    Send {
+        event: String,
+        epos: Pos,
+        args: Vec<Expr>,
+        to: Expr,
+        pos: Pos,
+    },
     /// keep sword in player.bag; or keep sword;
     Keep {
         value: Expr,
@@ -348,7 +367,8 @@ impl Stmt {
             | Stmt::Lua { pos, .. }
             | Stmt::Keep { pos, .. }
             | Stmt::SaveDecl { pos, .. }
-            | Stmt::Element { pos, .. } => *pos,
+            | Stmt::Element { pos, .. }
+            | Stmt::Send { pos, .. } => *pos,
             Stmt::Save(_, p) | Stmt::Load(_, p) => *p,
             Stmt::Stop(p) | Stmt::Skip(p) | Stmt::Return(_, p) => *p,
             Stmt::Expr(e) => e.pos,

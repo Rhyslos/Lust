@@ -1,0 +1,27 @@
+event Damaged [("amount", Float)]
+event Died []
+event Hit [("by", Entity), ("damage", Float), ("kind", Choice(["Fire", "Ice"]))]
+event Pushed [("push", Vec3), ("turn", Rotation)]
+Armor handles ["Damaged", "Hit"], Health ["Died", "Hit"], Gun ["Pushed"]
+tick 0
+queued Hit to Some(2): [Entity(Some(1)), Float(6.0), Text("Fire")]
+0000000000002 Armor: dent 1
+0000000000002 Health: hit by 0000000000001 for 6.0 Fire
+queued Damaged to Some(2): [Float(6.0)]
+0000000000002 Armor: took 6.0
+tick 1
+tick 2
+queued Hit to Some(2): [Entity(Some(1)), Float(6.0), Text("Fire")]
+0000000000002 Armor: dent 2
+0000000000002 Health: hit by 0000000000001 for 6.0 Fire
+queued Damaged to Some(2): [Float(6.0)]
+queued Died to Some(2): []
+0000000000002 Armor: took 6.0
+0000000000002 Health: died
+0000000000001 Gun: pushed [1.0, 2.0, 0.5] turned [3.422854e-08, 0.9999999, 0.0]
+Ok(true)
+Err("Pushed carries 2 values, but 1 came.")
+Err("Pushed's push should be three numbers.")
+Ok(false)
+Err("Hit's kind should be Fire or Ice.")
+{"hp": Float(-2.0)}

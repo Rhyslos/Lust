@@ -1,0 +1,3 @@
+parts/other.lst:1:7  another file has an event called Hit too. The engine knows events by their names, so they must be different.
+
+1 mistake. Nothing was run.

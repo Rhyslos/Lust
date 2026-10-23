@@ -1,0 +1,7 @@
+-- send needs an engine: on its own, a program stops with where the event would go.
+event Hello(int n);
+
+print("before");
+send Hello(1) to nothing;
+print("after");
+end

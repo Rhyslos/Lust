@@ -200,7 +200,7 @@ pub fn write(prog: &Program, info: &Info, files: &[String], library: bool) -> St
             }
             let mut all = vec![format!("this: &Rc<RefCell<O{root}>>")];
             all.extend(params);
-            defs.push_str(&format!("fn m{ci}_{}({}){ret} {{\n{b}}}\n", m.name, all.join(", ")));
+            defs.push_str(&format!("fn m{ci}_{}({}){ret} {{\n{b}}}\n", ident(&m.name), all.join(", ")));
         }
         if let Some(v) = &c.view {
             // The window's settings, and the view: a tree of nodes Lust draws.
@@ -245,7 +245,7 @@ pub fn write(prog: &Program, info: &Info, files: &[String], library: bool) -> St
                     if info.classes[x].methods.contains_key(&m) {
                         let mut a = vec!["this".to_string()];
                         a.extend(args.iter().cloned());
-                        arms.push(format!("ID_{c} => m{x}_{m}({}),", a.join(", ")));
+                        arms.push(format!("ID_{c} => m{x}_{}({}),", ident(&m), a.join(", ")));
                         break;
                     }
                     cur = info.classes[x].parent;
@@ -254,7 +254,8 @@ pub fn write(prog: &Program, info: &Info, files: &[String], library: bool) -> St
             let mut all = vec![format!("this: &Rc<RefCell<O{root}>>")];
             all.extend(params);
             defs.push_str(&format!(
-                "fn d{root}_{m}({}){} {{ let c = this.borrow().class; match c {{ {} _ => rt::fail(\"this thing has no method called {m}.\".into()) }} }}\n",
+                "fn d{root}_{}({}){} {{ let c = this.borrow().class; match c {{ {} _ => rt::fail(\"this thing has no method called {m}.\".into()) }} }}\n",
+                ident(&m),
                 all.join(", "),
                 w.ret(&sig.ret),
                 arms.join(" ")
@@ -423,6 +424,9 @@ pub fn write(prog: &Program, info: &Info, files: &[String], library: bool) -> St
         i += 1;
     }
 
+    if !info.sends.is_empty() {
+        host_fns.push("    /// send Hit(…) to target; in Lust: the engine queues the event for the entity's components.\n    fn send_event(&self, to: Option<u64>, event: &str, values: Vec<Value>);\n".into());
+    }
     // Native methods: their bodies are in the program that uses this as a library.
     let mut host = String::new();
     if !host_fns.is_empty() && library {
@@ -528,6 +532,13 @@ pub struct Schema {
 
 /// A component's values, by field name.
 pub type Data = std::collections::BTreeMap<String, Value>;
+
+/// An event's name, and what it carries: names and kinds, in order.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EventSchema {
+    pub name: String,
+    pub values: Vec<(String, FieldKind)>,
+}
 
 fn as_bool(v: &Value) -> Option<bool> {
     match v {
@@ -662,6 +673,12 @@ fn walk_stmts(stmts: &[Stmt], f: &mut dyn FnMut(&Expr)) {
                 walk_stmts(body, f);
             }
             Stmt::Return(Some(e), _) => walk_expr(e, f),
+            Stmt::Send { args, to, .. } => {
+                for a in args {
+                    walk_expr(a, f);
+                }
+                walk_expr(to, f);
+            }
             Stmt::Keep { value, into, .. } => {
                 walk_expr(value, f);
                 if let Some(i) = into {
@@ -956,6 +973,10 @@ impl<'a> W<'a> {
                 cur = info.classes[k].parent;
             }
             for (_, m, sig) in &methods {
+                // Handlers run through handle(event, values).
+                if m.contains(crate::ast::MARK) {
+                    continue;
+                }
                 if !sig.params.iter().all(|(_, t)| plain(t)) || !(sig.ret == Ty::Void || plain(&sig.ret)) {
                     continue;
                 }
@@ -981,11 +1002,29 @@ impl<'a> W<'a> {
         }
         // Components: what the engine needs to keep, show and run them.
         let comps: Vec<String> = info.classes.iter().filter(|c| c.is_component).map(|c| ident(&c.name)).collect();
-        if !comps.is_empty() {
+        if !comps.is_empty() || !info.events.is_empty() || !info.sends.is_empty() {
             out.push_str(COMPONENT_API);
             out.push_str(&format!(
                 "\n/// Every component's schema, for the inspector.\npub fn components() -> Vec<Schema> {{\n    vec![{}]\n}}\n",
                 comps.iter().map(|c| format!("{c}::schema()")).collect::<Vec<_>>().join(", ")
+            ));
+            let mut evs = Vec::new();
+            for (name, params) in &info.events {
+                let mut vals = Vec::new();
+                for (n, t) in params {
+                    if let Some((kind, _)) = self.value_kind(t) {
+                        vals.push(format!("({n:?}.to_string(), {kind})"));
+                    }
+                }
+                evs.push(format!(
+                    "EventSchema {{ name: {:?}.into(), values: vec![{}] }}",
+                    crate::ast::shown(name),
+                    vals.join(", ")
+                ));
+            }
+            out.push_str(&format!(
+                "\n/// Every event, and what it carries, in order.\npub fn events() -> Vec<EventSchema> {{\n    vec![{}]\n}}\n",
+                evs.join(", ")
             ));
         }
         for item in &prog.items {
@@ -1041,6 +1080,45 @@ impl<'a> W<'a> {
         }
     }
 
+    /// A field or event value's kind for the engine, and how to read one back from `v`.
+    fn value_kind(&self, t: &Ty) -> Option<(String, String)> {
+        Some(match t {
+            Ty::Truth => ("FieldKind::Bool".into(), "as_bool(v)".into()),
+            Ty::Int => ("FieldKind::Int".into(), "as_int(v)".into()),
+            Ty::Float => ("FieldKind::Float".into(), "as_num(v)".into()),
+            Ty::Str => ("FieldKind::Text".into(), "as_text(v)".into()),
+            Ty::State(s) => {
+                let opts: Vec<String> = self.info.states[*s].options.iter().map(|o| format!("{o:?}")).collect();
+                (
+                    format!(
+                        "FieldKind::Choice(vec![{}])",
+                        opts.iter().map(|o| format!("{o}.to_string()")).collect::<Vec<_>>().join(", ")
+                    ),
+                    format!("as_choice(v, &[{}])", opts.join(", ")),
+                )
+            }
+            Ty::Vec3 => ("FieldKind::Vec3".into(), "as_vec3(v)".into()),
+            Ty::Rot => ("FieldKind::Rotation".into(), "as_rotation(v)".into()),
+            Ty::Entity => ("FieldKind::Entity".into(), "as_entity(v)".into()),
+            _ => return None,
+        })
+    }
+
+    /// A Lust value as the engine's Value.
+    fn value_of(&self, code: &str, t: &Ty) -> String {
+        match t {
+            Ty::Truth => format!("Value::Bool({code})"),
+            Ty::Int => format!("Value::Int({code})"),
+            Ty::Float => format!("Value::Float({code})"),
+            Ty::Str => format!("Value::Text({code}.clone())"),
+            Ty::State(_) => format!("Value::Text({code}.to_string())"),
+            Ty::Vec3 => format!("{{ let v = {code}; Value::List(vec![Value::Float(v.x as f64), Value::Float(v.y as f64), Value::Float(v.z as f64)]) }}"),
+            Ty::Rot => format!("{{ let v = {code}; Value::List(vec![Value::Float(v.x as f64), Value::Float(v.y as f64), Value::Float(v.z as f64), Value::Float(v.w as f64)]) }}"),
+            Ty::Entity => format!("Value::Entity(Some({code}).filter(|e| *e != 0))"),
+            _ => "Value::Bool(false)".into(),
+        }
+    }
+
     /// A component's name, schema, and its fields as values, both ways.
     fn component_api(&mut self, ci: usize, shown: &str, w: &str) -> String {
         let fields: Vec<(String, Ty)> = self.info.classes[ci]
@@ -1054,32 +1132,8 @@ impl<'a> W<'a> {
         let mut in_vals = Vec::new();
         for (n, t) in &fields {
             let f = self.fname(ci, n);
-            let (kind, to, from) = match t {
-                Ty::Truth => ("FieldKind::Bool".to_string(), format!("Value::Bool(o.{f})"), "as_bool(v)".to_string()),
-                Ty::Int => ("FieldKind::Int".into(), format!("Value::Int(o.{f})"), "as_int(v)".into()),
-                Ty::Float => ("FieldKind::Float".into(), format!("Value::Float(o.{f})"), "as_num(v)".into()),
-                Ty::Str => ("FieldKind::Text".into(), format!("Value::Text(o.{f}.clone())"), "as_text(v)".into()),
-                Ty::State(s) => {
-                    let opts: Vec<String> = self.info.states[*s].options.iter().map(|o| format!("{o:?}")).collect();
-                    (
-                        format!("FieldKind::Choice(vec![{}])", opts.iter().map(|o| format!("{o}.to_string()")).collect::<Vec<_>>().join(", ")),
-                        format!("Value::Text(o.{f}.to_string())"),
-                        format!("as_choice(v, &[{}])", opts.join(", ")),
-                    )
-                }
-                Ty::Vec3 => (
-                    "FieldKind::Vec3".into(),
-                    format!("Value::List(vec![Value::Float(o.{f}.x as f64), Value::Float(o.{f}.y as f64), Value::Float(o.{f}.z as f64)])"),
-                    "as_vec3(v)".into(),
-                ),
-                Ty::Rot => (
-                    "FieldKind::Rotation".into(),
-                    format!("Value::List(vec![Value::Float(o.{f}.x as f64), Value::Float(o.{f}.y as f64), Value::Float(o.{f}.z as f64), Value::Float(o.{f}.w as f64)])"),
-                    "as_rotation(v)".into(),
-                ),
-                Ty::Entity => ("FieldKind::Entity".into(), format!("Value::Entity(Some(o.{f}).filter(|e| *e != 0))"), "as_entity(v)".into()),
-                _ => continue,
-            };
+            let Some((kind, from)) = self.value_kind(t) else { continue };
+            let to = self.value_of(&format!("o.{f}"), t);
             kinds.push(format!(
                 "FieldInfo {{ name: {n:?}.into(), kind: {kind}, default: d[{n:?}].clone() }}"
             ));
@@ -1094,8 +1148,58 @@ impl<'a> W<'a> {
 "
             ));
         }
+        // Handlers: on Hit(…) { … } runs through handle("Hit", values).
+        let root = self.root(ci);
+        let mut handles = Vec::new();
+        let mut arms = String::new();
+        let mut names: Vec<String> = self.info.classes[ci]
+            .methods
+            .keys()
+            .filter(|m| m.starts_with(&format!("on{}", crate::ast::MARK)))
+            .cloned()
+            .collect();
+        names.sort();
+        for m in names {
+            let event = &m[format!("on{}", crate::ast::MARK).len()..];
+            let es = crate::ast::shown(event).to_string();
+            let params = self.info.classes[ci].methods[&m].params.clone();
+            let n = params.len();
+            let mut b = format!(
+                "            {es:?} => {{\n                if values.len() != {n} {{\n                    return Err(format!(\"{es} carries {n} value{}, but {{}} came.\", values.len()));\n                }}\n",
+                if n == 1 { "" } else { "s" }
+            );
+            let mut args = vec!["&self.0".to_string()];
+            for (i, (pn, t)) in params.iter().enumerate() {
+                let Some((_, from)) = self.value_kind(t) else { continue };
+                b.push_str(&format!(
+                    "                let a{i} = {{ let v = &values[{i}]; {from} }}.ok_or_else(|| \"{es}'s {pn} should be {}.\".to_string())?;\n",
+                    match t {
+                        Ty::State(s) => {
+                            let o = &self.info.states[*s].options;
+                            match o.split_last() {
+                                Some((last, rest)) if !rest.is_empty() => format!("{} or {last}", rest.join(", ")),
+                                _ => o.join(""),
+                            }
+                        }
+                        _ => a_kind(t).to_string(),
+                    }
+                ));
+                args.push(format!("a{i}"));
+            }
+            b.push_str(&format!(
+                "                rt::catch(FILES, || d{root}_{}({}))?;\n                Ok(true)\n            }}\n",
+                ident(&m),
+                args.join(", ")
+            ));
+            arms.push_str(&b);
+            handles.push(format!("{es:?}"));
+        }
+        let handle = format!(
+            "\n    /// The events it handles, by name.\n    pub const HANDLES: &'static [&'static str] = &[{}];\n\n    /// Runs its handler for an event: false if it has none for this one.\n    pub fn handle(&self, event: &str, values: &[Value]) -> Result<bool, String> {{\n        match event {{\n{arms}            _ => Ok(false),\n        }}\n    }}\n",
+            handles.join(", ")
+        );
         format!(
-            "    /// The component's name, as the engine knows it.\n    pub const NAME: &'static str = {shown:?};\n\n    /// Its fields, their kinds and their starting values, in order.\n    pub fn schema() -> Schema {{\n        let d = {w}::new().map(|c| c.to_data()).unwrap_or_default();\n        Schema {{ name: {shown:?}.into(), fields: vec![{}] }}\n    }}\n\n    /// Its fields' values, by name.\n    pub fn to_data(&self) -> Data {{\n        let o = self.0.borrow();\n        let mut d = Data::new();\n{}        d\n    }}\n\n    /// Sets the fields `data` has. A missing value, or one of the wrong kind, is left as it is.\n    pub fn set_data(&self, data: &Data) {{\n{}    }}\n\n    /// A new one with these values, and the starting values for the rest.\n    pub fn from_data(data: &Data) -> Result<{w}, String> {{\n        let c = {w}::new()?;\n        c.set_data(data);\n        Ok(c)\n    }}\n",
+            "{handle}    /// The component's name, as the engine knows it.\n    pub const NAME: &'static str = {shown:?};\n\n    /// Its fields, their kinds and their starting values, in order.\n    pub fn schema() -> Schema {{\n        let d = {w}::new().map(|c| c.to_data()).unwrap_or_default();\n        Schema {{ name: {shown:?}.into(), fields: vec![{}] }}\n    }}\n\n    /// Its fields' values, by name.\n    pub fn to_data(&self) -> Data {{\n        let o = self.0.borrow();\n        let mut d = Data::new();\n{}        d\n    }}\n\n    /// Sets the fields `data` has. A missing value, or one of the wrong kind, is left as it is.\n    pub fn set_data(&self, data: &Data) {{\n{}    }}\n\n    /// A new one with these values, and the starting values for the rest.\n    pub fn from_data(data: &Data) -> Result<{w}, String> {{\n        let c = {w}::new()?;\n        c.set_data(data);\n        Ok(c)\n    }}\n",
             kinds.join(", "),
             out_vals.concat(),
             in_vals.concat()
@@ -1402,6 +1506,27 @@ impl<'a> W<'a> {
                     }
                 }
                 out.push_str(&format!("{pad}}}\n"));
+            }
+            Stmt::Send { event, args, to, .. } => {
+                let shown = crate::ast::shown(event).to_string();
+                if !self.library {
+                    let msg = format!("send {shown}(…) goes to the engine using this Lust as a library (lust build --library), so it can't run on its own.");
+                    out.push_str(&format!("{pad}rt::fail({msg:?}.into());\n"));
+                    return;
+                }
+                let want = self.info.events.get(event).cloned().unwrap_or_default();
+                out.push_str(&format!("{pad}{{\n"));
+                let mut values = Vec::new();
+                for (i, (a, (_, t))) in args.iter().zip(&want).enumerate() {
+                    let v = self.coerced(a, t);
+                    out.push_str(&format!("{pad}    let a{i} = {v};\n"));
+                    values.push(self.value_of(&format!("a{i}"), t));
+                }
+                let t = self.coerced(to, &Ty::Entity);
+                out.push_str(&format!(
+                    "{pad}    let to = {t};\n{pad}    host().send_event(Some(to).filter(|e| *e != 0), {shown:?}, vec![{}]);\n{pad}}}\n",
+                    values.join(", ")
+                ));
             }
             Stmt::Keep { value, into, .. } => {
                 let v = self.expr(value);
@@ -2521,6 +2646,21 @@ fn text(code: &str, t: &Ty) -> String {
 }
 
 /// A Lust name as a Rust one: Player·2 becomes Player__2.
+/// What an event value should be, said the way messages say it.
+fn a_kind(t: &Ty) -> &'static str {
+    match t {
+        Ty::Truth => "a bool",
+        Ty::Int => "an int",
+        Ty::Float => "a number",
+        Ty::Str => "text",
+        Ty::State(_) => "one of its state's options",
+        Ty::Vec3 => "three numbers",
+        Ty::Rot => "four numbers",
+        Ty::Entity => "an entity",
+        _ => "something else",
+    }
+}
+
 fn ident(n: &str) -> String {
     n.replace(crate::ast::MARK, "__")
 }

@@ -1,0 +1,1 @@
+send.lst:5  send Hello(…) goes to the engine using this Lust as a library (lust build --library), so it can't run on its own.

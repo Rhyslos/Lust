@@ -1,0 +1,3 @@
+event Hit(int n);
+pass Hit;
+end

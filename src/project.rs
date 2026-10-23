@@ -23,6 +23,7 @@ enum Kind {
     Assembly,
     Database,
     Style,
+    Event,
 }
 
 impl Kind {
@@ -35,6 +36,7 @@ impl Kind {
             Kind::Assembly => "an assembly",
             Kind::Database => "a database",
             Kind::Style => "a style",
+            Kind::Event => "an event",
         }
     }
 }
@@ -270,6 +272,7 @@ fn declarations(p: &Program) -> HashMap<String, Kind> {
             Item::Database(b) => d.insert(b.name.clone(), Kind::Database),
             Item::Route(_) => None,
             Item::Style(s) => d.insert(s.name.clone(), Kind::Style),
+            Item::Event(e) => d.insert(e.name.clone(), Kind::Event),
         };
     }
     d
@@ -338,7 +341,7 @@ fn value_names(p: &Program, out: &mut HashSet<String>) {
                 }
             }
             Item::Method(m) => method(m, out),
-            Item::State(_) | Item::Assembly(_) | Item::Database(_) | Item::Route(_) | Item::Style(_) => {}
+            Item::State(_) | Item::Assembly(_) | Item::Database(_) | Item::Route(_) | Item::Style(_) | Item::Event(_) => {}
         }
     }
     stmts(&p.body, out);
@@ -432,6 +435,12 @@ impl<'a> Renamer<'a> {
                     self.expr(made);
                 }
             }
+            Item::Event(e) => {
+                self.name(&mut e.name, e.pos, false);
+                for p in &mut e.params {
+                    self.ty(&mut p.ty);
+                }
+            }
         }
     }
 
@@ -450,6 +459,9 @@ impl<'a> Renamer<'a> {
     }
 
     fn method(&mut self, m: &mut MethodDecl) {
+        if let Some((e, pos)) = &mut m.on {
+            self.name(e, *pos, false);
+        }
         if let Some(r) = &mut m.ret {
             self.ty(r);
         }
@@ -542,6 +554,13 @@ impl<'a> Renamer<'a> {
                 if let Some(i) = into {
                     self.expr(i);
                 }
+            }
+            Stmt::Send { event, epos, args, to, .. } => {
+                self.name(event, *epos, false);
+                for a in args {
+                    self.expr(a);
+                }
+                self.expr(to);
             }
             Stmt::Element {
                 arg,

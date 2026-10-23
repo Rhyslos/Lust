@@ -449,6 +449,21 @@ function L.native(global, shown, ...)
   return f(...)
 end
 
+-- ----- events -----
+
+-- send Hit(…) to target: the engine's Lua offers send_event(to, name, values), and queues the
+-- event for the entity's components. values is a list with its count in n.
+function L.send(to, name, values)
+  local f = rawget(_G, "send_event")
+  if type(f) ~= "function" then
+    if rawget(_G, "LUST_HOST") then
+      error("send " .. name .. "(…) goes to the engine using this Lust as a library (lust build --library), so it can't run on its own.", 2)
+    end
+    error("send " .. name .. "(…) needs the engine's Lua to offer a function called send_event.", 2)
+  end
+  f(to, name, values)
+end
+
 -- ----- classes -----
 
 function L.class(name, parent)

@@ -449,6 +449,12 @@ impl<'a> Parser<'a> {
                 items.push(Item::Class(c));
                 return Ok(());
             }
+            "event" if matches!(self.peek(1).kind, Tk::Ident(_)) && self.peek(2).is_sym("(") => {
+                *seen_other = true;
+                let e = self.event_decl()?;
+                items.push(Item::Event(e));
+                return Ok(());
+            }
             "method" => {
                 *seen_other = true;
                 let m = self.method_decl()?;
@@ -600,6 +606,15 @@ impl<'a> Parser<'a> {
                 }
             } else if self.at_word("method") {
                 match self.method_decl() {
+                    Ok(m) => methods.push(m),
+                    Err(_) => self.recover(),
+                }
+            } else if self.at_word("on") && matches!(self.peek(1).kind, Tk::Ident(_)) && self.peek(2).is_sym("(") {
+                if !is_component {
+                    let p = self.cur().pos;
+                    self.diags.add(p, format!("only a component handles events with on, since events go to the entities components are on. {name} is a {what}."));
+                }
+                match self.handler_decl() {
                     Ok(m) => methods.push(m),
                     Err(_) => self.recover(),
                 }
@@ -1094,6 +1109,7 @@ impl<'a> Parser<'a> {
                 params,
                 body: vec![],
                 native: true,
+                on: None,
             });
         }
         let body = self.block("the method")?;
@@ -1104,6 +1120,64 @@ impl<'a> Parser<'a> {
             params,
             body,
             native: false,
+            on: None,
+        })
+    }
+
+    /// The ( type name, … ) of a method, a handler or an event.
+    fn param_list(&mut self) -> R<Vec<Param>> {
+        let mut params = Vec::new();
+        while !self.at_sym(")") {
+            let ty = self.ty()?;
+            let (pn, pp) = self.ident("the parameter's name")?;
+            check_name(self.diags, &pn, pp, NameKind::Value, "parameter");
+            if params.iter().any(|p: &Param| p.name == pn) {
+                self.diags.add(pp, format!("there's already a parameter called {pn}."));
+            }
+            params.push(Param { ty, name: pn, pos: pp });
+            if self.at_sym(",") {
+                self.next();
+            } else if !self.at_sym(")") {
+                let pos = self.cur().pos;
+                return self.fail(pos, "expected , or ) here.");
+            }
+        }
+        self.next();
+        Ok(params)
+    }
+
+    /// event Hit(entity by, float damage);
+    fn event_decl(&mut self) -> R<EventDecl> {
+        self.next(); // event
+        let (name, pos) = self.ident("the event's name")?;
+        check_name(self.diags, &name, pos, NameKind::Type, "event");
+        self.expect_sym(
+            "(",
+            &format!("an event says what it carries in ( ): event {name}(entity by, float damage);"),
+        )?;
+        let params = self.param_list()?;
+        self.semi()?;
+        Ok(EventDecl { name, pos, params })
+    }
+
+    /// on Hit(entity by, float damage) { … }: what a component does when the event comes.
+    fn handler_decl(&mut self) -> R<MethodDecl> {
+        self.next(); // on
+        let (event, epos) = self.ident("the event's name")?;
+        self.expect_sym(
+            "(",
+            &format!("a handler takes what the event carries in ( ): on {event}(entity by) {{ … }}"),
+        )?;
+        let params = self.param_list()?;
+        let body = self.block("the handler")?;
+        Ok(MethodDecl {
+            name: format!("on{}{event}", crate::ast::MARK),
+            pos: epos,
+            ret: None,
+            params,
+            body,
+            native: false,
+            on: Some((event, epos)),
         })
     }
 
@@ -1296,6 +1370,37 @@ impl<'a> Parser<'a> {
         let t = self.cur().clone();
         if let Some(r) = self.bad_name() {
             return r;
+        }
+        // send Hit(me, 10.0) to target;
+        if t.kind == Tk::Ident("send".into()) && matches!(self.peek(1).kind, Tk::Ident(_)) && self.peek(2).is_sym("(") {
+            self.next();
+            let (event, epos) = self.ident("the event's name")?;
+            self.next(); // (
+            let mut args = Vec::new();
+            while !self.at_sym(")") {
+                args.push(self.expr()?);
+                if self.at_sym(",") {
+                    self.next();
+                } else if !self.at_sym(")") {
+                    let p = self.cur().pos;
+                    return self.fail(p, "expected , or ) here.");
+                }
+            }
+            self.next();
+            if !self.at_word("to") {
+                let p = self.cur().pos;
+                return self.fail(p, format!("send says which entity the event goes to: send {event}(…) to target;"));
+            }
+            self.next();
+            let to = self.expr()?;
+            self.semi()?;
+            return Ok(Stmt::Send {
+                event,
+                epos,
+                args,
+                to,
+                pos: t.pos,
+            });
         }
         if let Tk::Ident(w) = &t.kind {
             // A piece's name, unless it's used as a variable: key = "x"; or line.text()

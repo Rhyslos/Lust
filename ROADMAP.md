@@ -34,7 +34,8 @@ The order Lust gets built in. Each step makes Lust more useful on its own, and n
 | ✅ | **12.1 Vectors and rotations:** `vec3` and `rotation`, kept as f32 like Solis keeps them, and the same in both outputs | Done (alpha 28) |
 | ✅ | **12.2 Values across native methods:** vectors, rotations and arrays, both in a Rust library and in LustScript | Done (alpha 29) |
 | ✅ | **12.3 Components:** `component` with `me` and `update`, the `entity` type, and schemas and values for the engine | Done (alpha 30) |
-| | **12.4 to 12.6 Lust in Solis:** events; the compiler as a crate, with Lua swapped in while the game runs; faster code for every tick | Next |
+| ✅ | **12.4 Events:** `event`, `on` in components, and `send … to`, queued and delivered by the engine | Done (alpha 31) |
+| | **12.5 and 12.6 Lust in Solis:** the compiler as a crate, with Lua swapped in while the game runs; faster code for every tick | Next |
 | | 🏁 *The Lust 2.0 release.* | |
 
 ## Decisions along the way
