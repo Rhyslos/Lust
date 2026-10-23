@@ -104,17 +104,13 @@ pub fn parse_shortcut(spec: &str) -> Result<Shortcut, String> {
 
 /// The view's keyboard shortcuts and the action each runs.
 fn shortcuts(n: &Node, out: &mut Vec<(Shortcut, usize)>) {
-    if shut(n) {
-        return;
-    }
-    if n.kind == "key" {
-        if let (Some(a), Ok(s)) = (n.action, parse_shortcut(&n.text)) {
-            out.push((s, a));
+    each_shown(n, &mut vec![], &mut |n| {
+        if n.kind == "key" {
+            if let (Some(a), Ok(s)) = (n.action, parse_shortcut(&n.text)) {
+                out.push((s, a));
+            }
         }
-    }
-    for c in &n.children {
-        shortcuts(c, out);
-    }
+    });
 }
 
 pub type Action = Box<dyn FnMut() -> Result<(), String>>;
@@ -578,6 +574,13 @@ struct Look {
     font: Option<usize>,
     /// What shows when the mouse rests on it.
     tip: String,
+    /// A grid's columns, or how wide its cells are at least, to fit as many as there's room for.
+    columns: usize,
+    cell: f32,
+    /// A split's panels go down instead of across.
+    down: bool,
+    /// A branch starts open.
+    open: bool,
 }
 
 impl Look {
@@ -642,6 +645,10 @@ fn base_look(kind: &str) -> Look {
         bg_alpha: 1.0,
         font: WINDOW_FONT.with(|f| f.get()),
         tip: String::new(),
+        columns: 0,
+        cell: 160.0,
+        down: false,
+        open: false,
     };
     match kind {
         "input" | "textarea" => {
@@ -683,6 +690,51 @@ fn base_look(kind: &str) -> Look {
         }
         "divider" => {
             l.height = Size::Fixed(9.0);
+        }
+        "grid" => {
+            l.width = Size::Fill;
+            l.gap = 12.0;
+        }
+        "split" => {
+            l.width = Size::Fill;
+            l.height = Size::Fill;
+            l.gap = 8.0;
+        }
+        "tabs" => {
+            l.width = Size::Fill;
+            l.gap = 12.0;
+        }
+        "tabbar" => {
+            l.gap = 4.0;
+            l.width = Size::Fill;
+        }
+        "tabbtn" => {
+            l.pad = [8.0, 12.0, 9.0, 12.0];
+            l.color = MUTED;
+            l.weight = 500.0;
+            l.wrap = false;
+        }
+        "branch" => {
+            l.gap = 2.0;
+            l.width = Size::Fill;
+        }
+        "branchhead" => {
+            l.width = Size::Fill;
+            l.pad = [4.0, 8.0, 4.0, 24.0];
+            l.radius = 5.0;
+            l.weight = 500.0;
+        }
+        "tab" => l.width = Size::Fill,
+        "branchbody" => {
+            l.width = Size::Fill;
+            l.pad = [0.0, 0.0, 0.0, 20.0];
+            l.gap = 2.0;
+        }
+        "progress" => {
+            l.width = Size::Fixed(200.0);
+            l.height = Size::Fixed(8.0);
+            l.radius = f32::INFINITY;
+            l.background = Some(0xe9ecef);
         }
         "dialog" => {
             l.pad = [20.0; 4];
@@ -809,6 +861,10 @@ fn apply(l: &mut Look, kind: &str, style: &[(String, SV)]) {
             "cover" => l.cover = true,
             "disabled" => l.disabled = true,
             "tip" => l.tip = text_of(v).unwrap_or("").to_string(),
+            "columns" => l.columns = num(v).unwrap_or(2.0).max(1.0) as usize,
+            "cell" => l.cell = num(v).unwrap_or(160.0).max(1.0),
+            "down" => l.down = true,
+            "open" => l.open = true,
             "font" => {
                 if let Some(f) = text_of(v).and_then(font_file) {
                     l.font = Some(f);
@@ -821,7 +877,7 @@ fn apply(l: &mut Look, kind: &str, style: &[(String, SV)]) {
                         let c = bg_colour(other).unwrap_or(c);
                         l.background = Some(c);
                         l.color = if light(c) { INK } else { 0xffffff };
-                    } else if matches!(kind, "checkbox" | "slider" | "input") {
+                    } else if matches!(kind, "checkbox" | "slider" | "input" | "textarea" | "progress" | "tabs") {
                         l.accent = c;
                     } else {
                         l.color = c;
@@ -1006,6 +1062,10 @@ struct Laid {
     spans: Vec<(usize, usize)>,
     /// A menu's items, or a dropdown's choices: the rows of its pop-up list.
     items: Vec<Laid>,
+    /// What the window remembers it by: a tab's or branch's name with those around it.
+    key: String,
+    /// Which tab a tab's button is, or which split this is in the view.
+    index: usize,
     /// What an input, checkbox or slider shows.
     value: Option<SV>,
     /// A scroll's content, top to bottom, and how far it's scrolled down.
@@ -1092,7 +1152,7 @@ fn lay(n: &Node) -> Laid {
         (Some(SV::Text(t)), "dropdown") => t.clone(),
         _ => n.text.clone(),
     };
-    Laid {
+    let mut laid = Laid {
         kind: n.kind.clone(),
         text,
         lines: vec![],
@@ -1109,7 +1169,102 @@ fn lay(n: &Node) -> Laid {
         enter: if disabled { None } else { n.enter },
         spans: vec![],
         items,
+        key: String::new(),
+        index: 0,
         children,
+    };
+    match n.kind.as_str() {
+        "tabs" => tabs(n, &mut laid),
+        "branch" => branch(n, &mut laid),
+        "split" => {
+            laid.index = KEPT.with(|k| {
+                let mut k = k.borrow_mut();
+                k.split_count += 1;
+                k.split_count - 1
+            });
+        }
+        _ => {}
+    }
+    laid
+}
+
+/// What the window remembers between redraws about tabs, branches and splits, by what they're
+/// called (since the view is made again each time): which tab shows, which branches are open, and
+/// how big a split's panels are.
+#[derive(Default)]
+struct Kept {
+    tabs: HashMap<String, usize>,
+    branches: HashMap<String, bool>,
+    splits: HashMap<usize, Vec<f32>>,
+    /// While laying out: splits so far, and the branches around the one being laid out.
+    split_count: usize,
+    branch_path: Vec<String>,
+}
+
+thread_local! {
+    static KEPT: std::cell::RefCell<Kept> = std::cell::RefCell::new(Kept::default());
+}
+
+/// Tabs: a bar of their names, and the tab that shows. It's the one the tabs are bound to, or
+/// the one last clicked.
+fn tabs(n: &Node, laid: &mut Laid) {
+    let names: Vec<String> = n.children.iter().filter(|c| c.kind == "tab").map(|c| c.text.clone()).collect();
+    let key = names.join("\u{1}");
+    let picked = match &n.value {
+        Some(SV::Text(t)) => names.iter().position(|x| x == t).unwrap_or(0),
+        _ => KEPT.with(|k| k.borrow().tabs.get(&key).copied().unwrap_or(0)),
+    }
+    .min(names.len().saturating_sub(1));
+    let mut bar = lay(&Node::new("tabbar"));
+    for (i, name) in names.iter().enumerate() {
+        let mut b = lay(&Node::new("tabbtn"));
+        b.text = name.clone();
+        b.key = key.clone();
+        b.index = i;
+        // Bound tabs change what they're bound to when a name is clicked.
+        b.action = if laid.look.disabled { None } else { n.action };
+        b.value = Some(SV::Truth(i == picked));
+        if i == picked {
+            b.look.color = laid.look.accent;
+            b.look.weight = 600.0;
+        } else if !laid.look.disabled {
+            let mut over = b.look.clone();
+            over.color = nt(INK);
+            b.hover = Some(over);
+        }
+        bar.children.push(b);
+    }
+    let tabs: Vec<&Node> = n.children.iter().filter(|c| c.kind == "tab").collect();
+    laid.action = None;
+    laid.children = vec![bar];
+    if let Some(t) = tabs.get(picked) {
+        laid.children.push(lay(t));
+    }
+}
+
+/// A branch: its name, with an arrow, and what's in it while it's open.
+fn branch(n: &Node, laid: &mut Laid) {
+    let key = KEPT.with(|k| {
+        let k = k.borrow();
+        let mut path = k.branch_path.clone();
+        path.push(n.text.clone());
+        path.join("/")
+    });
+    let open = KEPT.with(|k| k.borrow().branches.get(&key).copied()).unwrap_or(laid.look.open);
+    let mut head = lay(&Node::new("branchhead"));
+    head.text = n.text.clone();
+    head.key = key.clone();
+    head.value = Some(SV::Truth(open));
+    let mut over = head.look.clone();
+    over.background = Some(nt(0xf1f3f5));
+    head.hover = Some(over);
+    laid.children = vec![head];
+    if open {
+        KEPT.with(|k| k.borrow_mut().branch_path.push(n.text.clone()));
+        let mut body = lay(&Node::new("branchbody"));
+        body.children = n.children.iter().filter(|c| !unseen(&c.kind) && c.kind != "dialog").map(lay).collect();
+        KEPT.with(|k| k.borrow_mut().branch_path.pop());
+        laid.children.push(body);
     }
 }
 
@@ -1119,7 +1274,40 @@ thread_local! {
 }
 
 fn shows_text(kind: &str) -> bool {
-    matches!(kind, "text" | "button" | "dropdown" | "menu" | "option" | "item" | "tip")
+    matches!(kind, "text" | "button" | "dropdown" | "menu" | "option" | "item" | "tip" | "tabbtn" | "branchhead")
+}
+
+/// How a piece lays out what it holds: across like a row, or down like a column.
+fn across(n: &Laid) -> bool {
+    n.kind == "row" || n.kind == "tabbar" || (n.kind == "split" && !n.look.down)
+}
+
+/// A grid's columns and how wide each is, in `iw` of room.
+fn grid_columns(l: &Look, iw: f32) -> (usize, f32) {
+    let n = if l.columns > 0 {
+        l.columns
+    } else if iw.is_finite() {
+        (((iw + l.gap) / (l.cell + l.gap)).floor() as usize).max(1)
+    } else {
+        3
+    };
+    let cw = if iw.is_finite() { ((iw - l.gap * (n - 1) as f32) / n as f32).max(0.0) } else { l.cell };
+    (n, cw)
+}
+
+/// The heights of a grid's rows, with its cells `cw` wide.
+fn grid_rows(n: &Laid, cols: usize, cw: f32) -> Vec<f32> {
+    n.children
+        .chunks(cols.max(1))
+        .map(|row| {
+            row.iter()
+                .map(|c| match c.look.height {
+                    Size::Fixed(f) => clamp_h(c, f),
+                    _ => natural(c, cw).1,
+                })
+                .fold(0.0, f32::max)
+        })
+        .collect()
 }
 
 /// How much of the leftover room a child takes along its row (or column), if any.
@@ -1191,7 +1379,7 @@ fn measure(n: &Laid, max_w: f32) -> (f32, f32) {
     let outer = clamp_w(n, if let Size::Fixed(f) = l.width { f } else { max_w });
     let inner = (outer - padx).max(0.0);
     let gaps = l.gap * (n.children.len().saturating_sub(1)) as f32;
-    let (mut w, mut h) = match n.kind.as_str() {
+    let (mut w, mut h) = match if across(n) { "row" } else { n.kind.as_str() } {
         k if shows_text(k) => {
             let lines = wrap_lines(&n.text, l.size, l.face(), inner, l.wrap);
             let (_, lh) = line_metrics(l.size, l.face());
@@ -1202,7 +1390,13 @@ fn measure(n: &Laid, max_w: f32) -> (f32, f32) {
             }
             (w.ceil(), lh * lines.len().max(1) as f32)
         }
-        "space" | "checkbox" | "slider" => (0.0, 0.0),
+        "space" | "checkbox" | "slider" | "progress" => (0.0, 0.0),
+        "grid" => {
+            let (cols, cw) = grid_columns(l, inner);
+            let rows = grid_rows(n, cols, cw);
+            let w = if inner.is_finite() { inner } else { cols as f32 * (cw + l.gap) - l.gap };
+            (w, rows.iter().sum::<f32>() + l.gap * rows.len().saturating_sub(1) as f32)
+        }
         "image" => {
             let (pw, ph) = picture(&n.text).map(|p| (p.w as f32, p.h as f32)).unwrap_or((64.0, 64.0));
             let ratio = ph / pw.max(1.0);
@@ -1327,7 +1521,57 @@ fn place(n: &mut Laid, x: f32, y: f32, w: f32, h: f32) {
         return;
     }
     let count = n.children.len();
-    match n.kind.as_str() {
+    match if n.kind == "split" { "split" } else if across(n) { "row" } else { n.kind.as_str() } {
+        "grid" => {
+            let (cols, cw) = grid_columns(&l, iw);
+            let rows = grid_rows(n, cols, cw);
+            let mut at = iy;
+            for (r, row) in n.children.chunks_mut(cols.max(1)).enumerate() {
+                let rh = rows[r];
+                for (j, c) in row.iter_mut().enumerate() {
+                    // Cells stretch to their row's height, unless they're given one.
+                    let ch = match c.look.height {
+                        Size::Fixed(f) => clamp_h(c, f),
+                        _ => rh,
+                    };
+                    let cx = ix + j as f32 * (cw + l.gap);
+                    place(c, cx.round(), at.round(), cw.round(), ch.round());
+                }
+                at += rh + l.gap;
+            }
+        }
+        "split" => {
+            // Panels side by side (or down), with room between them for the line that's dragged.
+            let along = if l.down { ih } else { iw };
+            let room = (along - l.gap * (count - 1) as f32).max(0.0);
+            let kept = KEPT.with(|k| k.borrow().splits.get(&n.index).cloned()).filter(|f| f.len() == count);
+            let sizes: Vec<f32> = match kept {
+                Some(f) => f.iter().map(|x| x * room).collect(),
+                None => {
+                    // At first, panels given a size have it, and the others share what's left.
+                    let fixed: Vec<Option<f32>> = n
+                        .children
+                        .iter()
+                        .map(|c| match if l.down { c.look.height } else { c.look.width } {
+                            Size::Fixed(f) => Some(f),
+                            _ => None,
+                        })
+                        .collect();
+                    let used: f32 = fixed.iter().flatten().sum();
+                    let rest = fixed.iter().filter(|f| f.is_none()).count().max(1) as f32;
+                    fixed.iter().map(|f| f.unwrap_or(((room - used) / rest).max(0.0))).collect()
+                }
+            };
+            let mut at = 0.0;
+            for (c, size) in n.children.iter_mut().zip(sizes) {
+                if l.down {
+                    place(c, ix.round(), (iy + at).round(), iw.round(), size.round());
+                } else {
+                    place(c, (ix + at).round(), iy.round(), size.round(), ih.round());
+                }
+                at += size + l.gap;
+            }
+        }
         "stack" => {
             for c in n.children.iter_mut() {
                 let cw = cross_width(c, iw);
@@ -1416,6 +1660,11 @@ fn place(n: &mut Laid, x: f32, y: f32, w: f32, h: f32) {
 fn lay_out(root: &Node, w: f32, h: f32) -> (Laid, Vec<Laid>) {
     WINDOW_FONT.with(|f| f.set(settings(&root.style).font));
     DIALOGS.with(|d| d.borrow_mut().clear());
+    KEPT.with(|k| {
+        let mut k = k.borrow_mut();
+        k.split_count = 0;
+        k.branch_path.clear();
+    });
     let mut top = lay(root);
     let dialogs: Vec<Laid> = DIALOGS.with(|d| d.borrow_mut().drain(..).flatten().collect());
     // The root carries the window's settings, which aren't styles.
@@ -2059,6 +2308,41 @@ fn paint(c: &mut Canvas, n: &Laid, st: &PaintState, path: &mut Vec<usize>) {
     if n.kind == "divider" {
         c.rect(n.x + 6.0, n.y + (n.h / 2.0).floor(), (n.w - 12.0).max(0.0), 1.0, 0.0, nt(0xe9ecef), 1.0);
     }
+    match n.kind.as_str() {
+        // A line under the tabs' names, and a thicker one under the tab that shows.
+        "tabbar" => c.rect(n.x, n.y + n.h - 1.0, n.w, 1.0, 0.0, nt(0xdee2e6), 1.0),
+        "tabbtn" if matches!(n.value, Some(SV::Truth(true))) => c.rect(n.x + 4.0, n.y + n.h - 2.0, n.w - 8.0, 2.0, 1.0, l.color, 1.0),
+        // A branch's arrow points right while it's shut, and down while it's open.
+        "branchhead" => {
+            let (ax, cy) = (n.x + 10.0, n.y + n.h / 2.0);
+            let col = mix(l.color, nt(0xffffff), 0.35);
+            if matches!(n.value, Some(SV::Truth(true))) {
+                c.line(ax - 3.5, cy - 2.0, ax, cy + 2.0, 1.5, col);
+                c.line(ax, cy + 2.0, ax + 3.5, cy - 2.0, 1.5, col);
+            } else {
+                c.line(ax - 1.5, cy - 4.0, ax + 2.5, cy, 1.5, col);
+                c.line(ax + 2.5, cy, ax - 1.5, cy + 4.0, 1.5, col);
+            }
+        }
+        // The lines between a split's panels, to drag.
+        "split" => {
+            for pair in n.children.windows(2) {
+                let (a, b) = (&pair[0], &pair[1]);
+                if l.down {
+                    c.rect(n.x, ((a.y + a.h + b.y) / 2.0).floor(), n.w, 1.0, 0.0, nt(0xdee2e6), 1.0);
+                } else {
+                    c.rect(((a.x + a.w + b.x) / 2.0).floor(), n.y, 1.0, n.h, 0.0, nt(0xdee2e6), 1.0);
+                }
+            }
+        }
+        "progress" => {
+            let f = slider_frac(n);
+            if f > 0.0 {
+                c.rect(n.x, n.y, (n.w * f).max(n.h.min(n.w)), n.h, l.radius, l.accent, 1.0);
+            }
+        }
+        _ => {}
+    }
     if n.kind == "image" {
         paint_image(c, n, l);
     }
@@ -2110,8 +2394,9 @@ fn hit(n: &Laid, x: f32, y: f32) -> Option<Vec<usize>> {
             return Some(p);
         }
     }
-    // A layer isn't clicked itself, only what's on it. A menu is clicked to open it.
-    if (n.action.is_some() && n.kind != "layer") || n.kind == "menu" {
+    // A layer isn't clicked itself, only what's on it. A menu is clicked to open it, a tab's name
+    // to show it, and a branch's name to open or shut it.
+    if (n.action.is_some() && n.kind != "layer") || matches!(n.kind.as_str(), "menu" | "tabbtn" | "branchhead") {
         Some(vec![])
     } else {
         None
@@ -2128,7 +2413,7 @@ fn node_at<'a>(n: &'a Laid, path: &[usize]) -> Option<&'a Laid> {
 /// Everything that can have focus, in the order Tab goes through them.
 fn focusable(n: &Laid, path: &mut Vec<usize>, out: &mut Vec<Vec<usize>>) {
     let can = matches!(n.kind.as_str(), "button" | "input" | "textarea" | "checkbox" | "slider" | "dropdown");
-    if (n.action.is_some() && can) || (n.kind == "menu" && !n.look.disabled) {
+    if (n.action.is_some() && can) || (matches!(n.kind.as_str(), "menu" | "tabbtn" | "branchhead") && !n.look.disabled) {
         out.push(path.clone());
     }
     for (i, c) in n.children.iter().enumerate() {
@@ -2222,6 +2507,7 @@ pub fn piece<T: 'static>(parent: usize, site: usize, key: Option<String>, make: 
 pub fn show(style: &[(String, SV)], build: &mut Build) -> Result<(), String> {
     let s = settings(style);
     PIECES.with(|p| p.borrow_mut().push(Pieces::default()));
+    let kept = KEPT.with(|k| std::mem::take(&mut *k.borrow_mut()));
     // Each drawing starts the pieces' turns again, and forgets pieces that weren't drawn.
     let mut framed = || {
         PIECES.with(|p| {
@@ -2241,6 +2527,7 @@ pub fn show(style: &[(String, SV)], build: &mut Build) -> Result<(), String> {
         r
     };
     let r = if std::env::var("LUST_VIEW_TEST").is_ok() { test(s, &mut framed) } else { windowed::run(s, &mut framed) };
+    KEPT.with(|k| *k.borrow_mut() = kept);
     let gone = PIECES.with(|p| p.borrow_mut().pop());
     drop(gone);
     r
@@ -2290,6 +2577,36 @@ enum Drag {
     Slide,
     /// A scroll bar's knob, grabbed at a height with the scroll where it was.
     Scroll(Vec<usize>, f32, f32),
+    /// The line between two panels of a split: which split, which line, where the mouse went
+    /// down, and how big the panels were then.
+    Split(usize, usize, f32, Vec<f32>),
+}
+
+/// The line between two panels of a split at this point: the split's place, which split it is in
+/// the view, which line, and whether its panels go down.
+fn split_line(n: &Laid, x: f32, y: f32, path: &mut Vec<usize>) -> Option<(Vec<usize>, usize, usize, bool)> {
+    if x < n.x || y < n.y || x >= n.x + n.w || y >= n.y + n.h {
+        return None;
+    }
+    for (i, c) in n.children.iter().enumerate() {
+        path.push(i);
+        let found = split_line(c, x, y, path);
+        path.pop();
+        if found.is_some() {
+            return found;
+        }
+    }
+    if n.kind != "split" {
+        return None;
+    }
+    for (i, pair) in n.children.windows(2).enumerate() {
+        let (a, b) = (&pair[0], &pair[1]);
+        let between = if n.look.down { y >= a.y + a.h - 3.0 && y < b.y + 3.0 } else { x >= a.x + a.w - 3.0 && x < b.x + 3.0 };
+        if between {
+            return Some((path.clone(), n.index, i, n.look.down));
+        }
+    }
+    None
 }
 
 /// An `every` in the view: how often, which action, and when it's next due (in seconds).
@@ -2305,18 +2622,52 @@ fn shut(n: &Node) -> bool {
     n.kind == "dialog" && !matches!(n.value, Some(SV::Truth(true)))
 }
 
-fn timers(n: &Node, out: &mut Vec<(f64, usize)>) {
+/// Visits every piece that's shown: not in a closed dialog, a tab that isn't showing, or a branch
+/// that's shut. `branches` is the names of the branches around it.
+fn each_shown(n: &Node, branches: &mut Vec<String>, f: &mut dyn FnMut(&Node)) {
     if shut(n) {
         return;
     }
-    if n.kind == "every" {
-        if let (Some(a), Some(SV::Num(s))) = (n.action, &n.value) {
-            out.push((s.max(0.016), a));
+    f(n);
+    match n.kind.as_str() {
+        "tabs" => {
+            let tabs: Vec<&Node> = n.children.iter().filter(|c| c.kind == "tab").collect();
+            let names: Vec<String> = tabs.iter().map(|t| t.text.clone()).collect();
+            let picked = match &n.value {
+                Some(SV::Text(t)) => names.iter().position(|x| x == t).unwrap_or(0),
+                _ => KEPT.with(|k| k.borrow().tabs.get(&names.join("\u{1}")).copied().unwrap_or(0)),
+            };
+            if let Some(t) = tabs.get(picked.min(tabs.len().saturating_sub(1))) {
+                each_shown(t, branches, f);
+            }
+        }
+        "branch" => {
+            branches.push(n.text.clone());
+            let open = KEPT.with(|k| k.borrow().branches.get(&branches.join("/")).copied())
+                .unwrap_or_else(|| n.style.iter().any(|(k, v)| k == "open" && !matches!(v, SV::Truth(false))));
+            if open {
+                for c in &n.children {
+                    each_shown(c, branches, f);
+                }
+            }
+            branches.pop();
+        }
+        _ => {
+            for c in &n.children {
+                each_shown(c, branches, f);
+            }
         }
     }
-    for c in &n.children {
-        timers(c, out);
-    }
+}
+
+fn timers(n: &Node, out: &mut Vec<(f64, usize)>) {
+    each_shown(n, &mut vec![], &mut |n| {
+        if n.kind == "every" {
+            if let (Some(a), Some(SV::Num(s))) = (n.action, &n.value) {
+                out.push((s.max(0.016), a));
+            }
+        }
+    });
 }
 
 /// Every scroll at this point, outermost first.
@@ -2629,7 +2980,7 @@ impl<'a, 'b> Ui<'a, 'b> {
             let shut_out = modal_in(&self.tree).is_some_and(|m| f.first().is_some_and(|&i| i < m));
             match node_at(&self.tree, &f) {
                 _ if shut_out => self.st.focus = None,
-                Some(n) if n.action.is_some() || n.kind == "menu" => {
+                Some(n) if n.action.is_some() || matches!(n.kind.as_str(), "menu" | "tabbtn" | "branchhead") => {
                     let t = value_text(n).to_string();
                     self.st.caret.fit(&t);
                 }
@@ -2888,6 +3239,15 @@ impl<'a, 'b> Ui<'a, 'b> {
                 return self.close_dialog(m);
             }
         }
+        // The line between two panels of a split, grabbed to drag.
+        if let Some((path, which, i, down)) = self.split_here(x, y) {
+            if let Some(s) = node_at(&self.tree, &path) {
+                let sizes = s.children.iter().map(|c| if down { c.h } else { c.w }).collect();
+                self.drag = Drag::Split(which, i, if down { y } else { x }, sizes);
+                self.pressed = None;
+                return Ok(());
+            }
+        }
         // The knob of a scroll bar, grabbed to drag.
         let found = self.scrolls_here(x, y);
         for p in found.iter().rev() {
@@ -2936,6 +3296,7 @@ impl<'a, 'b> Ui<'a, 'b> {
             "dropdown" | "menu" => self.set_focus(Some(path.clone()), false),
             // A row of an open list: it acts when the mouse is let go, and focus stays.
             "option" | "item" => {}
+            "tabbtn" | "branchhead" => self.set_focus(Some(path.clone()), false),
             // Buttons and checkboxes act when the mouse is let go over them. Clicking one takes
             // focus away from an input, without giving the button a ring.
             _ => self.set_focus(None, false),
@@ -2955,6 +3316,19 @@ impl<'a, 'b> Ui<'a, 'b> {
                     }
                 }
             }
+            Drag::Split(which, i, from, sizes) => {
+                // The two panels on either side of the line share their room differently.
+                let (a, b) = (sizes[i], sizes[i + 1]);
+                let down = self.split_down(which);
+                let d = if down { y } else { x } - from;
+                let first = (a + d).clamp(40.0f32.min(a + b), (a + b - 40.0).max(0.0));
+                let mut now = sizes.clone();
+                now[i] = first;
+                now[i + 1] = a + b - first;
+                let total: f32 = now.iter().sum::<f32>().max(1.0);
+                KEPT.with(|k| k.borrow_mut().splits.insert(which, now.iter().map(|s| s / total).collect()));
+                self.relayout();
+            }
             Drag::Select => {
                 if let Some(n) = self.focused() {
                     let i = self.place_in(n, x, y);
@@ -2973,7 +3347,7 @@ impl<'a, 'b> Ui<'a, 'b> {
     }
 
     fn release(&mut self, x: f32, y: f32) -> Result<(), String> {
-        if let Drag::Scroll(..) = std::mem::replace(&mut self.drag, Drag::None) {
+        if let Drag::Scroll(..) | Drag::Split(..) = std::mem::replace(&mut self.drag, Drag::None) {
             return Ok(());
         }
         let at = self.hit_at(x, y);
@@ -3000,8 +3374,20 @@ impl<'a, 'b> Ui<'a, 'b> {
                 let (a, v) = (n.action, if n.kind == "option" { SV::Text(n.text.clone()) } else { SV::Flag });
                 self.pick(a, v)
             }
+            "tabbtn" | "branchhead" => self.toggle(&path, None),
             _ => Ok(()),
         }
+    }
+
+    /// Whether the split that's this one in the view has its panels going down.
+    fn split_down(&self, which: usize) -> bool {
+        fn find(n: &Laid, which: usize) -> Option<bool> {
+            if n.kind == "split" && n.index == which {
+                return Some(n.look.down);
+            }
+            n.children.iter().find_map(|c| find(c, which))
+        }
+        find(&self.tree, which).unwrap_or(false)
     }
 
     /// A row of the open list was chosen: the list closes, and the row's action runs.
@@ -3034,6 +3420,40 @@ impl<'a, 'b> Ui<'a, 'b> {
     /// only the dialog and what's over it.
     fn reach(&self) -> std::ops::Range<usize> {
         modal_in(&self.tree).unwrap_or(0)..self.tree.children.len()
+    }
+
+    /// The line between two panels of a split at this point, that the mouse can reach.
+    fn split_here(&self, x: f32, y: f32) -> Option<(Vec<usize>, usize, usize, bool)> {
+        for i in self.reach().rev() {
+            if let Some(found) = split_line(&self.tree.children[i], x, y, &mut vec![i]) {
+                return Some(found);
+            }
+        }
+        None
+    }
+
+    /// Selects a tab (by its button's place) or opens or shuts a branch (by its name's place).
+    fn toggle(&mut self, path: &[usize], open: Option<bool>) -> Result<(), String> {
+        let Some(n) = node_at(&self.tree, path) else { return Ok(()) };
+        match n.kind.as_str() {
+            "tabbtn" => {
+                if let Some(a) = n.action {
+                    let name = SV::Text(n.text.clone());
+                    run_with(&mut self.actions[a], name)?;
+                    return self.rebuild();
+                }
+                let (key, i) = (n.key.clone(), n.index);
+                KEPT.with(|k| k.borrow_mut().tabs.insert(key, i));
+            }
+            "branchhead" => {
+                let now = matches!(n.value, Some(SV::Truth(true)));
+                let key = n.key.clone();
+                KEPT.with(|k| k.borrow_mut().branches.insert(key, open.unwrap_or(!now)));
+            }
+            _ => return Ok(()),
+        }
+        self.relayout();
+        Ok(())
     }
 
     /// The deepest piece at this point that the mouse can use.
@@ -3349,6 +3769,21 @@ impl<'a, 'b> Ui<'a, 'b> {
                         None => Ok(()),
                     },
                     ("button", Nav::Enter | Nav::Space) => self.run(&path, SV::Flag),
+                    ("tabbtn" | "branchhead", Nav::Enter | Nav::Space) => self.toggle(&path, None),
+                    ("branchhead", Nav::Edit(Key::Left)) => self.toggle(&path, Some(false)),
+                    ("branchhead", Nav::Edit(Key::Right)) => self.toggle(&path, Some(true)),
+                    // Left and Right go to the tab before or after, and show it.
+                    ("tabbtn", Nav::Edit(Key::Left | Key::Right)) => {
+                        let Some((&last, bar)) = path.split_last() else { return Ok(()) };
+                        let count = node_at(&self.tree, bar).map(|b| b.children.len()).unwrap_or(0);
+                        let next = if k == Nav::Edit(Key::Left) { last.checked_sub(1) } else { Some(last + 1).filter(|&i| i < count) };
+                        let Some(next) = next else { return Ok(()) };
+                        let mut to = bar.to_vec();
+                        to.push(next);
+                        self.toggle(&to, None)?;
+                        self.set_focus(Some(to), true);
+                        Ok(())
+                    }
                     ("dropdown", Nav::Enter | Nav::Space) | ("menu", Nav::Enter | Nav::Space | Nav::Down) => {
                         self.open_popup(&path, true);
                         Ok(())
@@ -3435,6 +3870,9 @@ impl<'a, 'b> Ui<'a, 'b> {
 
     /// The mouse pointer for this spot: a hand over things that act, a text bar over inputs.
     fn pointer(&self, x: f32, y: f32) -> u8 {
+        if let Some((_, _, _, down)) = self.split_here(x, y) {
+            return if down { 4 } else { 3 };
+        }
         match self.hit_at(x, y).and_then(|p| node_at(&self.tree, &p)).map(|n| n.kind.as_str()) {
             Some("input" | "textarea") => 2,
             Some(_) => 1,
@@ -3683,6 +4121,8 @@ mod windowed {
                     if let Some(w) = &self.window {
                         w.set_cursor(match self.ui.pointer(p.0, p.1) {
                             2 => CursorIcon::Text,
+                            3 => CursorIcon::ColResize,
+                            4 => CursorIcon::RowResize,
                             1 => CursorIcon::Pointer,
                             _ => CursorIcon::Default,
                         });
@@ -4010,9 +4450,12 @@ fn dump(n: &Laid, depth: usize, path: &mut Vec<usize>, st: &PaintState, out: &mu
     let pad = "  ".repeat(depth);
     let shown = match (&n.value, n.kind.as_str()) {
         (_, "dialog") => None,
+        (_, "tabbtn") if matches!(n.value, Some(SV::Truth(true))) => Some(format!("{} (showing)", n.text)),
+        (_, "tabbtn") => Some(n.text.clone()),
+        (_, "branchhead") => Some(format!("{} ({})", n.text, if matches!(n.value, Some(SV::Truth(true))) { "open" } else { "shut" })),
         (Some(SV::Text(t)), _) => Some(t.clone()),
         (Some(SV::Truth(b)), _) => Some(if *b { "on" } else { "off" }.to_string()),
-        (Some(SV::Num(x)), "slider") => Some(num_text(*x)),
+        (Some(SV::Num(x)), "slider" | "progress") => Some(num_text(*x)),
         _ => None,
     };
     let text = match shown {
@@ -4062,7 +4505,7 @@ fn find_button(n: &Laid, text: &str, path: &mut Vec<usize>) -> Option<Vec<usize>
             }
         }
     }
-    if matches!(n.kind.as_str(), "button" | "option" | "item" | "menu") && n.text == text {
+    if matches!(n.kind.as_str(), "button" | "option" | "item" | "menu" | "tabbtn" | "branchhead") && n.text == text {
         return Some(path.clone());
     }
     for (i, c) in n.children.iter().enumerate() {

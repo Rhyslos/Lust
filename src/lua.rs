@@ -576,8 +576,11 @@ impl<'a> W<'a> {
                     return;
                 }
                 let v = self.fresh("v");
-                let bound = matches!(kind.as_str(), "input" | "textarea" | "checkbox" | "slider" | "dropdown" | "dialog");
-                let valued = bound || kind == "every";
+                let bound = matches!(
+                    kind.as_str(),
+                    "input" | "textarea" | "checkbox" | "slider" | "dropdown" | "dialog" | "tabs"
+                );
+                let valued = bound || kind == "every" || kind == "progress";
                 let t = match arg {
                     Some(a) if !valued => self.expr(a),
                     _ => "\"\"".into(),

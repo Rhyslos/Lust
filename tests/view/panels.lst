@@ -1,0 +1,59 @@
+-- Grids, splits, tabs, branches and progress bars.
+assembly App {
+    has {
+        string page = "Items";
+        int done = 3;
+        int ticks = 0;
+        string array things = ["Sword", "Shield", "Bow", "Potion", "Map"];
+    }
+
+    view [title "Panels", width 600, height 420] {
+        split {
+            column [width 180, gap 4, pad 8] {
+                branch "Weapons" [open] {
+                    text "Sword";
+                    branch "Bows" {
+                        text "Longbow";
+                    }
+                }
+                branch "Armour" {
+                    text "Shield";
+                }
+            }
+            column [gap 10, pad 8] {
+                tabs page {
+                    tab "Items" {
+                        grid [cell 120, gap 8] {
+                            loop (string t in things) {
+                                column [pad 10, round, background gray1] {
+                                    text t [bold];
+                                    text "A thing" [muted, small];
+                                }
+                            }
+                        }
+                    }
+                    tab "Progress" {
+                        progress done [to 5, width fill];
+                        text done.text() + " of 5";
+                        button "One more" { done = done + 1; }
+                        text "Ticked " + ticks.text();
+                        every 1.0 { ticks = ticks + 1; }
+                    }
+                }
+                text "Showing " + page;
+                tabs {
+                    tab "One" { text "First"; }
+                    tab "Two" { text "Second"; }
+                }
+                grid [columns 2] {
+                    text "a";
+                    text "b";
+                    text "c";
+                }
+            }
+        }
+    }
+}
+
+App:open();
+end

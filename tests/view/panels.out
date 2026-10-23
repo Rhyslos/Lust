@@ -1,0 +1,116 @@
+window "Panels" 600x420
+  split 0,0 600x420
+    column 0,0 180x420
+      branch "Weapons" 8,8 164x77
+        branchhead "Weapons (open)" 8,8 164x27
+        branchbody 8,37 164x48
+          text "Sword" 28,37 46x19
+          branch "Bows" 28,58 144x27
+            branchhead "Bows (shut)" 28,58 144x27
+      branch "Armour" 8,89 164x27
+        branchhead "Armour (shut)" 8,89 164x27
+    column 188,0 412x420
+      tabs "Items" 196,8 396x166
+        tabbar 196,8 396x36
+          tabbtn "Items (showing)" 196,8 65x36
+          tabbtn "Progress" 265,8 89x36
+        tab "Items" 196,56 396x118
+          grid 196,56 396x118
+            column 196,56 127x55
+              text "Sword" 206,66 48x19
+              text "A thing" 206,85 44x16
+            column 331,56 127x55
+              text "Shield" 341,66 46x19
+              text "A thing" 341,85 44x16
+            column 465,56 127x55
+              text "Bow" 475,66 32x19
+              text "A thing" 475,85 44x16
+            column 196,119 127x55
+              text "Potion" 206,129 48x19
+              text "A thing" 206,148 44x16
+            column 331,119 127x55
+              text "Map" 341,129 33x19
+              text "A thing" 341,148 44x16
+      text "Showing Items" 196,184 105x19
+      tabs 196,213 396x67
+        tabbar 196,213 396x36
+          tabbtn "One (showing)" 196,213 54x36
+          tabbtn "Two" 254,213 56x36
+        tab "One" 196,261 396x19
+          text "First" 196,261 31x19
+      grid 196,290 396x50
+        text "a" 196,290 192x19
+        text "b" 400,290 192x19
+        text "c" 196,321 192x19
+window "Panels" 700x420
+  split 0,0 700x420
+    column 0,0 256x420
+      branch "Weapons" 8,8 240x98
+        branchhead "Weapons (open)" 8,8 240x27
+        branchbody 8,37 240x69
+          text "Sword" 28,37 46x19
+          branch "Bows" 28,58 220x48
+            branchhead "Bows (open)" 28,58 220x27
+            branchbody 28,87 220x19
+              text "Longbow" 48,87 66x19
+      branch "Armour" 8,110 240x48
+        branchhead "Armour (open)" 8,110 240x27
+        branchbody 8,139 240x19
+          text "Shield" 28,139 44x19
+    column 264,0 436x420
+      tabs "Progress" 272,8 420x127
+        tabbar 272,8 420x36
+          tabbtn "Items" 272,8 64x36
+          tabbtn "Progress (showing)" 340,8 90x36 (focus)
+        tab "Progress" 272,56 420x79
+          progress "4" 272,56 420x8
+          text "4 of 5" 272,64 42x19
+          button "One more" 272,83 99x33
+          text "Ticked 2" 272,116 62x19
+      text "Showing Progress" 272,145 130x19
+      tabs 272,174 420x67
+        tabbar 272,174 420x36
+          tabbtn "One" 272,174 54x36
+          tabbtn "Two (showing)" 330,174 56x36
+        tab "Two" 272,222 420x19
+          text "Second" 272,222 54x19
+      grid 272,251 420x50
+        text "a" 272,251 204x19
+        text "b" 488,251 204x19
+        text "c" 272,282 204x19
+window "Panels" 700x420
+  split 0,0 700x420
+    column 0,0 256x420
+      branch "Weapons" 8,8 240x98
+        branchhead "Weapons (open)" 8,8 240x27 (focus)
+        branchbody 8,37 240x69
+          text "Sword" 28,37 46x19
+          branch "Bows" 28,58 220x48
+            branchhead "Bows (open)" 28,58 220x27
+            branchbody 28,87 220x19
+              text "Longbow" 48,87 66x19
+      branch "Armour" 8,110 240x48
+        branchhead "Armour (open)" 8,110 240x27
+        branchbody 8,139 240x19
+          text "Shield" 28,139 44x19
+    column 264,0 436x420
+      tabs "Progress" 272,8 420x127
+        tabbar 272,8 420x36
+          tabbtn "Items" 272,8 64x36
+          tabbtn "Progress (showing)" 340,8 90x36
+        tab "Progress" 272,56 420x79
+          progress "4" 272,56 420x8
+          text "4 of 5" 272,64 42x19
+          button "One more" 272,83 99x33
+          text "Ticked 2" 272,116 62x19
+      text "Showing Progress" 272,145 130x19
+      tabs 272,174 420x67
+        tabbar 272,174 420x36
+          tabbtn "One" 272,174 54x36
+          tabbtn "Two (showing)" 330,174 56x36
+        tab "Two" 272,222 420x19
+          text "Second" 272,222 54x19
+      grid 272,251 420x50
+        text "a" 272,251 204x19
+        text "b" 488,251 204x19
+        text "c" 272,282 204x19

@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (2.0 alpha 24):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (2.0 alpha 25):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -582,6 +582,7 @@ An assembly with a `view` opens a window with `App:open();`, through `lust run` 
 - **Enter and shortcuts:** `input newTodo enter { add(); }` runs a block when Enter is pressed in the input, and `key "ctrl+s" { save(); }` is a keyboard shortcut (see below).
 - **Fonts:** `font "fonts/Lora.ttf"` draws a piece's words in a font file of your own, and on the view's `[ ]` it's the whole window's font.
 - **Feedback:** hover looks fade in and out, and a button looks pressed in while it's held down.
+- **Laying out bigger apps:** `grid` for cards in columns that rewrap as the window changes size, `split` for panels with a line between them to drag, `tabs`, `branch` for parts that fold open and shut (trees), and `progress` bars (see below).
 - **Things that show over the view:** `dropdown` lists to choose from, `menu`s of `item`s, `dialog`s that pop up while a bool is true, and `tip "…"` for a note when the mouse rests on a piece (see below).
 
 ```
@@ -611,6 +612,8 @@ end
 | `dump` | prints every piece with its place and size |
 | `click Add one` | clicks the button showing that text, or a row of an open list (`click Cupboard`, `click Save`) |
 | `open menu File`, `open dropdown 1` | clicks a menu or the first dropdown, opening its list |
+| `click Weapons`, `click Stats` | opens or shuts a branch, or shows a tab, by its name |
+| `press 184 200`, `move 260 200`, `release 260 200` | drags the line between a split's panels, like any drag |
 | `hover Delete` | puts the mouse on the button showing that text, and shows its tip straight away |
 | `focus input 1` | gives the first input focus (also `textarea 1`, `checkbox 2`, `slider 1`, `button 3`) |
 | `type Hello` | types into the input that has focus |
@@ -758,8 +761,9 @@ assembly Settings {
 
 | | |
 | --- | --- |
-| Layout | `column`, `row`, `stack` (layers), `scroll`, `space` |
-| Content | `text`, `button`, `input`, `textarea`, `checkbox`, `slider`, `image` |
+| Layout | `column`, `row`, `stack` (layers), `scroll`, `space`, `grid`, `split` |
+| Showing parts | `tabs` with `tab`, `branch` |
+| Content | `text`, `button`, `input`, `textarea`, `checkbox`, `slider`, `image`, `progress` |
 | Choosing | `dropdown`, `menu` with `item` and `divider` |
 | Over the view | `dialog` |
 | Time and keys | `every`, `key` |
@@ -779,6 +783,70 @@ textarea notes [placeholder "Write something…", width fill, height 160] {
 - **Lines:** Enter starts a new line, and lines too long for the box wrap between words. The text box is 300 wide and four lines tall unless it's given a `width` and `height`; when there's more, it scrolls (with the wheel, or by itself to keep the caret in view).
 - **Keys:** everything an input has, and Up and Down go a line up or down, Home and End to the start or end of the line, and Ctrl+Home and Ctrl+End (Cmd+Up and Cmd+Down on a Mac) to the start or end of the whole text. Pasting keeps the copied lines.
 - **`enter { }`** on a text box runs on Ctrl+Enter (Cmd+Enter on a Mac), since Enter starts a new line: `textarea message enter { send(); }`.
+
+### Grids
+
+`grid { … }` puts what it holds in columns, left to right and then onto the next row, like cards in a shop. `columns 3` gives it three columns; `cell 180` instead fits as many columns as there's room for with each at least 180 wide, so the cards rewrap as the window gets narrower or wider:
+
+```
+grid [cell 180, gap 12] {
+    loop (int id, string name, float price in shop) {
+        column [pad 12, round, background gray1] {
+            text name [bold];
+            text price.text() [muted];
+        }
+    }
+}
+```
+
+A grid is as wide as the room it's in, its columns share that room equally, and the pieces in a row are all as tall as the tallest, so cards line up. It has a `gap` of 12 unless told otherwise. Without `columns` or `cell`, cells are at least 160 wide.
+
+### Splits
+
+`split { … }` puts its pieces side by side as panels, with a line between each two that can be dragged to make one bigger and the other smaller. `split [down]` puts them one above the other:
+
+```
+split {
+    column [width 220] { … }      -- a side panel, 220 wide to start with
+    column { … }                  -- the main area takes the rest
+}
+```
+
+A split fills the room it's in. Panels given a `width` (or a `height`, going down) start at that size, and the others share the rest. The window remembers where each line was dragged to while it's open. Panels can't be dragged smaller than 40.
+
+### Tabs
+
+`tabs { … }` holds `tab`s, and shows the names of them all in a bar with one tab's pieces under it. Clicking a name shows that tab:
+
+```
+tabs {
+    tab "Items" { … }
+    tab "Stats" { … }
+    tab "Settings" { … }
+}
+```
+
+The window remembers which tab shows. Bound to a string field, `tabs page { … }` shows the tab whose name the field holds, and clicking a name changes the field, so the code can switch tabs too: `page = "Stats";`. Tabs can come from a `loop`. A colour word colours the name of the tab that shows: `tabs [purple]`. Only the tab that shows is drawn, and timers and shortcuts in the others wait until it shows. From the keyboard, Tab reaches the names, Left and Right go to the tab before or after, and Enter or Space shows it.
+
+### Branches
+
+`branch "Weapons" { … }` is a name with an arrow that opens and shuts what's under it when it's clicked. Branches inside branches make a tree, like folders:
+
+```
+branch "Weapons" [open] {
+    text "Sword";
+    branch "Bows" {
+        text "Longbow";
+        text "Crossbow";
+    }
+}
+```
+
+`open` makes a branch start open. The window remembers which branches are open by their names and the names of the branches around them, so two branches with the same name in the same place open and shut together. From the keyboard, Enter or Space opens or shuts one, Right opens it and Left shuts it.
+
+### Progress bars
+
+`progress done [to total];` shows how far along something is, as a bar that fills up. It goes `from` 0 `to` 100 unless told otherwise, is 200 wide and 8 tall unless given a `width` and `height`, and a colour word colours the part that's filled: `progress loaded [to 1.0, width fill, green]`.
 
 ### Dropdowns
 
@@ -926,6 +994,7 @@ Short words in `[ ]`, in the spirit of Tailwind:
 | under the mouse | `hover:[ … ]`, `tip "…"` |
 | in dark mode | `dark:[ … ]` |
 | inputs and pictures | `placeholder "…"`, `from`, `to`, `step`, `cover` |
+| grids, splits, branches | `columns 3`, `cell 180`, `down`, `open` |
 | words | `font "file.ttf"` |
 | off | `disabled`, or `disabled` with a bool: `disabled not ready` |
 
