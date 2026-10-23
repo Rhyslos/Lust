@@ -1,0 +1,31 @@
+-- Components on their own: made with new, run by hand. me is nothing without an engine.
+state Mode = [Walk, Run];
+
+component Walker {
+    has {
+        vec3 pos = [0, 0, 0];
+        float speed = 2;
+        Mode mode = Mode.Walk;
+        entity follow = nothing;
+    }
+
+    method update(float dt) {
+        is mode == Mode.Run? then {
+            pos = pos + [speed * 2, 0, 0] * dt;
+        } or {
+            pos = pos + [speed, 0, 0] * dt;
+        }
+    }
+}
+
+Walker w = new Walker;
+w:update(0.5);
+w.mode = Mode.Run;
+w:update(0.5);
+print(w.pos);
+print(w.me);
+print(w.me == nothing);
+print(w.follow.text());
+entity e = w.follow;
+print(e == w.me);
+end

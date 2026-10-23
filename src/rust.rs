@@ -480,6 +480,106 @@ pub fn write(prog: &Program, info: &Info, files: &[String], library: bool) -> St
     )
 }
 
+/// What a library with components gives the engine: values, kinds and schemas, the same kinds as
+/// Solis's own (reflect::Value and FieldKind, without assets and colours), so its adapter is a
+/// one-to-one match.
+const COMPONENT_API: &str = r#"
+/// One field's value.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Value {
+    Bool(bool),
+    Int(i64),
+    Float(f64),
+    Text(String),
+    /// A vec3 is three numbers, a rotation four (x, y, z, w).
+    List(Vec<Value>),
+    /// An entity's 64-bit ID, or none.
+    Entity(Option<u64>),
+}
+
+/// What kind of value a field holds.
+#[derive(Debug, Clone, PartialEq)]
+pub enum FieldKind {
+    Bool,
+    Int,
+    Float,
+    Text,
+    /// One of a state's options, by name.
+    Choice(Vec<String>),
+    Vec3,
+    Rotation,
+    Entity,
+}
+
+/// One field of a component.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FieldInfo {
+    pub name: String,
+    pub kind: FieldKind,
+    pub default: Value,
+}
+
+/// A component's name and fields, in the order they're written.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Schema {
+    pub name: String,
+    pub fields: Vec<FieldInfo>,
+}
+
+/// A component's values, by field name.
+pub type Data = std::collections::BTreeMap<String, Value>;
+
+fn as_bool(v: &Value) -> Option<bool> {
+    match v {
+        Value::Bool(b) => Some(*b),
+        _ => None,
+    }
+}
+fn as_int(v: &Value) -> Option<i64> {
+    match v {
+        Value::Int(n) => Some(*n),
+        _ => None,
+    }
+}
+fn as_num(v: &Value) -> Option<f64> {
+    match v {
+        Value::Float(x) => Some(*x),
+        Value::Int(n) => Some(*n as f64),
+        _ => None,
+    }
+}
+fn as_text(v: &Value) -> Option<String> {
+    match v {
+        Value::Text(t) => Some(t.clone()),
+        _ => None,
+    }
+}
+fn as_choice(v: &Value, options: &[&'static str]) -> Option<&'static str> {
+    match v {
+        Value::Text(t) => options.iter().copied().find(|o| o == t),
+        _ => None,
+    }
+}
+fn as_floats(v: &Value, n: usize) -> Option<Vec<f64>> {
+    match v {
+        Value::List(items) if items.len() == n => items.iter().map(as_num).collect(),
+        _ => None,
+    }
+}
+fn as_vec3(v: &Value) -> Option<Vec3> {
+    as_floats(v, 3).map(|f| rt::vec3(f[0], f[1], f[2]))
+}
+fn as_rotation(v: &Value) -> Option<Rotation> {
+    as_floats(v, 4).map(|f| Rotation { x: f[0] as f32, y: f[1] as f32, z: f[2] as f32, w: f[3] as f32 })
+}
+fn as_entity(v: &Value) -> Option<u64> {
+    match v {
+        Value::Entity(e) => Some(e.unwrap_or(0)),
+        _ => None,
+    }
+}
+"#;
+
 /// What a native method says when it's run without a program to give its body.
 pub fn native_alone(shown: &str) -> String {
     format!("{shown} is native: its body is in the Rust program that uses this Lust as a library (lust build --library), so it can't run on its own.")
@@ -750,6 +850,8 @@ impl<'a> W<'a> {
             Ty::Truth => "bool".into(),
             Ty::Vec3 => "rt::Vec3".into(),
             Ty::Rot => "rt::Rotation".into(),
+            // An entity's 64-bit ID; nothing is 0, which Solis never uses.
+            Ty::Entity => "u64".into(),
             Ty::State(_) | Ty::StateList(_) => "&'static str".into(),
             Ty::Class(c) => format!("Option<Rc<RefCell<O{}>>>", self.root(*c)),
             Ty::Array(e) => format!("rt::Arr<{}>", self.ty(e)),
@@ -786,7 +888,10 @@ impl<'a> W<'a> {
         fn plain(t: &Ty) -> bool {
             match t {
                 Ty::Array(e) => plain(e) && !matches!(**e, Ty::Array(_)),
-                _ => matches!(t, Ty::Int | Ty::Float | Ty::Str | Ty::Truth | Ty::Vec3 | Ty::Rot | Ty::Class(_)),
+                _ => matches!(
+                    t,
+                    Ty::Int | Ty::Float | Ty::Str | Ty::Truth | Ty::Vec3 | Ty::Rot | Ty::Entity | Ty::Class(_)
+                ),
             }
         }
         // Vectors and rotations are the runtime's own types, handed out as they are.
@@ -801,7 +906,7 @@ impl<'a> W<'a> {
             ));
             // Classes with native methods belong to the program using the library, so it always
             // sees all of them. Otherwise, what the first file passes.
-            let owned = class_decls.iter().any(|d| d.name == c.name && d.methods.iter().any(|m| m.native));
+            let owned = class_decls.iter().any(|d| d.name == c.name && d.methods.iter().any(|m| m.native)) || c.is_component;
             if !exported(&c.name) && !owned {
                 continue;
             }
@@ -869,7 +974,19 @@ impl<'a> W<'a> {
                     self.to_api("out", &sig.ret)
                 ));
             }
+            if c.is_component {
+                items.push_str(&self.component_api(ci, &shown, &w));
+            }
             out.push_str(&format!("impl {w} {{\n{items}}}\n"));
+        }
+        // Components: what the engine needs to keep, show and run them.
+        let comps: Vec<String> = info.classes.iter().filter(|c| c.is_component).map(|c| ident(&c.name)).collect();
+        if !comps.is_empty() {
+            out.push_str(COMPONENT_API);
+            out.push_str(&format!(
+                "\n/// Every component's schema, for the inspector.\npub fn components() -> Vec<Schema> {{\n    vec![{}]\n}}\n",
+                comps.iter().map(|c| format!("{c}::schema()")).collect::<Vec<_>>().join(", ")
+            ));
         }
         for item in &prog.items {
             let Item::Method(m) = item else { continue };
@@ -909,6 +1026,7 @@ impl<'a> W<'a> {
             Ty::Class(c) => format!("Option<{}>", ident(&self.info.classes[*c].name)),
             Ty::Vec3 => "Vec3".into(),
             Ty::Rot => "Rotation".into(),
+            Ty::Entity => "Option<u64>".into(),
             Ty::Array(e) => format!("Vec<{}>", self.api_ty(e)),
             Ty::Void => "()".into(),
             other => self.ty(other),
@@ -923,6 +1041,67 @@ impl<'a> W<'a> {
         }
     }
 
+    /// A component's name, schema, and its fields as values, both ways.
+    fn component_api(&mut self, ci: usize, shown: &str, w: &str) -> String {
+        let fields: Vec<(String, Ty)> = self.info.classes[ci]
+            .fields
+            .iter()
+            .filter(|f| f.name != "me")
+            .map(|f| (f.name.clone(), f.ty.clone()))
+            .collect();
+        let mut kinds = Vec::new();
+        let mut out_vals = Vec::new();
+        let mut in_vals = Vec::new();
+        for (n, t) in &fields {
+            let f = self.fname(ci, n);
+            let (kind, to, from) = match t {
+                Ty::Truth => ("FieldKind::Bool".to_string(), format!("Value::Bool(o.{f})"), "as_bool(v)".to_string()),
+                Ty::Int => ("FieldKind::Int".into(), format!("Value::Int(o.{f})"), "as_int(v)".into()),
+                Ty::Float => ("FieldKind::Float".into(), format!("Value::Float(o.{f})"), "as_num(v)".into()),
+                Ty::Str => ("FieldKind::Text".into(), format!("Value::Text(o.{f}.clone())"), "as_text(v)".into()),
+                Ty::State(s) => {
+                    let opts: Vec<String> = self.info.states[*s].options.iter().map(|o| format!("{o:?}")).collect();
+                    (
+                        format!("FieldKind::Choice(vec![{}])", opts.iter().map(|o| format!("{o}.to_string()")).collect::<Vec<_>>().join(", ")),
+                        format!("Value::Text(o.{f}.to_string())"),
+                        format!("as_choice(v, &[{}])", opts.join(", ")),
+                    )
+                }
+                Ty::Vec3 => (
+                    "FieldKind::Vec3".into(),
+                    format!("Value::List(vec![Value::Float(o.{f}.x as f64), Value::Float(o.{f}.y as f64), Value::Float(o.{f}.z as f64)])"),
+                    "as_vec3(v)".into(),
+                ),
+                Ty::Rot => (
+                    "FieldKind::Rotation".into(),
+                    format!("Value::List(vec![Value::Float(o.{f}.x as f64), Value::Float(o.{f}.y as f64), Value::Float(o.{f}.z as f64), Value::Float(o.{f}.w as f64)])"),
+                    "as_rotation(v)".into(),
+                ),
+                Ty::Entity => ("FieldKind::Entity".into(), format!("Value::Entity(Some(o.{f}).filter(|e| *e != 0))"), "as_entity(v)".into()),
+                _ => continue,
+            };
+            kinds.push(format!(
+                "FieldInfo {{ name: {n:?}.into(), kind: {kind}, default: d[{n:?}].clone() }}"
+            ));
+            out_vals.push(format!(
+                "        d.insert({n:?}.into(), {to});
+"
+            ));
+            in_vals.push(format!(
+                "        if let Some(x) = data.get({n:?}).and_then(|v| {from}) {{
+            self.0.borrow_mut().{f} = x;
+        }}
+"
+            ));
+        }
+        format!(
+            "    /// The component's name, as the engine knows it.\n    pub const NAME: &'static str = {shown:?};\n\n    /// Its fields, their kinds and their starting values, in order.\n    pub fn schema() -> Schema {{\n        let d = {w}::new().map(|c| c.to_data()).unwrap_or_default();\n        Schema {{ name: {shown:?}.into(), fields: vec![{}] }}\n    }}\n\n    /// Its fields' values, by name.\n    pub fn to_data(&self) -> Data {{\n        let o = self.0.borrow();\n        let mut d = Data::new();\n{}        d\n    }}\n\n    /// Sets the fields `data` has. A missing value, or one of the wrong kind, is left as it is.\n    pub fn set_data(&self, data: &Data) {{\n{}    }}\n\n    /// A new one with these values, and the starting values for the rest.\n    pub fn from_data(data: &Data) -> Result<{w}, String> {{\n        let c = {w}::new()?;\n        c.set_data(data);\n        Ok(c)\n    }}\n",
+            kinds.join(", "),
+            out_vals.concat(),
+            in_vals.concat()
+        )
+    }
+
     /// A Lust value handed out: things made from classes get their class's own Rust type.
     fn to_api(&self, code: &str, t: &Ty) -> String {
         match t {
@@ -932,6 +1111,7 @@ impl<'a> W<'a> {
                 "rt::acopy(&{code}).into_iter().map(|x| {}).collect::<Vec<_>>()",
                 self.to_api("x", e)
             ),
+            Ty::Entity => format!("Some({code}).filter(|e| *e != 0)"),
             _ => code.to_string(),
         }
     }
@@ -941,6 +1121,7 @@ impl<'a> W<'a> {
         match t {
             Ty::Class(_) => format!("{code}.map(|w| w.0)"),
             Ty::Array(e) => format!("rt::arr({code}.into_iter().map(|x| {}).collect())", self.from_api("x", e)),
+            Ty::Entity => format!("{code}.unwrap_or(0)"),
             _ => code.to_string(),
         }
     }
@@ -1426,6 +1607,7 @@ impl<'a> W<'a> {
             ExprKind::Float(v) => format!("({v:?}f64)"),
             ExprKind::Str(s) => format!("{s:?}.to_string()"),
             ExprKind::Bool(b) => b.to_string(),
+            ExprKind::Nothing if self.info.ty(e) == Ty::Entity => "0u64".into(),
             ExprKind::Nothing => "None".into(),
             ExprKind::Name(n) => {
                 if let Some((_, path)) = self.info.options.get(&e.id) {
@@ -2209,6 +2391,7 @@ impl<'a> W<'a> {
             Ty::Float => format!("|v: &{tt}| rt::ftext(*v)"),
             Ty::Vec3 => format!("|v: &{tt}| rt::vtext(*v)"),
             Ty::Rot => format!("|v: &{tt}| rt::rtext(*v)"),
+            Ty::Entity => format!("|v: &{tt}| rt::etext(*v)"),
             Ty::Truth => format!("|v: &{tt}| rt::btext(*v)"),
             Ty::Str if quoted => format!("|v: &{tt}| rt::qtext(v)"),
             Ty::Str => format!("|v: &{tt}| v.clone()"),
@@ -2330,6 +2513,7 @@ fn text(code: &str, t: &Ty) -> String {
         Ty::Float => format!("rt::ftext({code})"),
         Ty::Vec3 => format!("rt::vtext({code})"),
         Ty::Rot => format!("rt::rtext({code})"),
+        Ty::Entity => format!("rt::etext({code})"),
         Ty::Truth => format!("rt::btext({code})"),
         Ty::State(_) => format!("{code}.to_string()"),
         _ => code.to_string(),
@@ -2344,6 +2528,7 @@ fn ident(n: &str) -> String {
 fn coerce(code: String, got: &Ty, want: &Ty) -> String {
     match (got, want) {
         (Ty::Int, Ty::Float) => format!("({code} as f64)"),
+        (Ty::Nothing, Ty::Entity) => "0u64".into(),
         _ => code,
     }
 }

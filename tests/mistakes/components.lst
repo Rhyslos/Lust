@@ -1,0 +1,27 @@
+-- Mistakes with components and entities.
+class Bag {
+    has {
+        int size = 1;
+    }
+}
+
+component Thing {
+    has {
+        int array numbers = [1, 2];
+        Bag bag = nothing;
+        entity me = nothing;
+        entity friend;
+    }
+
+    method update(int ticks) {
+        me = friend;
+    }
+}
+
+component Copy like Thing {
+}
+
+entity e = 5;
+entity f = nothing;
+print(f + 1);
+end

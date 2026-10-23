@@ -480,6 +480,21 @@ pub fn rtext(q: Rotation) -> String {
     vtext(qdegrees(q))
 }
 
+/// An entity's ID as Solis writes it: 13 Crockford base-32 letters and digits. 0 is nothing.
+pub fn etext(e: u64) -> String {
+    if e == 0 {
+        return "nothing".into();
+    }
+    const ALPHABET: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+    let mut out = [0u8; 13];
+    let mut n = e;
+    for slot in out.iter_mut().rev() {
+        *slot = ALPHABET[(n & 31) as usize];
+        n >>= 5;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 pub fn ftext(v: f64) -> String {
     if v.is_nan() {
         return "not a number".into();

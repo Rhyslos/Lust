@@ -13,6 +13,6 @@ vectors.lst:13:12  % doesn't work on a vec3 and an int. % works on numbers only.
 vectors.lst:14:23  a vec3 can't be JSON. JSON holds numbers, text, bools, states, arrays, maps, cMaps and things made from classes.
 vectors.lst:15:11  l is a float, but this is a vec3.
 vectors.lst:15:13  lerp takes 2, but gets 1. It takes: vec3 to, float amount.
-vectors.lst:16:1  Lust doesn't have a type called vector. The types are int, float, string, bool, vec3, rotation, arrays, maps, cMaps, hooks, classes and states.
+vectors.lst:16:1  Lust doesn't have a type called vector. The types are int, float, string, bool, vec3, rotation, entity, arrays, maps, cMaps, hooks, classes and states.
 
 16 mistakes. Nothing was run.

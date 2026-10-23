@@ -1,0 +1,41 @@
+-- Components: game logic that sits on entities, run by an engine once a tick.
+get "solis/world":[positionOf, moveTo, nearest, log];
+
+state Mode = [Single, Burst];
+
+component Gun {
+    has {
+        int ammo = 3;
+        float cooldown = 0;
+        float reload = 0.5;
+        Mode mode = Mode.Single;
+        entity target = nothing;
+        string label = "gun";
+    }
+
+    method update(float dt) {
+        cooldown = cooldown - dt;
+        is target == nothing? then {
+            target = nearest(me);
+        }
+        is cooldown <= 0 && ammo > 0 && target != nothing? then {
+            ammo = ammo - 1;
+            cooldown = reload;
+            log(me.text() + " fires at " + target.text() + ", " + ammo.text() + " left");
+        }
+    }
+}
+
+component Spinner {
+    has {
+        vec3 speed = [0, 0, 1];
+        rotation facing = [0, 0, 0];
+    }
+
+    method update(float dt) {
+        moveTo(me, positionOf(me) + speed * dt);
+    }
+}
+
+pass Gun, Spinner;
+end

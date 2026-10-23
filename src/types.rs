@@ -12,6 +12,8 @@ pub enum Ty {
     Vec3,
     /// A turn in 3D space, kept as a quaternion of four f32 numbers, written as degrees.
     Rot,
+    /// An entity in an engine (Solis), or nothing: its 64-bit ID.
+    Entity,
     /// `nothing` before it's known what it's standing in for.
     Nothing,
     /// What a method that gives nothing back gives back.
@@ -59,7 +61,7 @@ impl Ty {
     }
     /// Values that can be `nothing`.
     pub fn can_be_nothing(&self) -> bool {
-        matches!(self, Ty::Class(_) | Ty::Hook(_) | Ty::Nothing | Ty::Error)
+        matches!(self, Ty::Class(_) | Ty::Hook(_) | Ty::Entity | Ty::Nothing | Ty::Error)
     }
 }
 
@@ -77,6 +79,7 @@ impl<'a> Names<'a> {
             Ty::Truth => "bool".into(),
             Ty::Vec3 => "vec3".into(),
             Ty::Rot => "rotation".into(),
+            Ty::Entity => "entity".into(),
             Ty::Nothing => "nothing".into(),
             Ty::Void => "nothing at all".into(),
             Ty::Error => "?".into(),
