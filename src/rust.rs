@@ -748,6 +748,8 @@ impl<'a> W<'a> {
             Ty::Float => "f64".into(),
             Ty::Str => "String".into(),
             Ty::Truth => "bool".into(),
+            Ty::Vec3 => "rt::Vec3".into(),
+            Ty::Rot => "rt::Rotation".into(),
             Ty::State(_) | Ty::StateList(_) => "&'static str".into(),
             Ty::Class(c) => format!("Option<Rc<RefCell<O{}>>>", self.root(*c)),
             Ty::Array(e) => format!("rt::Arr<{}>", self.ty(e)),
@@ -1273,6 +1275,17 @@ impl<'a> W<'a> {
                 }
                 _ => out.push_str(&format!("{pad}v_{n} = {v};\n")),
             },
+            // pos.x = 3: a vec3 is given a new one with the new x.
+            ExprKind::Field(t, f, _) if self.info.ty(t) == Ty::Vec3 => {
+                let tc = self.expr(t);
+                let i = match f.as_str() {
+                    "x" => 0,
+                    "y" => 1,
+                    _ => 2,
+                };
+                let t = t.clone();
+                self.assign(&t, format!("rt::vwith({tc}, {i}, {v})"), out, pad);
+            }
             ExprKind::Field(t, f, _) => {
                 let tc = self.expr(t);
                 match self.info.ty(t) {
@@ -1436,6 +1449,7 @@ impl<'a> W<'a> {
                     _ => format!("v_{n}.clone()"),
                 }
             }
+            ExprKind::Field(t, f, _) if self.info.ty(t) == Ty::Vec3 => format!("({}.{f} as f64)", self.expr(t)),
             ExprKind::Field(t, f, _) => {
                 if let Some((_, path)) = self.info.options.get(&e.id) {
                     return format!("{path:?}");
@@ -1485,6 +1499,15 @@ impl<'a> W<'a> {
                 let tc = self.expr(t);
                 match self.info.calls.get(&e.id) {
                     Some(CallRes::Builtin) => match (&tt, m.as_str()) {
+                        (Ty::Vec3 | Ty::Rot, _) => {
+                            let p = if tt == Ty::Vec3 { "v" } else { "q" };
+                            let mut a = vec![tc];
+                            for x in args {
+                                let want = if self.info.ty(x).is_number() { Ty::Float } else { self.info.ty(x) };
+                                a.push(self.coerced(x, &want));
+                            }
+                            format!("rt::{p}{m}({})", a.join(", "))
+                        }
                         (Ty::Array(el), "inject") => {
                             let v = self.coerced(&args[0], &el.clone());
                             format!("rt::ainject(&{tc}, {v})")
@@ -1581,6 +1604,7 @@ impl<'a> W<'a> {
                     _ => format!("rt::alen(&{c})"),
                 }
             }
+            ExprKind::Neg(inner) if self.info.ty(inner) == Ty::Vec3 => format!("rt::vneg({})", self.expr(inner)),
             ExprKind::Neg(inner) => format!("(-{})", self.expr(inner)),
             ExprKind::Not(inner) => format!("(!{})", self.expr(inner)),
             ExprKind::Bin(op, l, r, _) => self.binary(e, *op, l, r),
@@ -1592,6 +1616,10 @@ impl<'a> W<'a> {
                 format!("(if {cc} {{ {ac} }} else {{ {bc} }})")
             }
             ExprKind::List { items, keys } => match self.info.ty(e) {
+                t @ (Ty::Vec3 | Ty::Rot) => {
+                    let vs: Vec<String> = items.iter().map(|i| self.coerced(i, &Ty::Float)).collect();
+                    format!("rt::{}({})", if t == Ty::Vec3 { "vec3" } else { "rot" }, vs.join(", "))
+                }
                 Ty::Array(el) => {
                     let et = self.ty(&el);
                     let vs: Vec<String> = items.iter().map(|i| self.coerced(i, &el)).collect();
@@ -2164,6 +2192,8 @@ impl<'a> W<'a> {
         match t {
             Ty::Int => format!("|v: &{tt}| rt::itext(*v)"),
             Ty::Float => format!("|v: &{tt}| rt::ftext(*v)"),
+            Ty::Vec3 => format!("|v: &{tt}| rt::vtext(*v)"),
+            Ty::Rot => format!("|v: &{tt}| rt::rtext(*v)"),
             Ty::Truth => format!("|v: &{tt}| rt::btext(*v)"),
             Ty::Str if quoted => format!("|v: &{tt}| rt::qtext(v)"),
             Ty::Str => format!("|v: &{tt}| v.clone()"),
@@ -2209,6 +2239,29 @@ impl<'a> W<'a> {
     fn binary(&mut self, _e: &Expr, op: BinOp, l: &Expr, r: &Expr) -> String {
         let lt = self.info.ty(l);
         let rt = self.info.ty(r);
+        // Vectors and rotations, with any number as a float.
+        if matches!(lt, Ty::Vec3 | Ty::Rot) || matches!(rt, Ty::Vec3 | Ty::Rot) {
+            let side = |w: &mut Self, x: &Expr| {
+                let t = w.info.ty(x);
+                if t.is_number() {
+                    w.coerced(x, &Ty::Float)
+                } else {
+                    w.expr(x)
+                }
+            };
+            let (lc, rc) = (side(self, l), side(self, r));
+            return match (op, &lt, &rt) {
+                (BinOp::Add, ..) => format!("rt::vadd({lc}, {rc})"),
+                (BinOp::Sub, ..) => format!("rt::vsub({lc}, {rc})"),
+                (BinOp::Mul, Ty::Vec3, _) => format!("rt::vmul({lc}, {rc})"),
+                (BinOp::Mul, Ty::Rot, Ty::Vec3) => format!("rt::qmulv({lc}, {rc})"),
+                (BinOp::Mul, Ty::Rot, _) => format!("rt::qmul({lc}, {rc})"),
+                (BinOp::Mul, _, _) => format!("rt::vmul({rc}, {lc})"),
+                (BinOp::Div, ..) => format!("rt::vdiv({lc}, {rc})"),
+                (BinOp::Ne | BinOp::NotSame, ..) => format!("({lc} != {rc})"),
+                _ => format!("({lc} == {rc})"),
+            };
+        }
         let numeric = lt.is_number() && rt.is_number();
         let floaty = numeric && (lt == Ty::Float || rt == Ty::Float);
         let (lc, rc) = if floaty {
@@ -2260,6 +2313,8 @@ fn text(code: &str, t: &Ty) -> String {
     match t {
         Ty::Int => format!("rt::itext({code})"),
         Ty::Float => format!("rt::ftext({code})"),
+        Ty::Vec3 => format!("rt::vtext({code})"),
+        Ty::Rot => format!("rt::rtext({code})"),
         Ty::Truth => format!("rt::btext({code})"),
         Ty::State(_) => format!("{code}.to_string()"),
         _ => code.to_string(),

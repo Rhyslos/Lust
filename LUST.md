@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (2.0 alpha 27):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (2.0 alpha 28):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -85,6 +85,8 @@ bool alive = true;
 | `float` | numbers with a point | `1.5`, `0.25` |
 | `string` | text, in double quotes | `"Ada"`, `"line\n"` |
 | `bool` | yes or no | `true`, `false`, `not true` |
+| `vec3` | three numbers: a position, a direction or a speed (section 6) | `[1, 0, 2]` |
+| `rotation` | a turn in 3D, written as degrees around x, y and z (section 6) | `[0, 0, 90]` |
 | a class name | one thing made from a class | `Player`, `Weapon` |
 | `T array` | a list of `T` | `int array` |
 | `cMap(...)` | a table of rows, found by their key (the first column) | `cMap(int id, string itemName, int amount)` |
@@ -162,6 +164,30 @@ string mood = either hp > 10? "happy" or "grumpy";
 | `.lines()` | text cut into its lines |
 
 More tools for text, and `Maths` for square roots, rounding and the rest, are in section 19.
+
+### Vectors and rotations
+
+For games and 3D, `vec3` holds three numbers, x, y and z, and `rotation` holds a turn. Both are written as three numbers in `[ ]`. A rotation's are degrees around x, y and z:
+
+```
+vec3 pos = [0, 0, 1.5];
+vec3 speed = [2, 0, 0];
+rotation facing = [0, 0, 90];          -- a quarter turn around z
+float dt = 1.0 / 60;
+
+pos = pos + speed * dt;
+pos.z = 0;
+vec3 ahead = facing * [1, 0, 0];       -- the direction facing points
+print(pos);                            -- [0.0333333, 0.0, 0.0]
+```
+
+- **Arithmetic:** `+` and `-` between vec3s, `*` and `/` by a number, and `-pos` points the other way. A rotation times a vec3 turns it, and a rotation times a rotation turns by one and then the other.
+- **Their parts:** `pos.x`, `pos.y` and `pos.z` are floats, and can be changed: `pos.z = 0;`. A rotation's insides are a quaternion, kept out of the way; `facing:degrees()` gives its degrees around x, y and z as a vec3.
+- **Methods:** `pos:length()`, `dir:normalized()` (the same direction, 1 long), `a:dot(b)`, `a:cross(b)`, `a:distance(b)`, `a:lerp(b, 0.25)` (a quarter of the way to b), `facing:inverse()` (the turn back).
+- **Copied like numbers.** `vec3 b = a;` makes a copy, so changing `b.x` doesn't change `a`. It's the same in arrays, maps and fields.
+- **As an engine keeps them.** Each number is a 32-bit float, so a vec3 holds about 7 digits, and `.text()` shows them to 7. The degrees turn in the order z, then x, then y, the same as Solis and glam's `EulerRot::ZXY`: x tilts, y rolls, and z turns like a compass. Z is up.
+- **The same everywhere.** Every step is worked out the same way in a built program and through `lust run`, down to the last bit, so a game gives the same numbers in both.
+- Vectors and rotations can't go into JSON, saves or databases yet.
 
 ---
 

@@ -31,6 +31,8 @@ The order Lust gets built in. Each step makes Lust more useful on its own, and n
 | ✅ | **11.5 Bigger layouts:** `grid`, `split`, `tabs`, `branch` and `progress` | Done (alpha 25) |
 | ✅ | **11.6 Drawing and motion:** `canvas` with `box`, `circle` and `line`, and `animate` | Done (alpha 26) |
 | ✅ | **11.7 Open and save boxes:** `Files:chooseOpen`, `chooseSave` and `chooseFolder` show the computer's own boxes | Done (alpha 27) |
+| ✅ | **12.1 Vectors and rotations:** `vec3` and `rotation`, kept as f32 like Solis keeps them, and the same in both outputs | Done (alpha 28) |
+| | **12.2 to 12.6 Lust in Solis:** lists, vectors and entities across native methods; `component` with `update`; events; the compiler as a crate, with Lua swapped in while the game runs; faster code for every tick | Next |
 | | 🏁 *The Lust 2.0 release.* | |
 
 ## Decisions along the way

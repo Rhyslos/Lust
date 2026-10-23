@@ -1,0 +1,18 @@
+vectors.lst:2:10  a vec3 is three numbers: x, y and z, like [1, 0, 2], but this has 2.
+vectors.lst:3:14  a vec3 is three numbers: x, y and z, like [1, 0, 2], but this is a string.
+vectors.lst:5:12  + adds a vec3 to a vec3, but these are a vec3 and an int.
+vectors.lst:6:12  * doesn't work on a vec3 and a vec3. A vec3 is multiplied by a number, and a rotation turns a vec3: turn * direction.
+vectors.lst:7:12  * doesn't work on a vec3 and a rotation. A rotation turns what's on its right: turn * direction.
+vectors.lst:8:13  a vec3 has x, y and z, but not w.
+vectors.lst:9:13  a rotation's four numbers are kept inside it. Use :degrees() for the degrees around x, y and z.
+vectors.lst:10:13  a vec3 has no method called size. Its methods are length, normalized, dot, cross, distance and lerp.
+vectors.lst:11:10  i is a vec3, but this is a rotation.
+vectors.lst:12:10  < compares numbers, but this is a vec3.
+vectors.lst:12:14  < compares numbers, but this is a vec3.
+vectors.lst:13:12  % doesn't work on a vec3 and an int. % works on numbers only.
+vectors.lst:14:23  a vec3 can't be JSON. JSON holds numbers, text, bools, states, arrays, maps, cMaps and things made from classes.
+vectors.lst:15:11  l is a float, but this is a vec3.
+vectors.lst:15:13  lerp takes 2, but gets 1. It takes: vec3 to, float amount.
+vectors.lst:16:1  Lust doesn't have a type called vector. The types are int, float, string, bool, vec3, rotation, arrays, maps, cMaps, hooks, classes and states.
+
+16 mistakes. Nothing was run.
