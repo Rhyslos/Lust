@@ -1229,7 +1229,7 @@ impl<'a> Parser<'a> {
         }
         if let Tk::Ident(w) = &t.kind {
             // A piece's name, unless it's used as a variable: key = "x"; or line.text()
-            let used = self.peek(1).is_sym("=") || self.peek(1).is_sym(".") || self.peek(1).is_sym(":") || self.peek(1).is_sym("(");
+            let used = self.peek(1).is_sym("=") || self.peek(1).is_sym(".") || self.peek(1).is_sym(":");
             if self.in_view && ELEMENTS.contains(&w.as_str()) && !used {
                 return self.element();
             }

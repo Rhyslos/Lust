@@ -21,6 +21,7 @@ assembly App {
                 text t;
             }
             text "Saved " + saves.text() + " times";
+            text (#todos).text() + " to do";
             text "Bold from a file" [font "../../assets/fonts/Inter-Bold.otf"];
             text "Missing font falls back" [font "nowhere.ttf"];
             is help? then {
