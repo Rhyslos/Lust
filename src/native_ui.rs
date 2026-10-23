@@ -1370,7 +1370,7 @@ fn flex(c: &Laid, row: bool) -> Option<f32> {
 
 /// Whether this is a scroll, or holds one (not counting scrolls inside scrolls).
 fn holds_scroll(n: &Laid) -> bool {
-    n.kind == "scroll" || n.children.iter().any(holds_scroll)
+    n.kind == "scroll" || n.kind == "split" || n.children.iter().any(holds_scroll)
 }
 
 /// Rows told `center`, `right` or `spread`, and columns and stacks told `center` or `right`, are
@@ -1428,8 +1428,10 @@ fn measure(n: &Laid, max_w: f32) -> (f32, f32) {
             let (_, lh) = line_metrics(l.size, l.face());
             let mut w = lines.iter().map(|s| text_width(s, l.size, l.face())).fold(0.0, f32::max);
             // A dropdown is as wide as its widest choice, so it doesn't change size as it changes.
-            for o in &n.items {
-                w = w.max(text_width(&o.text, l.size, l.face()));
+            if n.kind == "dropdown" {
+                for o in &n.items {
+                    w = w.max(text_width(&o.text, l.size, l.face()));
+                }
             }
             (w.ceil(), lh * lines.len().max(1) as f32)
         }
@@ -1607,6 +1609,17 @@ fn place(n: &mut Laid, x: f32, y: f32, w: f32, h: f32) {
                         _ => rh,
                     };
                     let cx = ix + j as f32 * (cw + l.gap);
+                    // A piece of your own fills its cell, like any other piece.
+                    if c.kind == "piece" {
+                        for inner in c.children.iter_mut() {
+                            if inner.look.width == Size::Auto {
+                                inner.look.width = Size::Fill;
+                            }
+                            if inner.look.height == Size::Auto {
+                                inner.look.height = Size::Fill;
+                            }
+                        }
+                    }
                     place(c, cx.round(), at.round(), cw.round(), ch.round());
                 }
                 at += rh + l.gap;

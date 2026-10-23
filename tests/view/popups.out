@@ -1,8 +1,8 @@
 window "Pop-ups" 420x320
   column 0,0 420x182
-    row 16,16 128x35
-      menu "File" 18,18 56x31
-      menu "Help" 78,18 64x31
+    row 16,16 108x35
+      menu "File" 18,18 46x31
+      menu "Help" 68,18 54x31
     row 16,61 217x33
       dropdown "Fridge" 16,61 111x33
       dropdown "Medium" 135,61 98x33
@@ -10,9 +10,9 @@ window "Pop-ups" 420x320
     button "Delete" 16,133 75x33
 window "Pop-ups" 420x320
   column 0,0 420x182
-    row 16,16 128x35
-      menu "File" 18,18 56x31
-      menu "Help" 78,18 64x31
+    row 16,16 108x35
+      menu "File" 18,18 46x31
+      menu "Help" 68,18 54x31
     row 16,61 217x33
       dropdown "Fridge" 16,61 111x33 (focus)
       dropdown "Medium" 135,61 98x33
@@ -25,9 +25,9 @@ window "Pop-ups" 420x320
       option "Cupboard" 20,164 103x31
 window "Pop-ups" 420x320
   column 0,0 420x182
-    row 16,16 128x35
-      menu "File" 18,18 56x31 (focus)
-      menu "Help" 78,18 64x31
+    row 16,16 108x35
+      menu "File" 18,18 46x31 (focus)
+      menu "Help" 68,18 54x31
     row 16,61 217x33
       dropdown "Cupboard" 16,61 111x33
       dropdown "Large" 135,61 98x33
@@ -41,9 +41,9 @@ window "Pop-ups" 420x320
       item "Quit" 22,128 60x31
 window "Pop-ups" 420x320
   column 0,0 420x182
-    row 16,16 128x35
-      menu "File" 18,18 56x31
-      menu "Help" 78,18 64x31 (focus)
+    row 16,16 108x35
+      menu "File" 18,18 46x31
+      menu "Help" 68,18 54x31 (focus)
     row 16,61 217x33
       dropdown "Cupboard" 16,61 111x33
       dropdown "Large" 135,61 98x33
@@ -53,9 +53,9 @@ window "Pop-ups" 420x320
     tip "Removes it for good" 4,172 131x23
 window "Pop-ups" 420x320
   column 0,0 420x182
-    row 16,16 128x35
-      menu "File" 18,18 56x31
-      menu "Help" 78,18 64x31
+    row 16,16 108x35
+      menu "File" 18,18 46x31
+      menu "Help" 68,18 54x31
     row 16,61 217x33
       dropdown "Freezer" 16,61 111x33
       dropdown "Large" 135,61 98x33
@@ -70,9 +70,9 @@ window "Pop-ups" 420x320
         button "Yes" 264,175 56x33
 window "Pop-ups" 420x320
   column 0,0 420x182
-    row 16,16 128x35
-      menu "File" 18,18 56x31
-      menu "Help" 78,18 64x31
+    row 16,16 108x35
+      menu "File" 18,18 46x31
+      menu "Help" 68,18 54x31
     row 16,61 217x33
       dropdown "Freezer" 16,61 111x33
       dropdown "Large" 135,61 98x33
@@ -87,9 +87,9 @@ window "Pop-ups" 420x320
         button "Yes" 264,175 56x33
 window "Pop-ups" 420x320
   column 0,0 420x182
-    row 16,16 128x35
-      menu "File" 18,18 56x31
-      menu "Help" 78,18 64x31
+    row 16,16 108x35
+      menu "File" 18,18 46x31
+      menu "Help" 68,18 54x31
     row 16,61 217x33
       dropdown "Freezer" 16,61 111x33
       dropdown "Large" 135,61 98x33
