@@ -4,7 +4,7 @@ class Entity {
         int id = 0;
     }
 
-    method tag(string array names) native;
+    method tag(string map names) native;
     method int map hits() native;
     method say(string words) native
 }

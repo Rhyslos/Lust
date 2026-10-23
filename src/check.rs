@@ -1425,13 +1425,21 @@ impl<'a> Checker<'a> {
         if m.native {
             // Its body is in Rust (or the host's Lua), so what goes in and out has to be something
             // both sides know.
-            let plain = |t: &Ty| matches!(t, Ty::Int | Ty::Float | Ty::Str | Ty::Truth | Ty::Class(_) | Ty::Void | Ty::Error);
+            fn plain(t: &Ty) -> bool {
+                match t {
+                    Ty::Array(e) => plain(e) && !matches!(**e, Ty::Void | Ty::Array(_)),
+                    _ => matches!(
+                        t,
+                        Ty::Int | Ty::Float | Ty::Str | Ty::Truth | Ty::Vec3 | Ty::Rot | Ty::Class(_) | Ty::Void | Ty::Error
+                    ),
+                }
+            }
             for (p, (_, ty)) in m.params.iter().zip(&sig.params) {
                 if !plain(ty) {
                     self.err(
                         p.pos,
                         format!(
-                            "a native method takes ints, floats, text, bools and things made from classes, but {} is {}.",
+                            "a native method takes ints, floats, text, bools, vec3s, rotations, things made from classes, and arrays of those, but {} is {}.",
                             p.name,
                             self.a(ty)
                         ),
@@ -1442,7 +1450,7 @@ impl<'a> Checker<'a> {
                 self.err(
                     m.pos,
                     format!(
-                        "a native method gives back an int, a float, text, a bool or a thing made from a class, but {} gives back {}.",
+                        "a native method gives back an int, a float, text, a bool, a vec3, a rotation, a thing made from a class, or an array of those, but {} gives back {}.",
                         m.name,
                         self.a(&sig.ret)
                     ),

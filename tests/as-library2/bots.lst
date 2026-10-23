@@ -1,0 +1,36 @@
+-- Game logic using an engine's vectors and lists.
+fetch "engine/world":Thing;
+get "engine/world":[ids, gravity, aim];
+
+class Bot {
+    has {
+        vec3 velocity = [0, 0, 0];
+        int steps = 0;
+    }
+
+    method step(Thing me, float dt) {
+        velocity = velocity + gravity() * dt;
+        me:moveTo(me:position() + velocity * dt);
+        steps = steps + 1;
+    }
+
+    method vec3 ahead(Thing me) {
+        return me:facing() * [1, 0, 0];
+    }
+
+    method int crowd(Thing me) {
+        return #me:near(5.0);
+    }
+
+    method plan(Thing me) {
+        vec3 array path = [me:position(), me:position() + ahead(me) * 2];
+        aim(path, me:facing());
+    }
+}
+
+method int countAll() {
+    return #ids();
+}
+
+pass Bot, countAll;
+end

@@ -1,0 +1,35 @@
+-- A host's Lua functions hand vectors, rotations and lists to native methods, as plain Lua
+-- tables: Lust rounds the numbers to f32 and counts the lists.
+fetch lua;
+
+class Thing {
+    has {
+        int id = 0;
+    }
+
+    method vec3 position() native;
+    method Thing array near() native;
+    method vec3 array path() native;
+    method rotation turn() native;
+    method int array ids() native;
+    method show(vec3 at, int array some) native;
+}
+
+lua {
+    function Thing_position(self) return { x = self.id, y = 0.1, z = 2 } end
+    function Thing_near(self) return { { id = 8 }, { id = 9 } } end
+    function Thing_path(self) return { { x = 1, y = 2, z = 3 }, { x = 0.1, y = 0.2, z = 0.3 } } end
+    function Thing_turn(self) return { x = 0, y = 0, z = 0.70710677, w = 0.70710677 } end
+    function Thing_ids(self) return { 4, 5, 6 } end
+    function Thing_show(self, at, some) print("show " .. at.x .. " " .. some.n .. " " .. some[3]) end
+};
+
+Thing t = new Thing { id = 3 };
+print(t:position());
+print(#t:near());
+print(t:path());
+print(t:turn());
+print(t:turn() * [1, 0, 0]);
+print(#t:ids());
+t:show([7, 0, 0], [1, 2, 3]);
+end

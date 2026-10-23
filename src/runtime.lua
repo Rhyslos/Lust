@@ -104,6 +104,20 @@ function L.qdegrees(q)
 end
 -- A vec3's numbers, to 7 digits, as an f32 holds.
 local function f32text(x) return L.ftext(tonumber(fmt("%.7g", x)) + 0) end
+-- What a host's Lua function gives back for a native method, made into Lust's own values: its
+-- numbers rounded to f32 (a Luau vector works too, since it has x, y and z), and a plain list
+-- given its length.
+function L.hvec(v) return vec(v.x, v.y, v.z) end
+function L.hrot(q) return { x = f32(q.x), y = f32(q.y), z = f32(q.z), w = f32(q.w) } end
+function L.harr(item)
+  return function(t)
+    local out = { n = t.n or #t }
+    for i = 1, out.n do
+      if item then out[i] = item(t[i]) else out[i] = t[i] end
+    end
+    return out
+  end
+end
 function L.vtext(v) return "[" .. f32text(v.x) .. ", " .. f32text(v.y) .. ", " .. f32text(v.z) .. "]" end
 function L.rtext(q) return L.vtext(L.qdegrees(q)) end
 function L.qtext(v) return "\"" .. v .. "\"" end

@@ -1,0 +1,18 @@
+-- What the engine offers, with vectors, rotations and lists going both ways.
+class Thing {
+    has {
+        int id = 0;
+    }
+
+    method vec3 position() native;
+    method moveTo(vec3 to) native;
+    method rotation facing() native;
+    method Thing array near(float radius) native;
+}
+
+method int array ids() native;
+method vec3 gravity() native;
+method aim(vec3 array path, rotation turn) native;
+
+pass Thing, ids, gravity, aim;
+end

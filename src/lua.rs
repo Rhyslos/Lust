@@ -295,7 +295,9 @@ impl<'a> W<'a> {
                     let shown = crate::ast::shown(&m.name);
                     let mut args = vec![lua_string(shown), lua_string(shown)];
                     args.extend(params.iter().cloned());
-                    self.line(m.pos.line, &format!("return _L.native({})", args.join(", ")));
+                    let ret = self.info.methods.get(&m.name).map(|s| s.ret.clone()).unwrap_or(Ty::Void);
+                    let call = host_in(&ret, format!("_L.native({})", args.join(", ")));
+                    self.line(m.pos.line, &format!("return {call}"));
                 }
                 self.stmts(&m.body);
                 self.indent -= 1;
@@ -403,7 +405,13 @@ impl<'a> W<'a> {
                     "self".to_string(),
                 ];
                 args.extend(params.iter().cloned());
-                self.line(m.pos.line, &format!("return _L.native({})", args.join(", ")));
+                let ret = self.info.classes[ci]
+                    .methods
+                    .get(&m.name)
+                    .map(|s| s.ret.clone())
+                    .unwrap_or(Ty::Void);
+                let call = host_in(&ret, format!("_L.native({})", args.join(", ")));
+                self.line(m.pos.line, &format!("return {call}"));
             }
             self.stmts(&m.body);
             self.indent -= 1;
@@ -1517,6 +1525,23 @@ pub fn sql_bin(
             };
             format!("({a} {o} {b})")
         }
+    }
+}
+
+/// What a host's Lua function gives back, made into a Lust value of this type: vectors rounded to
+/// f32, and lists given their length.
+fn host_in(t: &Ty, call: String) -> String {
+    fn conv(t: &Ty) -> Option<String> {
+        match t {
+            Ty::Vec3 => Some("_L.hvec".into()),
+            Ty::Rot => Some("_L.hrot".into()),
+            Ty::Array(e) => Some(format!("_L.harr({})", conv(e).unwrap_or_else(|| "nil".into()))),
+            _ => None,
+        }
+    }
+    match conv(t) {
+        Some(f) => format!("{f}({call})"),
+        None => call,
     }
 }
 
