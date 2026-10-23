@@ -1,0 +1,19 @@
+dump
+focus input 1
+type Milk
+key enter
+type Eggs
+key enter
+key enter
+type   
+key enter
+key ctrl+s
+key f1
+dump
+key escape
+key escape
+key ctrl+shift+1
+focus button 1
+key enter
+key ctrl+s
+dump

@@ -12,7 +12,7 @@ pub const RESERVED: &[&str] = &[
 ];
 /// The pieces a view is made of.
 pub const ELEMENTS: &[&str] = &[
-    "column", "row", "stack", "scroll", "space", "text", "button", "input", "checkbox", "slider", "image", "every",
+    "column", "row", "stack", "scroll", "space", "text", "button", "input", "checkbox", "slider", "image", "every", "key",
 ];
 
 /// The value an input hands over when it changes. Lust code can't write this name.
@@ -837,6 +837,15 @@ impl<'a> Parser<'a> {
         let style = if self.at_sym("[") { self.style_list()? } else { vec![] };
         let mut children = Vec::new();
         let mut action = None;
+        let editable = matches!(kind.as_str(), "input" | "textarea");
+        let enter_next = |p: &Self| editable && p.at_word("enter") && p.peek(1).is_sym("{");
+        if !editable && self.at_word("enter") && self.peek(1).is_sym("{") {
+            let p = self.cur().pos;
+            return self.fail(
+                p,
+                format!("only an input has enter {{ }}, for when Enter is pressed in it. A {kind} can't have one."),
+            );
+        }
         if self.at_sym("{") {
             if container {
                 children = self.block(&format!("the {kind}"))?;
@@ -848,8 +857,17 @@ impl<'a> Parser<'a> {
             }
         } else if container {
             return self.fail(t.pos, format!("a {kind} holds other pieces in {{ }}: {kind} {{ text \"Hi\"; }}"));
-        } else {
+        } else if !enter_next(self) {
             self.semi()?;
+        }
+        // input name enter { add(); } runs its block when Enter is pressed in it.
+        let mut enter = None;
+        if enter_next(self) {
+            self.next();
+            let was = std::mem::replace(&mut self.in_view, false);
+            let b = self.block("what Enter does");
+            self.in_view = was;
+            enter = Some(b?);
         }
         // An input changes what it's bound to, then runs its block: input name { … } is
         // name = (what was typed); …
@@ -871,6 +889,8 @@ impl<'a> Parser<'a> {
             style,
             children,
             action,
+            enter,
+            choices: None,
             pos: t.pos,
         })
     }
@@ -892,6 +912,8 @@ impl<'a> Parser<'a> {
             style,
             children: vec![],
             action: None,
+            enter: None,
+            choices: None,
             pos: class_pos,
         })
     }
@@ -1206,7 +1228,9 @@ impl<'a> Parser<'a> {
             return r;
         }
         if let Tk::Ident(w) = &t.kind {
-            if self.in_view && ELEMENTS.contains(&w.as_str()) {
+            // A piece's name, unless it's used as a variable: key = "x"; or line.text()
+            let used = self.peek(1).is_sym("=") || self.peek(1).is_sym(".") || self.peek(1).is_sym(":") || self.peek(1).is_sym("(");
+            if self.in_view && ELEMENTS.contains(&w.as_str()) && !used {
                 return self.element();
             }
             if self.in_view

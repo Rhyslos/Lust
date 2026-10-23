@@ -569,13 +569,18 @@ fn walk_stmts(stmts: &[Stmt], f: &mut dyn FnMut(&Expr)) {
                 style,
                 children,
                 action,
+                enter,
+                choices,
                 ..
             } => {
-                if let Some(a) = arg {
+                for a in [arg, choices].into_iter().flatten() {
                     walk_expr(a, f);
                 }
                 walk_styles(style, f);
                 walk_stmts(children, f);
+                if let Some(a) = enter {
+                    walk_stmts(a, f);
+                }
                 if let Some(a) = action {
                     walk_stmts(a, f);
                 }
@@ -1052,6 +1057,7 @@ impl<'a> W<'a> {
                 style,
                 children,
                 action,
+                enter,
                 ..
             } => {
                 let parent = self.view_parent.last().cloned().unwrap_or_else(|| "p0".into());
@@ -1123,33 +1129,11 @@ impl<'a> W<'a> {
                 self.stmts(children, out, depth + 1);
                 self.view_parent.pop();
                 if let Some(a) = action {
-                    // The action keeps copies of the view's variables it uses, and the piece itself.
-                    let inner = "    ".repeat(depth + 1);
-                    out.push_str(&format!("{inner}{{\n"));
-                    let value = crate::parser::VALUE.to_string();
-                    for c in captures(a, std::slice::from_ref(&value), self.info) {
-                        out.push_str(&format!("{inner}    let v_{c} = v_{c}.clone();\n"));
-                    }
-                    out.push_str(&format!("{inner}    let this = this.clone();\n"));
-                    out.push_str(&format!(
-                        "{inner}    actions.push(Box::new(move || match rt::attempt(|| {{\n{inner}        let this = &this;\n"
-                    ));
-                    if let (true, Some(b)) = (bound, arg) {
-                        let get = match self.info.ty(b) {
-                            Ty::Str => "rt::ui::incoming_text()",
-                            Ty::Truth => "rt::ui::incoming_truth()",
-                            Ty::Int => "rt::ui::incoming_num().round() as i64",
-                            _ => "rt::ui::incoming_num()",
-                        };
-                        out.push_str(&format!("{inner}        let v_{value} = {get};\n"));
-                    }
-                    let saved = self.current_ret.take();
-                    self.stmts(a, out, depth + 3);
-                    self.current_ret = saved;
-                    out.push_str(&format!(
-                        "{inner}    }}) {{\n{inner}        None => Ok(()),\n{inner}        Some(e) => Err(e),\n{inner}    }}));\n"
-                    ));
-                    out.push_str(&format!("{inner}    {v}.action = Some(actions.len() - 1);\n{inner}}}\n"));
+                    let given = if bound { arg.as_ref() } else { None };
+                    self.view_action(a, given, &format!("{v}.action"), out, depth);
+                }
+                if let Some(a) = enter {
+                    self.view_action(a, None, &format!("{v}.enter"), out, depth);
                 }
                 out.push_str(&format!("{pad}    {parent}.children.push({v});\n{pad}}}\n"));
             }
@@ -1904,6 +1888,38 @@ impl<'a> W<'a> {
     }
 
     /// A view's [ ] as a list of (word, value). Named styles are put in place.
+    /// An action in a view (a button's click, an input's change, Enter), kept in `actions`, with
+    /// its number put in `slot`. It keeps copies of the view's variables it uses, and the piece
+    /// itself. `given` is what an input is bound to: the action gets its new value.
+    fn view_action(&mut self, a: &[Stmt], given: Option<&Expr>, slot: &str, out: &mut String, depth: usize) {
+        let inner = "    ".repeat(depth + 1);
+        out.push_str(&format!("{inner}{{\n"));
+        let value = crate::parser::VALUE.to_string();
+        for c in captures(a, std::slice::from_ref(&value), self.info) {
+            out.push_str(&format!("{inner}    let v_{c} = v_{c}.clone();\n"));
+        }
+        out.push_str(&format!("{inner}    let this = this.clone();\n"));
+        out.push_str(&format!(
+            "{inner}    actions.push(Box::new(move || match rt::attempt(|| {{\n{inner}        let this = &this;\n"
+        ));
+        if let Some(b) = given {
+            let get = match self.info.ty(b) {
+                Ty::Str => "rt::ui::incoming_text()",
+                Ty::Truth => "rt::ui::incoming_truth()",
+                Ty::Int => "rt::ui::incoming_num().round() as i64",
+                _ => "rt::ui::incoming_num()",
+            };
+            out.push_str(&format!("{inner}        let v_{value} = {get};\n"));
+        }
+        let saved = self.current_ret.take();
+        self.stmts(a, out, depth + 3);
+        self.current_ret = saved;
+        out.push_str(&format!(
+            "{inner}    }}) {{\n{inner}        None => Ok(()),\n{inner}        Some(e) => Err(e),\n{inner}    }}));\n"
+        ));
+        out.push_str(&format!("{inner}    {slot} = Some(actions.len() - 1);\n{inner}}}\n"));
+    }
+
     fn styles(&mut self, items: &[StyleItem]) -> String {
         let mut parts = Vec::new();
         self.style_parts(items, &mut parts);

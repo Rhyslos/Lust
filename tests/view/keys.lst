@@ -1,0 +1,39 @@
+-- Enter in an input, keyboard shortcuts, and fonts read from files.
+assembly App {
+    has {
+        string array todos = [];
+        string newTodo = "";
+        int saves = 0;
+        bool help = false;
+    }
+
+    method add() {
+        is newTodo.trim() != ""? then {
+            todos:inject(newTodo.trim());
+            newTodo = "";
+        }
+    }
+
+    view [title "Keys", width 400, height 300, font "../../assets/fonts/Inter-Medium.otf"] {
+        column [gap 8, pad 16] {
+            input newTodo [placeholder "Something to do", width fill] enter { add(); }
+            loop (string t in todos) {
+                text t;
+            }
+            text "Saved " + saves.text() + " times";
+            text "Bold from a file" [font "../../assets/fonts/Inter-Bold.otf"];
+            text "Missing font falls back" [font "nowhere.ttf"];
+            is help? then {
+                text "Help is showing";
+                key "escape" { help = false; }
+            }
+            button "Go" { saves = saves + 100; }
+        }
+        key "ctrl+s" { saves = saves + 1; }
+        key "f1" { help = true; }
+        key "ctrl+shift+1" { todos:inject("shift one"); }
+    }
+}
+
+App:open();
+end

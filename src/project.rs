@@ -305,9 +305,11 @@ fn value_names(p: &Program, out: &mut HashSet<String>) {
                     stmts(body, out);
                     stmts(handler, out);
                 }
-                Stmt::Element { children, action, .. } => {
+                Stmt::Element {
+                    children, action, enter, ..
+                } => {
                     stmts(children, out);
-                    if let Some(a) = action {
+                    for a in [action, enter].into_iter().flatten() {
                         stmts(a, out);
                     }
                 }
@@ -546,14 +548,16 @@ impl<'a> Renamer<'a> {
                 style,
                 children,
                 action,
+                enter,
+                choices,
                 ..
             } => {
-                if let Some(a) = arg {
+                for a in [arg, choices].into_iter().flatten() {
                     self.expr(a);
                 }
                 self.styles(style);
                 self.stmts(children);
-                if let Some(a) = action {
+                for a in [action, enter].into_iter().flatten() {
                     self.stmts(a);
                 }
             }

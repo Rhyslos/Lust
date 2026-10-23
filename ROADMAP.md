@@ -24,7 +24,9 @@ The order Lust gets built in. Each step makes Lust more useful on its own, and n
 | ✅ | **9.5 Scrolling, images and timers:** `scroll` with the wheel and a knob, `image` for PNG and JPEG files, `every` for timers | Done (alpha 15) |
 | ✅ | **9.6 Polish:** painting several times faster, hover fades and pressed buttons, `disabled`, undo and redo in inputs, titles that follow the data, `lust new name app` | Done (alpha 16) |
 | ✅ | **10. Lust inside other programs:** `native` methods whose bodies are in the program using Lust, and `lust build --library` for a Rust library (the first step towards Solis) | Done (alpha 20) |
-| | 🏁 *The Lust 2.0 release.* | Next |
+| ✅ | **11.1 Keys and fonts:** `enter { }` on inputs, `key "ctrl+s" { }` shortcuts, `font "file.ttf"`, and fonts that cost a quarter of the memory | Done (alpha 21) |
+| | **11.2 to 11.7 More for windows:** a text box with several lines, dropdowns, tooltips, menus and dialogs, dark mode, grids, panels, tabs and trees, animation and drawing, and the system's open and save boxes | Next |
+| | 🏁 *The Lust 2.0 release.* | |
 
 ## Decisions along the way
 

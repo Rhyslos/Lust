@@ -1,0 +1,12 @@
+view-keys.lsc:8:11  font takes a font file: font "fonts/Lora.ttf".
+view-keys.lsc:10:17  "ctrl+" needs a key after each +, like "ctrl+s".
+view-keys.lsc:11:17  Lust doesn't know the key banana. Keys are letters, numbers and signs ("ctrl+s", "ctrl+1"), f1 to f12, enter, escape, tab, space, backspace, delete, up, down, left, right, home, end, pageup and pagedown.
+view-keys.lsc:12:17  a shortcut is one key, with ctrl, shift or alt in front of it, but "ctrl+s+x" has s and x.
+view-keys.lsc:13:13  key runs its { } when the keys are pressed: key "ctrl+s" { save(); }
+view-keys.lsc:13:17  "shift" needs a key as well as ctrl, shift or alt, like "ctrl+s".
+view-keys.lsc:14:17  key takes the keys as text, but this is an int: key "ctrl+s" { … }
+view-keys.lsc:15:24  font takes a font file: font "fonts/Lora.ttf".
+view-keys.lsc:16:32  there's no method called nope.
+view-keys.lsc:17:25  only an input has enter { }, for when Enter is pressed in it. A button can't have one.
+
+10 mistakes. Nothing was run.

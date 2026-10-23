@@ -936,6 +936,8 @@ impl<'a> Checker<'a> {
         style: &[StyleItem],
         children: &[Stmt],
         action: &Option<Vec<Stmt>>,
+        enter: &Option<Vec<Stmt>>,
+        choices: &Option<Expr>,
         pos: Pos,
         ctx: &mut Ctx,
     ) {
@@ -1045,6 +1047,23 @@ impl<'a> Checker<'a> {
                 }
             }
             ("every", None) => self.err(pos, "every needs how many seconds to wait: every 1.0 { … }"),
+            ("key", Some(a)) => {
+                let t = self.expr(a, ctx, Some(&Ty::Str));
+                if t != Ty::Str && t != Ty::Error {
+                    self.err(
+                        a.pos,
+                        format!("key takes the keys as text, but this is {}: key \"ctrl+s\" {{ … }}", self.a(&t)),
+                    );
+                } else if let ExprKind::Str(spec) = &a.kind {
+                    if let Err(why) = crate::native_ui::parse_shortcut(spec) {
+                        self.err(a.pos, why);
+                    }
+                }
+                if action.is_none() {
+                    self.err(pos, "key runs its { } when the keys are pressed: key \"ctrl+s\" { save(); }");
+                }
+            }
+            ("key", None) => self.err(pos, "key needs which keys: key \"ctrl+s\" { save(); }"),
             ("text", None) => self.err(pos, "text needs something to show: text \"Hello\";"),
             ("button", None) => self.err(pos, "a button needs its words: button \"Start\" { … }"),
             (_, Some(a)) => self.err(
@@ -1066,8 +1085,18 @@ impl<'a> Checker<'a> {
             ctx.scopes.pop();
         }
         let bound = matches!(kind, "input" | "checkbox" | "slider");
+        if let Some(a) = enter {
+            let was = std::mem::replace(&mut ctx.in_view, false);
+            ctx.scopes.push(HashMap::new());
+            for s in a {
+                self.stmt(s, ctx);
+            }
+            ctx.scopes.pop();
+            ctx.in_view = was;
+        }
+        let _ = choices;
         if let Some(a) = action {
-            if kind != "button" && kind != "every" && !bound {
+            if kind != "button" && kind != "every" && kind != "key" && !bound {
                 self.err(pos, format!("a {kind} doesn't do anything when clicked, so it has no {{ }}."));
             }
             let was = std::mem::replace(&mut ctx.in_view, false);
@@ -1153,6 +1182,10 @@ impl<'a> Checker<'a> {
                     }
                 }
                 ("minWidth" | "minHeight", StyleValue::Expr(_)) if window => {}
+                ("font", v) => match v {
+                    StyleValue::Expr(e) if matches!(self.info.ty(e), Ty::Str | Ty::Error) => {}
+                    _ => self.err(it.pos, "font takes a font file: font \"fonts/Lora.ttf\"."),
+                },
                 ("placeholder", v) if !window => match v {
                     StyleValue::Expr(e) if matches!(self.info.ty(e), Ty::Str | Ty::Error) => {}
                     _ => self.err(it.pos, "placeholder takes text: placeholder \"Search…\"."),
@@ -1198,12 +1231,13 @@ impl<'a> Checker<'a> {
                             "minWidth".into(),
                             "minHeight".into(),
                             "background".into(),
+                            "font".into(),
                         ]
                     } else {
                         NUMS.iter()
                             .chain(FLAGS)
                             .chain(COLOURED)
-                            .chain(["width", "height", "round", "border", "hover", "placeholder", "disabled"].iter())
+                            .chain(["width", "height", "round", "border", "hover", "placeholder", "disabled", "font"].iter())
                             .map(|s| s.to_string())
                             .collect()
                     };
@@ -1215,7 +1249,7 @@ impl<'a> Checker<'a> {
                     if window {
                         self.err(
                             it.pos,
-                            format!("a window's view has title, width, height, minWidth, minHeight and background.{s}"),
+                            format!("a window's view has title, width, height, minWidth, minHeight, background and font.{s}"),
                         );
                     } else if FLAGS.contains(&n) || colour_word || named {
                         self.err(it.pos, format!("{n} is a word on its own, without a value."));
@@ -1604,8 +1638,10 @@ impl<'a> Checker<'a> {
                 style,
                 children,
                 action,
+                enter,
+                choices,
                 pos,
-            } => self.element(kind, arg, style, children, action, *pos, ctx),
+            } => self.element(kind, arg, style, children, action, enter, choices, *pos, ctx),
             Stmt::SaveDecl { name, items, pos } => {
                 let top = ctx.class.is_none() && ctx.ret.is_none() && !ctx.in_hook;
                 if !top {
