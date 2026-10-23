@@ -1,0 +1,36 @@
+window "Canvas" 360x260
+  column 0,0 360x219
+    canvas 16,16 320x160
+      line 25,155 301x1
+      box 36,114 40x42
+      box 96,58 40x98
+      box 156,100 40x56
+      box 216,30 40x126
+      box 276,72 40x84
+      circle 294,28 24x24
+      text "Sales" 28,24 40x19
+    text "Picked 0" 16,184 62x19
+window "Canvas" 360x260
+  column 0,0 360x219
+    canvas 16,16 320x160
+      line 25,155 301x1
+      box 36,114 40x42
+      box 96,58 40x98
+      box 156,100 40x56
+      box 216,30 40x126
+      box 276,72 40x84
+      circle 294,28 24x24
+      text "Sales" 28,24 40x19
+    text "Picked 3" 16,184 62x19
+window "Canvas" 400x300
+  column 0,0 400x219
+    canvas 16,16 320x160
+      line 25,155 301x1
+      box 36,114 40x42
+      box 96,58 40x98
+      box 156,100 40x56
+      box 216,30 40x126
+      box 276,72 40x84
+      circle 294,28 24x24
+      text "Sales" 28,24 40x19
+    text "Picked 3" 16,184 62x19

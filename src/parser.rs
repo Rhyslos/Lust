@@ -13,7 +13,8 @@ pub const RESERVED: &[&str] = &[
 /// The pieces a view is made of.
 pub const ELEMENTS: &[&str] = &[
     "column", "row", "stack", "scroll", "space", "text", "button", "input", "checkbox", "slider", "image", "every", "key", "textarea",
-    "dropdown", "menu", "item", "divider", "dialog", "grid", "split", "tabs", "tab", "branch", "progress",
+    "dropdown", "menu", "item", "divider", "dialog", "grid", "split", "tabs", "tab", "branch", "progress", "canvas", "box", "circle",
+    "line",
 ];
 
 /// The value an input hands over when it changes. Lust code can't write this name.
@@ -832,11 +833,11 @@ impl<'a> Parser<'a> {
         // Pieces that hold others in { }. A menu and a dialog take a value first too.
         let container = matches!(
             kind.as_str(),
-            "column" | "row" | "stack" | "scroll" | "menu" | "dialog" | "grid" | "split" | "tabs" | "tab" | "branch"
+            "column" | "row" | "stack" | "scroll" | "menu" | "dialog" | "grid" | "split" | "tabs" | "tab" | "branch" | "canvas"
         );
         let bare = matches!(
             kind.as_str(),
-            "column" | "row" | "stack" | "scroll" | "space" | "divider" | "grid" | "split"
+            "column" | "row" | "stack" | "scroll" | "space" | "divider" | "grid" | "split" | "canvas" | "box" | "circle" | "line"
         );
         let arg = if bare || self.at_sym("[") || self.at_sym("{") || self.at_sym(";") {
             None

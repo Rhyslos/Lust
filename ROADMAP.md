@@ -29,7 +29,8 @@ The order Lust gets built in. Each step makes Lust more useful on its own, and n
 | ✅ | **11.3 Things over the view:** `dropdown`, `menu` with `item` and `divider`, `dialog`, and `tip` | Done (alpha 23) |
 | ✅ | **11.4 Dark mode:** `view [dark]`, and `dark:[ … ]` for a piece's own dark look | Done (alpha 24) |
 | ✅ | **11.5 Bigger layouts:** `grid`, `split`, `tabs`, `branch` and `progress` | Done (alpha 25) |
-| | **11.6 and 11.7 More for windows:** animation and drawing, and the system's open and save boxes | Next |
+| ✅ | **11.6 Drawing and motion:** `canvas` with `box`, `circle` and `line`, and `animate` | Done (alpha 26) |
+| | **11.7 More for windows:** the system's open and save boxes | Next |
 | | 🏁 *The Lust 2.0 release.* | |
 
 ## Decisions along the way
