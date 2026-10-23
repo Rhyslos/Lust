@@ -221,6 +221,8 @@ pub struct Checker<'a> {
     maker_ok: bool,
     /// The keys of the map and cMap loops being checked, innermost last.
     loop_keys: Vec<String>,
+    /// How many menus the piece being checked is inside.
+    menus: usize,
 }
 
 pub fn check(prog: &Program, diags: &mut Diags, is_script: bool) -> Info {
@@ -232,6 +234,7 @@ pub fn check(prog: &Program, diags: &mut Diags, is_script: bool) -> Info {
         state_names: vec![],
         maker_ok: false,
         loop_keys: vec![],
+        menus: 0,
     };
     c.run(prog, is_script);
     c.info
@@ -971,20 +974,63 @@ impl<'a> Checker<'a> {
                     self.err(a.pos, format!("{kind} shows text, but this is {}.{fix}", self.a(&t)));
                 }
             }
-            ("input" | "textarea" | "checkbox" | "slider", Some(a)) => {
+            ("input" | "textarea" | "checkbox" | "slider" | "dropdown" | "dialog", Some(a)) => {
                 let t = self.expr(a, ctx, None);
                 let (want, example) = match kind {
                     "input" => ("text", "input name;"),
                     "textarea" => ("text", "textarea notes;"),
                     "checkbox" => ("a bool", "checkbox done;"),
+                    "dropdown" => ("text or a state", "dropdown size in [\"Small\", \"Large\"];"),
+                    "dialog" => ("a bool", "dialog confirming { … }"),
                     _ => ("a number", "slider volume [from 0, to 100];"),
                 };
                 let fits = match kind {
                     "input" | "textarea" => t == Ty::Str,
-                    "checkbox" => t == Ty::Truth,
+                    "checkbox" | "dialog" => t == Ty::Truth,
+                    "dropdown" => matches!(t, Ty::Str | Ty::State(_)),
                     _ => matches!(t, Ty::Int | Ty::Float),
                 };
-                if !fits && t != Ty::Error {
+                if kind == "dropdown" {
+                    match (&t, choices) {
+                        (Ty::Str, Some(c)) => {
+                            let ct = self.expr(c, ctx, None);
+                            if !matches!(&ct, Ty::Array(e) if **e == Ty::Str) && ct != Ty::Error {
+                                self.err(
+                                    c.pos,
+                                    format!("a dropdown chooses from a string array, but this is {}.", self.a(&ct)),
+                                );
+                            }
+                        }
+                        (Ty::Str, None) => self.err(
+                            a.pos,
+                            format!(
+                                "a dropdown of text needs what to choose from: dropdown {} in [\"Small\", \"Large\"];",
+                                describe(a)
+                            ),
+                        ),
+                        (Ty::State(s), Some(c)) => {
+                            let name = self.info.states[*s].name.clone();
+                            self.err(
+                                c.pos,
+                                format!(
+                                    "{} is a {name}, so its dropdown chooses from {name}'s options. Leave out in …",
+                                    describe(a)
+                                ),
+                            );
+                        }
+                        _ => {}
+                    }
+                }
+                if !fits && t != Ty::Error && kind == "dialog" {
+                    self.err(
+                        a.pos,
+                        format!(
+                            "a dialog is open while a bool is true, but {} is {}: {example}",
+                            describe(a),
+                            self.a(&t)
+                        ),
+                    );
+                } else if !fits && t != Ty::Error {
                     self.err(
                         a.pos,
                         format!("{kind} changes {want}, but {} is {}: {example}", describe(a), self.a(&t)),
@@ -1014,7 +1060,27 @@ impl<'a> Checker<'a> {
                     },
                 );
             }
-            ("input" | "textarea" | "checkbox" | "slider", None) => {
+            ("menu", Some(a)) | ("item", Some(a)) => {
+                let t = self.expr(a, ctx, Some(&Ty::Str));
+                if t != Ty::Str && t != Ty::Error {
+                    let an = if kind == "item" { "an" } else { "a" };
+                    self.err(a.pos, format!("{an} {kind} shows text, but this is {}.", self.a(&t)));
+                }
+                if kind == "item" && self.menus == 0 {
+                    self.err(pos, "an item goes inside a menu: menu \"File\" { item \"Open\" { … } }");
+                }
+                if kind == "item" && action.is_none() {
+                    self.err(pos, "an item needs what it does: item \"Open\" { … }");
+                }
+            }
+            ("menu", None) => self.err(pos, "a menu needs its name: menu \"File\" { item \"Open\" { … } }"),
+            ("item", None) => self.err(pos, "an item needs its words: item \"Open\" { … }"),
+            ("divider", None) if self.menus == 0 => self.err(pos, "a divider is a line between items, so it goes inside a menu."),
+            ("dialog", None) => {
+                self.err(pos, "a dialog needs the bool that opens it: dialog confirming { … }");
+                ctx.scopes.push(HashMap::new());
+            }
+            ("input" | "textarea" | "checkbox" | "slider" | "dropdown", None) => {
                 let an = if kind == "input" { "an" } else { "a" };
                 self.err(pos, format!("{an} {kind} needs the field it changes: {kind} name;"));
                 ctx.scopes.push(HashMap::new());
@@ -1080,12 +1146,18 @@ impl<'a> Checker<'a> {
         self.check_styles(style, kind);
         if !children.is_empty() {
             ctx.scopes.push(HashMap::new());
+            let menu = kind == "menu";
+            self.menus += menu as usize;
+            // A dialog's own pieces are its, not inside a menu around it.
+            let outer = if kind == "dialog" { std::mem::take(&mut self.menus) } else { 0 };
             for s in children {
                 self.stmt(s, ctx);
             }
+            self.menus += outer;
+            self.menus -= menu as usize;
             ctx.scopes.pop();
         }
-        let bound = matches!(kind, "input" | "textarea" | "checkbox" | "slider");
+        let bound = matches!(kind, "input" | "textarea" | "checkbox" | "slider" | "dropdown" | "dialog");
         if let Some(a) = enter {
             let was = std::mem::replace(&mut ctx.in_view, false);
             ctx.scopes.push(HashMap::new());
@@ -1097,7 +1169,7 @@ impl<'a> Checker<'a> {
         }
         let _ = choices;
         if let Some(a) = action {
-            if kind != "button" && kind != "every" && kind != "key" && !bound {
+            if !matches!(kind, "button" | "every" | "key" | "item") && !bound {
                 self.err(pos, format!("a {kind} doesn't do anything when clicked, so it has no {{ }}."));
             }
             let was = std::mem::replace(&mut ctx.in_view, false);
@@ -1187,6 +1259,13 @@ impl<'a> Checker<'a> {
                     StyleValue::Expr(e) if matches!(self.info.ty(e), Ty::Str | Ty::Error) => {}
                     _ => self.err(it.pos, "font takes a font file: font \"fonts/Lora.ttf\"."),
                 },
+                ("tip", v) if !window => match v {
+                    StyleValue::Expr(e) if matches!(self.info.ty(e), Ty::Str | Ty::Error) => {}
+                    _ => self.err(
+                        it.pos,
+                        "tip takes text, shown when the mouse rests on the piece: tip \"Saves your work\".",
+                    ),
+                },
                 ("placeholder", v) if !window => match v {
                     StyleValue::Expr(e) if matches!(self.info.ty(e), Ty::Str | Ty::Error) => {}
                     _ => self.err(it.pos, "placeholder takes text: placeholder \"Search…\"."),
@@ -1238,7 +1317,20 @@ impl<'a> Checker<'a> {
                         NUMS.iter()
                             .chain(FLAGS)
                             .chain(COLOURED)
-                            .chain(["width", "height", "round", "border", "hover", "placeholder", "disabled", "font"].iter())
+                            .chain(
+                                [
+                                    "width",
+                                    "height",
+                                    "round",
+                                    "border",
+                                    "hover",
+                                    "placeholder",
+                                    "disabled",
+                                    "font",
+                                    "tip",
+                                ]
+                                .iter(),
+                            )
                             .map(|s| s.to_string())
                             .collect()
                     };

@@ -13,6 +13,7 @@ pub const RESERVED: &[&str] = &[
 /// The pieces a view is made of.
 pub const ELEMENTS: &[&str] = &[
     "column", "row", "stack", "scroll", "space", "text", "button", "input", "checkbox", "slider", "image", "every", "key", "textarea",
+    "dropdown", "menu", "item", "divider", "dialog",
 ];
 
 /// The value an input hands over when it changes. Lust code can't write this name.
@@ -828,11 +829,20 @@ impl<'a> Parser<'a> {
     fn element(&mut self) -> R<Stmt> {
         let t = self.next();
         let Tk::Ident(kind) = t.kind else { unreachable!() };
-        let container = matches!(kind.as_str(), "column" | "row" | "stack" | "scroll");
-        let arg = if container || kind == "space" || self.at_sym("[") || self.at_sym("{") || self.at_sym(";") {
+        // Pieces that hold others in { }. A menu and a dialog take a value first too.
+        let container = matches!(kind.as_str(), "column" | "row" | "stack" | "scroll" | "menu" | "dialog");
+        let bare = matches!(kind.as_str(), "column" | "row" | "stack" | "scroll" | "space" | "divider");
+        let arg = if bare || self.at_sym("[") || self.at_sym("{") || self.at_sym(";") {
             None
         } else {
             Some(self.expr()?)
+        };
+        // dropdown size in ["Small", "Large"]; chooses from a list.
+        let choices = if kind == "dropdown" && self.at_word("in") {
+            self.next();
+            Some(self.expr()?)
+        } else {
+            None
         };
         let style = if self.at_sym("[") { self.style_list()? } else { vec![] };
         let mut children = Vec::new();
@@ -871,7 +881,7 @@ impl<'a> Parser<'a> {
         }
         // An input changes what it's bound to, then runs its block: input name { … } is
         // name = (what was typed); …
-        if matches!(kind.as_str(), "input" | "textarea" | "checkbox" | "slider") {
+        if matches!(kind.as_str(), "input" | "textarea" | "checkbox" | "slider" | "dropdown" | "dialog") {
             if let Some(a) = &arg {
                 let value = self.mk(a.pos, ExprKind::Name(VALUE.into()));
                 let mut body = vec![Stmt::Assign {
@@ -890,7 +900,7 @@ impl<'a> Parser<'a> {
             children,
             action,
             enter,
-            choices: None,
+            choices,
             pos: t.pos,
         })
     }

@@ -1,0 +1,50 @@
+-- Dropdowns, menus, tips and dialogs: things that show over the view.
+state Shelf = [Fridge, Freezer, Cupboard];
+
+assembly App {
+    has {
+        Shelf shelf = Shelf.Fridge;
+        string size = "Medium";
+        string array sizes = ["Small", "Medium", "Large"];
+        string log = "";
+        bool confirming = false;
+        bool stored = false;
+    }
+
+    view [title "Pop-ups", width 420, height 320] {
+        column [gap 10, pad 16] {
+            row [gap 4, background gray1, round, pad 2] {
+                menu "File" {
+                    item "New" { log = "new"; }
+                    item "Save" [disabled stored] { stored = true; log = "saved"; }
+                    divider;
+                    item "Quit" { confirming = true; }
+                }
+                menu "Help" {
+                    item "About" { log = "about"; }
+                }
+            }
+            row [gap 8] {
+                dropdown shelf;
+                dropdown size in sizes { log = "size " + size; }
+            }
+            text "On the " + shelf.text() + ", " + size + ": " + log;
+            button "Delete" [tip "Removes it for good"] { confirming = true; }
+        }
+        dialog confirming [width 260] {
+            text "Are you sure?" [bold];
+            text "This can't be undone." [muted];
+            row [gap 8, right] {
+                button "Cancel" { confirming = false; }
+                button "Yes" [red] {
+                    log = "gone";
+                    confirming = false;
+                }
+            }
+            key "y" { log = "gone by key"; confirming = false; }
+        }
+    }
+}
+
+App:open();
+end

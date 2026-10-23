@@ -1,0 +1,14 @@
+view-popups.lsc:14:22  a dropdown of text needs what to choose from: dropdown size in ["Small", "Large"];
+view-popups.lsc:15:30  a dropdown chooses from a string array, but this is an int array.
+view-popups.lsc:16:31  shelf is a Shelf, so its dropdown chooses from Shelf's options. Leave out in …
+view-popups.lsc:17:22  dropdown changes text or a state, but count is an int: dropdown size in ["Small", "Large"];
+view-popups.lsc:18:13  a menu needs its name: menu "File" { item "Open" { … } }
+view-popups.lsc:20:17  an item needs what it does: item "Open" { … }
+view-popups.lsc:21:22  an item shows text, but this is an int.
+view-popups.lsc:23:13  an item goes inside a menu: menu "File" { item "Open" { … } }
+view-popups.lsc:24:13  a divider is a line between items, so it goes inside a menu.
+view-popups.lsc:25:20  a dialog is open while a bool is true, but count is an int: dialog confirming { … }
+view-popups.lsc:26:13  a dialog needs the bool that opens it: dialog confirming { … }
+view-popups.lsc:27:26  tip takes text, shown when the mouse rests on the piece: tip "Saves your work".
+
+12 mistakes. Nothing was run.

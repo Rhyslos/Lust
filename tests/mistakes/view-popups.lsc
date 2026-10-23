@@ -1,0 +1,33 @@
+-- Mistakes with dropdowns, menus, items, dialogs and tips.
+state Shelf = [Fridge, Freezer];
+
+assembly App {
+    has {
+        string size = "";
+        Shelf shelf = Shelf.Fridge;
+        int count = 0;
+        bool open = false;
+    }
+
+    view {
+        column {
+            dropdown size;
+            dropdown size in [1, 2];
+            dropdown shelf in ["Fridge"];
+            dropdown count in ["a"];
+            menu { item "A" { count = 1; } }
+            menu "File" {
+                item "Open";
+                item 5 { count = 2; }
+            }
+            item "Loose" { count = 3; }
+            divider;
+            dialog count { text "Hi"; }
+            dialog { text "Hi"; }
+            button "Go" [tip 5] { open = true; }
+        }
+    }
+}
+
+App:open();
+end

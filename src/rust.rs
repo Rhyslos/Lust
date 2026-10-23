@@ -1058,6 +1058,7 @@ impl<'a> W<'a> {
                 children,
                 action,
                 enter,
+                choices,
                 ..
             } => {
                 let parent = self.view_parent.last().cloned().unwrap_or_else(|| "p0".into());
@@ -1099,7 +1100,7 @@ impl<'a> W<'a> {
                 }
                 let v = format!("p{}", self.fresh());
                 out.push_str(&format!("{pad}{{\n{pad}    let mut {v} = rt::ui::Node::new({kind:?});\n"));
-                let bound = matches!(kind.as_str(), "input" | "textarea" | "checkbox" | "slider");
+                let bound = matches!(kind.as_str(), "input" | "textarea" | "checkbox" | "slider" | "dropdown" | "dialog");
                 match arg {
                     Some(a) if kind == "every" => {
                         let secs = self.coerced(a, &Ty::Float);
@@ -1108,7 +1109,20 @@ impl<'a> W<'a> {
                     Some(a) if bound => {
                         // What the input shows: the value it's bound to, as it is now.
                         let shown = self.expr(a);
+                        if kind == "dropdown" {
+                            // What it chooses from: its list, or its state's options.
+                            let opts = match (self.info.ty(a), choices) {
+                                (Ty::State(s), _) => {
+                                    let o: Vec<String> = self.info.states[s].options.iter().map(|o| format!("{o:?}.to_string()")).collect();
+                                    format!("vec![{}]", o.join(", "))
+                                }
+                                (_, Some(c)) => format!("rt::acopy(&{})", self.expr(c)),
+                                _ => "vec![]".into(),
+                            };
+                            out.push_str(&format!("{pad}    {v}.options = {opts};\n"));
+                        }
                         let sv = match self.info.ty(a) {
+                            Ty::State(_) => format!("rt::ui::SV::Text({shown}.to_string())"),
                             Ty::Str => format!("rt::ui::SV::Text({shown})"),
                             Ty::Truth => format!("rt::ui::SV::Truth({shown})"),
                             _ => format!("rt::ui::SV::Num(({shown}) as f64)"),
@@ -1903,7 +1917,21 @@ impl<'a> W<'a> {
             "{inner}    actions.push(Box::new(move || match rt::attempt(|| {{\n{inner}        let this = &this;\n"
         ));
         if let Some(b) = given {
+            let opts = match self.info.ty(b) {
+                Ty::State(s) => self.info.states[s]
+                    .options
+                    .iter()
+                    .map(|o| format!("{o:?}"))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                _ => String::new(),
+            };
+            let state = format!(
+                "{{ let s = rt::ui::incoming_text(); [{opts}].into_iter().find(|o| *o == s).unwrap_or({}) }}",
+                opts.split(", ").next().unwrap_or("\"\"")
+            );
             let get = match self.info.ty(b) {
+                Ty::State(_) => state.as_str(),
                 Ty::Str => "rt::ui::incoming_text()",
                 Ty::Truth => "rt::ui::incoming_truth()",
                 Ty::Int => "rt::ui::incoming_num().round() as i64",

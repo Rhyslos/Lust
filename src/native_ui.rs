@@ -37,11 +37,13 @@ pub struct Node {
     pub value: Option<SV>,
     /// Which action Enter runs in an input.
     pub enter: Option<usize>,
+    /// What a dropdown chooses from.
+    pub options: Vec<String>,
 }
 
 impl Node {
     pub fn new(kind: &str) -> Node {
-        Node { kind: kind.to_string(), text: String::new(), style: vec![], children: vec![], action: None, value: None, enter: None }
+        Node { kind: kind.to_string(), text: String::new(), style: vec![], children: vec![], action: None, value: None, enter: None, options: vec![] }
     }
 }
 
@@ -102,6 +104,9 @@ pub fn parse_shortcut(spec: &str) -> Result<Shortcut, String> {
 
 /// The view's keyboard shortcuts and the action each runs.
 fn shortcuts(n: &Node, out: &mut Vec<(Shortcut, usize)>) {
+    if shut(n) {
+        return;
+    }
     if n.kind == "key" {
         if let (Some(a), Ok(s)) = (n.action, parse_shortcut(&n.text)) {
             out.push((s, a));
@@ -516,6 +521,8 @@ struct Look {
     bg_alpha: f32,
     /// A font read from a file, instead of Inter.
     font: Option<usize>,
+    /// What shows when the mouse rests on it.
+    tip: String,
 }
 
 impl Look {
@@ -579,6 +586,7 @@ fn base_look(kind: &str) -> Look {
         disabled: false,
         bg_alpha: 1.0,
         font: WINDOW_FONT.with(|f| f.get()),
+        tip: String::new(),
     };
     match kind {
         "input" | "textarea" => {
@@ -599,6 +607,42 @@ fn base_look(kind: &str) -> Look {
         "slider" => {
             l.width = Size::Fixed(200.0);
             l.height = Size::Fixed(20.0);
+        }
+        // A dropdown looks like an input, with room on the right for its arrow.
+        "dropdown" => {
+            l.pad = [7.0, 30.0, 7.0, 10.0];
+            l.background = Some(0xffffff);
+            l.border = Some(0xced4da);
+            l.radius = 6.0;
+        }
+        "menu" => {
+            l.pad = [6.0, 10.0, 6.0, 10.0];
+            l.radius = 6.0;
+            l.weight = 500.0;
+        }
+        // A row of a pop-up list.
+        "option" | "item" => {
+            l.pad = [6.0, 12.0, 6.0, 12.0];
+            l.radius = 5.0;
+            l.wrap = false;
+        }
+        "divider" => {
+            l.height = Size::Fixed(9.0);
+        }
+        "dialog" => {
+            l.pad = [20.0; 4];
+            l.gap = 12.0;
+            l.background = Some(0xffffff);
+            l.radius = 12.0;
+            l.shadow = true;
+        }
+        "tip" => {
+            l.pad = [4.0, 8.0, 4.0, 8.0];
+            l.size = 12.0;
+            l.color = 0xffffff;
+            l.background = Some(0x212529);
+            l.radius = 6.0;
+            l.max_w = 260.0;
         }
         "scroll" => l.width = Size::Fill,
         "button" => {
@@ -701,6 +745,7 @@ fn apply(l: &mut Look, kind: &str, style: &[(String, SV)]) {
             "step" => l.step = num(v).unwrap_or(1.0).max(0.0),
             "cover" => l.cover = true,
             "disabled" => l.disabled = true,
+            "tip" => l.tip = text_of(v).unwrap_or("").to_string(),
             "font" => {
                 if let Some(f) = text_of(v).and_then(font_file) {
                     l.font = Some(f);
@@ -882,6 +927,7 @@ fn read_picture(path: &str) -> Option<Picture> {
 // ----- layout -----
 
 /// A node, worked out and placed.
+#[derive(Clone)]
 struct Laid {
     kind: String,
     text: String,
@@ -894,6 +940,8 @@ struct Laid {
     enter: Option<usize>,
     /// A text box's text, broken into the lines it shows: where each starts and ends in it.
     spans: Vec<(usize, usize)>,
+    /// A menu's items, or a dropdown's choices: the rows of its pop-up list.
+    items: Vec<Laid>,
     /// What an input, checkbox or slider shows.
     value: Option<SV>,
     /// A scroll's content, top to bottom, and how far it's scrolled down.
@@ -930,9 +978,49 @@ fn lay(n: &Node) -> Laid {
         }
         None => None,
     };
+    // A menu's items and a dropdown's choices show only in its pop-up list, not in the flow.
+    let items: Vec<Laid> = match n.kind.as_str() {
+        "menu" => n.children.iter().filter(|c| !unseen(&c.kind)).map(lay).collect(),
+        "dropdown" => n
+            .options
+            .iter()
+            .map(|o| {
+                let mut row = Node::new("option");
+                row.text = o.clone();
+                row.action = n.action;
+                lay(&row)
+            })
+            .collect(),
+        _ => vec![],
+    };
+    let mut children = Vec::new();
+    if n.kind != "menu" {
+        for c in &n.children {
+            if unseen(&c.kind) {
+                // Timers and shortcuts take no room on the screen.
+            } else if c.kind == "dialog" {
+                // A dialog shows over everything else while it's open, and takes no room here.
+                if matches!(c.value, Some(SV::Truth(true))) {
+                    let slot = DIALOGS.with(|d| {
+                        d.borrow_mut().push(None);
+                        d.borrow().len() - 1
+                    });
+                    let laid = lay(c);
+                    DIALOGS.with(|d| d.borrow_mut()[slot] = Some(laid));
+                }
+            } else {
+                children.push(lay(c));
+            }
+        }
+    }
+    // A dropdown shows what's chosen.
+    let text = match (&n.value, n.kind.as_str()) {
+        (Some(SV::Text(t)), "dropdown") => t.clone(),
+        _ => n.text.clone(),
+    };
     Laid {
         kind: n.kind.clone(),
-        text: n.text.clone(),
+        text,
         lines: vec![],
         look,
         hover,
@@ -946,13 +1034,18 @@ fn lay(n: &Node) -> Laid {
         h: 0.0,
         enter: if disabled { None } else { n.enter },
         spans: vec![],
-        // Timers and shortcuts take no room on the screen.
-        children: n.children.iter().filter(|c| !unseen(&c.kind)).map(lay).collect(),
+        items,
+        children,
     }
 }
 
+thread_local! {
+    /// The dialogs that are open, found while laying the view out, outermost first.
+    static DIALOGS: std::cell::RefCell<Vec<Option<Laid>>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
 fn shows_text(kind: &str) -> bool {
-    kind == "text" || kind == "button"
+    matches!(kind, "text" | "button" | "dropdown" | "menu" | "option" | "item" | "tip")
 }
 
 /// How much of the leftover room a child takes along its row (or column), if any.
@@ -1028,8 +1121,12 @@ fn measure(n: &Laid, max_w: f32) -> (f32, f32) {
         k if shows_text(k) => {
             let lines = wrap_lines(&n.text, l.size, l.face(), inner, l.wrap);
             let (_, lh) = line_metrics(l.size, l.face());
-            let w = lines.iter().map(|s| text_width(s, l.size, l.face())).fold(0.0, f32::max);
-            (w.ceil(), lh * lines.len() as f32)
+            let mut w = lines.iter().map(|s| text_width(s, l.size, l.face())).fold(0.0, f32::max);
+            // A dropdown is as wide as its widest choice, so it doesn't change size as it changes.
+            for o in &n.items {
+                w = w.max(text_width(&o.text, l.size, l.face()));
+            }
+            (w.ceil(), lh * lines.len().max(1) as f32)
         }
         "space" | "checkbox" | "slider" => (0.0, 0.0),
         "image" => {
@@ -1242,9 +1339,11 @@ fn place(n: &mut Laid, x: f32, y: f32, w: f32, h: f32) {
 
 /// The view's top: a column as big as the window. Columns and rows directly in it are as wide as
 /// the window.
-fn lay_out(root: &Node, w: f32, h: f32) -> Laid {
+fn lay_out(root: &Node, w: f32, h: f32) -> (Laid, Vec<Laid>) {
     WINDOW_FONT.with(|f| f.set(settings(&root.style).font));
+    DIALOGS.with(|d| d.borrow_mut().clear());
     let mut top = lay(root);
+    let dialogs: Vec<Laid> = DIALOGS.with(|d| d.borrow_mut().drain(..).flatten().collect());
     // The root carries the window's settings, which aren't styles.
     top.look = base_look("view");
     for c in &mut top.children {
@@ -1255,7 +1354,120 @@ fn lay_out(root: &Node, w: f32, h: f32) -> Laid {
     MEASURED.with(|m| m.borrow_mut().clear());
     place(&mut top, 0.0, 0.0, w, h);
     MEASURED.with(|m| m.borrow_mut().clear());
-    top
+    (top, dialogs)
+}
+
+// ----- layers: dialogs, pop-up lists and tips, over everything else -----
+
+/// A layer as big as the window, holding one thing placed over the view.
+fn layer(what: &str, w: f32, h: f32, inside: Laid) -> Laid {
+    let mut l = lay(&Node::new("layer"));
+    l.text = what.to_string();
+    l.w = w;
+    l.h = h;
+    l.children = vec![inside];
+    l
+}
+
+/// An open dialog, in the middle of the window over a dimmed view.
+fn dialog_layer(mut d: Laid, w: f32, h: f32) -> Laid {
+    MEASURED.with(|m| m.borrow_mut().clear());
+    let room = ((w - 48.0).max(0.0), (h - 48.0).max(0.0));
+    let dw = match d.look.width {
+        Size::Fixed(f) => clamp_w(&d, f).min(room.0),
+        Size::Fill => room.0,
+        Size::Auto => clamp_w(&d, natural(&d, room.0).0).min(room.0),
+    };
+    let dh = match d.look.height {
+        Size::Fixed(f) => clamp_h(&d, f),
+        Size::Fill => room.1,
+        Size::Auto => clamp_h(&d, natural(&d, dw).1),
+    }
+    .min(room.1);
+    place(&mut d, ((w - dw) / 2.0).round(), ((h - dh) / 2.0).round(), dw.round(), dh.round());
+    MEASURED.with(|m| m.borrow_mut().clear());
+    // The layer closes the dialog, when the mouse goes down outside it or Escape is pressed.
+    let close = d.action.take();
+    let mut l = layer("dialog", w, h, d);
+    l.look.background = Some(0x000000);
+    l.look.bg_alpha = 0.35;
+    l.action = close;
+    l
+}
+
+/// A dropdown's or a menu's list of rows, below it (or above, if there's more room there).
+/// `hl` is the row picked with the keyboard.
+fn popup_layer(owner: &Laid, hl: Option<usize>, w: f32, h: f32) -> Laid {
+    let mut rows = owner.items.clone();
+    for (i, r) in rows.iter_mut().enumerate() {
+        if r.kind == "option" && r.text == owner.text {
+            r.look.weight = 600.0;
+        }
+        if r.action.is_some() && r.hover.is_none() {
+            let mut over = r.look.clone();
+            over.background = Some(0xf1f3f5);
+            r.hover = Some(over);
+        }
+        if Some(i) == hl {
+            r.look.background = Some(0xe7f5ff);
+            r.hover = None;
+        }
+        r.look.width = Size::Fill;
+    }
+    let mut list = lay(&Node::new("scroll"));
+    list.look.background = Some(0xffffff);
+    list.look.border = Some(0xdee2e6);
+    list.look.radius = 8.0;
+    list.look.shadow = true;
+    list.look.pad = [4.0; 4];
+    MEASURED.with(|m| m.borrow_mut().clear());
+    let widest = rows.iter().map(|r| natural(r, f32::INFINITY).0).fold(0.0, f32::max);
+    let lw = (widest + 8.0).max(owner.w).min((w - 16.0).max(40.0)).round();
+    let tall: f32 = rows.iter().map(|r| natural(r, lw - 8.0).1).sum::<f32>() + 8.0;
+    list.children = rows;
+    let below = h - (owner.y + owner.h + 4.0) - 8.0;
+    let above = owner.y - 12.0;
+    let (y, lh) = if tall <= below || below >= above {
+        (owner.y + owner.h + 4.0, tall.min(below.max(40.0)))
+    } else {
+        let lh = tall.min(above);
+        (owner.y - 4.0 - lh, lh)
+    };
+    let x = owner.x.min(w - 8.0 - lw).max(8.0);
+    place(&mut list, x.round(), y.round(), lw, lh.round());
+    MEASURED.with(|m| m.borrow_mut().clear());
+    layer("popup", w, h, list)
+}
+
+/// The deepest piece with a tip at this point.
+fn tip_at(n: &Laid, x: f32, y: f32, path: &mut Vec<usize>, found: &mut Option<Vec<usize>>) {
+    if x < n.x || y < n.y || x >= n.x + n.w || y >= n.y + n.h {
+        return;
+    }
+    if !n.look.tip.is_empty() {
+        *found = Some(path.clone());
+    }
+    for (i, c) in n.children.iter().enumerate() {
+        path.push(i);
+        tip_at(c, x, y, path, found);
+        path.pop();
+    }
+}
+
+/// A piece's tip, in a small dark box below it (or above, at the bottom of the window).
+fn tip_layer(target: &Laid, w: f32, h: f32) -> Laid {
+    let mut t = lay(&Node::new("tip"));
+    t.text = target.look.tip.clone();
+    MEASURED.with(|m| m.borrow_mut().clear());
+    let (tw, th) = natural(&t, 260.0);
+    let x = (target.x + target.w / 2.0 - tw / 2.0).min(w - 4.0 - tw).max(4.0);
+    let mut y = target.y + target.h + 6.0;
+    if y + th > h - 4.0 {
+        y = target.y - 6.0 - th;
+    }
+    place(&mut t, x.round(), y.round(), tw.ceil(), th.ceil());
+    MEASURED.with(|m| m.borrow_mut().clear());
+    layer("tip", w, h, t)
 }
 
 // ----- painting -----
@@ -1747,7 +1959,7 @@ fn paint(c: &mut Canvas, n: &Laid, st: &PaintState, path: &mut Vec<usize>) {
         "checkbox" => paint_checkbox(c, n, l, focused && st.ring),
         "slider" => paint_slider(c, n, l, focused && st.ring),
         _ => {
-            if focused && st.ring && n.kind == "button" {
+            if focused && st.ring && matches!(n.kind.as_str(), "button" | "dropdown" | "menu") {
                 ring_around(c, n, 0x1c7ed6);
             }
             if let Some(bg) = l.background {
@@ -1763,6 +1975,15 @@ fn paint(c: &mut Canvas, n: &Laid, st: &PaintState, path: &mut Vec<usize>) {
     }
     if n.kind == "textarea" {
         paint_textarea(c, n, focused, st);
+    }
+    // A dropdown's arrow, and the line of a divider in a menu.
+    if n.kind == "dropdown" {
+        let (cx, cy) = (n.x + n.w - 16.0, n.y + n.h / 2.0);
+        c.line(cx - 4.0, cy - 2.0, cx, cy + 2.0, 1.5, mix(l.color, 0xffffff, 0.35));
+        c.line(cx, cy + 2.0, cx + 4.0, cy - 2.0, 1.5, mix(l.color, 0xffffff, 0.35));
+    }
+    if n.kind == "divider" {
+        c.rect(n.x + 6.0, n.y + (n.h / 2.0).floor(), (n.w - 12.0).max(0.0), 1.0, 0.0, 0xe9ecef, 1.0);
     }
     if n.kind == "image" {
         paint_image(c, n, l);
@@ -1815,7 +2036,12 @@ fn hit(n: &Laid, x: f32, y: f32) -> Option<Vec<usize>> {
             return Some(p);
         }
     }
-    n.action.map(|_| vec![])
+    // A layer isn't clicked itself, only what's on it. A menu is clicked to open it.
+    if (n.action.is_some() && n.kind != "layer") || n.kind == "menu" {
+        Some(vec![])
+    } else {
+        None
+    }
 }
 
 fn node_at<'a>(n: &'a Laid, path: &[usize]) -> Option<&'a Laid> {
@@ -1827,7 +2053,8 @@ fn node_at<'a>(n: &'a Laid, path: &[usize]) -> Option<&'a Laid> {
 
 /// Everything that can have focus, in the order Tab goes through them.
 fn focusable(n: &Laid, path: &mut Vec<usize>, out: &mut Vec<Vec<usize>>) {
-    if n.action.is_some() && matches!(n.kind.as_str(), "button" | "input" | "textarea" | "checkbox" | "slider") {
+    let can = matches!(n.kind.as_str(), "button" | "input" | "textarea" | "checkbox" | "slider" | "dropdown");
+    if (n.action.is_some() && can) || (n.kind == "menu" && !n.look.disabled) {
         out.push(path.clone());
     }
     for (i, c) in n.children.iter().enumerate() {
@@ -1994,7 +2221,15 @@ struct Timer {
     due: f64,
 }
 
+/// Whether this is a dialog that's closed, so what's in it doesn't run.
+fn shut(n: &Node) -> bool {
+    n.kind == "dialog" && !matches!(n.value, Some(SV::Truth(true)))
+}
+
 fn timers(n: &Node, out: &mut Vec<(f64, usize)>) {
+    if shut(n) {
+        return;
+    }
     if n.kind == "every" {
         if let (Some(a), Some(SV::Num(s))) = (n.action, &n.value) {
             out.push((s.max(0.016), a));
@@ -2090,7 +2325,15 @@ struct Ui<'a, 'b> {
     /// Hover looks fading in and out (in a window), and when they last moved on.
     fades: HashMap<Vec<usize>, f32>,
     faded_at: std::time::Instant,
+    /// The dropdown or menu whose list is open, and the row picked in it with the keyboard.
+    popup: Option<(Vec<usize>, Option<usize>)>,
+    /// The piece with a tip that the mouse is resting on, and since when; and whether its tip shows.
+    tip: Option<(Vec<usize>, std::time::Instant)>,
+    tip_on: bool,
 }
+
+/// How long the mouse rests on a piece before its tip shows.
+const TIP_MS: u64 = 600;
 
 const FADE_SECS: f32 = 0.12;
 
@@ -2111,11 +2354,16 @@ fn hover_targets(n: &Laid, x: f32, y: f32, path: &mut Vec<usize>, out: &mut Vec<
 
 const BLINK_MS: u128 = 530;
 
+/// The open dialog on top, if there is one: only it can be used until it closes.
+fn modal_in(tree: &Laid) -> Option<usize> {
+    tree.children.iter().rposition(|c| c.kind == "layer" && c.text == "dialog")
+}
+
 impl<'a, 'b> Ui<'a, 'b> {
     fn new(s: Settings, build: &'a mut Build<'b>, windowed: bool) -> Result<Ui<'a, 'b>, String> {
         let (w, h) = (s.width as f32, s.height as f32);
         let (node, actions) = build()?;
-        let tree = lay_out(&node, w, h);
+        let tree = lay(&Node::new("view"));
         let now = std::time::Instant::now();
         let mut ui = Ui {
             s,
@@ -2140,7 +2388,11 @@ impl<'a, 'b> Ui<'a, 'b> {
             history: HashMap::new(),
             fades: HashMap::new(),
             faded_at: now,
+            popup: None,
+            tip: None,
+            tip_on: false,
         };
+        ui.relayout();
         ui.set_timers();
         Ok(ui)
     }
@@ -2205,14 +2457,47 @@ impl<'a, 'b> Ui<'a, 'b> {
 
     /// Lays the last view out again, with each scroll where it was.
     fn relayout(&mut self) {
-        self.tree = lay_out(&self.node, self.w, self.h);
-        apply_scrolls(&mut self.tree, &mut vec![], &mut self.scrolls);
+        let (w, h) = (self.w, self.h);
+        let (mut tree, dialogs) = lay_out(&self.node, w, h);
+        apply_scrolls(&mut tree, &mut vec![], &mut self.scrolls);
+        let add = |tree: &mut Laid, mut l: Laid, scrolls: &mut HashMap<Vec<usize>, f32>| {
+            let k = tree.children.len();
+            apply_scrolls(&mut l, &mut vec![k], scrolls);
+            tree.children.push(l);
+        };
+        for d in dialogs {
+            add(&mut tree, dialog_layer(d, w, h), &mut self.scrolls);
+        }
+        if let Some((owner, hl)) = self.popup.clone() {
+            match node_at(&tree, &owner).filter(|n| matches!(n.kind.as_str(), "dropdown" | "menu") && !n.look.disabled) {
+                Some(o) => {
+                    let l = popup_layer(o, hl, w, h);
+                    add(&mut tree, l, &mut self.scrolls);
+                }
+                None => self.popup = None,
+            }
+        }
+        if self.tip_on {
+            let mut found = None;
+            if let Some((x, y)) = self.st.hover {
+                let from = modal_in(&tree).unwrap_or(0);
+                for (i, c) in tree.children.iter().enumerate().skip(from) {
+                    if !(c.kind == "layer" && c.text != "dialog") {
+                        tip_at(c, x, y, &mut vec![i], &mut found);
+                    }
+                }
+            }
+            match found.and_then(|p| node_at(&tree, &p).cloned()) {
+                Some(t) => add(&mut tree, tip_layer(&t, w, h), &mut self.scrolls),
+                None => self.tip_on = false,
+            }
+        }
+        self.tree = tree;
     }
 
     /// Scrolls the scroll under the mouse, or the one around it if that one can't go further.
     fn wheel(&mut self, x: f32, y: f32, dy: f32) -> bool {
-        let mut found = Vec::new();
-        scrolls_at(&self.tree, x, y, &mut vec![], &mut found);
+        let found = self.scrolls_here(x, y);
         for p in found.iter().rev() {
             let Some(n) = node_at(&self.tree, p) else { continue };
             let max = (n.content_h - n.h).max(0.0);
@@ -2261,8 +2546,11 @@ impl<'a, 'b> Ui<'a, 'b> {
         self.actions = actions;
         self.set_timers();
         if let Some(f) = self.st.focus.clone() {
+            // With a dialog open, focus can only be in it.
+            let shut_out = modal_in(&self.tree).is_some_and(|m| f.first().is_some_and(|&i| i < m));
             match node_at(&self.tree, &f) {
-                Some(n) if n.action.is_some() => {
+                _ if shut_out => self.st.focus = None,
+                Some(n) if n.action.is_some() || n.kind == "menu" => {
                     let t = value_text(n).to_string();
                     self.st.caret.fit(&t);
                 }
@@ -2329,7 +2617,9 @@ impl<'a, 'b> Ui<'a, 'b> {
     fn hovered(&self) -> Vec<Vec<usize>> {
         let mut out = Vec::new();
         if let Some((x, y)) = self.st.hover {
-            hover_targets(&self.tree, x, y, &mut vec![], &mut out);
+            for i in self.reach() {
+                hover_targets(&self.tree.children[i], x, y, &mut vec![i], &mut out);
+            }
         }
         out
     }
@@ -2493,9 +2783,34 @@ impl<'a, 'b> Ui<'a, 'b> {
         let quick = now.duration_since(t) < std::time::Duration::from_millis(400) && (x - px).abs() < 4.0 && (y - py).abs() < 4.0;
         let count = if quick { n + 1 } else { 1 };
         self.clicks = (now, count, (x, y));
+        self.hide_tip();
+        // An open list closes when the mouse goes down anywhere else, and that's all it does.
+        if self.popup.is_some() {
+            let inside = self
+                .tree
+                .children
+                .iter()
+                .rfind(|c| c.kind == "layer" && c.text == "popup")
+                .and_then(|l| l.children.first())
+                .is_some_and(|b| x >= b.x && y >= b.y && x < b.x + b.w && y < b.y + b.h);
+            if !inside {
+                self.popup = None;
+                self.pressed = None;
+                self.relayout();
+                return Ok(());
+            }
+        }
+        // So does an open dialog, closing.
+        if let Some(m) = modal_in(&self.tree) {
+            let l = &self.tree.children[m];
+            let inside = l.children.first().is_some_and(|b| x >= b.x && y >= b.y && x < b.x + b.w && y < b.y + b.h);
+            if !inside {
+                self.pressed = None;
+                return self.close_dialog(m);
+            }
+        }
         // The knob of a scroll bar, grabbed to drag.
-        let mut found = Vec::new();
-        scrolls_at(&self.tree, x, y, &mut vec![], &mut found);
+        let found = self.scrolls_here(x, y);
         for p in found.iter().rev() {
             let Some(n) = node_at(&self.tree, p) else { continue };
             if let Some((ky, kh)) = scroll_knob(n) {
@@ -2505,7 +2820,7 @@ impl<'a, 'b> Ui<'a, 'b> {
                 }
             }
         }
-        let at = hit(&self.tree, x, y);
+        let at = self.hit_at(x, y);
         self.pressed = at.clone();
         let Some(path) = at else {
             self.set_focus(None, false);
@@ -2539,6 +2854,9 @@ impl<'a, 'b> Ui<'a, 'b> {
                 self.drag = Drag::Slide;
                 self.slide_to(&path, x)?;
             }
+            "dropdown" | "menu" => self.set_focus(Some(path.clone()), false),
+            // A row of an open list: it acts when the mouse is let go, and focus stays.
+            "option" | "item" => {}
             // Buttons and checkboxes act when the mouse is let go over them. Clicking one takes
             // focus away from an input, without giving the button a ring.
             _ => self.set_focus(None, false),
@@ -2579,7 +2897,7 @@ impl<'a, 'b> Ui<'a, 'b> {
         if let Drag::Scroll(..) = std::mem::replace(&mut self.drag, Drag::None) {
             return Ok(());
         }
-        let at = hit(&self.tree, x, y);
+        let at = self.hit_at(x, y);
         let pressed = self.pressed.take();
         let Some(path) = at.filter(|a| Some(a) == pressed.as_ref()) else { return Ok(()) };
         let Some(n) = node_at(&self.tree, &path) else { return Ok(()) };
@@ -2589,7 +2907,122 @@ impl<'a, 'b> Ui<'a, 'b> {
                 self.run(&path, SV::Truth(!on))
             }
             "button" => self.run(&path, SV::Flag),
+            // A dropdown or menu opens its list, or closes it if it's open.
+            "dropdown" | "menu" => {
+                if self.popup.as_ref().is_some_and(|(o, _)| *o == path) {
+                    self.popup = None;
+                    self.relayout();
+                } else {
+                    self.open_popup(&path, false);
+                }
+                Ok(())
+            }
+            "option" | "item" => {
+                let (a, v) = (n.action, if n.kind == "option" { SV::Text(n.text.clone()) } else { SV::Flag });
+                self.pick(a, v)
+            }
             _ => Ok(()),
+        }
+    }
+
+    /// A row of the open list was chosen: the list closes, and the row's action runs.
+    fn pick(&mut self, action: Option<usize>, value: SV) -> Result<(), String> {
+        self.popup = None;
+        match action {
+            Some(a) => {
+                run_with(&mut self.actions[a], value)?;
+                self.rebuild()
+            }
+            None => {
+                self.relayout();
+                Ok(())
+            }
+        }
+    }
+
+    /// Closes the dialog on the layer at `m`: what it's bound to becomes false.
+    fn close_dialog(&mut self, m: usize) -> Result<(), String> {
+        match self.tree.children.get(m).and_then(|l| l.action) {
+            Some(a) => {
+                run_with(&mut self.actions[a], SV::Truth(false))?;
+                self.rebuild()
+            }
+            None => Ok(()),
+        }
+    }
+
+    /// Where the mouse can reach, as the window's layers: all of them, or with a dialog open,
+    /// only the dialog and what's over it.
+    fn reach(&self) -> std::ops::Range<usize> {
+        modal_in(&self.tree).unwrap_or(0)..self.tree.children.len()
+    }
+
+    /// The deepest piece at this point that the mouse can use.
+    fn hit_at(&self, x: f32, y: f32) -> Option<Vec<usize>> {
+        for i in self.reach().rev() {
+            let c = &self.tree.children[i];
+            if c.kind == "layer" && c.text == "tip" {
+                continue;
+            }
+            if let Some(mut p) = hit(c, x, y) {
+                p.insert(0, i);
+                return Some(p);
+            }
+        }
+        None
+    }
+
+    /// Every scroll (and text box) at this point the mouse can reach, outermost first.
+    fn scrolls_here(&self, x: f32, y: f32) -> Vec<Vec<usize>> {
+        let mut found = Vec::new();
+        for i in self.reach() {
+            scrolls_at(&self.tree.children[i], x, y, &mut vec![i], &mut found);
+        }
+        found
+    }
+
+    /// Follows the mouse for tips: a tip shows once the mouse has rested on its piece for a
+    /// moment. Returns whether a tip that showed went away.
+    fn track_tip(&mut self) -> bool {
+        let mut found = None;
+        if let Some((x, y)) = self.st.hover {
+            for i in self.reach() {
+                let c = &self.tree.children[i];
+                if !(c.kind == "layer" && c.text != "dialog") {
+                    tip_at(c, x, y, &mut vec![i], &mut found);
+                }
+            }
+        }
+        if matches!((&self.tip, &found), (Some((p, _)), Some(f)) if p == f) {
+            return false;
+        }
+        self.tip = found.map(|p| (p, std::time::Instant::now()));
+        let was = std::mem::replace(&mut self.tip_on, false);
+        if was {
+            self.relayout();
+        }
+        was
+    }
+
+    /// When the tip the mouse is resting on is due to show.
+    fn tip_due(&self) -> Option<std::time::Instant> {
+        match &self.tip {
+            Some((_, t)) if !self.tip_on => Some(*t + std::time::Duration::from_millis(TIP_MS)),
+            _ => None,
+        }
+    }
+
+    fn show_tip(&mut self) {
+        if self.tip.is_some() && !self.tip_on {
+            self.tip_on = true;
+            self.relayout();
+        }
+    }
+
+    fn hide_tip(&mut self) {
+        self.tip = None;
+        if std::mem::replace(&mut self.tip_on, false) {
+            self.relayout();
         }
     }
 
@@ -2635,11 +3068,104 @@ impl<'a, 'b> Ui<'a, 'b> {
         Ok(())
     }
 
+    /// The rows of the open list that can be chosen.
+    fn popup_rows(&self) -> Vec<bool> {
+        let Some((owner, _)) = &self.popup else { return vec![] };
+        node_at(&self.tree, owner).map(|o| o.items.iter().map(|r| r.action.is_some()).collect()).unwrap_or_default()
+    }
+
+    /// Keys while a list is open: Up and Down pick a row, Enter or Space chooses it, Escape
+    /// closes the list. Returns whether the key was used.
+    fn popup_key(&mut self, k: &Nav) -> Result<bool, String> {
+        let Some((owner, hl)) = self.popup.clone() else { return Ok(false) };
+        let rows = self.popup_rows();
+        match k {
+            Nav::Up | Nav::Down | Nav::Edit(Key::Home | Key::End) => {
+                let order: Vec<usize> = (0..rows.len()).filter(|&i| rows[i]).collect();
+                if order.is_empty() {
+                    return Ok(true);
+                }
+                let at = hl.and_then(|h| order.iter().position(|&i| i == h));
+                let next = match (k, at) {
+                    (Nav::Edit(Key::Home), _) | (Nav::Down, None) => 0,
+                    (Nav::Edit(Key::End), _) | (Nav::Up, None) => order.len() - 1,
+                    (Nav::Down, Some(a)) => (a + 1).min(order.len() - 1),
+                    (_, Some(a)) => a.saturating_sub(1),
+                    (_, None) => 0,
+                };
+                self.popup = Some((owner, Some(order[next])));
+                self.relayout();
+                // Keeps the picked row in view in a long list.
+                if let Some(k) = self.tree.children.iter().rposition(|c| c.kind == "layer" && c.text == "popup") {
+                    let list = vec![k, 0];
+                    if let (Some(l), Some(r)) = (node_at(&self.tree, &list), node_at(&self.tree, &[k, 0, order[next]])) {
+                        let off = if r.y < l.y + 4.0 {
+                            Some(l.scrolled - (l.y + 4.0 - r.y))
+                        } else if r.y + r.h > l.y + l.h - 4.0 {
+                            Some(l.scrolled + (r.y + r.h - (l.y + l.h - 4.0)))
+                        } else {
+                            None
+                        };
+                        if let Some(o) = off {
+                            self.scrolls.insert(list, o);
+                            self.relayout();
+                        }
+                    }
+                }
+                Ok(true)
+            }
+            Nav::Enter | Nav::Space => {
+                let row = hl.and_then(|h| node_at(&self.tree, &owner).and_then(|o| o.items.get(h)).cloned());
+                match row {
+                    Some(r) if r.action.is_some() => {
+                        let v = if r.kind == "option" { SV::Text(r.text.clone()) } else { SV::Flag };
+                        self.pick(r.action, v)?;
+                    }
+                    _ => {
+                        self.popup = None;
+                        self.relayout();
+                    }
+                }
+                Ok(true)
+            }
+            Nav::Escape => {
+                self.popup = None;
+                self.relayout();
+                Ok(true)
+            }
+            Nav::Tab => {
+                self.popup = None;
+                self.relayout();
+                Ok(false)
+            }
+            _ => Ok(true),
+        }
+    }
+
+    /// Opens a dropdown's or a menu's list, with a row picked: what's chosen, or from the
+    /// keyboard, a menu's first row that can be.
+    fn open_popup(&mut self, path: &[usize], keyboard: bool) {
+        let Some(n) = node_at(&self.tree, path) else { return };
+        let mut hl = n.items.iter().position(|r| r.kind == "option" && r.text == n.text);
+        if hl.is_none() && keyboard {
+            hl = n.items.iter().position(|r| r.action.is_some());
+        }
+        self.popup = Some((path.to_vec(), hl));
+        self.relayout();
+    }
+
     fn nav(&mut self, k: Nav, mods: Mods) -> Result<(), String> {
+        if self.popup_key(&k)? {
+            return Ok(());
+        }
         match k {
             Nav::Tab => {
+                // With a dialog open, Tab goes round the dialog only.
                 let mut all = Vec::new();
-                focusable(&self.tree, &mut vec![], &mut all);
+                match modal_in(&self.tree) {
+                    Some(m) => focusable(&self.tree.children[m], &mut vec![m], &mut all),
+                    None => focusable(&self.tree, &mut vec![], &mut all),
+                }
                 if all.is_empty() {
                     return Ok(());
                 }
@@ -2664,8 +3190,18 @@ impl<'a, 'b> Ui<'a, 'b> {
                 Ok(())
             }
             Nav::Escape => {
-                self.set_focus(None, false);
-                Ok(())
+                // Escape takes focus out of an input first, then closes the dialog on top.
+                let typing = editable(&self.focused_kind());
+                match modal_in(&self.tree) {
+                    Some(m) if !typing => {
+                        self.set_focus(None, false);
+                        self.close_dialog(m)
+                    }
+                    _ => {
+                        self.set_focus(None, false);
+                        Ok(())
+                    }
+                }
             }
             _ => {
                 let Some(path) = self.st.focus.clone() else { return Ok(()) };
@@ -2734,6 +3270,27 @@ impl<'a, 'b> Ui<'a, 'b> {
                         None => Ok(()),
                     },
                     ("button", Nav::Enter | Nav::Space) => self.run(&path, SV::Flag),
+                    ("dropdown", Nav::Enter | Nav::Space) | ("menu", Nav::Enter | Nav::Space | Nav::Down) => {
+                        self.open_popup(&path, true);
+                        Ok(())
+                    }
+                    // Up and Down choose the one before or after, without opening the list.
+                    ("dropdown", Nav::Up | Nav::Down) => {
+                        let at = n.items.iter().position(|r| r.text == n.text);
+                        let next = match (&k, at) {
+                            (Nav::Down, Some(i)) => i + 1,
+                            (Nav::Down, None) => 0,
+                            (_, Some(i)) if i > 0 => i - 1,
+                            _ => return Ok(()),
+                        };
+                        match n.items.get(next) {
+                            Some(r) => {
+                                let v = SV::Text(r.text.clone());
+                                self.run(&path, v)
+                            }
+                            None => Ok(()),
+                        }
+                    }
                     ("checkbox", Nav::Enter | Nav::Space) => {
                         let on = matches!(n.value, Some(SV::Truth(true)));
                         self.run(&path, SV::Truth(!on))
@@ -2799,7 +3356,7 @@ impl<'a, 'b> Ui<'a, 'b> {
 
     /// The mouse pointer for this spot: a hand over things that act, a text bar over inputs.
     fn pointer(&self, x: f32, y: f32) -> u8 {
-        match hit(&self.tree, x, y).and_then(|p| node_at(&self.tree, &p)).map(|n| n.kind.as_str()) {
+        match self.hit_at(x, y).and_then(|p| node_at(&self.tree, &p)).map(|n| n.kind.as_str()) {
             Some("input" | "textarea") => 2,
             Some(_) => 1,
             None => 0,
@@ -2999,6 +3556,10 @@ mod windowed {
 
         fn new_events(&mut self, el: &ActiveEventLoop, cause: StartCause) {
             if let StartCause::ResumeTimeReached { .. } = cause {
+                if self.ui.tip_due().is_some_and(|t| t <= std::time::Instant::now()) {
+                    self.ui.show_tip();
+                    self.redraw();
+                }
                 let r = self.ui.fire_timers().map(|_| ());
                 self.check(r, el);
             }
@@ -3008,12 +3569,9 @@ mod windowed {
             if self.error.is_some() {
                 return;
             }
-            // Wake for the caret's next blink, or the next timer, whichever is sooner.
+            // Wake for the caret's next blink, the next timer, or a tip, whichever is soonest.
             let timer = self.ui.next_timer().map(|d| self.ui.started + std::time::Duration::from_secs_f64(d.max(0.0)));
-            let wake = match (self.ui.next_blink(), timer) {
-                (Some(a), Some(b)) => Some(a.min(b)),
-                (a, b) => a.or(b),
-            };
+            let wake = [self.ui.next_blink(), timer, self.ui.tip_due()].into_iter().flatten().min();
             match wake {
                 Some(t) => el.set_control_flow(ControlFlow::WaitUntil(t)),
                 None => el.set_control_flow(ControlFlow::Wait),
@@ -3040,6 +3598,9 @@ mod windowed {
                     let before = (self.ui.hovered(), self.ui.pointer(p.0, p.1));
                     let dragging = self.ui.drag != Drag::None;
                     let r = self.ui.moved(p.0, p.1);
+                    if self.ui.track_tip() {
+                        self.redraw();
+                    }
                     if let Some(w) = &self.window {
                         w.set_cursor(match self.ui.pointer(p.0, p.1) {
                             2 => CursorIcon::Text,
@@ -3067,6 +3628,7 @@ mod windowed {
                 WindowEvent::CursorLeft { .. } => {
                     self.mouse = None;
                     self.ui.st.hover = None;
+                    self.ui.track_tip();
                     self.redraw();
                 }
                 WindowEvent::MouseInput { state, button: MouseButton::Left, .. } => {
@@ -3368,6 +3930,7 @@ fn num_text(x: f64) -> String {
 fn dump(n: &Laid, depth: usize, path: &mut Vec<usize>, st: &PaintState, out: &mut String) {
     let pad = "  ".repeat(depth);
     let shown = match (&n.value, n.kind.as_str()) {
+        (_, "dialog") => None,
         (Some(SV::Text(t)), _) => Some(t.clone()),
         (Some(SV::Truth(b)), _) => Some(if *b { "on" } else { "off" }.to_string()),
         (Some(SV::Num(x)), "slider") => Some(num_text(*x)),
@@ -3407,8 +3970,20 @@ fn dump(n: &Laid, depth: usize, path: &mut Vec<usize>, st: &PaintState, out: &mu
     }
 }
 
+/// The first button with these words, or row of an open list, or menu. What's on a layer (an
+/// open list or dialog) is found first.
 fn find_button(n: &Laid, text: &str, path: &mut Vec<usize>) -> Option<Vec<usize>> {
-    if n.kind == "button" && n.text == text {
+    if path.is_empty() {
+        for (i, c) in n.children.iter().enumerate().rev().filter(|(_, c)| c.kind == "layer") {
+            path.push(i);
+            let found = find_button(c, text, path);
+            path.pop();
+            if found.is_some() {
+                return found;
+            }
+        }
+    }
+    if matches!(n.kind.as_str(), "button" | "option" | "item" | "menu") && n.text == text {
         return Some(path.clone());
     }
     for (i, c) in n.children.iter().enumerate() {
@@ -3580,6 +4155,27 @@ fn test(s: Settings, build: &mut Build) -> Result<(), String> {
             }
             "hover" => {
                 ui.st.hover = find_button(&ui.tree, rest, &mut vec![]).and_then(|p| node_at(&ui.tree, &p)).map(|b| (b.x + 1.0, b.y + 1.0));
+                // In tests, a tip shows straight away.
+                ui.track_tip();
+                ui.show_tip();
+            }
+            // open dropdown 1, open menu File: clicks it, opening its list.
+            "open" => {
+                let mut it = rest.splitn(2, ' ');
+                let kind = it.next().unwrap_or("");
+                let what = it.next().unwrap_or("").trim();
+                let found = match kind {
+                    "dropdown" => find_nth(&ui.tree, "dropdown", what.parse::<usize>().unwrap_or(1)),
+                    _ => find_button(&ui.tree, what, &mut vec![]),
+                };
+                match found {
+                    Some(p) => {
+                        let (x, y) = centre(&ui, &p);
+                        ui.press(x, y, Mods::default())?;
+                        ui.release(x, y)?;
+                    }
+                    None => println!("(there's no {rest} to open)"),
+                }
             }
             "size" if nums.len() >= 2 => ui.resize(nums[0], nums[1])?,
             // Paints the window N times without saving, to measure how long painting takes.
