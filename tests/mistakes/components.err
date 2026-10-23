@@ -1,0 +1,10 @@
+components.lst:10:19  a component's fields are what the engine keeps and shows: bool, int, float, string, a state, vec3, rotation and entity. numbers is an int array.
+components.lst:11:13  a component's fields are what the engine keeps and shows: bool, int, float, string, a state, vec3, rotation and entity. bag is a Bag.
+components.lst:12:16  me is the entity the component is on, and every component has it already.
+components.lst:16:12  update runs once a tick with how many seconds a tick is: method update(float dt) { … }
+components.lst:17:9  me is the entity this component is on, so it can't be changed.
+components.lst:21:21  a component can't be like another one yet. Put what they share in a class they both use.
+components.lst:24:12  e is an entity, but this is an int.
+components.lst:26:9  + works on numbers and text, but these are an entity and an int.
+
+8 mistakes. Nothing was run.

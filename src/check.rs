@@ -57,6 +57,8 @@ pub struct ClassInfo {
     pub is_node: bool,
     #[allow(dead_code)]
     pub is_schema: bool,
+    /// Game logic on an entity: its fields are what an engine stores and shows.
+    pub is_component: bool,
     pub has_view: bool,
     /// A schema's fields with no starting value: they must always be filled in.
     pub required: Vec<String>,
@@ -344,6 +346,7 @@ impl<'a> Checker<'a> {
                         is_object: c.is_object,
                         is_node: c.is_node,
                         is_schema: c.is_schema,
+                        is_component: c.is_component,
                         has_view: c.view.is_some(),
                         required: vec![],
                         parent: None,
@@ -546,7 +549,49 @@ impl<'a> Checker<'a> {
                         format!("{} has a method called {}, so a field can't use that name.", c.name, f.name),
                     );
                 }
+                if c.is_component {
+                    let fits = matches!(
+                        ty,
+                        Ty::Truth | Ty::Int | Ty::Float | Ty::Str | Ty::State(_) | Ty::Vec3 | Ty::Rot | Ty::Entity | Ty::Error
+                    );
+                    if f.name == "me" {
+                        self.err(f.pos, "me is the entity the component is on, and every component has it already.");
+                        continue;
+                    }
+                    if !fits {
+                        self.err(
+                            f.pos,
+                            format!(
+                                "a component's fields are what the engine keeps and shows: bool, int, float, string, a state, vec3, rotation and entity. {} is {}.",
+                                f.name,
+                                self.a(&ty)
+                            ),
+                        );
+                    }
+                }
                 self.info.classes[ci].fields.push(FieldInfo { name: f.name.clone(), ty });
+            }
+            // A component knows the entity it's on: me.
+            if c.is_component {
+                self.info.classes[ci].fields.push(FieldInfo {
+                    name: "me".into(),
+                    ty: Ty::Entity,
+                });
+                if let Some((_, p)) = &c.parent {
+                    self.err(
+                        *p,
+                        "a component can't be like another one yet. Put what they share in a class they both use.",
+                    );
+                }
+                if let Some(m) = c.methods.iter().find(|m| m.name == "update") {
+                    let sig = &self.info.classes[ci].methods["update"];
+                    if sig.ret != Ty::Void || sig.params.len() != 1 || sig.params[0].1 != Ty::Float {
+                        self.err(
+                            m.pos,
+                            "update runs once a tick with how many seconds a tick is: method update(float dt) { … }",
+                        );
+                    }
+                }
             }
         }
         // Methods that replace a parent's must fit the same way.
@@ -856,6 +901,7 @@ impl<'a> Checker<'a> {
                 "bool" => Ty::Truth,
                 "vec3" => Ty::Vec3,
                 "rotation" => Ty::Rot,
+                "entity" => Ty::Entity,
                 _ => {
                     if let Some(&c) = self.info.class_index.get(n) {
                         return Ty::Class(c);
@@ -868,10 +914,14 @@ impl<'a> Checker<'a> {
                         .iter()
                         .chain(self.state_names.iter())
                         .cloned()
-                        .chain(["int", "float", "string", "bool", "vec3", "rotation"].iter().map(|s| s.to_string()))
+                        .chain(
+                            ["int", "float", "string", "bool", "vec3", "rotation", "entity"]
+                                .iter()
+                                .map(|s| s.to_string()),
+                        )
                         .collect();
                     let s = suggest(n, known);
-                    self.err(*pos, format!("Lust doesn't have a type called {n}.{s} The types are int, float, string, bool, vec3, rotation, arrays, maps, cMaps, hooks, classes and states."));
+                    self.err(*pos, format!("Lust doesn't have a type called {n}.{s} The types are int, float, string, bool, vec3, rotation, entity, arrays, maps, cMaps, hooks, classes and states."));
                     Ty::Error
                 }
             },
@@ -910,6 +960,7 @@ impl<'a> Checker<'a> {
             Ty::Int => "0".into(),
             Ty::Float => "1.5".into(),
             Ty::Vec3 | Ty::Rot => "[0, 0, 0]".into(),
+            Ty::Entity => "nothing".into(),
             Ty::Str => "\"text\"".into(),
             Ty::Truth => "true".into(),
             Ty::Array(_) | Ty::Map(_) | Ty::CMap(_) => "[]".into(),
@@ -1430,7 +1481,7 @@ impl<'a> Checker<'a> {
                     Ty::Array(e) => plain(e) && !matches!(**e, Ty::Void | Ty::Array(_)),
                     _ => matches!(
                         t,
-                        Ty::Int | Ty::Float | Ty::Str | Ty::Truth | Ty::Vec3 | Ty::Rot | Ty::Class(_) | Ty::Void | Ty::Error
+                        Ty::Int | Ty::Float | Ty::Str | Ty::Truth | Ty::Vec3 | Ty::Rot | Ty::Entity | Ty::Class(_) | Ty::Void | Ty::Error
                     ),
                 }
             }
@@ -1970,6 +2021,9 @@ impl<'a> Checker<'a> {
 
     fn writable(&mut self, target: &Expr, ctx: &Ctx, pos: Pos) {
         match &target.kind {
+            ExprKind::Name(n) if n == "me" && self.info.names.get(&target.id) == Some(&NameRes::Field) => {
+                self.err(pos, "me is the entity this component is on, so it can't be changed.");
+            }
             ExprKind::Name(n) => match self.info.names.get(&target.id) {
                 Some(NameRes::Local) => {
                     if self.lookup(ctx, n).map(|l| l.readonly).unwrap_or(false) {
@@ -2245,7 +2299,7 @@ impl<'a> Checker<'a> {
                 self.expect_truth(inner, &t, "not");
                 Ty::Truth
             }
-            ExprKind::Bin(op, l, r, opos) => self.binary(*op, l, r, *opos, ctx),
+            ExprKind::Bin(op, l, r, opos) => self.binary(*op, l, r, *opos, ctx, expected),
             ExprKind::Either(c, a, b) => {
                 let ct = self.expr(c, ctx, Some(&Ty::Truth));
                 self.expect_truth(c, &ct, "either");
@@ -2400,11 +2454,14 @@ impl<'a> Checker<'a> {
                 }
                 match conv {
                     Conv::Text => {
-                        if !matches!(t, Ty::Int | Ty::Float | Ty::Truth | Ty::Str | Ty::State(_)) {
+                        if !matches!(
+                            t,
+                            Ty::Int | Ty::Float | Ty::Truth | Ty::Str | Ty::State(_) | Ty::Vec3 | Ty::Rot | Ty::Entity
+                        ) {
                             self.err(
                                 *cpos,
                                 format!(
-                                    ".text() works on numbers, bools, text and state options, but this is {}.",
+                                    ".text() works on numbers, bools, text, state options, vectors, rotations and entities, but this is {}.",
                                     self.a(&t)
                                 ),
                             );
@@ -3582,7 +3639,13 @@ impl<'a> Checker<'a> {
         Ty::Array(Box::new(el))
     }
 
-    fn binary(&mut self, op: BinOp, l: &Expr, r: &Expr, opos: Pos, ctx: &mut Ctx) -> Ty {
+    fn binary(&mut self, op: BinOp, l: &Expr, r: &Expr, opos: Pos, ctx: &mut Ctx, expected: Option<&Ty>) -> Ty {
+        // Where a vec3 is wanted, a list on the left is one: [1, 0, 0] * speed.
+        let vec_hint = if expected == Some(&Ty::Vec3) && matches!(l.kind, ExprKind::List { .. }) {
+            Some(&Ty::Vec3)
+        } else {
+            None
+        };
         match op {
             BinOp::And | BinOp::Or => {
                 let lt = self.expr(l, ctx, Some(&Ty::Truth));
@@ -3627,7 +3690,7 @@ impl<'a> Checker<'a> {
                 Ty::Truth
             }
             BinOp::Add => {
-                let lt = self.expr(l, ctx, None);
+                let lt = self.expr(l, ctx, vec_hint);
                 let rt = self.expr(r, ctx, if lt == Ty::Vec3 { Some(&Ty::Vec3) } else { None });
                 match (&lt, &rt) {
                     (Ty::Vec3, Ty::Vec3) => Ty::Vec3,
@@ -3662,7 +3725,7 @@ impl<'a> Checker<'a> {
                 }
             }
             BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Mod => {
-                let lt = self.expr(l, ctx, None);
+                let lt = self.expr(l, ctx, vec_hint);
                 let hint = if (lt == Ty::Vec3 && op == BinOp::Sub) || (lt == Ty::Rot && op == BinOp::Mul) {
                     Some(&Ty::Vec3)
                 } else {

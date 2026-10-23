@@ -5,10 +5,55 @@ use crate::diag::Diags;
 use crate::lexer::{Tk, Token};
 
 pub const RESERVED: &[&str] = &[
-    "class", "object", "node", "assembly", "create", "has", "method", "hook", "return", "like", "new", "nothing", "schema", "route",
-    "view", "style", "keep", "pass", "fetch", "get", "lua", "is", "then", "or", "either", "not", "true", "false", "loop", "stop", "skip",
-    "in", "try", "error", "state", "save", "load", "saved", "end", "database", "int", "float", "string", "bool", "array", "native", "cMap",
+    "class",
+    "object",
+    "node",
+    "assembly",
+    "create",
+    "has",
+    "method",
+    "hook",
+    "return",
+    "like",
+    "new",
+    "nothing",
+    "schema",
+    "route",
+    "view",
+    "style",
+    "keep",
+    "pass",
+    "fetch",
+    "get",
+    "lua",
+    "is",
+    "then",
+    "or",
+    "either",
+    "not",
+    "true",
+    "false",
+    "loop",
+    "stop",
+    "skip",
+    "in",
+    "try",
+    "error",
+    "state",
+    "save",
+    "load",
+    "saved",
+    "end",
+    "database",
+    "int",
+    "float",
+    "string",
+    "bool",
+    "array",
+    "native",
+    "cMap",
     "map",
+    "component",
 ];
 /// The pieces a view is made of.
 pub const ELEMENTS: &[&str] = &[
@@ -266,7 +311,7 @@ impl<'a> Parser<'a> {
 
     fn starts_statement(&self) -> bool {
         matches!(&self.cur().kind, Tk::Ident(w) if matches!(w.as_str(),
-            "is" | "loop" | "method" | "class" | "object" | "state" | "return" | "stop" | "skip" | "try" | "end" | "fetch" | "pass"))
+            "is" | "loop" | "method" | "class" | "object" | "component" | "state" | "return" | "stop" | "skip" | "try" | "end" | "fetch" | "pass"))
     }
 
     // ----- the file -----
@@ -398,7 +443,7 @@ impl<'a> Parser<'a> {
                 items.push(Item::State(s));
                 return Ok(());
             }
-            "class" | "object" => {
+            "class" | "object" | "component" => {
                 *seen_other = true;
                 let c = self.class_decl()?;
                 items.push(Item::Class(c));
@@ -511,8 +556,11 @@ impl<'a> Parser<'a> {
         let is_node = word.is_word("node");
         let is_schema = word.is_word("schema");
         let is_object = word.is_word("object") || is_node;
+        let is_component = word.is_word("component");
         let what = if is_node {
             "node"
+        } else if is_component {
+            "component"
         } else if is_schema {
             "schema"
         } else if is_object {
@@ -568,6 +616,7 @@ impl<'a> Parser<'a> {
             is_object,
             is_node,
             is_schema,
+            is_component,
             view: None,
             parent,
             fields,
@@ -787,6 +836,7 @@ impl<'a> Parser<'a> {
             is_object: false,
             is_node: false,
             is_schema: false,
+            is_component: false,
             view,
             parent: None,
             fields,
@@ -1369,7 +1419,9 @@ impl<'a> Parser<'a> {
                         "a method can't go inside another one. Put it at the top level, or in a class.",
                     )
                 }
-                "class" | "object" => return self.fail(t.pos, format!("a {w} goes at the top level of a file, not inside a block.")),
+                "class" | "object" | "component" => {
+                    return self.fail(t.pos, format!("a {w} goes at the top level of a file, not inside a block."))
+                }
                 "state" if matches!(self.peek(1).kind, Tk::Ident(_)) && self.peek(2).is_sym("=") => {
                     return self.fail(t.pos, "a state is declared at the top level of a file.")
                 }

@@ -1,0 +1,8 @@
+-- What a stand-in engine offers components.
+method vec3 positionOf(entity e) native;
+method moveTo(entity e, vec3 to) native;
+method entity nearest(entity from) native;
+method log(string words) native;
+
+pass positionOf, moveTo, nearest, log;
+end

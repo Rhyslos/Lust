@@ -1404,6 +1404,7 @@ impl<'a> W<'a> {
             Ty::Float => "_L.ftext".into(),
             Ty::Vec3 => "_L.vtext".into(),
             Ty::Rot => "_L.rtext".into(),
+            Ty::Entity => "_L.etext".into(),
             Ty::Truth => "_L.btext".into(),
             Ty::Str => "_L.qtext".into(),
             Ty::State(_) => "_L.stext".into(),

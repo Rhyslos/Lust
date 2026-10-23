@@ -118,6 +118,8 @@ function L.harr(item)
     return out
   end
 end
+-- An entity: the 13 letters and digits of its ID (Lua's numbers can't hold all 64 bits), or nil.
+function L.etext(e) if e == nil then return "nothing" end return e end
 function L.vtext(v) return "[" .. f32text(v.x) .. ", " .. f32text(v.y) .. ", " .. f32text(v.z) .. "]" end
 function L.rtext(q) return L.vtext(L.qdegrees(q)) end
 function L.qtext(v) return "\"" .. v .. "\"" end

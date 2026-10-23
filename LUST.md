@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (2.0 alpha 29):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (2.0 alpha 30):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -87,6 +87,7 @@ bool alive = true;
 | `bool` | yes or no | `true`, `false`, `not true` |
 | `vec3` | three numbers: a position, a direction or a speed (section 6) | `[1, 0, 2]` |
 | `rotation` | a turn in 3D, written as degrees around x, y and z (section 6) | `[0, 0, 90]` |
+| `entity` | a thing in a game engine, given by the engine, or `nothing` (section 21) | `me`, `nothing` |
 | a class name | one thing made from a class | `Player`, `Weapon` |
 | `T array` | a list of `T` | `int array` |
 | `cMap(...)` | a table of rows, found by their key (the first column) | `cMap(int id, string itemName, int amount)` |
@@ -1342,6 +1343,46 @@ What the Rust program sees:
 - **In LustScript**, the host's Lua function hands a `vec3` back as any table with `x`, `y` and `z` (a Luau `vector` works too), a rotation as one with `x`, `y`, `z` and `w`, and an array as a plain list. Lust rounds the numbers to f32 and counts the list, so they're the same as Lust's own.
 
 `lust test` tests libraries too: a `game.host.rs` next to `game.lst` is a Rust program that uses it, and its output is compared with `game.out`.
+
+### Components
+
+In an engine like Solis, a game is made of entities, and what an entity does comes from its components. A `component` is a class whose fields the engine keeps and shows in its inspector, and whose `update` the engine runs once a tick:
+
+```
+state Mode = [Single, Burst];
+
+component Gun {
+    has {
+        int ammo = 30;
+        float cooldown = 0;
+        Mode mode = Mode.Single;
+        entity target = nothing;
+    }
+
+    method update(float dt) {
+        cooldown = cooldown - dt;
+        is target == nothing? then {
+            target = nearest(me);           -- a native method the engine gives
+        }
+    }
+}
+
+pass Gun;
+```
+
+- **`me`** is the entity the component is on. Every component has it, and it can't be changed.
+- **Fields** hold what the engine can keep and show: `bool`, `int`, `float`, `string`, a state (shown as a choice of its options), `vec3`, `rotation` and `entity`.
+- **`update(float dt)`** runs once a tick, with how long a tick is. The engine runs the entities in order of their IDs, and an entity's components in order of their names, so a game runs the same way every time.
+- **`entity`** is a value the engine hands over: an entity, or `nothing`. Entities can be compared with `==`, and `.text()` gives the 13 letters and digits Solis writes them as. Lust can't make one; it gets them from the engine's native methods and from `me`.
+- A component can't be `like` another one yet.
+
+Built as a library, each component also has what the engine needs to keep, show and run it, in the same kinds as Solis's own (`reflect`):
+
+- `Gun::NAME`, and `Gun::schema()`: its fields, their kinds and their starting values, in the order they're written. `game::components()` lists every component's.
+- `gun.to_data()` gives its fields' values by name, as a `Data` (a `BTreeMap<String, Value>`), and `Gun::from_data(&data)` makes one from values. A value that's missing, or of the wrong kind, keeps the starting value.
+- `gun.set_data(&data)` changes only the fields `data` has, so an edit made in the editor while the game runs keeps the rest, like ammo left and cooldowns.
+- `gun.set_me(Some(id))` puts it on an entity, and `gun.update(dt)` runs a tick. An entity is its 64-bit ID, `Option<u64>`, with `None` for nothing.
+- `Value` is `Bool`, `Int`, `Float`, `Text`, `List` (a vec3's three numbers, a rotation's four) and `Entity`, and `FieldKind` is `Bool`, `Int`, `Float`, `Text`, `Choice` (with the options), `Vec3`, `Rotation` and `Entity`.
 
 ## 22. Reserved words
 

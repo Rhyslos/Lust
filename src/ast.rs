@@ -225,6 +225,8 @@ pub struct ClassDecl {
     pub is_node: bool,
     /// A schema is the shape of data coming in and going out. Fields with no value must be filled in.
     pub is_schema: bool,
+    /// A component: game logic that sits on an entity in an engine (Solis), with `me` and `update`.
+    pub is_component: bool,
     /// An assembly with fields, methods or a view: a piece of screen, or a factory with memory.
     pub view: Option<ViewDecl>,
     pub parent: Option<(String, Pos)>,
