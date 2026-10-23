@@ -8,6 +8,10 @@ pub enum Ty {
     Float,
     Str,
     Truth,
+    /// Three numbers (f32), copied like a number: a position, a direction, a speed.
+    Vec3,
+    /// A turn in 3D space, kept as a quaternion of four f32 numbers, written as degrees.
+    Rot,
     /// `nothing` before it's known what it's standing in for.
     Nothing,
     /// What a method that gives nothing back gives back.
@@ -71,6 +75,8 @@ impl<'a> Names<'a> {
             Ty::Float => "float".into(),
             Ty::Str => "string".into(),
             Ty::Truth => "bool".into(),
+            Ty::Vec3 => "vec3".into(),
+            Ty::Rot => "rotation".into(),
             Ty::Nothing => "nothing".into(),
             Ty::Void => "nothing at all".into(),
             Ty::Error => "?".into(),

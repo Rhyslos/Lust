@@ -1,0 +1,17 @@
+-- Mistakes with vectors and rotations.
+vec3 a = [1, 2];
+vec3 b = [1, "two", 3];
+rotation r = [0, 0, 90];
+vec3 c = a + 1;
+vec3 d = a * a;
+vec3 e = a * r;
+float f = a.w;
+float g = r.x;
+float h = a:size();
+vec3 i = r:inverse();
+bool j = a < b;
+vec3 k = a % 2;
+string s = Json:write(a);
+float l = a:lerp(b);
+vector m = [1, 2, 3];
+end

@@ -854,6 +854,8 @@ impl<'a> Checker<'a> {
                 "float" => Ty::Float,
                 "string" => Ty::Str,
                 "bool" => Ty::Truth,
+                "vec3" => Ty::Vec3,
+                "rotation" => Ty::Rot,
                 _ => {
                     if let Some(&c) = self.info.class_index.get(n) {
                         return Ty::Class(c);
@@ -866,10 +868,10 @@ impl<'a> Checker<'a> {
                         .iter()
                         .chain(self.state_names.iter())
                         .cloned()
-                        .chain(["int", "float", "string", "bool"].iter().map(|s| s.to_string()))
+                        .chain(["int", "float", "string", "bool", "vec3", "rotation"].iter().map(|s| s.to_string()))
                         .collect();
                     let s = suggest(n, known);
-                    self.err(*pos, format!("Lust doesn't have a type called {n}.{s} The types are int, float, string, bool, arrays, maps, cMaps, hooks, classes and states."));
+                    self.err(*pos, format!("Lust doesn't have a type called {n}.{s} The types are int, float, string, bool, vec3, rotation, arrays, maps, cMaps, hooks, classes and states."));
                     Ty::Error
                 }
             },
@@ -907,6 +909,7 @@ impl<'a> Checker<'a> {
         match t {
             Ty::Int => "0".into(),
             Ty::Float => "1.5".into(),
+            Ty::Vec3 | Ty::Rot => "[0, 0, 0]".into(),
             Ty::Str => "\"text\"".into(),
             Ty::Truth => "true".into(),
             Ty::Array(_) | Ty::Map(_) | Ty::CMap(_) => "[]".into(),
@@ -2220,6 +2223,9 @@ impl<'a> Checker<'a> {
             }
             ExprKind::Neg(inner) => {
                 let t = self.expr(inner, ctx, expected);
+                if t == Ty::Vec3 {
+                    return t;
+                }
                 if !t.is_number() && t != Ty::Error {
                     self.err(e.pos, format!("only numbers can be made negative, but this is {}.", self.a(&t)));
                     return Ty::Error;
@@ -2970,6 +2976,20 @@ impl<'a> Checker<'a> {
             return Ty::Error;
         }
         match t {
+            Ty::Vec3 => match f {
+                "x" | "y" | "z" => Ty::Float,
+                _ => {
+                    self.err(fpos, format!("a vec3 has x, y and z, but not {f}."));
+                    Ty::Error
+                }
+            },
+            Ty::Rot => {
+                self.err(
+                    fpos,
+                    "a rotation's four numbers are kept inside it. Use :degrees() for the degrees around x, y and z.",
+                );
+                Ty::Error
+            }
             Ty::Class(c) => match self.info.field(c, f) {
                 Some(fi) => fi.ty.clone(),
                 None => {
@@ -3027,6 +3047,36 @@ impl<'a> Checker<'a> {
                 Ty::Error
             }
         }
+    }
+
+    /// pos:length(), dir:normalized(), a:dot(b), turn:inverse(), turn:degrees() …
+    fn vector_call(&mut self, e: &Expr, t: &Ty, m: &str, args: &[Expr], mpos: Pos, ctx: &mut Ctx) -> Ty {
+        let v = |n: &str| (n.to_string(), Ty::Vec3);
+        let (params, ret): (Vec<(String, Ty)>, Ty) = match (t, m) {
+            (Ty::Vec3, "length") => (vec![], Ty::Float),
+            (Ty::Vec3, "normalized") => (vec![], Ty::Vec3),
+            (Ty::Vec3, "dot") => (vec![v("other")], Ty::Float),
+            (Ty::Vec3, "cross") => (vec![v("other")], Ty::Vec3),
+            (Ty::Vec3, "distance") => (vec![v("other")], Ty::Float),
+            (Ty::Vec3, "lerp") => (vec![v("to"), ("amount".into(), Ty::Float)], Ty::Vec3),
+            (Ty::Rot, "inverse") => (vec![], Ty::Rot),
+            (Ty::Rot, "degrees") => (vec![], Ty::Vec3),
+            _ => {
+                let list = if *t == Ty::Vec3 {
+                    "length, normalized, dot, cross, distance and lerp"
+                } else {
+                    "inverse and degrees"
+                };
+                self.err(mpos, format!("{} has no method called {m}. Its methods are {list}.", self.a(t)));
+                for a in args {
+                    self.expr(a, ctx, None);
+                }
+                return Ty::Error;
+            }
+        };
+        self.args(args, &params, m, mpos, ctx);
+        self.info.calls.insert(e.id, CallRes::Builtin);
+        ret
     }
 
     fn args(&mut self, args: &[Expr], params: &[(String, Ty)], what: &str, pos: Pos, ctx: &mut Ctx) {
@@ -3211,6 +3261,9 @@ impl<'a> Checker<'a> {
         if let Ty::Table(tt) | Ty::Query(tt) = &t {
             let tt = tt.clone();
             return self.table_call(e, &t, &tt, m, args, mpos, ctx);
+        }
+        if matches!(t, Ty::Vec3 | Ty::Rot) {
+            return self.vector_call(e, &t, m, args, mpos, ctx);
         }
         // bag:sortBy(amount) and players:sortBy(score): a column's or a field's name, in order.
         if m == "sortBy" {
@@ -3413,6 +3466,24 @@ impl<'a> Checker<'a> {
     }
 
     fn list(&mut self, e: &Expr, items: &[Expr], keys: Option<&[Expr]>, ctx: &mut Ctx, expected: Option<&Ty>) -> Ty {
+        // [1, 0, 2] where a vec3 or a rotation is wanted: three numbers.
+        if let (Some(want @ (Ty::Vec3 | Ty::Rot)), None) = (expected, keys) {
+            let what = if *want == Ty::Vec3 {
+                "a vec3 is three numbers: x, y and z, like [1, 0, 2]"
+            } else {
+                "a rotation is three numbers: degrees around x, y and z, like [0, 0, 90]"
+            };
+            if items.len() != 3 {
+                self.err(e.pos, format!("{what}, but this has {}.", items.len()));
+            }
+            for i in items {
+                let got = self.expr(i, ctx, Some(&Ty::Float));
+                if !got.is_number() && got != Ty::Error {
+                    self.err(i.pos, format!("{what}, but this is {}.", self.a(&got)));
+                }
+            }
+            return want.clone();
+        }
         match expected {
             Some(Ty::Array(el)) if keys.is_none() => {
                 for i in items {
@@ -3549,8 +3620,9 @@ impl<'a> Checker<'a> {
             }
             BinOp::Add => {
                 let lt = self.expr(l, ctx, None);
-                let rt = self.expr(r, ctx, None);
+                let rt = self.expr(r, ctx, if lt == Ty::Vec3 { Some(&Ty::Vec3) } else { None });
                 match (&lt, &rt) {
+                    (Ty::Vec3, Ty::Vec3) => Ty::Vec3,
                     (Ty::Str, Ty::Str) => Ty::Str,
                     (Ty::Int, Ty::Int) => Ty::Int,
                     (a, b) if a.is_number() && b.is_number() => Ty::Float,
@@ -3565,6 +3637,13 @@ impl<'a> Checker<'a> {
                         self.err(opos, format!("can't add {} to a string.{fix}", self.a(other)));
                         Ty::Error
                     }
+                    (Ty::Vec3, _) | (_, Ty::Vec3) => {
+                        self.err(
+                            opos,
+                            format!("+ adds a vec3 to a vec3, but these are {} and {}.", self.a(&lt), self.a(&rt)),
+                        );
+                        Ty::Error
+                    }
                     _ => {
                         self.err(
                             opos,
@@ -3576,8 +3655,39 @@ impl<'a> Checker<'a> {
             }
             BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Mod => {
                 let lt = self.expr(l, ctx, None);
-                let rt = self.expr(r, ctx, None);
+                let hint = if (lt == Ty::Vec3 && op == BinOp::Sub) || (lt == Ty::Rot && op == BinOp::Mul) {
+                    Some(&Ty::Vec3)
+                } else {
+                    None
+                };
+                let rt = self.expr(r, ctx, hint);
                 if lt == Ty::Error || rt == Ty::Error {
+                    return Ty::Error;
+                }
+                // Vectors and rotations: added, taken away, scaled, and turned.
+                let vector = match (op, &lt, &rt) {
+                    (BinOp::Sub, Ty::Vec3, Ty::Vec3) => Some(Ty::Vec3),
+                    (BinOp::Mul, Ty::Vec3, n) | (BinOp::Mul, n, Ty::Vec3) if n.is_number() => Some(Ty::Vec3),
+                    (BinOp::Div, Ty::Vec3, n) if n.is_number() => Some(Ty::Vec3),
+                    (BinOp::Mul, Ty::Rot, Ty::Vec3) => Some(Ty::Vec3),
+                    (BinOp::Mul, Ty::Rot, Ty::Rot) => Some(Ty::Rot),
+                    _ => None,
+                };
+                if let Some(v) = vector {
+                    return v;
+                }
+                if matches!(lt, Ty::Vec3 | Ty::Rot) || matches!(rt, Ty::Vec3 | Ty::Rot) {
+                    let how = match op {
+                        BinOp::Mul if rt == Ty::Rot => " A rotation turns what's on its right: turn * direction.",
+                        BinOp::Mul => " A vec3 is multiplied by a number, and a rotation turns a vec3: turn * direction.",
+                        BinOp::Div => " A vec3 is divided by a number.",
+                        BinOp::Mod => " % works on numbers only.",
+                        _ => " Vectors are taken away from vectors.",
+                    };
+                    self.err(
+                        opos,
+                        format!("{} doesn't work on {} and {}.{how}", op.symbol(), self.a(&lt), self.a(&rt)),
+                    );
                     return Ty::Error;
                 }
                 if !lt.is_number() || !rt.is_number() {

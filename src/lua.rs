@@ -737,6 +737,13 @@ impl<'a> W<'a> {
             return;
         }
         if let ExprKind::Field(t, f, _) = &target.kind {
+            // pos.x = 3: a vec3 isn't changed in place; it's given a new one with the new x.
+            if self.info.ty(t) == Ty::Vec3 {
+                let tc = self.expr(t);
+                let t = t.clone();
+                self.assign(ln, &t, format!("_L.vwith({tc}, {}, {value})", lua_string(f)));
+                return;
+            }
             if let Ty::TableRow(_) = self.info.ty(t) {
                 let r = self.expr(t);
                 self.line(ln, &format!("_L.r_set({r}, {}, {value})", lua_string(f)));
@@ -964,6 +971,8 @@ impl<'a> W<'a> {
                         let prefix = match self.info.ty(t) {
                             Ty::Array(_) => "a",
                             Ty::Map(_) => "m",
+                            Ty::Vec3 => "v",
+                            Ty::Rot => "q",
                             _ => "c",
                         };
                         let mut all = vec![tc];
@@ -1015,6 +1024,9 @@ impl<'a> W<'a> {
             }
             ExprKind::Neg(inner) => {
                 let c = self.expr(inner);
+                if self.info.ty(inner) == Ty::Vec3 {
+                    return format!("_L.vneg({c})");
+                }
                 format!("(-({c}))")
             }
             ExprKind::Not(inner) => {
@@ -1035,6 +1047,10 @@ impl<'a> W<'a> {
                 }
             }
             ExprKind::List { items, keys } => match self.info.ty(e) {
+                t @ (Ty::Vec3 | Ty::Rot) => {
+                    let vs: Vec<String> = items.iter().map(|v| self.expr(v)).collect();
+                    format!("_L.{}({})", if t == Ty::Vec3 { "vec" } else { "rot" }, vs.join(", "))
+                }
                 Ty::Map(_) => {
                     let ks: Vec<String> = keys.as_deref().unwrap_or(&[]).iter().map(|k| self.expr(k)).collect();
                     let vs: Vec<String> = items.iter().map(|v| self.expr(v)).collect();
@@ -1378,6 +1394,8 @@ impl<'a> W<'a> {
         match t {
             Ty::Int => "_L.itext".into(),
             Ty::Float => "_L.ftext".into(),
+            Ty::Vec3 => "_L.vtext".into(),
+            Ty::Rot => "_L.rtext".into(),
             Ty::Truth => "_L.btext".into(),
             Ty::Str => "_L.qtext".into(),
             Ty::State(_) => "_L.stext".into(),
@@ -1405,7 +1423,26 @@ impl<'a> W<'a> {
         let lt = self.info.ty(l);
         let lc = self.expr(l);
         let rc = self.expr(r);
-        let ints = lt == Ty::Int && self.info.ty(r) == Ty::Int;
+        let rt = self.info.ty(r);
+        let ints = lt == Ty::Int && rt == Ty::Int;
+        // Vectors and rotations.
+        let v = match (op, &lt, &rt) {
+            (BinOp::Add, Ty::Vec3, _) => Some(format!("_L.vadd({lc}, {rc})")),
+            (BinOp::Sub, Ty::Vec3, _) => Some(format!("_L.vsub({lc}, {rc})")),
+            (BinOp::Mul, Ty::Vec3, _) => Some(format!("_L.vmul({lc}, {rc})")),
+            (BinOp::Mul, Ty::Rot, Ty::Vec3) => Some(format!("_L.qmulv({lc}, {rc})")),
+            (BinOp::Mul, Ty::Rot, _) => Some(format!("_L.qmul({lc}, {rc})")),
+            (BinOp::Mul, _, Ty::Vec3) => Some(format!("_L.vmul({rc}, {lc})")),
+            (BinOp::Div, Ty::Vec3, _) => Some(format!("_L.vdiv({lc}, {rc})")),
+            (BinOp::Eq | BinOp::Same, Ty::Vec3, _) => Some(format!("_L.veq({lc}, {rc})")),
+            (BinOp::Ne | BinOp::NotSame, Ty::Vec3, _) => Some(format!("(not _L.veq({lc}, {rc}))")),
+            (BinOp::Eq | BinOp::Same, Ty::Rot, _) => Some(format!("_L.qeq({lc}, {rc})")),
+            (BinOp::Ne | BinOp::NotSame, Ty::Rot, _) => Some(format!("(not _L.qeq({lc}, {rc}))")),
+            _ => None,
+        };
+        if let Some(v) = v {
+            return v;
+        }
         match op {
             BinOp::Add if lt == Ty::Str => format!("({lc} .. {rc})"),
             BinOp::Add => format!("({lc} + {rc})"),

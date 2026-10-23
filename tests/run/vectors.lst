@@ -1,0 +1,65 @@
+-- vec3 and rotation: three f32 numbers and a quaternion, copied like numbers.
+class Mover {
+    has {
+        vec3 pos = [0, 0, 0];
+        vec3 speed = [1.5, 0, 0.25];
+        rotation facing = [0, 0, 90];
+    }
+
+    method step(float dt) {
+        pos = pos + speed * dt;
+    }
+}
+
+vec3 a = [1, 2, 3];
+vec3 b = a;
+b.x = 10;
+print(a);
+print(b);
+print(a + b);
+print(a - [1, 1, 1]);
+print(a * 2);
+print(0.5 * a);
+print(a / 3);
+print(-a);
+print(a.x + a.y + a.z);
+print(a:length());
+print(a:normalized());
+print(a:dot(b));
+print(a:cross(b));
+print(a:distance(b));
+print(a:lerp(b, 0.25));
+print(a == [1, 2, 3]);
+print(a != b);
+
+vec3 tiny = [0.1, 0.2, 0.3];
+print(tiny + tiny);
+print(tiny.x * 3);
+
+rotation turn = [0, 0, 90];
+print(turn);
+print(turn * [1, 0, 0]);
+rotation tilt = [30, 20, 90];
+print(tilt);
+print(tilt * a);
+print(turn * tilt);
+print(tilt:inverse() * (tilt * a));
+print(tilt:degrees());
+print(turn == [0, 0, 90]);
+
+Mover m = new Mover;
+loop (int i in [1, 2, 3]) {
+    m:step(1.0 / 60);
+}
+print(m.pos);
+m.pos.z = 7;
+m.speed.y = m.speed.y + 2;
+print(m.pos);
+print(m.speed);
+print(m.facing * m.speed);
+
+vec3 array path = [[0, 0, 0], [1, 0, 0]];
+path:inject(path[1] + [0, 1, 0]);
+print(path);
+print(#path);
+end

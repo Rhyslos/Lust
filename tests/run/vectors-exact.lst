@@ -1,0 +1,23 @@
+-- Built programs and lust run give exactly the same f32 numbers, step after step.
+vec3 p = [0.1, 0.2, 0.3];
+vec3 v = [1.37, -2.9, 0.003];
+rotation spin = [3.1, 7.7, 11.3];
+rotation nudge = [0.3, -0.2, 0.1];
+float total = 0;
+loop (int i in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]) {
+    loop (int j in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) {
+        v = spin * v;
+        p = p + v * (1.0 / 60) - p * 0.001;
+        p = p:lerp(v:normalized(), 0.01);
+        spin = spin * nudge;
+        total = total + p:dot(v) + p:cross(v).z + v:distance(p);
+    }
+    print(p.x.text() + " " + p.y.text() + " " + p.z.text() + " " + v:length().text());
+}
+print(total);
+print(spin:degrees());
+vec3 huge = [300000000000000000000000000000000000000.0, -300000000000000000000000000000000000000.0, 0.0000000000000000000000000000000000000001];
+print((huge * 2).x);
+print((huge * 2).y);
+print(huge.z);
+end

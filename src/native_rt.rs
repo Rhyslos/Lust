@@ -335,6 +335,151 @@ fn g15(v: f64) -> String {
     }
 }
 
+// ----- vectors and rotations -----
+// A vec3 and a rotation (a quaternion), each number kept as an f32, as engines keep them. Every
+// step is worked out in f64 and rounded to f32, the same way the Lua runtime does it, so both
+// give exactly the same numbers.
+
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
+pub struct Vec3 {
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct Rotation {
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+    pub w: f32,
+}
+
+impl Default for Rotation {
+    fn default() -> Rotation {
+        Rotation { x: 0.0, y: 0.0, z: 0.0, w: 1.0 }
+    }
+}
+
+pub fn vec3(x: f64, y: f64, z: f64) -> Vec3 {
+    Vec3 { x: x as f32, y: y as f32, z: z as f32 }
+}
+fn v64(v: Vec3) -> (f64, f64, f64) {
+    (v.x as f64, v.y as f64, v.z as f64)
+}
+fn q4(q: Rotation) -> (f64, f64, f64, f64) {
+    (q.x as f64, q.y as f64, q.z as f64, q.w as f64)
+}
+pub fn vwith(v: Vec3, f: usize, n: f64) -> Vec3 {
+    let mut w = v;
+    match f {
+        0 => w.x = n as f32,
+        1 => w.y = n as f32,
+        _ => w.z = n as f32,
+    }
+    w
+}
+pub fn vadd(a: Vec3, b: Vec3) -> Vec3 {
+    let ((ax, ay, az), (bx, by, bz)) = (v64(a), v64(b));
+    vec3(ax + bx, ay + by, az + bz)
+}
+pub fn vsub(a: Vec3, b: Vec3) -> Vec3 {
+    let ((ax, ay, az), (bx, by, bz)) = (v64(a), v64(b));
+    vec3(ax - bx, ay - by, az - bz)
+}
+pub fn vmul(a: Vec3, n: f64) -> Vec3 {
+    let (x, y, z) = v64(a);
+    vec3(x * n, y * n, z * n)
+}
+pub fn vdiv(a: Vec3, n: f64) -> Vec3 {
+    let (x, y, z) = v64(a);
+    vec3(x / n, y / n, z / n)
+}
+pub fn vneg(a: Vec3) -> Vec3 {
+    Vec3 { x: -a.x, y: -a.y, z: -a.z }
+}
+pub fn vlength(a: Vec3) -> f64 {
+    let (x, y, z) = v64(a);
+    (x * x + y * y + z * z).sqrt()
+}
+pub fn vnormalized(a: Vec3) -> Vec3 {
+    let (x, y, z) = v64(a);
+    let l = (x * x + y * y + z * z).sqrt();
+    if l == 0.0 {
+        return a;
+    }
+    vec3(x / l, y / l, z / l)
+}
+pub fn vdot(a: Vec3, b: Vec3) -> f64 {
+    let ((ax, ay, az), (bx, by, bz)) = (v64(a), v64(b));
+    ax * bx + ay * by + az * bz
+}
+pub fn vcross(a: Vec3, b: Vec3) -> Vec3 {
+    let ((ax, ay, az), (bx, by, bz)) = (v64(a), v64(b));
+    vec3(ay * bz - az * by, az * bx - ax * bz, ax * by - ay * bx)
+}
+pub fn vdistance(a: Vec3, b: Vec3) -> f64 {
+    let ((ax, ay, az), (bx, by, bz)) = (v64(a), v64(b));
+    let (dx, dy, dz) = (ax - bx, ay - by, az - bz);
+    (dx * dx + dy * dy + dz * dz).sqrt()
+}
+pub fn vlerp(a: Vec3, b: Vec3, t: f64) -> Vec3 {
+    let ((ax, ay, az), (bx, by, bz)) = (v64(a), v64(b));
+    vec3(ax + (bx - ax) * t, ay + (by - ay) * t, az + (bz - az) * t)
+}
+#[allow(clippy::too_many_arguments)]
+fn q64(ax: f64, ay: f64, az: f64, aw: f64, bx: f64, by: f64, bz: f64, bw: f64) -> (f64, f64, f64, f64) {
+    (
+        aw * bx + ax * bw + ay * bz - az * by,
+        aw * by - ax * bz + ay * bw + az * bx,
+        aw * bz + ax * by - ay * bx + az * bw,
+        aw * bw - ax * bx - ay * by - az * bz,
+    )
+}
+const RAD: f64 = std::f64::consts::PI / 180.0;
+fn qround((x, y, z, w): (f64, f64, f64, f64)) -> Rotation {
+    Rotation { x: x as f32, y: y as f32, z: z as f32, w: w as f32 }
+}
+/// Degrees around x, y and z, turned in the order z, x, y (as Solis and glam's EulerRot::ZXY do).
+pub fn rot(dx: f64, dy: f64, dz: f64) -> Rotation {
+    let (hx, hy, hz) = (dx * RAD / 2.0, dy * RAD / 2.0, dz * RAD / 2.0);
+    let (x, y, z, w) = q64(0.0, 0.0, hz.sin(), hz.cos(), hx.sin(), 0.0, 0.0, hx.cos());
+    qround(q64(x, y, z, w, 0.0, hy.sin(), 0.0, hy.cos()))
+}
+pub fn qmul(a: Rotation, b: Rotation) -> Rotation {
+    let ((ax, ay, az, aw), (bx, by, bz, bw)) = (q4(a), q4(b));
+    qround(q64(ax, ay, az, aw, bx, by, bz, bw))
+}
+pub fn qmulv(q: Rotation, v: Vec3) -> Vec3 {
+    let ((qx, qy, qz, qw), (vx, vy, vz)) = (q4(q), v64(v));
+    let tx = 2.0 * (qy * vz - qz * vy);
+    let ty = 2.0 * (qz * vx - qx * vz);
+    let tz = 2.0 * (qx * vy - qy * vx);
+    vec3(vx + qw * tx + (qy * tz - qz * ty), vy + qw * ty + (qz * tx - qx * tz), vz + qw * tz + (qx * ty - qy * tx))
+}
+pub fn qinverse(q: Rotation) -> Rotation {
+    Rotation { x: -q.x, y: -q.y, z: -q.z, w: q.w }
+}
+pub fn qdegrees(q: Rotation) -> Vec3 {
+    let (qx, qy, qz, qw) = q4(q);
+    let m21 = (2.0 * (qy * qz + qx * qw)).clamp(-1.0, 1.0);
+    let x = m21.asin();
+    let z = (-(2.0 * (qx * qy - qz * qw))).atan2(1.0 - 2.0 * (qx * qx + qz * qz));
+    let y = (-(2.0 * (qx * qz - qy * qw))).atan2(1.0 - 2.0 * (qx * qx + qy * qy));
+    vec3(x / RAD, y / RAD, z / RAD)
+}
+/// C's %.7g: an f32's number to the 7 digits it holds.
+fn g7(v: f64) -> f64 {
+    format!("{:.6e}", v).parse().unwrap_or(v)
+}
+pub fn vtext(v: Vec3) -> String {
+    let (x, y, z) = v64(v);
+    format!("[{}, {}, {}]", ftext(g7(x) + 0.0), ftext(g7(y) + 0.0), ftext(g7(z) + 0.0))
+}
+pub fn rtext(q: Rotation) -> String {
+    vtext(qdegrees(q))
+}
+
 pub fn ftext(v: f64) -> String {
     if v.is_nan() {
         return "not a number".into();

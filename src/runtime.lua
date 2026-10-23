@@ -17,6 +17,95 @@ function L.ftext(v)
   return s
 end
 function L.btext(v) if v then return "true" else return "false" end end
+
+-- ----- vectors and rotations -----
+-- A vec3 is {x, y, z} and a rotation {x, y, z, w} (a quaternion), each number kept as an f32,
+-- as engines keep them. They're never changed in place, so sharing one is like copying it.
+-- Every step is worked out with Lua's numbers (doubles) and rounded to f32, the same way the
+-- Rust runtime does it, so both give exactly the same numbers.
+local frexp, ldexp, sqrt = math.frexp, math.ldexp, math.sqrt
+local F32_MAX = 3.4028234663852886e38
+local function f32(x)
+  if x ~= x or x == 0 or x == math.huge or x == -math.huge then return x end
+  local m, e = frexp(x)
+  -- 24 bits for a normal f32; fewer for the tiniest ones.
+  local bits = 24
+  if e < -125 then bits = 24 - (-125 - e) end
+  if bits < 0 then return 0 * x end
+  local s = ldexp(m, bits)
+  local f = floor(s)
+  local d = s - f
+  if d > 0.5 or (d == 0.5 and f % 2 ~= 0) then f = f + 1 end
+  local y = ldexp(f, e - bits)
+  if y > F32_MAX then return math.huge end
+  if y < -F32_MAX then return -math.huge end
+  return y
+end
+L.f32 = f32
+local function vec(x, y, z) return { x = f32(x), y = f32(y), z = f32(z) } end
+L.vec = vec
+function L.vwith(v, f, n)
+  local w = { x = v.x, y = v.y, z = v.z }
+  w[f] = f32(n)
+  return w
+end
+function L.vadd(a, b) return vec(a.x + b.x, a.y + b.y, a.z + b.z) end
+function L.vsub(a, b) return vec(a.x - b.x, a.y - b.y, a.z - b.z) end
+function L.vmul(a, n) return vec(a.x * n, a.y * n, a.z * n) end
+function L.vdiv(a, n) return vec(a.x / n, a.y / n, a.z / n) end
+function L.vneg(a) return { x = -a.x, y = -a.y, z = -a.z } end
+function L.veq(a, b) return a.x == b.x and a.y == b.y and a.z == b.z end
+function L.vlength(a) return sqrt(a.x * a.x + a.y * a.y + a.z * a.z) end
+function L.vnormalized(a)
+  local l = sqrt(a.x * a.x + a.y * a.y + a.z * a.z)
+  if l == 0 then return a end
+  return vec(a.x / l, a.y / l, a.z / l)
+end
+function L.vdot(a, b) return a.x * b.x + a.y * b.y + a.z * b.z end
+function L.vcross(a, b) return vec(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x) end
+function L.vdistance(a, b)
+  local dx, dy, dz = a.x - b.x, a.y - b.y, a.z - b.z
+  return sqrt(dx * dx + dy * dy + dz * dz)
+end
+function L.vlerp(a, b, t) return vec(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t) end
+local function q64(ax, ay, az, aw, bx, by, bz, bw)
+  return aw * bx + ax * bw + ay * bz - az * by,
+    aw * by - ax * bz + ay * bw + az * bx,
+    aw * bz + ax * by - ay * bx + az * bw,
+    aw * bw - ax * bx - ay * by - az * bz
+end
+local RAD = math.pi / 180
+-- Degrees around x, y and z, turned in the order z, x, y (as Solis and glam's EulerRot::ZXY do).
+function L.rot(dx, dy, dz)
+  local hx, hy, hz = dx * RAD / 2, dy * RAD / 2, dz * RAD / 2
+  local x, y, z, w = q64(0, 0, math.sin(hz), math.cos(hz), math.sin(hx), 0, 0, math.cos(hx))
+  x, y, z, w = q64(x, y, z, w, 0, math.sin(hy), 0, math.cos(hy))
+  return { x = f32(x), y = f32(y), z = f32(z), w = f32(w) }
+end
+function L.qmul(a, b)
+  local x, y, z, w = q64(a.x, a.y, a.z, a.w, b.x, b.y, b.z, b.w)
+  return { x = f32(x), y = f32(y), z = f32(z), w = f32(w) }
+end
+function L.qmulv(q, v)
+  local tx = 2 * (q.y * v.z - q.z * v.y)
+  local ty = 2 * (q.z * v.x - q.x * v.z)
+  local tz = 2 * (q.x * v.y - q.y * v.x)
+  return vec(v.x + q.w * tx + (q.y * tz - q.z * ty), v.y + q.w * ty + (q.z * tx - q.x * tz), v.z + q.w * tz + (q.x * ty - q.y * tx))
+end
+function L.qinverse(q) return { x = -q.x, y = -q.y, z = -q.z, w = q.w } end
+function L.qeq(a, b) return a.x == b.x and a.y == b.y and a.z == b.z and a.w == b.w end
+function L.qdegrees(q)
+  local m21 = 2 * (q.y * q.z + q.x * q.w)
+  if m21 > 1 then m21 = 1 elseif m21 < -1 then m21 = -1 end
+  local x = math.asin(m21)
+  local z = math.atan2(-(2 * (q.x * q.y - q.z * q.w)), 1 - 2 * (q.x * q.x + q.z * q.z))
+  local y = math.atan2(-(2 * (q.x * q.z - q.y * q.w)), 1 - 2 * (q.x * q.x + q.y * q.y))
+  return vec(x / RAD, y / RAD, z / RAD)
+end
+-- A vec3's numbers, to 7 digits, as an f32 holds.
+local function f32text(x) return L.ftext(tonumber(fmt("%.7g", x)) + 0) end
+function L.vtext(v) return "[" .. f32text(v.x) .. ", " .. f32text(v.y) .. ", " .. f32text(v.z) .. "]" end
+function L.rtext(q) return L.vtext(L.qdegrees(q)) end
 function L.qtext(v) return "\"" .. v .. "\"" end
 function L.stext(v) return v end
 -- Each line goes out straight away, as in a built program, even into a pipe or a file.
