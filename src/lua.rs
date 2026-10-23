@@ -575,7 +575,7 @@ impl<'a> W<'a> {
                     return;
                 }
                 let v = self.fresh("v");
-                let bound = matches!(kind.as_str(), "input" | "checkbox" | "slider");
+                let bound = matches!(kind.as_str(), "input" | "textarea" | "checkbox" | "slider");
                 let valued = bound || kind == "every";
                 let t = match arg {
                     Some(a) if !valued => self.expr(a),

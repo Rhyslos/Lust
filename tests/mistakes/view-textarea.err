@@ -1,0 +1,6 @@
+view-textarea.lsc:10:22  textarea changes text, but age is an int: textarea notes;
+view-textarea.lsc:11:13  a textarea needs the field it changes: textarea name;
+view-textarea.lsc:12:29  placeholder takes text: placeholder "Search…".
+view-textarea.lsc:13:22  a textarea changes a field, so it needs one: textarea notes;
+
+4 mistakes. Nothing was run.

@@ -1,0 +1,33 @@
+dump
+focus textarea 1
+type First line
+key enter
+type Second line that is long enough to wrap onto another line in the box
+dump
+key up
+dump
+key home
+key shift+end
+key ctrl+c
+key ctrl+end
+key enter
+key ctrl+v
+key enter
+type 4
+key enter
+type 5
+key enter
+type 6
+dump
+key ctrl+home
+dump
+key ctrl+z
+dump
+press 30 30
+release 30 30
+key down
+key down
+type X
+key ctrl+enter
+dump
+snapshot /tmp/claude-0/-home-claude/8d461d5c-6b76-5498-a492-6109675a7bed/scratchpad/notes.png
