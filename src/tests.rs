@@ -47,7 +47,10 @@ pub fn run_folder(path: &Path) -> ExitCode {
         return ExitCode::from(2);
     }
     if one && !(path.with_extension("out").exists() || path.with_extension("err").exists()) {
-        eprintln!("{} isn't a test: it needs a .out file next to it with what it should print, or a .err with the mistakes it should report.", path.display());
+        eprintln!(
+            "{} isn't a test: it needs a .out file next to it with what it should print, or a .err with the mistakes it should report.",
+            path.display()
+        );
         return ExitCode::from(2);
     }
     let parent = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));

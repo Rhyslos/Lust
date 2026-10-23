@@ -1,0 +1,23 @@
+-- Mistakes with shortcuts, Enter and fonts.
+assembly App {
+    has {
+        string name = "";
+        int n = 0;
+    }
+
+    view [font 12] {
+        column {
+            key "ctrl+" { n = 1; }
+            key "ctrl+banana" { n = 2; }
+            key "ctrl+s+x" { n = 3; }
+            key "shift";
+            key 5 { n = 4; }
+            text "Hi" [font true];
+            input name enter { nope(); }
+            button "Go" enter { n = 5; }
+        }
+    }
+}
+
+App:open();
+end

@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (2.0 alpha 20):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, checkboxes, sliders, scrolling, pictures and timers, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (2.0 alpha 21):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -579,6 +579,8 @@ An assembly with a `view` opens a window with `App:open();`, through `lust run` 
 - **The window's settings:** `title`, `width`, `height`, `minWidth`, `minHeight` and `background`. They're worked out each time the view is drawn, so a title can show the data: `view [title "To do (" + (#todos).text() + ")"]`.
 - **`disabled`** greys out a piece and stops it being clicked, typed in or reached with Tab. It can depend on the data: `button "Save" [disabled name == ""] { … }`.
 - **Undo and redo** in inputs: Ctrl+Z, and Ctrl+Shift+Z or Ctrl+Y (Cmd on a Mac). A run of typing undoes in one go.
+- **Enter and shortcuts:** `input newTodo enter { add(); }` runs a block when Enter is pressed in the input, and `key "ctrl+s" { save(); }` is a keyboard shortcut (see below).
+- **Fonts:** `font "fonts/Lora.ttf"` draws a piece's words in a font file of your own, and on the view's `[ ]` it's the whole window's font.
 - **Feedback:** hover looks fade in and out, and a button looks pressed in while it's held down.
 
 ```
@@ -609,7 +611,7 @@ end
 | `click Add one` | clicks the button showing that text |
 | `focus input 1` | gives the first input focus (also `checkbox 2`, `slider 1`, `button 3`) |
 | `type Hello` | types into the input that has focus |
-| `key ctrl+left` | presses a key: `backspace`, `delete`, `left`, `right`, `home`, `end`, `up`, `down`, `tab`, `enter`, `space`, `escape`, with `shift+` or `ctrl+` in front, and `ctrl+a`, `ctrl+c`, `ctrl+x`, `ctrl+v` |
+| `key ctrl+left` | presses a key: `backspace`, `delete`, `left`, `right`, `home`, `end`, `up`, `down`, `tab`, `enter`, `space`, `escape`, with `shift+` or `ctrl+` in front, and `ctrl+a`, `ctrl+c`, `ctrl+x`, `ctrl+v`; any key a shortcut uses works too (`key ctrl+s`, `key f1`) |
 | `check 1` | clicks the first checkbox |
 | `slide 1 70` | drags the first slider to 70 |
 | `press 40 20`, `move 90 20`, `release 90 20`, `dblclick 40 20` | the mouse, at a place in the window |
@@ -755,9 +757,46 @@ assembly Settings {
 | --- | --- |
 | Layout | `column`, `row`, `stack` (layers), `scroll`, `space` |
 | Content | `text`, `button`, `input`, `checkbox`, `slider`, `image` |
-| Time | `every` |
+| Time and keys | `every`, `key` |
 
 Questions and loops work inside a view: showing something only sometimes is an `is … ? then`, and a list is a `loop`.
+
+### Enter and keyboard shortcuts
+
+`enter { … }` after an input runs when Enter is pressed in it, so a form can be sent from the keyboard. The input keeps focus, ready for the next one:
+
+```
+input newTodo [placeholder "Something to do…"] enter { add(); }
+input search { results = find(search); } enter { open(results[0]); }
+```
+
+`key "ctrl+s" { save(); }` is a keyboard shortcut: its block runs when those keys are pressed anywhere in the window. Like `every`, it takes no room, and it works only while it's in the view, so a shortcut inside a question is there only some of the time:
+
+```
+key "ctrl+s" { save(); }
+key "f1" { showHelp = true; }
+is showHelp? then {
+    key "escape" { showHelp = false; }
+}
+```
+
+- **Writing the keys:** `ctrl`, `shift` and `alt` in front of one key, joined with `+`: `"ctrl+shift+s"`. The key is a letter, number or sign (`"ctrl+1"`, `"ctrl+="`), `f1` to `f12`, or `enter`, `escape`, `tab`, `space`, `backspace`, `delete`, `up`, `down`, `left`, `right`, `home`, `end`, `pageup` or `pagedown`. On a Mac, `ctrl` means Cmd, so `"ctrl+s"` is Cmd+S there, as Mac users expect.
+- **Typing comes first.** While an input has focus, the keys it uses (letters, the arrows, Backspace, Escape, Ctrl+C and the rest) go to the input, so a shortcut like `"s"` doesn't fire while someone types an "s". Other shortcuts with Ctrl, and the F keys, work while typing. Enter and Space press the button that has focus, and Tab moves focus.
+
+### Fonts
+
+Lust draws its words in Inter, in four weights. `font "fonts/Lora.ttf"` draws a piece's words in a TrueType or OpenType font file of your own instead, found the way `image` finds its files. On the view's own `[ ]` it's the font for the whole window, and pieces can still have their own:
+
+```
+view [title "Recipes", font "fonts/Lora.ttf"] {
+    column [pad 20, gap 8] {
+        text "Pancakes" [huge, font "fonts/Lobster.ttf"];
+        text "Mix, rest, fry.";
+    }
+}
+```
+
+A font file is one weight, so `bold` doesn't change a font of your own: use the bold file of that font instead. A file that isn't there, or isn't a font, leaves the words in Inter. Fonts are read from their file as they're needed, so even a big font costs little memory.
 
 ### Scrolling
 
@@ -797,6 +836,7 @@ Short words in `[ ]`, in the spirit of Tailwind:
 | placement | `left`, `center`, `right` side to side; `top`, `middle`, `bottom` up and down; `spread` |
 | under the mouse | `hover:[ … ]` |
 | inputs and pictures | `placeholder "…"`, `from`, `to`, `step`, `cover` |
+| words | `font "file.ttf"` |
 | off | `disabled`, or `disabled` with a bool: `disabled not ready` |
 
 **Colours** are `white`, `black`, `gray1` to `gray9`, and `red`, `orange`, `yellow`, `green`, `teal`, `blue`, `indigo`, `purple` and `pink`. Each of those has nine shades from light to dark: `blue1` is a pale blue for backgrounds, `blue9` a deep one. Any other colour is written `"#2f9e44"`. The shades are the Open Color palette.
@@ -815,7 +855,7 @@ Name a style to reuse it: `style card = [pad 16, round, shadow];`, then `[card]`
 
 ### Underneath
 
-Lust draws everything itself, from the pixels up: layout, every piece, text editing, focus, scrolling, styles and animation. Small permissive libraries only open the window (winit), hand over the pixels (softbuffer), read font files (fontdue), reach the system clipboard (arboard) and read PNG and JPEG files (png, jpeg-decoder). Views are for `.lst` programs on Windows, macOS and Linux. Web pages stay HTML, CSS and JavaScript.
+Lust draws everything itself, from the pixels up: layout, every piece, text editing, focus, scrolling, styles and animation. Small permissive libraries only open the window (winit), hand over the pixels (softbuffer), read font files (ab_glyph), reach the system clipboard (arboard) and read PNG and JPEG files (png, jpeg-decoder). Views are for `.lst` programs on Windows, macOS and Linux. Web pages stay HTML, CSS and JavaScript.
 
 ---
 

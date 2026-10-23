@@ -2,7 +2,7 @@
 //
 // A view is turned into a tree of Nodes each time it's drawn. This file lays the tree out,
 // paints it into a buffer of pixels, opens the window and passes clicks back. Only three small
-// libraries are borrowed: winit opens the window, softbuffer puts our pixels in it, and fontdue
+// libraries are borrowed: winit opens the window, softbuffer puts our pixels in it, and ab_glyph
 // turns the font's letters into shapes. Everything else here is Lust's own.
 //
 // It goes into built programs that have a view, as `rt::ui`, and lust uses the same code for
@@ -35,11 +35,80 @@ pub struct Node {
     pub action: Option<usize>,
     /// What an input, checkbox or slider shows: the value it's bound to.
     pub value: Option<SV>,
+    /// Which action Enter runs in an input.
+    pub enter: Option<usize>,
 }
 
 impl Node {
     pub fn new(kind: &str) -> Node {
-        Node { kind: kind.to_string(), text: String::new(), style: vec![], children: vec![], action: None, value: None }
+        Node { kind: kind.to_string(), text: String::new(), style: vec![], children: vec![], action: None, value: None, enter: None }
+    }
+}
+
+/// Pieces that take no room on the screen: timers and keyboard shortcuts.
+fn unseen(kind: &str) -> bool {
+    kind == "every" || kind == "key"
+}
+
+// ----- keyboard shortcuts -----
+
+/// A keyboard shortcut: `ctrl+shift+s`. Ctrl is Cmd on a Mac.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Shortcut {
+    command: bool,
+    shift: bool,
+    alt: bool,
+    key: String,
+}
+
+const KEY_NAMES: &[&str] =
+    &["enter", "escape", "tab", "space", "backspace", "delete", "up", "down", "left", "right", "home", "end", "pageup", "pagedown"];
+
+fn function_key(k: &str) -> bool {
+    k.strip_prefix('f').and_then(|n| n.parse::<u8>().ok()).is_some_and(|n| (1..=24).contains(&n))
+}
+
+/// Reads a shortcut written like "ctrl+s", "shift+f5" or "escape".
+pub fn parse_shortcut(spec: &str) -> Result<Shortcut, String> {
+    let mut s = Shortcut { command: false, shift: false, alt: false, key: String::new() };
+    for part in spec.split('+') {
+        let p = part.trim().to_lowercase();
+        match p.as_str() {
+            "ctrl" | "control" | "cmd" | "command" => s.command = true,
+            "shift" => s.shift = true,
+            "alt" | "option" => s.alt = true,
+            "" if spec.trim() == "+" || spec.ends_with("++") => s.key = "+".into(),
+            "" => return Err(format!("\"{spec}\" needs a key after each +, like \"ctrl+s\".")),
+            k if !s.key.is_empty() => {
+                return Err(format!(
+                    "a shortcut is one key, with ctrl, shift or alt in front of it, but \"{spec}\" has {} and {k}.",
+                    s.key
+                ))
+            }
+            k => s.key = k.to_string(),
+        }
+    }
+    if s.key.is_empty() {
+        return Err(format!("\"{spec}\" needs a key as well as ctrl, shift or alt, like \"ctrl+s\"."));
+    }
+    if s.key.chars().count() != 1 && !KEY_NAMES.contains(&s.key.as_str()) && !function_key(&s.key) {
+        return Err(format!(
+            "Lust doesn't know the key {}. Keys are letters, numbers and signs (\"ctrl+s\", \"ctrl+1\"), f1 to f12, enter, escape, tab, space, backspace, delete, up, down, left, right, home, end, pageup and pagedown.",
+            s.key
+        ));
+    }
+    Ok(s)
+}
+
+/// The view's keyboard shortcuts and the action each runs.
+fn shortcuts(n: &Node, out: &mut Vec<(Shortcut, usize)>) {
+    if n.kind == "key" {
+        if let (Some(a), Ok(s)) = (n.action, parse_shortcut(&n.text)) {
+            out.push((s, a));
+        }
+    }
+    for c in &n.children {
+        shortcuts(c, out);
     }
 }
 
@@ -89,15 +158,41 @@ pub static FONTS: [&[u8]; 4] = [
     include_bytes!("../assets/fonts/Inter-Bold.otf"),
 ];
 
-thread_local! {
-    static LOADED: Vec<fontdue::Font> = FONTS
-        .iter()
-        .map(|b| fontdue::Font::from_bytes(*b, fontdue::FontSettings::default()).expect("Lust's font"))
-        .collect();
-    static GLYPHS: std::cell::RefCell<HashMap<(usize, char, u32), std::rc::Rc<(fontdue::Metrics, Vec<u8>)>>> = std::cell::RefCell::new(HashMap::new());
+/// A letter drawn at one size: where it sits from the pen and the baseline, how far the pen moves
+/// on, and how much of each of its pixels is covered.
+struct Glyph {
+    left: i64,
+    top: i64,
+    width: usize,
+    height: usize,
+    coverage: Vec<u8>,
 }
 
-fn face(weight: f32) -> usize {
+/// A font's shapes are read straight from its file when they're needed (ab_glyph), so a font
+/// costs little more memory than its file. Faces 0 to 3 are Inter's four weights; fonts read from
+/// files come after.
+struct Faces {
+    fonts: Vec<ab_glyph::FontArc>,
+    /// Font files already read, by path, and the face each became (None if it couldn't be read).
+    files: HashMap<String, Option<usize>>,
+    /// Each letter's shape number and its width before scaling, by face.
+    advances: HashMap<(usize, char), (ab_glyph::GlyphId, f32)>,
+    glyphs: HashMap<(usize, char, u32), std::rc::Rc<Glyph>>,
+}
+
+thread_local! {
+    static FACES: std::cell::RefCell<Faces> = std::cell::RefCell::new(Faces {
+        fonts: FONTS.iter().map(|b| ab_glyph::FontArc::try_from_slice(b).expect("Lust's font")).collect(),
+        files: HashMap::new(),
+        advances: HashMap::new(),
+        glyphs: HashMap::new(),
+    });
+    /// The window's own font, from its view's [font "…"], used by every piece without one.
+    static WINDOW_FONT: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
+}
+
+/// Which of Inter's faces draws this weight.
+fn weight_face(weight: f32) -> usize {
     if weight >= 650.0 {
         3
     } else if weight >= 550.0 {
@@ -109,28 +204,118 @@ fn face(weight: f32) -> usize {
     }
 }
 
+/// A font file (TrueType or OpenType), read the first time it's asked for.
+fn font_file(path: &str) -> Option<usize> {
+    if let Some(f) = FACES.with(|f| f.borrow().files.get(path).copied()) {
+        return f;
+    }
+    let font = std::fs::read(path).ok().and_then(|b| ab_glyph::FontArc::try_from_vec(b).ok());
+    FACES.with(|f| {
+        let mut f = f.borrow_mut();
+        let face = font.map(|font| {
+            f.fonts.push(font);
+            f.fonts.len() - 1
+        });
+        f.files.insert(path.to_string(), face);
+        face
+    })
+}
+
+/// How many pixels one of the font's units is at this size.
+fn per_unit(font: &ab_glyph::FontArc, size: f32) -> f32 {
+    use ab_glyph::Font;
+    size / font.units_per_em().unwrap_or(1000.0)
+}
+
 /// How wide a line of text is, in pixels at this size.
-fn text_width(text: &str, size: f32, weight: f32) -> f32 {
-    LOADED.with(|fonts| {
-        let f = &fonts[face(weight)];
+fn text_width(text: &str, size: f32, face: usize) -> f32 {
+    use ab_glyph::Font;
+    FACES.with(|f| {
+        let f = &mut *f.borrow_mut();
+        let font = &f.fonts[face];
+        let k = per_unit(font, size);
         let mut w = 0.0;
-        let mut prev: Option<char> = None;
+        let mut prev: Option<ab_glyph::GlyphId> = None;
         for ch in text.chars() {
+            let (id, adv) = *f.advances.entry((face, ch)).or_insert_with(|| {
+                let id = font.glyph_id(ch);
+                (id, font.h_advance_unscaled(id))
+            });
             if let Some(p) = prev {
-                w += f.horizontal_kern(p, ch, size).unwrap_or(0.0);
+                w += font.kern_unscaled(p, id) * k;
             }
-            w += f.metrics(ch, size).advance_width;
-            prev = Some(ch);
+            w += adv * k;
+            prev = Some(id);
         }
         w
     })
 }
 
+/// How far the pen moves on after one letter, in pixels at this size.
+fn text_width_one(ch: char, size: f32, face: usize) -> f32 {
+    use ab_glyph::Font;
+    FACES.with(|f| {
+        let f = &mut *f.borrow_mut();
+        let font = &f.fonts[face];
+        let (_, adv) = *f.advances.entry((face, ch)).or_insert_with(|| {
+            let id = font.glyph_id(ch);
+            (id, font.h_advance_unscaled(id))
+        });
+        adv * per_unit(font, size)
+    })
+}
+
 /// (ascent, height of a line) at this size.
-fn line_metrics(size: f32, weight: f32) -> (f32, f32) {
-    LOADED.with(|fonts| match fonts[face(weight)].horizontal_line_metrics(size) {
-        Some(m) => (m.ascent, (m.ascent - m.descent + m.line_gap).ceil()),
-        None => (size * 0.8, (size * 1.25).ceil()),
+fn line_metrics(size: f32, face: usize) -> (f32, f32) {
+    use ab_glyph::Font;
+    FACES.with(|f| {
+        let f = f.borrow();
+        let font = &f.fonts[face];
+        let k = per_unit(font, size);
+        let (a, d, g) = (font.ascent_unscaled() * k, font.descent_unscaled() * k, font.line_gap_unscaled() * k);
+        (a, (a - d + g).ceil())
+    })
+}
+
+/// A letter's shape at a size in pixels, drawn once and kept.
+fn glyph(face: usize, ch: char, px: f32) -> std::rc::Rc<Glyph> {
+    use ab_glyph::Font;
+    FACES.with(|f| {
+        let f = &mut *f.borrow_mut();
+        if let Some(g) = f.glyphs.get(&(face, ch, px.to_bits())) {
+            return g.clone();
+        }
+        let font = &f.fonts[face];
+        let scale = ab_glyph::PxScale::from(px * font.height_unscaled() / font.units_per_em().unwrap_or(1000.0));
+        let g = font.glyph_id(ch).with_scale_and_position(scale, ab_glyph::point(0.0, 0.0));
+        let made = match font.outline_glyph(g) {
+            Some(o) => {
+                let b = o.px_bounds();
+                let (width, height) = (b.width() as usize, b.height() as usize);
+                let mut coverage = vec![0u8; width * height];
+                o.draw(|x, y, c| {
+                    let i = y as usize * width + x as usize;
+                    if i < coverage.len() {
+                        coverage[i] = (c.clamp(0.0, 1.0) * 255.0).round() as u8;
+                    }
+                });
+                Glyph { left: b.min.x as i64, top: b.min.y as i64, width, height, coverage }
+            }
+            None => Glyph { left: 0, top: 0, width: 0, height: 0, coverage: vec![] },
+        };
+        let made = std::rc::Rc::new(made);
+        f.glyphs.insert((face, ch, px.to_bits()), made.clone());
+        made
+    })
+}
+
+/// The kerning between two letters, in pixels at this size.
+fn kern(face: usize, a: char, b: char, size: f32) -> f32 {
+    use ab_glyph::Font;
+    FACES.with(|f| {
+        let f = f.borrow();
+        let font = &f.fonts[face];
+        font.kern_unscaled(font.glyph_id(a), font.glyph_id(b)) * per_unit(font, size)
     })
 }
 
@@ -329,6 +514,15 @@ struct Look {
     disabled: bool,
     /// How much of the background shows, while it fades in or out.
     bg_alpha: f32,
+    /// A font read from a file, instead of Inter.
+    font: Option<usize>,
+}
+
+impl Look {
+    /// The face its words are drawn in: its own font, or Inter at its weight.
+    fn face(&self) -> usize {
+        self.font.unwrap_or_else(|| weight_face(self.weight))
+    }
 }
 
 fn num(v: &SV) -> Option<f32> {
@@ -384,6 +578,7 @@ fn base_look(kind: &str) -> Look {
         cover: false,
         disabled: false,
         bg_alpha: 1.0,
+        font: WINDOW_FONT.with(|f| f.get()),
     };
     match kind {
         "input" => {
@@ -506,6 +701,11 @@ fn apply(l: &mut Look, kind: &str, style: &[(String, SV)]) {
             "step" => l.step = num(v).unwrap_or(1.0).max(0.0),
             "cover" => l.cover = true,
             "disabled" => l.disabled = true,
+            "font" => {
+                if let Some(f) = text_of(v).and_then(font_file) {
+                    l.font = Some(f);
+                }
+            }
             other => {
                 // A colour on its own: a button's colour, or text's.
                 if let Some(c) = colour(other) {
@@ -534,8 +734,8 @@ fn hover_style(style: &[(String, SV)]) -> Option<&Vec<(String, SV)>> {
 
 /// Breaks text into lines: at each \n, and between words where a line would be wider than
 /// `max_w`. A word too long for a line on its own is broken between letters.
-fn wrap_lines(text: &str, size: f32, weight: f32, max_w: f32, wrap: bool) -> Vec<String> {
-    let fits = |s: &str| text_width(s, size, weight) <= max_w + 0.5;
+fn wrap_lines(text: &str, size: f32, face: usize, max_w: f32, wrap: bool) -> Vec<String> {
+    let fits = |s: &str| text_width(s, size, face) <= max_w + 0.5;
     let mut out = Vec::new();
     for para in text.split('\n') {
         if !wrap || !max_w.is_finite() || fits(para) {
@@ -642,6 +842,8 @@ struct Laid {
     look: Look,
     hover: Option<Look>,
     action: Option<usize>,
+    /// What Enter runs in an input.
+    enter: Option<usize>,
     /// What an input, checkbox or slider shows.
     value: Option<SV>,
     /// A scroll's content, top to bottom, and how far it's scrolled down.
@@ -692,8 +894,9 @@ fn lay(n: &Node) -> Laid {
         y: 0.0,
         w: 0.0,
         h: 0.0,
-        // Timers take no room on the screen.
-        children: n.children.iter().filter(|c| c.kind != "every").map(lay).collect(),
+        enter: if disabled { None } else { n.enter },
+        // Timers and shortcuts take no room on the screen.
+        children: n.children.iter().filter(|c| !unseen(&c.kind)).map(lay).collect(),
     }
 }
 
@@ -772,9 +975,9 @@ fn measure(n: &Laid, max_w: f32) -> (f32, f32) {
     let gaps = l.gap * (n.children.len().saturating_sub(1)) as f32;
     let (mut w, mut h) = match n.kind.as_str() {
         k if shows_text(k) => {
-            let lines = wrap_lines(&n.text, l.size, l.weight, inner, l.wrap);
-            let (_, lh) = line_metrics(l.size, l.weight);
-            let w = lines.iter().map(|s| text_width(s, l.size, l.weight)).fold(0.0, f32::max);
+            let lines = wrap_lines(&n.text, l.size, l.face(), inner, l.wrap);
+            let (_, lh) = line_metrics(l.size, l.face());
+            let w = lines.iter().map(|s| text_width(s, l.size, l.face())).fold(0.0, f32::max);
             (w.ceil(), lh * lines.len() as f32)
         }
         "space" | "checkbox" | "slider" => (0.0, 0.0),
@@ -793,7 +996,7 @@ fn measure(n: &Laid, max_w: f32) -> (f32, f32) {
             };
             (w.max(0.0), h.max(0.0))
         }
-        "input" => (0.0, line_metrics(l.size, l.weight).1),
+        "input" => (0.0, line_metrics(l.size, l.face()).1),
         "row" => {
             let sizes = row_sizes(n, inner);
             (sizes.iter().map(|s| s.0).sum::<f32>() + gaps, sizes.iter().map(|s| s.1).fold(0.0, f32::max))
@@ -887,7 +1090,7 @@ fn place(n: &mut Laid, x: f32, y: f32, w: f32, h: f32) {
     let (ix, iy) = (x + l.pad[3], y + l.pad[0]);
     let (iw, ih) = ((w - l.pad[1] - l.pad[3]).max(0.0), (h - l.pad[0] - l.pad[2]).max(0.0));
     if shows_text(&n.kind) {
-        n.lines = wrap_lines(&n.text, l.size, l.weight, iw, l.wrap);
+        n.lines = wrap_lines(&n.text, l.size, l.face(), iw, l.wrap);
         return;
     }
     if n.children.is_empty() {
@@ -981,6 +1184,7 @@ fn place(n: &mut Laid, x: f32, y: f32, w: f32, h: f32) {
 /// The view's top: a column as big as the window. Columns and rows directly in it are as wide as
 /// the window.
 fn lay_out(root: &Node, w: f32, h: f32) -> Laid {
+    WINDOW_FONT.with(|f| f.set(settings(&root.style).font));
     let mut top = lay(root);
     // The root carries the window's settings, which aren't styles.
     top.look = base_look("view");
@@ -1136,11 +1340,10 @@ impl Canvas {
         }
     }
 
-    fn text(&mut self, text: &str, x: f32, y: f32, size: f32, weight: f32, c: u32) {
+    fn text(&mut self, text: &str, x: f32, y: f32, size: f32, face: usize, c: u32) {
         let s = self.scale;
         let px_size = size * s;
-        let (ascent, _) = line_metrics(px_size, weight);
-        let fi = face(weight);
+        let (ascent, _) = line_metrics(px_size, face);
         let mut pen = x * s;
         let base = (y * s + ascent).round();
         // A line that's out of sight is skipped whole.
@@ -1150,31 +1353,26 @@ impl Canvas {
         }
         let mut prev: Option<char> = None;
         for ch in text.chars() {
-            let glyph = GLYPHS.with(|g| {
-                g.borrow_mut()
-                    .entry((fi, ch, px_size.to_bits()))
-                    .or_insert_with(|| std::rc::Rc::new(LOADED.with(|f| f[fi].rasterize(ch, px_size))))
-                    .clone()
-            });
-            let (m, bmp) = (&glyph.0, &glyph.1);
             if let Some(p) = prev {
-                pen += LOADED.with(|f| f[fi].horizontal_kern(p, ch, px_size).unwrap_or(0.0));
+                pen += kern(face, p, ch, px_size);
             }
-            let gx = (pen + m.xmin as f32).round() as i64;
-            let gy = base as i64 - m.ymin as i64 - m.height as i64;
+            let g = glyph(face, ch, px_size);
+            let advance = text_width_one(ch, px_size, face);
+            let gx = pen.round() as i64 + g.left;
+            let gy = base as i64 + g.top;
             let [bx0, by0, bx1, by1] = self.bounds();
-            if gx + m.width as i64 <= bx0 || gx >= bx1 || gy + m.height as i64 <= by0 || gy >= by1 {
-                pen += m.advance_width;
+            if g.width == 0 || gx + g.width as i64 <= bx0 || gx >= bx1 || gy + g.height as i64 <= by0 || gy >= by1 {
+                pen += advance;
                 prev = Some(ch);
                 continue;
             }
-            for row in 0..m.height {
-                for col in 0..m.width {
-                    let a = bmp[row * m.width + col] as f32 / 255.0;
+            for row in 0..g.height {
+                for col in 0..g.width {
+                    let a = g.coverage[row * g.width + col] as f32 / 255.0;
                     self.blend(gx + col as i64, gy + row as i64, c, a);
                 }
             }
-            pen += m.advance_width;
+            pen += advance;
             prev = Some(ch);
         }
     }
@@ -1259,7 +1457,7 @@ const THUMB: f32 = 8.0;
 /// The inside of an input, where its text goes: x, top of the line, width.
 fn input_inner(n: &Laid) -> (f32, f32, f32) {
     let l = &n.look;
-    let (_, lh) = line_metrics(l.size, l.weight);
+    let (_, lh) = line_metrics(l.size, l.face());
     let top = n.y + l.pad[0] + ((n.h - l.pad[0] - l.pad[2] - lh) / 2.0).max(0.0);
     (n.x + l.pad[3], top, (n.w - l.pad[1] - l.pad[3]).max(0.0))
 }
@@ -1267,7 +1465,7 @@ fn input_inner(n: &Laid) -> (f32, f32, f32) {
 fn paint_input(c: &mut Canvas, n: &Laid, focused: bool, st: &PaintState) {
     let l = &n.look;
     let (ix, top, iw) = input_inner(n);
-    let (_, lh) = line_metrics(l.size, l.weight);
+    let (_, lh) = line_metrics(l.size, l.face());
     if focused {
         ring_around(c, n, l.accent);
         c.shape(n.x, n.y, n.w, n.h, l.radius, Some(1.5), l.accent, 1.0);
@@ -1276,20 +1474,20 @@ fn paint_input(c: &mut Canvas, n: &Laid, focused: bool, st: &PaintState) {
     let scroll = if focused { st.scroll_x } else { 0.0 };
     let was = c.clip_to(ix - 1.0, n.y, iw + 2.0, n.h);
     if text.is_empty() {
-        c.text(&l.placeholder, ix, top, l.size, l.weight, 0x868e96);
+        c.text(&l.placeholder, ix, top, l.size, l.face(), 0x868e96);
     } else {
         if focused {
             let (a, b) = st.caret.range();
             if a != b && b <= text.len() {
-                let xa = text_width(&text[..a], l.size, l.weight) - scroll;
-                let xb = text_width(&text[..b], l.size, l.weight) - scroll;
+                let xa = text_width(&text[..a], l.size, l.face()) - scroll;
+                let xb = text_width(&text[..b], l.size, l.face()) - scroll;
                 c.rect(ix + xa, top, xb - xa, lh, 0.0, mix(l.accent, 0xffffff, 0.7), 1.0);
             }
         }
-        c.text(text, ix - scroll, top, l.size, l.weight, l.color);
+        c.text(text, ix - scroll, top, l.size, l.face(), l.color);
     }
     if focused && st.caret_on && st.caret.caret <= text.len() {
-        let x = ix + text_width(&text[..st.caret.caret], l.size, l.weight) - scroll;
+        let x = ix + text_width(&text[..st.caret.caret], l.size, l.face()) - scroll;
         c.rect(x - 0.5, top + 1.0, 1.5, lh - 2.0, 0.0, l.color, 1.0);
     }
     c.clip = was;
@@ -1338,9 +1536,9 @@ fn paint_image(c: &mut Canvas, n: &Laid, l: &Look) {
         // A picture that isn't there shows as a grey box with its name.
         c.rect(bx, by, bw, bh, l.radius, 0xe9ecef, 1.0);
         let name = n.text.rsplit(['/', '\\']).next().unwrap_or("");
-        let tw = text_width(name, 11.0, 400.0);
+        let tw = text_width(name, 11.0, 0);
         if tw < bw - 8.0 {
-            c.text(name, bx + (bw - tw) / 2.0, by + bh / 2.0 - 7.0, 11.0, 400.0, 0x868e96);
+            c.text(name, bx + (bw - tw) / 2.0, by + bh / 2.0 - 7.0, 11.0, 0, 0x868e96);
         }
         return;
     };
@@ -1458,15 +1656,15 @@ fn paint(c: &mut Canvas, n: &Laid, st: &PaintState, path: &mut Vec<usize>) {
     }
     let unclipped = if n.kind == "scroll" { Some(c.clip_to(n.x, n.y, n.w, n.h)) } else { None };
     if shows_text(&n.kind) {
-        let (_, lh) = line_metrics(l.size, l.weight);
+        let (_, lh) = line_metrics(l.size, l.face());
         let inner_w = n.w - l.pad[1] - l.pad[3];
         let block = lh * n.lines.len() as f32;
         let top = n.y + l.pad[0] + ((n.h - l.pad[0] - l.pad[2] - block) / 2.0).max(0.0);
         for (i, line) in n.lines.iter().enumerate() {
-            let tw = text_width(line, l.size, l.weight);
+            let tw = text_width(line, l.size, l.face());
             let tx = n.x + l.pad[3] + offset(l.halign, inner_w - tw);
             let ty = top + lh * i as f32;
-            c.text(line, tx, ty, l.size, l.weight, l.color);
+            c.text(line, tx, ty, l.size, l.face(), l.color);
             if l.strike {
                 c.rect(tx, ty + lh * 0.55, tw, (l.size / 14.0).max(1.0), 0.0, l.color, 1.0);
             }
@@ -1535,10 +1733,12 @@ pub struct Settings {
     pub min_width: f64,
     pub min_height: f64,
     pub background: u32,
+    /// The font every piece uses unless it has its own.
+    pub font: Option<usize>,
 }
 
 pub fn settings(style: &[(String, SV)]) -> Settings {
-    let mut s = Settings { title: "Lust".into(), width: 640.0, height: 480.0, min_width: 0.0, min_height: 0.0, background: 0xffffff };
+    let mut s = Settings { title: "Lust".into(), width: 640.0, height: 480.0, min_width: 0.0, min_height: 0.0, background: 0xffffff, font: None };
     for (k, v) in style {
         match (k.as_str(), v) {
             ("title", SV::Text(t)) => s.title = t.clone(),
@@ -1547,6 +1747,7 @@ pub fn settings(style: &[(String, SV)]) -> Settings {
             ("minWidth", SV::Num(n)) => s.min_width = *n,
             ("minHeight", SV::Num(n)) => s.min_height = *n,
             ("background", SV::Text(t)) => s.background = colour(t).unwrap_or(0xffffff),
+            ("font", SV::Text(t)) => s.font = font_file(t),
             _ => {}
         }
     }
@@ -1634,6 +1835,7 @@ struct Mods {
     shift: bool,
     command: bool,
     word: bool,
+    alt: bool,
 }
 
 /// A key that does something, besides typing.
@@ -2057,8 +2259,8 @@ impl<'a, 'b> Ui<'a, 'b> {
         let (_, _, iw) = input_inner(n);
         let t = value_text(n);
         let l = &n.look;
-        let cx = text_width(&t[..self.st.caret.caret.min(t.len())], l.size, l.weight);
-        let tw = text_width(t, l.size, l.weight);
+        let cx = text_width(&t[..self.st.caret.caret.min(t.len())], l.size, l.face());
+        let tw = text_width(t, l.size, l.face());
         let mut s = self.st.scroll_x;
         if cx - s > iw - 2.0 {
             s = cx - iw + 2.0;
@@ -2071,7 +2273,7 @@ impl<'a, 'b> Ui<'a, 'b> {
 
     fn place_in_input(&self, n: &Laid, x: f32) -> usize {
         let (ix, _, _) = input_inner(n);
-        place_at(value_text(n), x - ix + self.st.scroll_x, n.look.size, n.look.weight)
+        place_at(value_text(n), x - ix + self.st.scroll_x, n.look.size, n.look.face())
     }
 
     fn slide_to(&mut self, path: &[usize], x: f32) -> Result<(), String> {
@@ -2319,6 +2521,13 @@ impl<'a, 'b> Ui<'a, 'b> {
                         self.keep_caret_in_view();
                         Ok(())
                     }
+                    ("input", Nav::Enter) => match n.enter {
+                        Some(a) => {
+                            run_with(&mut self.actions[a], SV::Flag)?;
+                            self.rebuild()
+                        }
+                        None => Ok(()),
+                    },
                     ("input", Nav::Paste) => match self.clip_get() {
                         // An input is one line, so pasted lines are joined with spaces.
                         Some(t) => self.edit(Key::Type(t.replace("\r\n", " ").replace(['\n', '\r'], " ")), Mods::default()),
@@ -2350,6 +2559,42 @@ impl<'a, 'b> Ui<'a, 'b> {
                 }
             }
         }
+    }
+
+    /// Whether what has focus uses this key itself, so a shortcut doesn't take it.
+    fn focus_uses(&self, key: &str, m: Mods) -> bool {
+        let plain = !m.command && !m.alt;
+        if key == "tab" && !m.command {
+            return true;
+        }
+        match self.focused_kind().as_str() {
+            "input" | "textarea" => {
+                if plain {
+                    !function_key(key)
+                } else if m.command {
+                    matches!(key, "a" | "c" | "x" | "v" | "z" | "y" | "left" | "right" | "up" | "down" | "backspace" | "delete" | "home" | "end")
+                } else {
+                    matches!(key, "left" | "right" | "backspace" | "delete")
+                }
+            }
+            "button" | "checkbox" => plain && matches!(key, "enter" | "space"),
+            "slider" => plain && matches!(key, "left" | "right" | "up" | "down" | "home" | "end"),
+            _ => false,
+        }
+    }
+
+    /// Runs the view's shortcut for this key, if it has one. Returns whether one ran.
+    fn shortcut(&mut self, key: &str, m: Mods) -> Result<bool, String> {
+        if self.focus_uses(key, m) {
+            return Ok(false);
+        }
+        let mut all = Vec::new();
+        shortcuts(&self.node, &mut all);
+        let found = all.into_iter().find(|(s, _)| s.key == key && s.command == m.command && s.shift == m.shift && s.alt == m.alt);
+        let Some((_, a)) = found else { return Ok(false) };
+        run_with(&mut self.actions[a], SV::Flag)?;
+        self.rebuild()?;
+        Ok(true)
     }
 
     /// The mouse pointer for this spot: a hand over things that act, a text bar over inputs.
@@ -2392,9 +2637,9 @@ mod windowed {
         fn mods(&self) -> Mods {
             let m = self.mods;
             if cfg!(target_os = "macos") {
-                Mods { shift: m.shift_key(), command: m.super_key(), word: m.alt_key() }
+                Mods { shift: m.shift_key(), command: m.super_key(), word: m.alt_key(), alt: m.alt_key() }
             } else {
-                Mods { shift: m.shift_key(), command: m.control_key(), word: m.control_key() }
+                Mods { shift: m.shift_key(), command: m.control_key(), word: m.control_key(), alt: m.alt_key() }
             }
         }
 
@@ -2421,6 +2666,12 @@ mod windowed {
 
         fn key(&mut self, event: winit::event::KeyEvent) -> Result<(), String> {
             let mods = self.mods();
+            // The view's shortcuts go first, unless what has focus uses the key.
+            if let Some(name) = key_name(&event) {
+                if self.ui.shortcut(&name, mods)? {
+                    return Ok(());
+                }
+            }
             let input = self.ui.focused_kind() == "input";
             if mods.command {
                 if let WKey::Character(c) = &event.logical_key {
@@ -2469,6 +2720,46 @@ mod windowed {
             }
             Ok(())
         }
+    }
+
+    /// A key's name as shortcuts write it: "s", "1", "enter", "f5". Shift doesn't change it, so
+    /// shift+1 is "1", not "!".
+    fn key_name(event: &winit::event::KeyEvent) -> Option<String> {
+        #[cfg(any(target_os = "windows", target_os = "macos", all(unix, not(any(target_os = "ios", target_os = "android")))))]
+        let key = {
+            use winit::platform::modifier_supplement::KeyEventExtModifierSupplement;
+            event.key_without_modifiers()
+        };
+        #[cfg(not(any(target_os = "windows", target_os = "macos", all(unix, not(any(target_os = "ios", target_os = "android"))))))]
+        let key = event.logical_key.clone();
+        Some(match key {
+            WKey::Character(c) => c.to_lowercase(),
+            WKey::Named(n) => match n {
+                NamedKey::Enter => "enter".into(),
+                NamedKey::Escape => "escape".into(),
+                NamedKey::Tab => "tab".into(),
+                NamedKey::Space => "space".into(),
+                NamedKey::Backspace => "backspace".into(),
+                NamedKey::Delete => "delete".into(),
+                NamedKey::ArrowUp => "up".into(),
+                NamedKey::ArrowDown => "down".into(),
+                NamedKey::ArrowLeft => "left".into(),
+                NamedKey::ArrowRight => "right".into(),
+                NamedKey::Home => "home".into(),
+                NamedKey::End => "end".into(),
+                NamedKey::PageUp => "pageup".into(),
+                NamedKey::PageDown => "pagedown".into(),
+                other => {
+                    let f = format!("{other:?}").to_lowercase();
+                    if function_key(&f) {
+                        f
+                    } else {
+                        return None;
+                    }
+                }
+            },
+            _ => return None,
+        })
     }
 
     impl<'a, 'b> ApplicationHandler for App<'a, 'b> {
@@ -2822,12 +3113,12 @@ impl Caret {
 }
 
 /// The place in the text nearest to x pixels from its start.
-fn place_at(t: &str, x: f32, size: f32, weight: f32) -> usize {
+fn place_at(t: &str, x: f32, size: f32, face: usize) -> usize {
     let mut best = (0usize, x.abs());
     let mut i = 0;
     while i < t.len() {
         i = next_char(t, i);
-        let d = (text_width(&t[..i], size, weight) - x).abs();
+        let d = (text_width(&t[..i], size, face) - x).abs();
         if d < best.1 {
             best = (i, d);
         }
@@ -3020,10 +3311,20 @@ fn test(s: Settings, build: &mut Build) -> Result<(), String> {
                 }
             }
             "type" => ui.typed(rest)?,
-            "key" => match parse_key(rest) {
-                Some((nav, mods)) => ui.nav(nav, mods)?,
-                None => println!("(Lust doesn't know the key {rest})"),
-            },
+            "key" => {
+                // A shortcut in the view goes first, as in a window.
+                if let Ok(s) = parse_shortcut(rest) {
+                    let m = Mods { shift: s.shift, command: s.command, word: s.command, alt: s.alt };
+                    if ui.shortcut(&s.key, m)? {
+                        continue;
+                    }
+                }
+                match parse_key(rest) {
+                    Some((nav, mods)) => ui.nav(nav, mods)?,
+                    None if parse_shortcut(rest).is_ok() => {}
+                    None => println!("(Lust doesn't know the key {rest})"),
+                }
+            }
             "press" | "move" | "release" | "dblclick" if nums.len() >= 2 => {
                 let (x, y) = (nums[0], nums[1]);
                 match cmd {

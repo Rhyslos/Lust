@@ -1,0 +1,30 @@
+window "Keys" 400x300
+  column 0,0 400x214
+    input "" 16,16 368x33
+    text "Saved 0 times" 16,57 102x19
+    text "0 to do" 16,84 51x19
+    text "Bold from a file" 16,111 111x19
+    text "Missing font falls back" 16,138 162x19
+    button "Go" 16,165 49x33
+window "Keys" 400x300
+  column 0,0 400x295
+    input "" 16,16 368x33 (focus, caret 0)
+    text "Milk" 16,57 30x19
+    text "Eggs" 16,84 36x19
+    text "Saved 1 times" 16,111 99x19
+    text "2 to do" 16,138 50x19
+    text "Bold from a file" 16,165 111x19
+    text "Missing font falls back" 16,192 162x19
+    text "Help is showing" 16,219 114x19
+    button "Go" 16,246 49x33
+window "Keys" 400x300
+  column 0,0 400x295
+    input "" 16,16 368x33
+    text "Milk" 16,57 30x19
+    text "Eggs" 16,84 36x19
+    text "shift one" 16,111 63x19
+    text "Saved 102 times" 16,138 118x19
+    text "3 to do" 16,165 50x19
+    text "Bold from a file" 16,192 111x19
+    text "Missing font falls back" 16,219 162x19
+    button "Go" 16,246 49x33 (focus)

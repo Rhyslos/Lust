@@ -268,7 +268,7 @@ fn cache_dir() -> std::path::PathBuf {
     std::env::temp_dir().join("lust-cache")
 }
 
-const CARGO_TOML: &str = "[package]\nname = \"lust_program\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nrusqlite = { version = \"0.40\", features = [\"bundled\"] }\ntiny_http = \"0.12\"\nureq = \"3\"\nregex = \"1\"\nwinit = \"0.30\"\nsoftbuffer = \"0.4\"\nfontdue = \"0.9\"\narboard = { version = \"3\", default-features = false }\npng = \"0.17\"\njpeg-decoder = { version = \"0.3\", default-features = false }\n\n[profile.release]\noverflow-checks = true\n\n[workspace]\n";
+const CARGO_TOML: &str = "[package]\nname = \"lust_program\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nrusqlite = { version = \"0.40\", features = [\"bundled\"] }\ntiny_http = \"0.12\"\nureq = \"3\"\nregex = \"1\"\nwinit = \"0.30\"\nsoftbuffer = \"0.4\"\nab_glyph = \"0.2\"\narboard = { version = \"3\", default-features = false }\npng = \"0.17\"\njpeg-decoder = { version = \"0.3\", default-features = false }\n\n[profile.release]\noverflow-checks = true\n\n[workspace]\n";
 
 /// Builds a program that needs outside libraries with Cargo, in a folder of Lust's own. The
 /// libraries are shared, so they're only compiled the first time on each computer.
@@ -490,7 +490,7 @@ pub fn build_library_in(path: &Path, rust: &str, dir: &Path) -> Result<(), Strin
         deps.push_str("regex = \"1\"\n");
     }
     if has("ui") {
-        deps.push_str("winit = \"0.30\"\nsoftbuffer = \"0.4\"\nfontdue = \"0.9\"\narboard = { version = \"3\", default-features = false }\npng = \"0.17\"\njpeg-decoder = { version = \"0.3\", default-features = false }\n");
+        deps.push_str("winit = \"0.30\"\nsoftbuffer = \"0.4\"\nab_glyph = \"0.2\"\narboard = { version = \"3\", default-features = false }\npng = \"0.17\"\njpeg-decoder = { version = \"0.3\", default-features = false }\n");
         let fonts = dir.join("assets").join("fonts");
         std::fs::create_dir_all(&fonts).map_err(|e| format!("couldn't make {}: {e}", fonts.display()))?;
         for (file, bytes) in native_ui::FONT_FILES.iter().zip(native_ui::FONTS.iter()) {

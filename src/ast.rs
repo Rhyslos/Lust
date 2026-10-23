@@ -320,6 +320,10 @@ pub enum Stmt {
         children: Vec<Stmt>,
         /// What a button (or an input, after a change) does.
         action: Option<Vec<Stmt>>,
+        /// What an input does when Enter is pressed in it: input name enter { … }
+        enter: Option<Vec<Stmt>>,
+        /// What a dropdown chooses from: dropdown size in ["S", "M"];
+        choices: Option<Expr>,
         pos: Pos,
     },
     /// keep sword in player.bag; or keep sword;

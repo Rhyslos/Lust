@@ -531,6 +531,7 @@ impl<'a> W<'a> {
                 style,
                 children,
                 action,
+                enter,
                 ..
             } => {
                 let parent = self.view_parent.last().cloned().unwrap_or_else(|| "v0".into());
@@ -596,6 +597,15 @@ impl<'a> W<'a> {
                 if let Some(a) = action {
                     let param = if bound { lname(crate::parser::VALUE) } else { String::new() };
                     self.line(ln, &format!("{v}.f = function({param})"));
+                    self.indent += 1;
+                    let saved = std::mem::take(&mut self.loops);
+                    self.stmts(a);
+                    self.loops = saved;
+                    self.indent -= 1;
+                    self.line(ln, "end");
+                }
+                if let Some(a) = enter {
+                    self.line(ln, &format!("{v}.e = function()"));
                     self.indent += 1;
                     let saved = std::mem::take(&mut self.loops);
                     self.stmts(a);
