@@ -581,9 +581,9 @@ fn base_look(kind: &str) -> Look {
         font: WINDOW_FONT.with(|f| f.get()),
     };
     match kind {
-        "input" => {
+        "input" | "textarea" => {
             l.pad = [7.0, 10.0, 7.0, 10.0];
-            l.width = Size::Fixed(220.0);
+            l.width = Size::Fixed(if kind == "textarea" { 300.0 } else { 220.0 });
             l.background = Some(0xffffff);
             l.border = Some(0xced4da);
             l.radius = 6.0;
@@ -769,6 +769,54 @@ fn wrap_lines(text: &str, size: f32, face: usize, max_w: f32, wrap: bool) -> Vec
     out
 }
 
+/// Where a text box's text breaks into lines: at each \n, and after the space between words
+/// where a line would be wider than `max_w` (a word too long for a line is broken between
+/// letters). Each line is where it starts and ends in the text; the \n isn't in either.
+fn wrap_spans(t: &str, size: f32, face: usize, max_w: f32) -> Vec<(usize, usize)> {
+    let mut out = Vec::new();
+    let mut ps = 0;
+    loop {
+        let pe = t[ps..].find('\n').map(|i| ps + i).unwrap_or(t.len());
+        let mut start = ps;
+        let mut w = 0.0;
+        // Where the line can break: after the last space seen.
+        let mut space: Option<usize> = None;
+        let mut i = ps;
+        while i < pe {
+            let ch = t[i..].chars().next().unwrap();
+            let next = i + ch.len_utf8();
+            let cw = text_width_one(ch, size, face);
+            if w + cw > max_w + 0.5 && i > start && ch != ' ' {
+                let at = match space {
+                    Some(s) if s > start => s,
+                    _ => i,
+                };
+                out.push((start, at));
+                start = at;
+                space = None;
+                w = text_width(&t[start..i], size, face);
+            }
+            w += cw;
+            if ch == ' ' {
+                space = Some(next);
+            }
+            i = next;
+        }
+        out.push((start, pe));
+        if pe >= t.len() {
+            break;
+        }
+        ps = pe + 1;
+    }
+    out
+}
+
+/// Which of a text box's lines this place is on. A place where a line wraps is at the start of
+/// the next one.
+fn span_of(spans: &[(usize, usize)], p: usize) -> usize {
+    spans.iter().rposition(|&(s, _)| s <= p).unwrap_or(0)
+}
+
 // ----- pictures -----
 
 /// A picture read from a file: its size, and its pixels as red, green, blue and see-through.
@@ -844,6 +892,8 @@ struct Laid {
     action: Option<usize>,
     /// What Enter runs in an input.
     enter: Option<usize>,
+    /// A text box's text, broken into the lines it shows: where each starts and ends in it.
+    spans: Vec<(usize, usize)>,
     /// What an input, checkbox or slider shows.
     value: Option<SV>,
     /// A scroll's content, top to bottom, and how far it's scrolled down.
@@ -895,6 +945,7 @@ fn lay(n: &Node) -> Laid {
         w: 0.0,
         h: 0.0,
         enter: if disabled { None } else { n.enter },
+        spans: vec![],
         // Timers and shortcuts take no room on the screen.
         children: n.children.iter().filter(|c| !unseen(&c.kind)).map(lay).collect(),
     }
@@ -997,6 +1048,8 @@ fn measure(n: &Laid, max_w: f32) -> (f32, f32) {
             (w.max(0.0), h.max(0.0))
         }
         "input" => (0.0, line_metrics(l.size, l.face()).1),
+        // A text box is four lines tall unless it's given a height; more lines scroll.
+        "textarea" => (0.0, line_metrics(l.size, l.face()).1 * 4.0),
         "row" => {
             let sizes = row_sizes(n, inner);
             (sizes.iter().map(|s| s.0).sum::<f32>() + gaps, sizes.iter().map(|s| s.1).fold(0.0, f32::max))
@@ -1091,6 +1144,12 @@ fn place(n: &mut Laid, x: f32, y: f32, w: f32, h: f32) {
     let (iw, ih) = ((w - l.pad[1] - l.pad[3]).max(0.0), (h - l.pad[0] - l.pad[2]).max(0.0));
     if shows_text(&n.kind) {
         n.lines = wrap_lines(&n.text, l.size, l.face(), iw, l.wrap);
+        return;
+    }
+    if n.kind == "textarea" {
+        // Room is kept on the right for the scroll bar's knob.
+        n.spans = wrap_spans(value_text(n), l.size, l.face(), (iw - 6.0).max(1.0));
+        n.content_h = line_metrics(l.size, l.face()).1 * n.spans.len() as f32 + l.pad[0] + l.pad[2];
         return;
     }
     if n.children.is_empty() {
@@ -1493,6 +1552,57 @@ fn paint_input(c: &mut Canvas, n: &Laid, focused: bool, st: &PaintState) {
     c.clip = was;
 }
 
+/// Where a place in a text box's text is drawn: x, and the top of its line.
+fn textarea_point(n: &Laid, p: usize) -> (f32, f32) {
+    let l = &n.look;
+    let t = value_text(n);
+    let (_, lh) = line_metrics(l.size, l.face());
+    let i = span_of(&n.spans, p);
+    let (s, _) = n.spans.get(i).copied().unwrap_or((0, 0));
+    let p = p.clamp(s, t.len());
+    (n.x + l.pad[3] + text_width(&t[s..p], l.size, l.face()), n.y + l.pad[0] + lh * i as f32 - n.scrolled)
+}
+
+fn paint_textarea(c: &mut Canvas, n: &Laid, focused: bool, st: &PaintState) {
+    let l = &n.look;
+    let (_, lh) = line_metrics(l.size, l.face());
+    if focused {
+        ring_around(c, n, l.accent);
+        c.shape(n.x, n.y, n.w, n.h, l.radius, Some(1.5), l.accent, 1.0);
+    }
+    let t = value_text(n);
+    let (ix, iy) = (n.x + l.pad[3], n.y + l.pad[0]);
+    let was = c.clip_to(ix - 1.0, iy - 2.0, n.w - l.pad[1] - l.pad[3] + 2.0, (n.h - l.pad[0] - l.pad[2] + 4.0).max(0.0));
+    if t.is_empty() {
+        c.text(&l.placeholder, ix, iy, l.size, l.face(), 0x868e96);
+    }
+    let (a, b) = if focused { st.caret.range() } else { (0, 0) };
+    for (i, &(s, e)) in n.spans.iter().enumerate() {
+        let y = iy + lh * i as f32 - n.scrolled;
+        if y + lh < n.y || y > n.y + n.h {
+            continue;
+        }
+        // The part of the selection on this line, a little wider where it takes in the line's end.
+        if a != b && a <= e && b >= s && b <= t.len() {
+            let (from, to) = (a.max(s), b.min(e));
+            let xa = text_width(&t[s..from], l.size, l.face());
+            let xb = text_width(&t[s..to], l.size, l.face()) + if b > e { 4.0 } else { 0.0 };
+            if xb > xa {
+                c.rect(ix + xa, y, xb - xa, lh, 0.0, mix(l.accent, 0xffffff, 0.7), 1.0);
+            }
+        }
+        c.text(&t[s..e], ix, y, l.size, l.face(), l.color);
+    }
+    if focused && st.caret_on && st.caret.caret <= t.len() {
+        let (x, y) = textarea_point(n, st.caret.caret);
+        c.rect(x - 0.5, y + 1.0, 1.5, lh - 2.0, 0.0, l.color, 1.0);
+    }
+    c.clip = was;
+    if let Some((ky, kh)) = scroll_knob(n) {
+        c.rect(n.x + n.w - 7.0, ky + 3.0, 4.0, kh - 6.0, 2.0, 0x000000, 0.28);
+    }
+}
+
 fn paint_checkbox(c: &mut Canvas, n: &Laid, l: &Look, ring: bool) {
     let on = matches!(n.value, Some(SV::Truth(true)));
     if ring {
@@ -1651,6 +1761,9 @@ fn paint(c: &mut Canvas, n: &Laid, st: &PaintState, path: &mut Vec<usize>) {
     if n.kind == "input" {
         paint_input(c, n, focused, st);
     }
+    if n.kind == "textarea" {
+        paint_textarea(c, n, focused, st);
+    }
     if n.kind == "image" {
         paint_image(c, n, l);
     }
@@ -1714,7 +1827,7 @@ fn node_at<'a>(n: &'a Laid, path: &[usize]) -> Option<&'a Laid> {
 
 /// Everything that can have focus, in the order Tab goes through them.
 fn focusable(n: &Laid, path: &mut Vec<usize>, out: &mut Vec<Vec<usize>>) {
-    if n.action.is_some() && matches!(n.kind.as_str(), "button" | "input" | "checkbox" | "slider") {
+    if n.action.is_some() && matches!(n.kind.as_str(), "button" | "input" | "textarea" | "checkbox" | "slider") {
         out.push(path.clone());
     }
     for (i, c) in n.children.iter().enumerate() {
@@ -1897,7 +2010,7 @@ fn scrolls_at(n: &Laid, x: f32, y: f32, path: &mut Vec<usize>, out: &mut Vec<Vec
     if x < n.x || y < n.y || x >= n.x + n.w || y >= n.y + n.h {
         return;
     }
-    if n.kind == "scroll" {
+    if n.kind == "scroll" || n.kind == "textarea" {
         out.push(path.clone());
     }
     for (i, c) in n.children.iter().enumerate() {
@@ -1916,7 +2029,7 @@ fn shift_down(n: &mut Laid, dy: f32) {
 
 /// Moves each scroll's content up by how far it's scrolled, keeping that within what there is.
 fn apply_scrolls(n: &mut Laid, path: &mut Vec<usize>, offsets: &mut HashMap<Vec<usize>, f32>) {
-    if n.kind == "scroll" {
+    if n.kind == "scroll" || n.kind == "textarea" {
         let max = (n.content_h - n.h).max(0.0);
         let off = offsets.get(path.as_slice()).copied().unwrap_or(0.0).clamp(0.0, max).round();
         if off > 0.0 {
@@ -2243,7 +2356,7 @@ impl<'a, 'b> Ui<'a, 'b> {
     /// When the caret next blinks, if an input has focus.
     fn next_blink(&self) -> Option<std::time::Instant> {
         let t = self.blink?;
-        if self.focused_kind() != "input" {
+        if !editable(&self.focused_kind()) {
             return None;
         }
         let ms = t.elapsed().as_millis();
@@ -2253,6 +2366,25 @@ impl<'a, 'b> Ui<'a, 'b> {
     /// Slides the focused input's text so the caret stays in view.
     fn keep_caret_in_view(&mut self) {
         let Some(n) = self.focused() else { return };
+        if n.kind == "textarea" {
+            // Scrolls the text box so the caret's line can be seen.
+            let (_, y) = textarea_point(n, self.st.caret.caret.min(value_text(n).len()));
+            let lh = line_metrics(n.look.size, n.look.face()).1;
+            let (top, bottom) = (n.y + n.look.pad[0], n.y + n.h - n.look.pad[2]);
+            let shift = if y < top {
+                y - top
+            } else if y + lh > bottom {
+                y + lh - bottom
+            } else {
+                return;
+            };
+            let to = n.scrolled + shift;
+            if let Some(p) = self.st.focus.clone() {
+                self.scrolls.insert(p, to);
+                self.relayout();
+            }
+            return;
+        }
         if n.kind != "input" {
             return;
         }
@@ -2271,9 +2403,59 @@ impl<'a, 'b> Ui<'a, 'b> {
         self.st.scroll_x = s.min((tw - iw + 2.0).max(0.0)).max(0.0);
     }
 
-    fn place_in_input(&self, n: &Laid, x: f32) -> usize {
+    /// The place in an input's or text box's text nearest to this point.
+    fn place_in(&self, n: &Laid, x: f32, y: f32) -> usize {
+        let t = value_text(n);
+        if n.kind == "textarea" {
+            let lh = line_metrics(n.look.size, n.look.face()).1;
+            let line = ((y - n.y - n.look.pad[0] + n.scrolled) / lh).floor().max(0.0) as usize;
+            let (s, e) = n.spans.get(line.min(n.spans.len().saturating_sub(1))).copied().unwrap_or((0, 0));
+            let i = s + place_at(&t[s..e], x - n.x - n.look.pad[3], n.look.size, n.look.face());
+            // At the end of a line that wraps, the caret stays on that line: before its last space.
+            return if i == e && e < t.len() && !t[e..].starts_with('\n') && e > s { prev_char(t, e) } else { i };
+        }
         let (ix, _, _) = input_inner(n);
-        place_at(value_text(n), x - ix + self.st.scroll_x, n.look.size, n.look.face())
+        place_at(t, x - ix + self.st.scroll_x, n.look.size, n.look.face())
+    }
+
+    /// Moves the caret in a text box a line up (-1) or down (1), keeping it as far along, or to
+    /// the start or end of its line.
+    fn textarea_move(&mut self, how: &Nav, shift: bool) {
+        let Some(n) = self.focused() else { return };
+        let t = value_text(n).to_string();
+        let caret = self.st.caret.caret.min(t.len());
+        let i = span_of(&n.spans, caret);
+        let (s, e) = n.spans[i];
+        let size = n.look.size;
+        let face = n.look.face();
+        let soft_end = |e: usize| if e < t.len() && !t[e..].starts_with('\n') && e > 0 { prev_char(&t, e) } else { e };
+        let to = match how {
+            Nav::Up | Nav::Down => {
+                let j = if *how == Nav::Up { i.checked_sub(1) } else { Some(i + 1).filter(|&j| j < n.spans.len()) };
+                match j {
+                    None if *how == Nav::Up => 0,
+                    None => t.len(),
+                    Some(j) => {
+                        let x = text_width(&t[s..caret], size, face);
+                        let (s2, e2) = n.spans[j];
+                        let k = s2 + place_at(&t[s2..e2], x, size, face);
+                        if k == e2 {
+                            soft_end(e2).max(s2)
+                        } else {
+                            k
+                        }
+                    }
+                }
+            }
+            Nav::Edit(Key::Home) => s,
+            _ => soft_end(e).max(s),
+        };
+        self.st.caret.caret = to;
+        if !shift {
+            self.st.caret.anchor = to;
+        }
+        self.wake();
+        self.keep_caret_in_view();
     }
 
     fn slide_to(&mut self, path: &[usize], x: f32) -> Result<(), String> {
@@ -2331,13 +2513,13 @@ impl<'a, 'b> Ui<'a, 'b> {
         };
         let kind = node_at(&self.tree, &path).map(|n| n.kind.clone()).unwrap_or_default();
         match kind.as_str() {
-            "input" => {
+            "input" | "textarea" => {
                 if self.st.focus.as_ref() != Some(&path) {
                     self.set_focus(Some(path.clone()), false);
                 }
                 self.st.ring = false;
                 let Some(n) = node_at(&self.tree, &path) else { return Ok(()) };
-                let i = self.place_in_input(n, x);
+                let i = self.place_in(n, x, y);
                 let t = value_text(n).to_string();
                 match count {
                     1 if mods.shift => self.st.caret.caret = i,
@@ -2378,7 +2560,7 @@ impl<'a, 'b> Ui<'a, 'b> {
             }
             Drag::Select => {
                 if let Some(n) = self.focused() {
-                    let i = self.place_in_input(n, x);
+                    let i = self.place_in(n, x, y);
                     self.st.caret.caret = i;
                     self.keep_caret_in_view();
                 }
@@ -2419,7 +2601,7 @@ impl<'a, 'b> Ui<'a, 'b> {
     fn edit(&mut self, k: Key, mods: Mods) -> Result<(), String> {
         let Some(path) = self.st.focus.clone() else { return Ok(()) };
         let Some(n) = node_at(&self.tree, &path) else { return Ok(()) };
-        if n.kind != "input" {
+        if !editable(&n.kind) {
             return Ok(());
         }
         let t = value_text(n).to_string();
@@ -2489,8 +2671,26 @@ impl<'a, 'b> Ui<'a, 'b> {
                 let Some(path) = self.st.focus.clone() else { return Ok(()) };
                 let Some(n) = node_at(&self.tree, &path) else { return Ok(()) };
                 match (n.kind.as_str(), &k) {
-                    ("input", Nav::Edit(e)) => self.edit(e.clone(), mods),
-                    ("input", Nav::Copy | Nav::Cut) => {
+                    // In a text box, Up and Down go a line, and Home and End to its line's ends.
+                    ("textarea", Nav::Up | Nav::Down | Nav::Edit(Key::Home | Key::End)) if !mods.command => {
+                        self.textarea_move(&k, mods.shift);
+                        Ok(())
+                    }
+                    // Enter starts a new line in a text box, so its enter { } runs on Ctrl+Enter.
+                    ("textarea", Nav::Enter) if mods.command => match n.enter {
+                        Some(a) => {
+                            run_with(&mut self.actions[a], SV::Flag)?;
+                            self.rebuild()
+                        }
+                        None => Ok(()),
+                    },
+                    ("textarea", Nav::Enter) => self.edit(Key::Insert("\n".into()), Mods::default()),
+                    ("textarea", Nav::Paste) => match self.clip_get() {
+                        Some(t) => self.edit(Key::Insert(t.replace("\r\n", "\n").replace('\r', "\n")), Mods::default()),
+                        None => Ok(()),
+                    },
+                    ("input" | "textarea", Nav::Edit(e)) => self.edit(e.clone(), mods),
+                    ("input" | "textarea", Nav::Copy | Nav::Cut) => {
                         let sel = self.st.caret.selected(value_text(n)).to_string();
                         if sel.is_empty() {
                             return Ok(());
@@ -2501,7 +2701,7 @@ impl<'a, 'b> Ui<'a, 'b> {
                         }
                         Ok(())
                     }
-                    ("input", Nav::Undo | Nav::Redo) => {
+                    ("input" | "textarea", Nav::Undo | Nav::Redo) => {
                         let current = (value_text(n).to_string(), self.st.caret.clone());
                         let h = self.history.entry(path.clone()).or_default();
                         let back = if k == Nav::Undo { h.undo.pop() } else { h.redo.pop() };
@@ -2600,7 +2800,7 @@ impl<'a, 'b> Ui<'a, 'b> {
     /// The mouse pointer for this spot: a hand over things that act, a text bar over inputs.
     fn pointer(&self, x: f32, y: f32) -> u8 {
         match hit(&self.tree, x, y).and_then(|p| node_at(&self.tree, &p)).map(|n| n.kind.as_str()) {
-            Some("input") => 2,
+            Some("input" | "textarea") => 2,
             Some(_) => 1,
             None => 0,
         }
@@ -2672,7 +2872,7 @@ mod windowed {
                     return Ok(());
                 }
             }
-            let input = self.ui.focused_kind() == "input";
+            let input = editable(&self.ui.focused_kind());
             if mods.command {
                 if let WKey::Character(c) = &event.logical_key {
                     let nav = match c.to_lowercase().as_str() {
@@ -2700,6 +2900,9 @@ mod windowed {
                 WKey::Named(NamedKey::ArrowRight) => Some(Nav::Edit(Key::Right)),
                 WKey::Named(NamedKey::Home) => Some(Nav::Edit(Key::Home)),
                 WKey::Named(NamedKey::End) => Some(Nav::Edit(Key::End)),
+                // Cmd+Up and Cmd+Down go to the start and end of a text box's text on a Mac.
+                WKey::Named(NamedKey::ArrowUp) if mac_line => Some(Nav::Edit(Key::Home)),
+                WKey::Named(NamedKey::ArrowDown) if mac_line => Some(Nav::Edit(Key::End)),
                 WKey::Named(NamedKey::ArrowUp) => Some(Nav::Up),
                 WKey::Named(NamedKey::ArrowDown) => Some(Nav::Down),
                 WKey::Named(NamedKey::Tab) => Some(Nav::Tab),
@@ -3011,10 +3214,17 @@ fn word_at(t: &str, i: usize) -> (usize, usize) {
     (a, b)
 }
 
+/// Inputs and text boxes: what can be typed in.
+fn editable(kind: &str) -> bool {
+    kind == "input" || kind == "textarea"
+}
+
 /// What a key does in an input.
 #[derive(Clone, Debug, PartialEq)]
 enum Key {
     Type(String),
+    /// Text that keeps its new lines: Enter and pasting in a text box.
+    Insert(String),
     Back,
     Delete,
     Left,
@@ -3074,6 +3284,13 @@ impl Caret {
         match k {
             Key::Type(s) => {
                 let s: String = s.chars().filter(|c| !c.is_control()).collect();
+                if s.is_empty() {
+                    return None;
+                }
+                replace(self, a, b, &s)
+            }
+            Key::Insert(s) => {
+                let s: String = s.chars().filter(|&c| c == '\n' || !c.is_control()).collect();
                 if s.is_empty() {
                     return None;
                 }
@@ -3165,12 +3382,12 @@ fn dump(n: &Laid, depth: usize, path: &mut Vec<usize>, st: &PaintState, out: &mu
     if n.look.disabled {
         focus.push_str(" (disabled)");
     }
-    if n.kind == "scroll" {
+    if n.kind == "scroll" || (n.kind == "textarea" && n.content_h > n.h + 0.5) {
         focus.push_str(&format!(" (scrolled {} of {})", n.scrolled as i64, (n.content_h - n.h).max(0.0) as i64));
     }
     if st.focus.as_deref() == Some(path.as_slice()) {
         focus.push_str(" (focus");
-        if n.kind == "input" {
+        if editable(&n.kind) {
             let (a, b) = st.caret.range();
             let t = value_text(n);
             let chars = |i: usize| t[..i.min(t.len())].chars().count();

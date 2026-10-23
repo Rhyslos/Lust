@@ -1,0 +1,23 @@
+-- A text box with several lines: typing, Enter, wrapping, moving by lines, and scrolling.
+assembly App {
+    has {
+        string notes = "";
+        int changes = 0;
+        int sent = 0;
+    }
+
+    view [title "Notes", width 360, height 320] {
+        column [gap 8, pad 16] {
+            textarea notes [placeholder "Write something…", width fill, height 100] {
+                changes = changes + 1;
+            } enter {
+                sent = sent + 1;
+            }
+            text (#notes:split("\n")).text() + " lines, " + changes.text() + " changes, sent " + sent.text();
+            button "Clear" { notes = ""; }
+        }
+    }
+}
+
+App:open();
+end

@@ -12,7 +12,7 @@ pub const RESERVED: &[&str] = &[
 ];
 /// The pieces a view is made of.
 pub const ELEMENTS: &[&str] = &[
-    "column", "row", "stack", "scroll", "space", "text", "button", "input", "checkbox", "slider", "image", "every", "key",
+    "column", "row", "stack", "scroll", "space", "text", "button", "input", "checkbox", "slider", "image", "every", "key", "textarea",
 ];
 
 /// The value an input hands over when it changes. Lust code can't write this name.
@@ -871,7 +871,7 @@ impl<'a> Parser<'a> {
         }
         // An input changes what it's bound to, then runs its block: input name { … } is
         // name = (what was typed); …
-        if matches!(kind.as_str(), "input" | "checkbox" | "slider") {
+        if matches!(kind.as_str(), "input" | "textarea" | "checkbox" | "slider") {
             if let Some(a) = &arg {
                 let value = self.mk(a.pos, ExprKind::Name(VALUE.into()));
                 let mut body = vec![Stmt::Assign {

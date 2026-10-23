@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (2.0 alpha 21):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (2.0 alpha 22):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -572,7 +572,7 @@ An assembly with a `view` opens a window with `App:open();`, through `lust run` 
 
 - **Pieces:** `column`, `row`, `stack`, `space`, `text` and `button`. A button's `{ }` runs when it's clicked, and the window redraws afterwards.
 - **Scrolling, pictures and timers:** `scroll`, `image` and `every` (see below).
-- **Inputs:** `input`, `checkbox` and `slider`, each bound to a field (see below), with the mouse, the keyboard and the clipboard.
+- **Inputs:** `input`, `textarea` (several lines), `checkbox` and `slider`, each bound to a field (see below), with the mouse, the keyboard and the clipboard.
 - **Your own pieces:** any assembly with a view, used inside another view as `TodoRow { label = task };`, from the same file or fetched from files in `ui/` folders (see below).
 - **Styles and layout:** every word in the list below, `hover:[ … ]` included, plus named styles (`style chip = [pad 6, round];`). Text wraps onto more lines when it doesn't fit.
 - **Questions and loops** inside a view.
@@ -609,7 +609,7 @@ end
 | --- | --- |
 | `dump` | prints every piece with its place and size |
 | `click Add one` | clicks the button showing that text |
-| `focus input 1` | gives the first input focus (also `checkbox 2`, `slider 1`, `button 3`) |
+| `focus input 1` | gives the first input focus (also `textarea 1`, `checkbox 2`, `slider 1`, `button 3`) |
 | `type Hello` | types into the input that has focus |
 | `key ctrl+left` | presses a key: `backspace`, `delete`, `left`, `right`, `home`, `end`, `up`, `down`, `tab`, `enter`, `space`, `escape`, with `shift+` or `ctrl+` in front, and `ctrl+a`, `ctrl+c`, `ctrl+x`, `ctrl+v`; any key a shortcut uses works too (`key ctrl+s`, `key f1`) |
 | `check 1` | clicks the first checkbox |
@@ -756,10 +756,24 @@ assembly Settings {
 | | |
 | --- | --- |
 | Layout | `column`, `row`, `stack` (layers), `scroll`, `space` |
-| Content | `text`, `button`, `input`, `checkbox`, `slider`, `image` |
+| Content | `text`, `button`, `input`, `textarea`, `checkbox`, `slider`, `image` |
 | Time and keys | `every`, `key` |
 
 Questions and loops work inside a view: showing something only sometimes is an `is … ? then`, and a list is a `loop`.
+
+### Text boxes
+
+`textarea notes;` is an input with several lines, for notes, descriptions and messages. It's bound to a string field like an input, and the string holds the lines with `\n` between them:
+
+```
+textarea notes [placeholder "Write something…", width fill, height 160] {
+    saved = false;
+}
+```
+
+- **Lines:** Enter starts a new line, and lines too long for the box wrap between words. The text box is 300 wide and four lines tall unless it's given a `width` and `height`; when there's more, it scrolls (with the wheel, or by itself to keep the caret in view).
+- **Keys:** everything an input has, and Up and Down go a line up or down, Home and End to the start or end of the line, and Ctrl+Home and Ctrl+End (Cmd+Up and Cmd+Down on a Mac) to the start or end of the whole text. Pasting keeps the copied lines.
+- **`enter { }`** on a text box runs on Ctrl+Enter (Cmd+Enter on a Mac), since Enter starts a new line: `textarea message enter { send(); }`.
 
 ### Enter and keyboard shortcuts
 

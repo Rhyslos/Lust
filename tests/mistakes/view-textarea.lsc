@@ -1,0 +1,19 @@
+-- Mistakes with text boxes.
+assembly App {
+    has {
+        int age = 0;
+        string notes = "";
+    }
+
+    view {
+        column {
+            textarea age;
+            textarea;
+            textarea notes [placeholder 5];
+            textarea "hello";
+        }
+    }
+}
+
+App:open();
+end

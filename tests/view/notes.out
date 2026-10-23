@@ -1,0 +1,35 @@
+window "Notes" 360x320
+  column 0,0 360x200
+    textarea "" 16,16 328x100
+    text "1 lines, 0 changes, sent 0" 16,124 179x19
+    button "Clear" 16,151 66x33
+window "Notes" 360x320
+  column 0,0 360x200
+    textarea "First line\nSecond line that is long enough to wrap onto another line in the box" 16,16 328x100 (focus, caret 79)
+    text "2 lines, 3 changes, sent 0" 16,124 182x19
+    button "Clear" 16,151 66x33
+window "Notes" 360x320
+  column 0,0 360x200
+    textarea "First line\nSecond line that is long enough to wrap onto another line in the box" 16,16 328x100 (focus, caret 39)
+    text "2 lines, 3 changes, sent 0" 16,124 182x19
+    button "Clear" 16,151 66x33
+window "Notes" 360x320
+  column 0,0 360x200
+    textarea "First line\nSecond line that is long enough to wrap onto another line in the box\nSecond line that is long enough to wrap\n4\n5\n6" 16,16 328x100 (scrolled 47 of 47) (focus, caret 125)
+    text "6 lines, 11 changes, sent 0" 16,124 185x19
+    button "Clear" 16,151 66x33
+window "Notes" 360x320
+  column 0,0 360x200
+    textarea "First line\nSecond line that is long enough to wrap onto another line in the box\nSecond line that is long enough to wrap\n4\n5\n6" 16,16 328x100 (scrolled 0 of 47) (focus, caret 0)
+    text "6 lines, 11 changes, sent 0" 16,124 185x19
+    button "Clear" 16,151 66x33
+window "Notes" 360x320
+  column 0,0 360x200
+    textarea "First line\nSecond line that is long enough to wrap onto another line in the box\nSecond line that is long enough to wrap\n4\n5\n" 16,16 328x100 (scrolled 47 of 47) (focus, caret 124)
+    text "6 lines, 12 changes, sent 0" 16,124 188x19
+    button "Clear" 16,151 66x33
+window "Notes" 360x320
+  column 0,0 360x200
+    textarea "First line\nSecond line that is long enough to wrap onto another line in the box\nSecond line that is long enough to wrap\nX4\n5\n" 16,16 328x100 (scrolled 38 of 47) (focus, caret 121)
+    text "6 lines, 13 changes, sent 1" 16,124 185x19
+    button "Clear" 16,151 66x33

@@ -1099,7 +1099,7 @@ impl<'a> W<'a> {
                 }
                 let v = format!("p{}", self.fresh());
                 out.push_str(&format!("{pad}{{\n{pad}    let mut {v} = rt::ui::Node::new({kind:?});\n"));
-                let bound = matches!(kind.as_str(), "input" | "checkbox" | "slider");
+                let bound = matches!(kind.as_str(), "input" | "textarea" | "checkbox" | "slider");
                 match arg {
                     Some(a) if kind == "every" => {
                         let secs = self.coerced(a, &Ty::Float);

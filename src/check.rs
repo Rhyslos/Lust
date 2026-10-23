@@ -971,15 +971,16 @@ impl<'a> Checker<'a> {
                     self.err(a.pos, format!("{kind} shows text, but this is {}.{fix}", self.a(&t)));
                 }
             }
-            ("input" | "checkbox" | "slider", Some(a)) => {
+            ("input" | "textarea" | "checkbox" | "slider", Some(a)) => {
                 let t = self.expr(a, ctx, None);
                 let (want, example) = match kind {
                     "input" => ("text", "input name;"),
+                    "textarea" => ("text", "textarea notes;"),
                     "checkbox" => ("a bool", "checkbox done;"),
                     _ => ("a number", "slider volume [from 0, to 100];"),
                 };
                 let fits = match kind {
-                    "input" => t == Ty::Str,
+                    "input" | "textarea" => t == Ty::Str,
                     "checkbox" => t == Ty::Truth,
                     _ => matches!(t, Ty::Int | Ty::Float),
                 };
@@ -1013,7 +1014,7 @@ impl<'a> Checker<'a> {
                     },
                 );
             }
-            ("input" | "checkbox" | "slider", None) => {
+            ("input" | "textarea" | "checkbox" | "slider", None) => {
                 let an = if kind == "input" { "an" } else { "a" };
                 self.err(pos, format!("{an} {kind} needs the field it changes: {kind} name;"));
                 ctx.scopes.push(HashMap::new());
@@ -1084,7 +1085,7 @@ impl<'a> Checker<'a> {
             }
             ctx.scopes.pop();
         }
-        let bound = matches!(kind, "input" | "checkbox" | "slider");
+        let bound = matches!(kind, "input" | "textarea" | "checkbox" | "slider");
         if let Some(a) = enter {
             let was = std::mem::replace(&mut ctx.in_view, false);
             ctx.scopes.push(HashMap::new());
