@@ -1,0 +1,36 @@
+window "Dark" 380x320
+  column 0,0 380x248
+    column 16,16 348x187
+      text "Settings" 30,30 74x22
+      text "Words are light in the dark" 30,60 188x19
+      input "Ada" 30,87 320x33
+      row 30,128 320x20
+        checkbox "on" 30,129 18x18
+        text "Night" 56,129 38x19
+        space 102,138 120x0
+        slider "40" 230,128 120x20
+      row 30,156 176x33
+        button "Save" 30,156 64x33
+        button "Later" 102,156 65x33
+        text "tag" 175,159 31x27
+    row 16,213 104x19
+      checkbox "on" 16,214 18x18
+      text "Dark mode" 42,213 78x19
+window "Dark" 380x320
+  column 0,0 380x248
+    column 16,16 348x187
+      text "Settings" 30,30 74x22
+      text "Words are light in the dark" 30,60 188x19
+      input "Ada" 30,87 320x33
+      row 30,128 320x20
+        checkbox "on" 30,129 18x18
+        text "Night" 56,129 38x19
+        space 102,138 120x0
+        slider "40" 230,128 120x20
+      row 30,156 176x33
+        button "Save" 30,156 64x33
+        button "Later" 102,156 65x33
+        text "tag" 175,159 31x27
+    row 16,213 104x19
+      checkbox "off" 16,214 18x18
+      text "Dark mode" 42,213 78x19

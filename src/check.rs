@@ -1255,6 +1255,21 @@ impl<'a> Checker<'a> {
                     }
                 }
                 ("minWidth" | "minHeight", StyleValue::Expr(_)) if window => {}
+                ("dark", StyleValue::Flag) if window => {}
+                ("dark", StyleValue::Expr(e)) if window => {
+                    let t = self.info.ty(e);
+                    if !matches!(t, Ty::Truth | Ty::Error) {
+                        self.err(e.pos, format!("dark takes a bool, like dark darkMode. This is {}.", self.a(&t)));
+                    }
+                }
+                ("dark", StyleValue::Nested(inner)) if !window => {
+                    let inner = inner.clone();
+                    self.check_styles(&inner, kind);
+                }
+                ("dark", _) if !window => self.err(
+                    it.pos,
+                    "on a piece, dark: holds the styles it has in dark mode: dark:[color blue3]. Dark mode itself is turned on in the view's [ ]: view [dark].",
+                ),
                 ("font", v) => match v {
                     StyleValue::Expr(e) if matches!(self.info.ty(e), Ty::Str | Ty::Error) => {}
                     _ => self.err(it.pos, "font takes a font file: font \"fonts/Lora.ttf\"."),
@@ -1312,6 +1327,7 @@ impl<'a> Checker<'a> {
                             "minHeight".into(),
                             "background".into(),
                             "font".into(),
+                            "dark".into(),
                         ]
                     } else {
                         NUMS.iter()
@@ -1328,6 +1344,7 @@ impl<'a> Checker<'a> {
                                     "disabled",
                                     "font",
                                     "tip",
+                                    "dark",
                                 ]
                                 .iter(),
                             )
@@ -1342,7 +1359,7 @@ impl<'a> Checker<'a> {
                     if window {
                         self.err(
                             it.pos,
-                            format!("a window's view has title, width, height, minWidth, minHeight, background and font.{s}"),
+                            format!("a window's view has title, width, height, minWidth, minHeight, background, font and dark.{s}"),
                         );
                     } else if FLAGS.contains(&n) || colour_word || named {
                         self.err(it.pos, format!("{n} is a word on its own, without a value."));

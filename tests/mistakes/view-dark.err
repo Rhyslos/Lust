@@ -1,0 +1,5 @@
+view-dark.lsc:7:16  dark takes a bool, like dark darkMode. This is an int.
+view-dark.lsc:8:23  Lust has no style called glow. Did you mean grow?
+view-dark.lsc:9:24  on a piece, dark: holds the styles it has in dark mode: dark:[color blue3]. Dark mode itself is turned on in the view's [ ]: view [dark].
+
+3 mistakes. Nothing was run.
