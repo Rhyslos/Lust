@@ -41,7 +41,7 @@ fn numeric(args: &[Ty]) -> Option<Ty> {
 pub fn listing(obj: &str) -> &'static str {
     match obj {
         "Maths" => "abs, min, max, clamp, round, floor, ceil, sqrt, power, sin, cos and tan, and Maths.pi",
-        "Files" => "read, write, append, exists, remove, list and makeFolder",
+        "Files" => "read, write, append, exists, remove, list, makeFolder, chooseOpen, chooseSave and chooseFolder",
         "Time" => "now, clock, date, time, addDays, daysBetween, weekday and isDate",
         "Web" => "serve, request, fail, get and post",
         _ => "read, write and pretty",
@@ -78,6 +78,9 @@ pub fn object_method(obj: &str, m: &str, args: &[Ty]) -> Option<Result<Lib, Stri
         ("Files", "exists") => lib("files_exists", vec![("path", Str)], Truth),
         ("Files", "remove") => lib("files_remove", vec![("path", Str)], Void),
         ("Files", "list") => lib("files_list", vec![("folder", Str)], Array(Box::new(Str))),
+        ("Files", "chooseOpen") => lib("files_chooseOpen", vec![("title", Str), ("types", Array(Box::new(Str)))], Str),
+        ("Files", "chooseSave") => lib("files_chooseSave", vec![("title", Str), ("name", Str)], Str),
+        ("Files", "chooseFolder") => lib("files_chooseFolder", vec![("title", Str)], Str),
         ("Files", "makeFolder") => lib("files_makeFolder", vec![("folder", Str)], Void),
         ("Time", "now" | "clock") => lib(&format!("time_{m}"), vec![], Float),
         ("Web", "get") => lib("web_get", vec![("address", Str)], Str),

@@ -4928,6 +4928,12 @@ fn test(s: Settings, build: &mut Build) -> Result<(), String> {
                 }
             }
             "size" if nums.len() >= 2 => ui.resize(nums[0], nums[1])?,
+            // choose pictures/cat.png: the answer the next open or save box gives (or cancel).
+            "choose" => {
+                let was = std::env::var("LUST_CHOSEN").unwrap_or_default();
+                let all = if was.is_empty() { rest.to_string() } else { format!("{was}\n{rest}") };
+                std::env::set_var("LUST_CHOSEN", all);
+            }
             // Paints the window N times without saving, to measure how long painting takes.
             "paint" => {
                 let n = nums.first().copied().unwrap_or(1.0) as usize;

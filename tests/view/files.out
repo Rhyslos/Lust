@@ -1,0 +1,18 @@
+window "Files" 360x240
+  column 0,0 360x146
+    row 16,16 283x33
+      button "Open…" 16,16 81x33
+      button "Save as…" 105,16 98x33
+      button "Folder…" 211,16 88x33
+    text "Picture: sunset.png" 16,57 138x19
+    text "Save to: " 16,84 62x19
+    text "Folder: " 16,111 54x19
+window "Files" 360x240
+  column 0,0 360x146
+    row 16,16 283x33
+      button "Open…" 16,16 81x33
+      button "Save as…" 105,16 98x33
+      button "Folder…" 211,16 88x33
+    text "No picture" 16,57 75x19
+    text "Save to: notes/today.txt" 16,84 169x19
+    text "Folder: pictures" 16,111 112x19
