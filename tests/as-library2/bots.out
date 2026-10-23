@@ -1,0 +1,6 @@
+velocity Vec3 { x: 0.0, y: 0.0, z: -0.49050003 }
+ahead Vec3 { x: 3.4228542e-8, y: 0.99999994, z: 0.0 }
+crowd 1
+all 3
+velocity Vec3 { x: 1.0, y: 2.0, z: 3.0 }
+aim along 2 points, from Vec3 { x: 0.0, y: 0.0, z: 9.98365 } to Vec3 { x: 6.8457084e-8, y: 1.9999999, z: 9.98365 }, turned Rotation { x: 0.0, y: 0.0, z: 0.70710677, w: 0.70710677 }

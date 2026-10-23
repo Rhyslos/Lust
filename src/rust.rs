@@ -783,8 +783,14 @@ impl<'a> W<'a> {
     fn library_api(&mut self, prog: &Program, class_decls: &[&ClassDecl]) -> String {
         let info = self.info;
         let exported = |n: &str| prog.passes.iter().any(|(p, _)| p == n);
-        let plain = |t: &Ty| matches!(t, Ty::Int | Ty::Float | Ty::Str | Ty::Truth | Ty::Class(_));
-        let mut out = String::new();
+        fn plain(t: &Ty) -> bool {
+            match t {
+                Ty::Array(e) => plain(e) && !matches!(**e, Ty::Array(_)),
+                _ => matches!(t, Ty::Int | Ty::Float | Ty::Str | Ty::Truth | Ty::Vec3 | Ty::Rot | Ty::Class(_)),
+            }
+        }
+        // Vectors and rotations are the runtime's own types, handed out as they are.
+        let mut out = String::from("\npub use rt::{Rotation, Vec3};\n");
         for (ci, c) in info.classes.iter().enumerate() {
             let root = self.root(ci);
             let w = ident(&c.name);
@@ -901,6 +907,9 @@ impl<'a> W<'a> {
             Ty::Str => "String".into(),
             Ty::Truth => "bool".into(),
             Ty::Class(c) => format!("Option<{}>", ident(&self.info.classes[*c].name)),
+            Ty::Vec3 => "Vec3".into(),
+            Ty::Rot => "Rotation".into(),
+            Ty::Array(e) => format!("Vec<{}>", self.api_ty(e)),
             Ty::Void => "()".into(),
             other => self.ty(other),
         }
@@ -918,6 +927,11 @@ impl<'a> W<'a> {
     fn to_api(&self, code: &str, t: &Ty) -> String {
         match t {
             Ty::Class(c) => format!("{code}.clone().map({})", ident(&self.info.classes[*c].name)),
+            // An array goes out as a Vec of its items, copied.
+            Ty::Array(e) => format!(
+                "rt::acopy(&{code}).into_iter().map(|x| {}).collect::<Vec<_>>()",
+                self.to_api("x", e)
+            ),
             _ => code.to_string(),
         }
     }
@@ -926,6 +940,7 @@ impl<'a> W<'a> {
     fn from_api(&self, code: &str, t: &Ty) -> String {
         match t {
             Ty::Class(_) => format!("{code}.map(|w| w.0)"),
+            Ty::Array(e) => format!("rt::arr({code}.into_iter().map(|x| {}).collect())", self.from_api("x", e)),
             _ => code.to_string(),
         }
     }

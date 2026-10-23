@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (2.0 alpha 28):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (2.0 alpha 29):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -1316,7 +1316,7 @@ end
 
 The game uses it like any other file: `fetch "engine/entity":Entity;` and `get "engine/entity":now;`. Lust checks every call against it, so a typo or a wrong type is caught before anything runs, even though the bodies are elsewhere.
 
-- A native method takes and gives back ints, floats, text, bools and things made from classes.
+- A native method takes and gives back ints, floats, text, bools, `vec3`s, `rotation`s, things made from classes, and arrays of any of those (`Thing array`, `vec3 array`).
 - Where the body comes from:
   - **built as a Rust library** (below): from the Rust program using it;
   - **LustScript** (`.lsc`): from the host's own Lua function with the same name, or `Class_method` for a class's method, which is given the thing first;
@@ -1338,7 +1338,8 @@ What the Rust program sees:
 - **Classes with native methods** are always there in full, since they belong to the program: it makes them, and fills in their fields.
 - **The native methods' bodies:** the program implements `game::Host`, one function each (`entity_move_by(&self, this: &Entity, dx: f64)`, `now(&self)`), and hands it over with `game::set_host(…)` before `start`.
 - **Mistakes come back as text.** Everything gives back a `Result`, and a Lust failure is the same message Lust prints, with its file and line: `Err("game.lst:24  this is nothing, so it has no fields or methods.")`. The program decides what to do with it.
-- Ints, floats, text and bools are Rust's `i64`, `f64`, `String` and `bool`. A thing made from a class is `Option<Weapon>`, since it can be `nothing`.
+- Ints, floats, text and bools are Rust's `i64`, `f64`, `String` and `bool`. A thing made from a class is `Option<Weapon>`, since it can be `nothing`. A `vec3` is the library's `Vec3 { x, y, z }` and a `rotation` its `Rotation { x, y, z, w }` (a quaternion), all `f32`, the same layout as Solis's and glam's. An array is a `Vec` of its items, copied each way.
+- **In LustScript**, the host's Lua function hands a `vec3` back as any table with `x`, `y` and `z` (a Luau `vector` works too), a rotation as one with `x`, `y`, `z` and `w`, and an array as a plain list. Lust rounds the numbers to f32 and counts the list, so they're the same as Lust's own.
 
 `lust test` tests libraries too: a `game.host.rs` next to `game.lst` is a Rust program that uses it, and its output is compared with `game.out`.
 
