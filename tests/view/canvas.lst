@@ -1,0 +1,28 @@
+-- Drawing in a canvas: boxes, circles and lines placed by x and y, and a chart from data.
+assembly App {
+    has {
+        int array sales = [3, 7, 4, 9, 6];
+        int picked = 0;
+    }
+
+    view [title "Canvas", width 360, height 260] {
+        column [gap 8, pad 16] {
+            canvas [width 320, height 160, background gray1, round 8] {
+                line [x 10, y 140, toX 310, toY 140, thick 1, gray5];
+                int i = 0;
+                loop (int s in sales) {
+                    box [x 20 + i * 60, y 140 - s * 14, width 40, height s * 14, round 4, blue5] {
+                        picked = s;
+                    }
+                    i = i + 1;
+                }
+                circle [x 290, y 24, radius 12, orange];
+                text "Sales" [x 12, y 8, bold];
+            }
+            text "Picked " + picked.text();
+        }
+    }
+}
+
+App:open();
+end

@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (2.0 alpha 25):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (2.0 alpha 26):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -583,6 +583,7 @@ An assembly with a `view` opens a window with `App:open();`, through `lust run` 
 - **Fonts:** `font "fonts/Lora.ttf"` draws a piece's words in a font file of your own, and on the view's `[ ]` it's the whole window's font.
 - **Feedback:** hover looks fade in and out, and a button looks pressed in while it's held down.
 - **Laying out bigger apps:** `grid` for cards in columns that rewrap as the window changes size, `split` for panels with a line between them to drag, `tabs`, `branch` for parts that fold open and shut (trees), and `progress` bars (see below).
+- **Drawing and motion:** `canvas` with `box`, `circle` and `line` placed by `x` and `y`, for charts, maps and games, and `animate` for pieces that glide to where they go and fade in (see below).
 - **Things that show over the view:** `dropdown` lists to choose from, `menu`s of `item`s, `dialog`s that pop up while a bool is true, and `tip "…"` for a note when the mouse rests on a piece (see below).
 
 ```
@@ -763,6 +764,7 @@ assembly Settings {
 | --- | --- |
 | Layout | `column`, `row`, `stack` (layers), `scroll`, `space`, `grid`, `split` |
 | Showing parts | `tabs` with `tab`, `branch` |
+| Drawing | `canvas` with `box`, `circle`, `line` |
 | Content | `text`, `button`, `input`, `textarea`, `checkbox`, `slider`, `image`, `progress` |
 | Choosing | `dropdown`, `menu` with `item` and `divider` |
 | Over the view | `dialog` |
@@ -847,6 +849,43 @@ branch "Weapons" [open] {
 ### Progress bars
 
 `progress done [to total];` shows how far along something is, as a bar that fills up. It goes `from` 0 `to` 100 unless told otherwise, is 200 wide and 8 tall unless given a `width` and `height`, and a colour word colours the part that's filled: `progress loaded [to 1.0, width fill, green]`.
+
+### Drawing: canvas
+
+`canvas [width 300, height 150] { … }` is a box to draw in. What's in it goes where its `x` and `y` say, counted from the canvas's top left, instead of one after another, and anything outside the canvas is cut off. Three shapes are drawn only in a canvas:
+
+| | |
+| --- | --- |
+| `box [x 10, y 20, width 40, height 60, blue]` | a rectangle, `round` for rounded corners, `border` for an outline |
+| `circle [x 150, y 60, radius 20, red]` | a circle around the point x, y |
+| `line [x 0, y 100, toX 300, toY 20, thick 2, gray6]` | a line from x, y to toX, toY, `thick` wide |
+
+A colour word fills a box or circle and colours a line. Any other piece can go in a canvas too, placed the same way: `text "Score" [x 10, y 8, bold]`, a `button`, a picture. A box or circle with a `{ }` runs it when it's clicked. With a `loop`, a canvas draws from the data, like a bar chart:
+
+```
+canvas [width 320, height 160, background gray1, round 8] {
+    line [x 10, y 140, toX 310, toY 140, thick 1, gray5];
+    int i = 0;
+    loop (int s in sales) {
+        box [x 20 + i * 60, y 140 - s * 14, width 40, height s * 14, round 4, blue5] { picked = s; }
+        i = i + 1;
+    }
+}
+```
+
+A canvas is 300 by 150 unless it's given a `width` and `height`.
+
+### Motion: animate
+
+`animate` on a piece makes it glide to its new place when it moves, instead of jumping, and fade in when it first shows up. In a list, when a row is removed the rows under it slide up, and a new row fades in:
+
+```
+loop (string n in names) {
+    text n [animate, pad 6, round, background gray1];
+}
+```
+
+A moving piece is known by the pieces around it, its kind and its first words, so it's followed even when the rows above it change. Scrolling and changing the window's size don't make pieces glide. Hover looks fade on their own, without `animate`.
 
 ### Dropdowns
 
@@ -995,6 +1034,8 @@ Short words in `[ ]`, in the spirit of Tailwind:
 | in dark mode | `dark:[ … ]` |
 | inputs and pictures | `placeholder "…"`, `from`, `to`, `step`, `cover` |
 | grids, splits, branches | `columns 3`, `cell 180`, `down`, `open` |
+| in a canvas | `x`, `y`, `toX`, `toY`, `radius`, `thick` |
+| motion | `animate` |
 | words | `font "file.ttf"` |
 | off | `disabled`, or `disabled` with a bool: `disabled not ready` |
 

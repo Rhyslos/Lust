@@ -1,0 +1,27 @@
+-- animate: pieces glide to where they go, and new ones fade in.
+assembly App {
+    has {
+        string array names = ["Ada", "Bo", "Cy"];
+        int added = 0;
+    }
+
+    view [title "Motion", width 300, height 260] {
+        column [gap 6, pad 16] {
+            row [gap 8] {
+                button "Add" {
+                    added = added + 1;
+                    names:inject("New " + added.text());
+                }
+                button "Remove first" {
+                    names:remove(0);
+                }
+            }
+            loop (string n in names) {
+                text n [animate, pad 6, round, background gray1, width fill];
+            }
+        }
+    }
+}
+
+App:open();
+end

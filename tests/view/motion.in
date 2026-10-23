@@ -1,0 +1,11 @@
+dump
+click Remove first
+paint 1
+wait 0.08
+paint 1
+wait 0.3
+click Add
+wait 0.05
+paint 1
+wait 0.3
+dump

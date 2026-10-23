@@ -221,8 +221,9 @@ pub struct Checker<'a> {
     maker_ok: bool,
     /// The keys of the map and cMap loops being checked, innermost last.
     loop_keys: Vec<String>,
-    /// How many menus the piece being checked is inside.
+    /// How many menus and canvases the piece being checked is inside.
     menus: usize,
+    canvases: usize,
 }
 
 pub fn check(prog: &Program, diags: &mut Diags, is_script: bool) -> Info {
@@ -235,6 +236,7 @@ pub fn check(prog: &Program, diags: &mut Diags, is_script: bool) -> Info {
         maker_ok: false,
         loop_keys: vec![],
         menus: 0,
+        canvases: 0,
     };
     c.run(prog, is_script);
     c.info
@@ -1099,6 +1101,10 @@ impl<'a> Checker<'a> {
             ("progress", None) => self.err(pos, "progress needs the number it shows: progress done [to total];"),
             ("item", None) => self.err(pos, "an item needs its words: item \"Open\" { … }"),
             ("divider", None) if self.menus == 0 => self.err(pos, "a divider is a line between items, so it goes inside a menu."),
+            ("box" | "circle" | "line", None) if self.canvases == 0 => self.err(
+                pos,
+                format!("a {kind} is drawn in a canvas: canvas [width 300, height 200] {{ {kind} [x 10, y 10, …]; }}"),
+            ),
             ("dialog", None) => {
                 self.err(pos, "a dialog needs the bool that opens it: dialog confirming { … }");
                 ctx.scopes.push(HashMap::new());
@@ -1171,6 +1177,8 @@ impl<'a> Checker<'a> {
             ctx.scopes.push(HashMap::new());
             let menu = kind == "menu";
             self.menus += menu as usize;
+            let canvas = kind == "canvas";
+            self.canvases += canvas as usize;
             // A dialog's own pieces are its, not inside a menu around it.
             let outer = if kind == "dialog" { std::mem::take(&mut self.menus) } else { 0 };
             for s in children {
@@ -1178,6 +1186,7 @@ impl<'a> Checker<'a> {
             }
             self.menus += outer;
             self.menus -= menu as usize;
+            self.canvases -= canvas as usize;
             ctx.scopes.pop();
         }
         let bound = matches!(kind, "input" | "textarea" | "checkbox" | "slider" | "dropdown" | "dialog" | "tabs");
@@ -1192,7 +1201,7 @@ impl<'a> Checker<'a> {
         }
         let _ = choices;
         if let Some(a) = action {
-            if !matches!(kind, "button" | "every" | "key" | "item") && !bound {
+            if !matches!(kind, "button" | "every" | "key" | "item" | "box" | "circle") && !bound {
                 self.err(pos, format!("a {kind} doesn't do anything when clicked, so it has no {{ }}."));
             }
             let was = std::mem::replace(&mut ctx.in_view, false);
@@ -1244,12 +1253,18 @@ impl<'a> Checker<'a> {
             "from",
             "to",
             "step",
+            "x",
+            "y",
+            "toX",
+            "toY",
+            "radius",
+            "thick",
             "columns",
             "cell",
         ];
         const FLAGS: &[&str] = &[
             "tiny", "small", "large", "huge", "bold", "muted", "strike", "nowrap", "shadow", "pill", "left", "center", "right", "top",
-            "middle", "bottom", "spread", "subtle", "cover", "down", "open",
+            "middle", "bottom", "spread", "subtle", "cover", "down", "open", "animate",
         ];
         const COLOURED: &[&str] = &["color", "background"];
         let window = kind == "view";

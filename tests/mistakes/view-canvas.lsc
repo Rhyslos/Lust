@@ -1,0 +1,21 @@
+-- Mistakes with canvases and shapes.
+assembly App {
+    has {
+        int n = 0;
+    }
+
+    view {
+        column {
+            box [x 1, y 2];
+            canvas 5 { circle; }
+            canvas {
+                line [x "a", toX 4];
+                circle [radius true];
+                text "Hi" [animate 3];
+            }
+        }
+    }
+}
+
+App:open();
+end

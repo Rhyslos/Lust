@@ -581,6 +581,16 @@ struct Look {
     down: bool,
     /// A branch starts open.
     open: bool,
+    /// Where a piece is drawn in a canvas, and where a line goes to.
+    at_x: f32,
+    at_y: f32,
+    to_x: f32,
+    to_y: f32,
+    /// A circle's size, and how thick a line is.
+    rad: f32,
+    thick: f32,
+    /// Moves, and shows up, smoothly instead of jumping.
+    animate: bool,
 }
 
 impl Look {
@@ -649,6 +659,13 @@ fn base_look(kind: &str) -> Look {
         cell: 160.0,
         down: false,
         open: false,
+        at_x: 0.0,
+        at_y: 0.0,
+        to_x: 0.0,
+        to_y: 0.0,
+        rad: 10.0,
+        thick: 2.0,
+        animate: false,
     };
     match kind {
         "input" | "textarea" => {
@@ -725,6 +742,20 @@ fn base_look(kind: &str) -> Look {
             l.weight = 500.0;
         }
         "tab" => l.width = Size::Fill,
+        "canvas" => {
+            l.width = Size::Fixed(300.0);
+            l.height = Size::Fixed(150.0);
+        }
+        "box" => {
+            l.width = Size::Fixed(20.0);
+            l.height = Size::Fixed(20.0);
+            l.background = Some(0x868e96);
+        }
+        "circle" => {
+            l.radius = f32::INFINITY;
+            l.background = Some(0x868e96);
+        }
+        "line" => l.color = 0x495057,
         "branchbody" => {
             l.width = Size::Fill;
             l.pad = [0.0, 0.0, 0.0, 20.0];
@@ -865,6 +896,13 @@ fn apply(l: &mut Look, kind: &str, style: &[(String, SV)]) {
             "cell" => l.cell = num(v).unwrap_or(160.0).max(1.0),
             "down" => l.down = true,
             "open" => l.open = true,
+            "x" => l.at_x = num(v).unwrap_or(0.0),
+            "y" => l.at_y = num(v).unwrap_or(0.0),
+            "toX" => l.to_x = num(v).unwrap_or(0.0),
+            "toY" => l.to_y = num(v).unwrap_or(0.0),
+            "radius" => l.rad = num(v).unwrap_or(10.0).max(0.0),
+            "thick" => l.thick = num(v).unwrap_or(2.0).max(0.0),
+            "animate" => l.animate = true,
             "font" => {
                 if let Some(f) = text_of(v).and_then(font_file) {
                     l.font = Some(f);
@@ -877,6 +915,8 @@ fn apply(l: &mut Look, kind: &str, style: &[(String, SV)]) {
                         let c = bg_colour(other).unwrap_or(c);
                         l.background = Some(c);
                         l.color = if light(c) { INK } else { 0xffffff };
+                    } else if matches!(kind, "box" | "circle") {
+                        l.background = bg_colour(other);
                     } else if matches!(kind, "checkbox" | "slider" | "input" | "textarea" | "progress" | "tabs") {
                         l.accent = c;
                     } else {
@@ -1066,6 +1106,8 @@ struct Laid {
     key: String,
     /// Which tab a tab's button is, or which split this is in the view.
     index: usize,
+    /// Where a line in a canvas starts and ends.
+    ends: [f32; 4],
     /// What an input, checkbox or slider shows.
     value: Option<SV>,
     /// A scroll's content, top to bottom, and how far it's scrolled down.
@@ -1171,6 +1213,7 @@ fn lay(n: &Node) -> Laid {
         items,
         key: String::new(),
         index: 0,
+        ends: [0.0; 4],
         children,
     };
     match n.kind.as_str() {
@@ -1390,7 +1433,8 @@ fn measure(n: &Laid, max_w: f32) -> (f32, f32) {
             }
             (w.ceil(), lh * lines.len().max(1) as f32)
         }
-        "space" | "checkbox" | "slider" | "progress" => (0.0, 0.0),
+        "space" | "checkbox" | "slider" | "progress" | "canvas" | "box" | "line" => (0.0, 0.0),
+        "circle" => (2.0 * l.rad, 2.0 * l.rad),
         "grid" => {
             let (cols, cw) = grid_columns(l, inner);
             let rows = grid_rows(n, cols, cw);
@@ -1522,6 +1566,34 @@ fn place(n: &mut Laid, x: f32, y: f32, w: f32, h: f32) {
     }
     let count = n.children.len();
     match if n.kind == "split" { "split" } else if across(n) { "row" } else { n.kind.as_str() } {
+        "canvas" => {
+            // Each piece where its x and y say, from the canvas's top left.
+            for c in n.children.iter_mut() {
+                let cl = &c.look;
+                let (cx, cy, cw, ch) = match c.kind.as_str() {
+                    "circle" => (cl.at_x - cl.rad, cl.at_y - cl.rad, 2.0 * cl.rad, 2.0 * cl.rad),
+                    "line" => {
+                        let t = cl.thick / 2.0;
+                        let (bx, by) = (cl.at_x.min(cl.to_x) - t, cl.at_y.min(cl.to_y) - t);
+                        // Its ends, from its own top left, so it moves with it.
+                        c.ends = [cl.at_x - bx, cl.at_y - by, cl.to_x - bx, cl.to_y - by];
+                        (bx, by, (cl.to_x - cl.at_x).abs() + 2.0 * t, (cl.to_y - cl.at_y).abs() + 2.0 * t)
+                    }
+                    _ => {
+                        let w = match cl.width {
+                            Size::Fixed(f) => clamp_w(c, f),
+                            _ => natural(c, iw).0,
+                        };
+                        let h = match cl.height {
+                            Size::Fixed(f) => clamp_h(c, f),
+                            _ => natural(c, w).1,
+                        };
+                        (cl.at_x, cl.at_y, w, h)
+                    }
+                };
+                place(c, ix + cx, iy + cy, cw, ch);
+            }
+        }
         "grid" => {
             let (cols, cw) = grid_columns(&l, iw);
             let rows = grid_rows(n, cols, cw);
@@ -2346,7 +2418,12 @@ fn paint(c: &mut Canvas, n: &Laid, st: &PaintState, path: &mut Vec<usize>) {
     if n.kind == "image" {
         paint_image(c, n, l);
     }
-    let unclipped = if n.kind == "scroll" { Some(c.clip_to(n.x, n.y, n.w, n.h)) } else { None };
+    if n.kind == "line" {
+        let [x0, y0, x1, y1] = n.ends;
+        c.line(n.x + x0, n.y + y0, n.x + x1, n.y + y1, l.thick, l.color);
+    }
+    // What's in a scroll or a canvas is cut off at its edges.
+    let unclipped = if n.kind == "scroll" || n.kind == "canvas" { Some(c.clip_to(n.x, n.y, n.w, n.h)) } else { None };
     if shows_text(&n.kind) {
         let (_, lh) = line_metrics(l.size, l.face());
         let inner_w = n.w - l.pad[1] - l.pad[3];
@@ -2760,6 +2837,75 @@ struct Ui<'a, 'b> {
     /// The piece with a tip that the mouse is resting on, and since when; and whether its tip shows.
     tip: Option<(Vec<usize>, std::time::Instant)>,
     tip_on: bool,
+    /// Where each piece told to `animate` was last placed, and the ones gliding or fading in now.
+    placed: HashMap<String, (f32, f32)>,
+    motions: HashMap<String, Motion>,
+    drawn: bool,
+    /// The window changed size, so nothing glides this time.
+    snap: bool,
+}
+
+/// A piece told to `animate`, gliding from where it was to where it is now (in seconds on the
+/// window's clock), or fading in where it's appeared.
+#[derive(Clone, Debug)]
+struct Motion {
+    from: (f32, f32),
+    to: (f32, f32),
+    start: f64,
+    appear: bool,
+}
+
+const MOVE_SECS: f64 = 0.22;
+
+/// How far along a motion is, eased so it slows down at the end, from 0 to 1.
+fn eased(t: f64) -> f32 {
+    let t = t.clamp(0.0, 1.0);
+    (1.0 - (1.0 - t).powi(3)) as f32
+}
+
+/// The first words in a piece, to know it by when it moves.
+fn fingerprint(n: &Laid) -> String {
+    if !n.text.is_empty() {
+        return n.text.clone();
+    }
+    if let Some(SV::Text(t)) = &n.value {
+        return t.clone();
+    }
+    n.children.iter().map(fingerprint).find(|f| !f.is_empty()).unwrap_or_default()
+}
+
+/// Every piece told to `animate`, with what it's known by and where it is. A piece is known by
+/// the pieces around it, its kind and its first words, so a row that moves up when one above it is
+/// removed is still the same row.
+fn animated(n: &Laid, key: &str, path: &mut Vec<usize>, out: &mut Vec<(String, Vec<usize>, f32, f32)>) {
+    let mut seen: HashMap<String, usize> = HashMap::new();
+    for (i, c) in n.children.iter().enumerate() {
+        let base = format!("{}:{}", c.kind, fingerprint(c));
+        let nth = seen.entry(base.clone()).or_insert(0);
+        *nth += 1;
+        let k = format!("{key}/{base}#{nth}");
+        path.push(i);
+        if c.look.animate {
+            out.push((k.clone(), path.clone(), c.x, c.y));
+        }
+        animated(c, &k, path, out);
+        path.pop();
+    }
+}
+
+fn shift_all(n: &mut Laid, dx: f32, dy: f32) {
+    n.x += dx;
+    n.y += dy;
+    for c in n.children.iter_mut() {
+        shift_all(c, dx, dy);
+    }
+}
+
+fn node_at_mut<'a>(n: &'a mut Laid, path: &[usize]) -> Option<&'a mut Laid> {
+    match path.split_first() {
+        None => Some(n),
+        Some((&i, rest)) => n.children.get_mut(i).and_then(|c| node_at_mut(c, rest)),
+    }
 }
 
 /// How long the mouse rests on a piece before its tip shows.
@@ -2821,6 +2967,10 @@ impl<'a, 'b> Ui<'a, 'b> {
             popup: None,
             tip: None,
             tip_on: false,
+            placed: HashMap::new(),
+            motions: HashMap::new(),
+            drawn: false,
+            snap: false,
         };
         ui.relayout();
         ui.set_timers();
@@ -2889,6 +3039,9 @@ impl<'a, 'b> Ui<'a, 'b> {
     fn relayout(&mut self) {
         let (w, h) = (self.w, self.h);
         let (mut tree, dialogs) = lay_out(&self.node, w, h);
+        // Where pieces told to animate are, before scrolling, so scrolling doesn't make them glide.
+        let mut found = Vec::new();
+        animated(&tree, "", &mut vec![], &mut found);
         apply_scrolls(&mut tree, &mut vec![], &mut self.scrolls);
         let add = |tree: &mut Laid, mut l: Laid, scrolls: &mut HashMap<Vec<usize>, f32>| {
             let k = tree.children.len();
@@ -2923,6 +3076,76 @@ impl<'a, 'b> Ui<'a, 'b> {
             }
         }
         self.tree = tree;
+        self.track_motion(found);
+    }
+
+    /// Starts pieces told to `animate` gliding to where they are now, or fading in if they're new.
+    fn track_motion(&mut self, found: Vec<(String, Vec<usize>, f32, f32)>) {
+        // When the window changes size, everything jumps to its new place.
+        let snap = std::mem::take(&mut self.snap);
+        if snap {
+            self.motions.clear();
+        }
+        if found.is_empty() && self.motions.is_empty() {
+            self.placed.clear();
+            self.drawn = true;
+            return;
+        }
+        let now = self.now();
+        let mut placed = HashMap::new();
+        for (key, _, x, y) in found {
+            match self.placed.get(&key).copied() {
+                Some(was) if !snap && ((was.0 - x).abs() > 0.5 || (was.1 - y).abs() > 0.5) => {
+                    // From where it shows now, which is part way if it was already moving.
+                    let from = match self.motions.get(&key) {
+                        Some(m) => {
+                            let t = eased((now - m.start) / MOVE_SECS);
+                            (m.from.0 + (m.to.0 - m.from.0) * t, m.from.1 + (m.to.1 - m.from.1) * t)
+                        }
+                        None => was,
+                    };
+                    self.motions.insert(key.clone(), Motion { from, to: (x, y), start: now, appear: false });
+                }
+                Some(_) => {}
+                None if self.drawn && !snap => {
+                    self.motions.insert(key.clone(), Motion { from: (x, y + 8.0), to: (x, y), start: now, appear: true });
+                }
+                None => {}
+            }
+            placed.insert(key, (x, y));
+        }
+        self.motions.retain(|k, m| placed.contains_key(k) && now - m.start < MOVE_SECS);
+        self.placed = placed;
+        self.drawn = true;
+    }
+
+    /// The view as it shows right now: with pieces part way through gliding or fading in.
+    fn shown(&mut self) -> std::borrow::Cow<'_, Laid> {
+        let now = self.now();
+        self.motions.retain(|_, m| now - m.start < MOVE_SECS);
+        if self.motions.is_empty() {
+            return std::borrow::Cow::Borrowed(&self.tree);
+        }
+        let mut tree = self.tree.clone();
+        let mut found = Vec::new();
+        animated(&self.tree, "", &mut vec![], &mut found);
+        for (key, path, _, _) in found {
+            let Some(m) = self.motions.get(&key) else { continue };
+            let t = eased((now - m.start) / MOVE_SECS);
+            let Some(n) = node_at_mut(&mut tree, &path) else { continue };
+            let (px, py) = (m.from.0 + (m.to.0 - m.from.0) * t, m.from.1 + (m.to.1 - m.from.1) * t);
+            shift_all(n, px - m.to.0, py - m.to.1);
+            if m.appear {
+                n.look.opacity *= t;
+            }
+        }
+        std::borrow::Cow::Owned(tree)
+    }
+
+    /// Whether something is still gliding or fading in, so the window should draw again soon.
+    fn moving(&self) -> bool {
+        let now = self.now();
+        self.motions.values().any(|m| now - m.start < MOVE_SECS)
     }
 
     /// Scrolls the scroll under the mouse, or the one around it if that one can't go further.
@@ -2992,6 +3215,7 @@ impl<'a, 'b> Ui<'a, 'b> {
     }
 
     fn resize(&mut self, w: f32, h: f32) -> Result<(), String> {
+        self.snap = (w - self.w).abs() > 0.5 || (h - self.h).abs() > 0.5;
         self.w = w;
         self.h = h;
         self.rebuild()
@@ -3359,7 +3583,7 @@ impl<'a, 'b> Ui<'a, 'b> {
                 let on = matches!(n.value, Some(SV::Truth(true)));
                 self.run(&path, SV::Truth(!on))
             }
-            "button" => self.run(&path, SV::Flag),
+            "button" | "box" | "circle" => self.run(&path, SV::Flag),
             // A dropdown or menu opens its list, or closes it if it's open.
             "dropdown" | "menu" => {
                 if self.popup.as_ref().is_some_and(|(o, _)| *o == path) {
@@ -4177,7 +4401,11 @@ mod windowed {
                     if self.ui.step_fades() {
                         win.request_redraw();
                     }
-                    let c = render(&self.ui.tree, size.width as usize, size.height as usize, scale, &self.ui.paint_state(), self.ui.s.background);
+                    if self.ui.moving() {
+                        win.request_redraw();
+                    }
+                    let (st, bg) = (self.ui.paint_state(), self.ui.s.background);
+                    let c = render(&self.ui.shown(), size.width as usize, size.height as usize, scale, &st, bg);
                     if let Ok(mut buf) = surface.buffer_mut() {
                         let n = buf.len().min(c.px.len());
                         buf[..n].copy_from_slice(&c.px[..n]);
@@ -4705,13 +4933,15 @@ fn test(s: Settings, build: &mut Build) -> Result<(), String> {
                 let n = nums.first().copied().unwrap_or(1.0) as usize;
                 let t = std::time::Instant::now();
                 for _ in 0..n {
-                    render(&ui.tree, (ui.w * 2.0) as usize, (ui.h * 2.0) as usize, 2.0, &ui.paint_state(), ui.s.background);
+                    let (st, bg, w, h) = (ui.paint_state(), ui.s.background, ui.w, ui.h);
+                    render(&ui.shown(), (w * 2.0) as usize, (h * 2.0) as usize, 2.0, &st, bg);
                 }
                 eprintln!("painted {n} times in {} ms", t.elapsed().as_millis());
             }
             "snapshot" => {
                 let scale = 2.0;
-                let c = render(&ui.tree, (ui.w * scale) as usize, (ui.h * scale) as usize, scale, &ui.paint_state(), ui.s.background);
+                let (st, bg, w, h) = (ui.paint_state(), ui.s.background, ui.w, ui.h);
+                let c = render(&ui.shown(), (w * scale) as usize, (h * scale) as usize, scale, &st, bg);
                 std::fs::write(rest, png(&c)).map_err(|e| format!("can't write {rest}: {e}"))?;
             }
             _ => {}

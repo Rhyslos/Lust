@@ -1,0 +1,7 @@
+view-canvas.lsc:9:13  a box is drawn in a canvas: canvas [width 300, height 200] { box [x 10, y 10, …]; }
+view-canvas.lsc:10:13  a canvas holds other pieces in { }: canvas { text "Hi"; }
+view-canvas.lsc:12:25  x takes a number, like x 12. This is a string.
+view-canvas.lsc:13:32  radius takes a number, like radius 12. This is a bool.
+view-canvas.lsc:14:28  animate is a word on its own, without a value.
+
+5 mistakes. Nothing was run.

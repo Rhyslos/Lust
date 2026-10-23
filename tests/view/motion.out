@@ -1,0 +1,16 @@
+window "Motion" 300x260
+  column 0,0 300x176
+    row 16,16 185x33
+      button "Add" 16,16 58x33
+      button "Remove first" 82,16 119x33
+    text "Ada" 16,55 268x31
+    text "Bo" 16,92 268x31
+    text "Cy" 16,129 268x31
+window "Motion" 300x260
+  column 0,0 300x176
+    row 16,16 185x33
+      button "Add" 16,16 58x33
+      button "Remove first" 82,16 119x33
+    text "Bo" 16,55 268x31
+    text "Cy" 16,92 268x31
+    text "New 1" 16,129 268x31
