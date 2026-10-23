@@ -1,0 +1,35 @@
+dump
+open dropdown 1
+dump
+click Cupboard
+open dropdown 2
+key down
+key enter
+open menu File
+click Save
+open menu File
+dump
+key escape
+open menu Help
+press 400 300
+hover Delete
+dump
+focus dropdown 1
+key up
+key enter
+key up
+key escape
+click Delete
+dump
+key tab
+key tab
+key tab
+dump
+key escape
+click Delete
+key y
+press 5 5
+click Delete
+click Yes
+dump
+

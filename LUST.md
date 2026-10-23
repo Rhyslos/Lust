@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (2.0 alpha 22):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (2.0 alpha 23):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -582,6 +582,7 @@ An assembly with a `view` opens a window with `App:open();`, through `lust run` 
 - **Enter and shortcuts:** `input newTodo enter { add(); }` runs a block when Enter is pressed in the input, and `key "ctrl+s" { save(); }` is a keyboard shortcut (see below).
 - **Fonts:** `font "fonts/Lora.ttf"` draws a piece's words in a font file of your own, and on the view's `[ ]` it's the whole window's font.
 - **Feedback:** hover looks fade in and out, and a button looks pressed in while it's held down.
+- **Things that show over the view:** `dropdown` lists to choose from, `menu`s of `item`s, `dialog`s that pop up while a bool is true, and `tip "…"` for a note when the mouse rests on a piece (see below).
 
 ```
 assembly App {
@@ -608,7 +609,9 @@ end
 | | |
 | --- | --- |
 | `dump` | prints every piece with its place and size |
-| `click Add one` | clicks the button showing that text |
+| `click Add one` | clicks the button showing that text, or a row of an open list (`click Cupboard`, `click Save`) |
+| `open menu File`, `open dropdown 1` | clicks a menu or the first dropdown, opening its list |
+| `hover Delete` | puts the mouse on the button showing that text, and shows its tip straight away |
 | `focus input 1` | gives the first input focus (also `textarea 1`, `checkbox 2`, `slider 1`, `button 3`) |
 | `type Hello` | types into the input that has focus |
 | `key ctrl+left` | presses a key: `backspace`, `delete`, `left`, `right`, `home`, `end`, `up`, `down`, `tab`, `enter`, `space`, `escape`, with `shift+` or `ctrl+` in front, and `ctrl+a`, `ctrl+c`, `ctrl+x`, `ctrl+v`; any key a shortcut uses works too (`key ctrl+s`, `key f1`) |
@@ -757,6 +760,8 @@ assembly Settings {
 | --- | --- |
 | Layout | `column`, `row`, `stack` (layers), `scroll`, `space` |
 | Content | `text`, `button`, `input`, `textarea`, `checkbox`, `slider`, `image` |
+| Choosing | `dropdown`, `menu` with `item` and `divider` |
+| Over the view | `dialog` |
 | Time and keys | `every`, `key` |
 
 Questions and loops work inside a view: showing something only sometimes is an `is … ? then`, and a list is a `loop`.
@@ -774,6 +779,68 @@ textarea notes [placeholder "Write something…", width fill, height 160] {
 - **Lines:** Enter starts a new line, and lines too long for the box wrap between words. The text box is 300 wide and four lines tall unless it's given a `width` and `height`; when there's more, it scrolls (with the wheel, or by itself to keep the caret in view).
 - **Keys:** everything an input has, and Up and Down go a line up or down, Home and End to the start or end of the line, and Ctrl+Home and Ctrl+End (Cmd+Up and Cmd+Down on a Mac) to the start or end of the whole text. Pasting keeps the copied lines.
 - **`enter { }`** on a text box runs on Ctrl+Enter (Cmd+Enter on a Mac), since Enter starts a new line: `textarea message enter { send(); }`.
+
+### Dropdowns
+
+A dropdown shows what's chosen, and clicking it opens a list to choose from. Bound to a state, its choices are the state's options; bound to a string, it chooses from a list written after `in`:
+
+```
+state Shelf = [Fridge, Freezer, Cupboard];
+…
+Shelf shelf = Shelf.Fridge;
+string size = "Medium";
+…
+dropdown shelf;
+dropdown size in ["Small", "Medium", "Large"] { price = priceOf(size); }
+```
+
+The list opens below the dropdown (above, near the bottom of the window), scrolls when it's long, and closes when something is chosen, when Escape is pressed, or when the mouse goes down anywhere else. From the keyboard, Enter or Space opens it, Up and Down pick a row and Enter chooses it; with the list closed, Up and Down choose the one before or after straight away. A dropdown is as wide as its longest choice, so it doesn't change size as the choice changes.
+
+### Menus
+
+`menu "File" { … }` is a word that opens a list of `item`s, each running its block when it's chosen. `divider;` draws a line between items, and an item can be `disabled`:
+
+```
+row [gap 4] {
+    menu "File" {
+        item "New" { clear(); }
+        item "Save" [disabled saved] { save(); }
+        divider;
+        item "Quit" { confirming = true; }
+    }
+    menu "Help" {
+        item "About" { showingAbout = true; }
+    }
+}
+```
+
+A row of menus at the top of the window is a menu bar, but a menu can go anywhere, like a "⋯" menu on a row of a list. Items can come from a `loop`. The keyboard works as in a dropdown, and Down opens a menu too.
+
+### Dialogs
+
+`dialog confirming { … }` pops up in the middle of the window while the bool it's bound to is true, over the rest of the view, which is dimmed. Only the dialog can be used while it's open. Setting the bool to false closes it, and so does Escape or a click outside it, which set the bool to false themselves:
+
+```
+button "Delete" [red] { confirming = true; }
+
+dialog confirming [width 320] {
+    text "Delete " + name + "?" [bold];
+    text "This can't be undone." [muted];
+    row [gap 8, right] {
+        button "Cancel" { confirming = false; }
+        button "Delete" [red] {
+            remove();
+            confirming = false;
+        }
+    }
+}
+```
+
+A dialog is a column with a white background, rounded corners and room around what it holds; styles change it like any other piece. It takes no room where it's written, so it can go anywhere in the view. Tab goes round the dialog's own pieces, and its `key` shortcuts and timers work only while it's open.
+
+### Tips
+
+`tip "…"` on any piece shows a small note below it when the mouse rests on it for a moment, and hides it when the mouse moves away or clicks: `button "↻" [tip "Load the list again"] { reload(); }`.
 
 ### Enter and keyboard shortcuts
 
@@ -848,7 +915,7 @@ Short words in `[ ]`, in the spirit of Tailwind:
 | colour | a colour word on its own colours text (or a whole button), `color …` and `background …`, and `subtle` for a button with no background until the mouse is over it |
 | shape | `round`, `round 12`, `pill`, `border`, `border red`, `borderWidth 2`, `shadow`, `opacity 0.5` |
 | placement | `left`, `center`, `right` side to side; `top`, `middle`, `bottom` up and down; `spread` |
-| under the mouse | `hover:[ … ]` |
+| under the mouse | `hover:[ … ]`, `tip "…"` |
 | inputs and pictures | `placeholder "…"`, `from`, `to`, `step`, `cover` |
 | words | `font "file.ttf"` |
 | off | `disabled`, or `disabled` with a bool: `disabled not ready` |

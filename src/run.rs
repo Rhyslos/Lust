@@ -234,6 +234,11 @@ fn ui_node(t: &mlua::Table, actions: &mut Vec<crate::native_ui::Action>) -> mlua
         }));
         n.action = Some(actions.len() - 1);
     }
+    if let Some(o) = t.get::<Option<mlua::Table>>("o")? {
+        for s in o.sequence_values::<String>() {
+            n.options.push(s?);
+        }
+    }
     if let Some(f) = t.get::<Option<mlua::Function>>("e")? {
         // What Enter runs in an input.
         actions.push(Box::new(move || f.call::<()>(()).map_err(|e| raw_error(&e))));

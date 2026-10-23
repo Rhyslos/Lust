@@ -532,6 +532,7 @@ impl<'a> W<'a> {
                 children,
                 action,
                 enter,
+                choices,
                 ..
             } => {
                 let parent = self.view_parent.last().cloned().unwrap_or_else(|| "v0".into());
@@ -575,7 +576,7 @@ impl<'a> W<'a> {
                     return;
                 }
                 let v = self.fresh("v");
-                let bound = matches!(kind.as_str(), "input" | "textarea" | "checkbox" | "slider");
+                let bound = matches!(kind.as_str(), "input" | "textarea" | "checkbox" | "slider" | "dropdown" | "dialog");
                 let valued = bound || kind == "every";
                 let t = match arg {
                     Some(a) if !valued => self.expr(a),
@@ -590,6 +591,18 @@ impl<'a> W<'a> {
                     // What the input shows: the value it's bound to, as it is now.
                     let shown = self.expr(a);
                     self.line(ln, &format!("{v}.v = {shown}"));
+                    // What a dropdown chooses from: its list, or its state's options.
+                    if kind == "dropdown" {
+                        let opts = match (self.info.ty(a), choices) {
+                            (Ty::State(s), _) => {
+                                let o: Vec<String> = self.info.states[s].options.iter().map(|o| lua_string(o)).collect();
+                                format!("{{{}}}", o.join(", "))
+                            }
+                            (_, Some(c)) => self.expr(c),
+                            _ => "{}".into(),
+                        };
+                        self.line(ln, &format!("{v}.o = {opts}"));
+                    }
                 }
                 self.view_parent.push(v.clone());
                 self.stmts(children);
