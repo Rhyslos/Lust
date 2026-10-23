@@ -974,7 +974,7 @@ impl<'a> Checker<'a> {
                     self.err(a.pos, format!("{kind} shows text, but this is {}.{fix}", self.a(&t)));
                 }
             }
-            ("input" | "textarea" | "checkbox" | "slider" | "dropdown" | "dialog", Some(a)) => {
+            ("input" | "textarea" | "checkbox" | "slider" | "dropdown" | "dialog" | "tabs", Some(a)) => {
                 let t = self.expr(a, ctx, None);
                 let (want, example) = match kind {
                     "input" => ("text", "input name;"),
@@ -982,10 +982,11 @@ impl<'a> Checker<'a> {
                     "checkbox" => ("a bool", "checkbox done;"),
                     "dropdown" => ("text or a state", "dropdown size in [\"Small\", \"Large\"];"),
                     "dialog" => ("a bool", "dialog confirming { … }"),
+                    "tabs" => ("text: the name of the tab that shows", "tabs page { tab \"Home\" { … } }"),
                     _ => ("a number", "slider volume [from 0, to 100];"),
                 };
                 let fits = match kind {
-                    "input" | "textarea" => t == Ty::Str,
+                    "input" | "textarea" | "tabs" => t == Ty::Str,
                     "checkbox" | "dialog" => t == Ty::Truth,
                     "dropdown" => matches!(t, Ty::Str | Ty::State(_)),
                     _ => matches!(t, Ty::Int | Ty::Float),
@@ -1074,6 +1075,28 @@ impl<'a> Checker<'a> {
                 }
             }
             ("menu", None) => self.err(pos, "a menu needs its name: menu \"File\" { item \"Open\" { … } }"),
+            ("tabs", None) => ctx.scopes.push(HashMap::new()),
+            ("tab" | "branch", Some(a)) => {
+                let t = self.expr(a, ctx, Some(&Ty::Str));
+                if t != Ty::Str && t != Ty::Error {
+                    self.err(
+                        a.pos,
+                        format!("a {kind} shows its name, which is text, but this is {}.", self.a(&t)),
+                    );
+                }
+            }
+            ("tab", None) => self.err(pos, "a tab needs its name: tab \"Home\" { … }"),
+            ("branch", None) => self.err(pos, "a branch needs its name: branch \"Weapons\" { … }"),
+            ("progress", Some(a)) => {
+                let t = self.expr(a, ctx, Some(&Ty::Float));
+                if !matches!(t, Ty::Int | Ty::Float | Ty::Error) {
+                    self.err(
+                        a.pos,
+                        format!("progress shows a number, but this is {}: progress done [to total];", self.a(&t)),
+                    );
+                }
+            }
+            ("progress", None) => self.err(pos, "progress needs the number it shows: progress done [to total];"),
             ("item", None) => self.err(pos, "an item needs its words: item \"Open\" { … }"),
             ("divider", None) if self.menus == 0 => self.err(pos, "a divider is a line between items, so it goes inside a menu."),
             ("dialog", None) => {
@@ -1157,7 +1180,7 @@ impl<'a> Checker<'a> {
             self.menus -= menu as usize;
             ctx.scopes.pop();
         }
-        let bound = matches!(kind, "input" | "textarea" | "checkbox" | "slider" | "dropdown" | "dialog");
+        let bound = matches!(kind, "input" | "textarea" | "checkbox" | "slider" | "dropdown" | "dialog" | "tabs");
         if let Some(a) = enter {
             let was = std::mem::replace(&mut ctx.in_view, false);
             ctx.scopes.push(HashMap::new());
@@ -1221,10 +1244,12 @@ impl<'a> Checker<'a> {
             "from",
             "to",
             "step",
+            "columns",
+            "cell",
         ];
         const FLAGS: &[&str] = &[
             "tiny", "small", "large", "huge", "bold", "muted", "strike", "nowrap", "shadow", "pill", "left", "center", "right", "top",
-            "middle", "bottom", "spread", "subtle", "cover",
+            "middle", "bottom", "spread", "subtle", "cover", "down", "open",
         ];
         const COLOURED: &[&str] = &["color", "background"];
         let window = kind == "view";

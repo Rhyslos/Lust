@@ -1,0 +1,11 @@
+view-panels.lsc:10:13  a grid holds other pieces in { }: grid { text "Hi"; }
+view-panels.lsc:11:27  columns takes a number, like columns 12. This is a string.
+view-panels.lsc:12:18  tabs changes text: the name of the tab that shows, but page is an int: tabs page { tab "Home" { … } }
+view-panels.lsc:13:17  a tab needs its name: tab "Home" { … }
+view-panels.lsc:14:21  a tab shows its name, which is text, but this is an int.
+view-panels.lsc:16:13  a branch needs its name: branch "Weapons" { … }
+view-panels.lsc:17:22  progress shows a number, but this is a string: progress done [to total];
+view-panels.lsc:18:13  progress needs the number it shows: progress done [to total];
+view-panels.lsc:19:13  a split holds other pieces in { }: split { text "Hi"; }
+
+9 mistakes. Nothing was run.

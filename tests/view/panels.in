@@ -1,0 +1,19 @@
+dump
+wait 3
+click Bows
+click Armour
+click Progress
+wait 2
+click One more
+click Two
+focus tabbtn 1
+key right
+size 700 420
+press 184 200
+move 260 200
+release 260 200
+dump
+click Weapons
+focus branchhead 1
+key right
+dump

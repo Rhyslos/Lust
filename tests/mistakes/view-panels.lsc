@@ -1,0 +1,25 @@
+-- Mistakes with grids, splits, tabs, branches and progress bars.
+assembly App {
+    has {
+        int page = 0;
+        string name = "";
+    }
+
+    view {
+        column {
+            grid 3 { text "a"; }
+            grid [columns "two"] { text "a"; }
+            tabs page {
+                tab { text "a"; }
+                tab 5 { text "b"; }
+            }
+            branch { text "c"; }
+            progress name;
+            progress;
+            split;
+        }
+    }
+}
+
+App:open();
+end
