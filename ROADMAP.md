@@ -30,7 +30,7 @@ The order Lust gets built in. Each step makes Lust more useful on its own, and n
 | ✅ | **11.4 Dark mode:** `view [dark]`, and `dark:[ … ]` for a piece's own dark look | Done (alpha 24) |
 | ✅ | **11.5 Bigger layouts:** `grid`, `split`, `tabs`, `branch` and `progress` | Done (alpha 25) |
 | ✅ | **11.6 Drawing and motion:** `canvas` with `box`, `circle` and `line`, and `animate` | Done (alpha 26) |
-| | **11.7 More for windows:** the system's open and save boxes | Next |
+| ✅ | **11.7 Open and save boxes:** `Files:chooseOpen`, `chooseSave` and `chooseFolder` show the computer's own boxes | Done (alpha 27) |
 | | 🏁 *The Lust 2.0 release.* | |
 
 ## Decisions along the way

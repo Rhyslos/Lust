@@ -18,6 +18,7 @@ pub const RUNTIME: &str = include_str!("native_rt.rs");
 pub const DB_RUNTIME: &str = include_str!("native_db.rs");
 pub const WEB_RUNTIME: &str = include_str!("native_web.rs");
 pub const NET_RUNTIME: &str = include_str!("native_net.rs");
+pub const DLG_RUNTIME: &str = include_str!("native_dlg.rs");
 pub const TEXT_RUNTIME: &str = include_str!("native_text.rs");
 pub const UI_RUNTIME: &str = include_str!("native_ui.rs");
 
@@ -461,6 +462,9 @@ pub fn write(prog: &Program, info: &Info, files: &[String], library: bool) -> St
             }
             if serves(info) {
                 m.push_str(&format!("pub mod web {{\nuse super::*;\n{WEB_RUNTIME}\n}}\n"));
+            }
+            if uses(info, &["files_chooseOpen", "files_chooseSave", "files_chooseFolder"]) {
+                m.push_str(&format!("pub mod dlg {{\nuse super::*;\n{DLG_RUNTIME}\n}}\n"));
             }
             if uses(info, &["web_get", "web_post"]) {
                 m.push_str(&format!("pub mod net {{\nuse super::*;\n{NET_RUNTIME}\n}}\n"));
@@ -1997,6 +2001,9 @@ impl<'a> W<'a> {
                 format!("rt::json_read({t}, &{dec})")
             }
             "web_serve" => format!("rt::web::serve({})", self.expr(&args[0])),
+            "files_chooseOpen" => format!("rt::dlg::choose_open({}, rt::acopy(&{}))", self.expr(&args[0]), self.expr(&args[1])),
+            "files_chooseSave" => format!("rt::dlg::choose_save({}, {})", self.expr(&args[0]), self.expr(&args[1])),
+            "files_chooseFolder" => format!("rt::dlg::choose_folder({})", self.expr(&args[0])),
             "web_get" | "web_post" | "text_matches" | "text_findAll" | "text_replaceAll" | "text_capture" => {
                 let (module, name) = match lib.func.as_str() {
                     "web_get" => ("net", "get"),

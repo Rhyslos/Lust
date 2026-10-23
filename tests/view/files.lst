@@ -1,0 +1,28 @@
+-- The computer's own boxes for choosing files. In tests, `choose` gives their answers.
+assembly App {
+    has {
+        string picture = "";
+        string saveTo = "";
+        string folder = "";
+    }
+
+    view [title "Files", width 360, height 240] {
+        column [gap 8, pad 16] {
+            row [gap 8] {
+                button "Open…" { picture = Files:chooseOpen("Open a picture", ["png", "jpg"]); }
+                button "Save as…" { saveTo = Files:chooseSave("Save the notes", "notes.txt"); }
+                button "Folder…" { folder = Files:chooseFolder("Where to keep them"); }
+            }
+            is picture == ""? then {
+                text "No picture" [muted];
+            } or {
+                text "Picture: " + picture;
+            }
+            text "Save to: " + saveTo;
+            text "Folder: " + folder;
+        }
+    }
+}
+
+App:open();
+end

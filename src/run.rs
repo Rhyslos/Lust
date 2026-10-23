@@ -27,6 +27,18 @@ fn host(lua: &Lua) -> mlua::Result<()> {
         })?,
     )?;
     h.set("mkdir", lua.create_function(|_, p: String| Ok(rt::fs_mkdir(&p).err()))?)?;
+    h.set(
+        "choose_open",
+        lua.create_function(|_, (title, types): (String, Vec<String>)| Ok(crate::native_dlg::choose_open(title, types)))?,
+    )?;
+    h.set(
+        "choose_save",
+        lua.create_function(|_, (title, name): (String, String)| Ok(crate::native_dlg::choose_save(title, name)))?,
+    )?;
+    h.set(
+        "choose_folder",
+        lua.create_function(|_, title: String| Ok(crate::native_dlg::choose_folder(title)))?,
+    )?;
     h.set("now", lua.create_function(|_, ()| Ok(rt::time_now()))?)?;
     // Random rolls the same way as in built programs (the checks for lo > hi happen in Lua).
     h.set("random", lua.create_function(|_, (lo, hi): (i64, i64)| Ok(rt::random(lo, hi)))?)?;

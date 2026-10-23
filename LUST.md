@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (2.0 alpha 26):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (2.0 alpha 27):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -615,6 +615,7 @@ end
 | `open menu File`, `open dropdown 1` | clicks a menu or the first dropdown, opening its list |
 | `click Weapons`, `click Stats` | opens or shuts a branch, or shows a tab, by its name |
 | `press 184 200`, `move 260 200`, `release 260 200` | drags the line between a split's panels, like any drag |
+| `choose cat.png`, `choose cancel` | the answer the next `Files:chooseOpen`, `chooseSave` or `chooseFolder` box gives |
 | `hover Delete` | puts the mouse on the button showing that text, and shows its tip straight away |
 | `focus input 1` | gives the first input focus (also `textarea 1`, `checkbox 2`, `slider 1`, `button 3`) |
 | `type Hello` | types into the input that has focus |
@@ -1055,7 +1056,7 @@ Name a style to reuse it: `style card = [pad 16, round, shadow];`, then `[card]`
 
 ### Underneath
 
-Lust draws everything itself, from the pixels up: layout, every piece, text editing, focus, scrolling, styles and animation. Small permissive libraries only open the window (winit), hand over the pixels (softbuffer), read font files (ab_glyph), reach the system clipboard (arboard) and read PNG and JPEG files (png, jpeg-decoder). Views are for `.lst` programs on Windows, macOS and Linux. Web pages stay HTML, CSS and JavaScript.
+Lust draws everything itself, from the pixels up: layout, every piece, text editing, focus, scrolling, styles and animation. Small permissive libraries only open the window (winit), hand over the pixels (softbuffer), read font files (ab_glyph), show the computer's own boxes for choosing files (rfd), reach the system clipboard (arboard) and read PNG and JPEG files (png, jpeg-decoder). Views are for `.lst` programs on Windows, macOS and Linux. Web pages stay HTML, CSS and JavaScript.
 
 ---
 
@@ -1191,6 +1192,9 @@ Lust comes with five objects. Their methods are called like any object's: `Maths
 | `Files:remove(path);` | removes a file, or an empty folder |
 | `Files:list(folder)` | a string array of what's in the folder, in order |
 | `Files:makeFolder(path);` | makes the folder, and any folders it's inside |
+| `Files:chooseOpen("Open a picture", ["png", "jpg"])` | shows the computer's own box for choosing a file to open, of those types (`[]` for any), and gives back its whole path, or `""` if it's cancelled |
+| `Files:chooseSave("Save the notes", "notes.txt")` | the box for choosing where to save, suggesting a name |
+| `Files:chooseFolder("Where to keep them")` | the box for choosing a folder |
 
 **Time**
 
@@ -1217,7 +1221,9 @@ Player back = Json:read(text);
 - A class's fields that are missing from the JSON keep their starting values. Anything extra is left out.
 - If the JSON doesn't fit, the error says where: `the JSON at bag[0] is missing item.`
 
-In LustScript, `Files:list`, `Files:makeFolder` and the precise clock need `lust run`. Inside other programs, like Garry's Mod, they say they aren't available.
+The `choose` boxes are the ones the computer itself has (Windows', macOS', or the desktop's on Linux), and the program waits while one is open. In a view's tests no box opens: `choose pictures/cat.png` in the test's input gives the answer the next box gives, and `choose cancel` cancels it.
+
+In LustScript, `Files:list`, `Files:makeFolder`, the `choose` boxes and the precise clock need `lust run`. Inside other programs, like Garry's Mod, they say they aren't available.
 
 **Testing:** `lust test <folder>` runs every program that has an expected result next to it: `.out` for what it prints, `.err` for the mistakes it should report, `.in` for what's typed in.
 

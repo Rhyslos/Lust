@@ -639,6 +639,20 @@ function L.files_list(folder)
   for i, n in ipairs(names) do out[i] = n end
   return out
 end
+function L.files_chooseOpen(title, types)
+  if not host or not host.choose_open then needs("Files:chooseOpen") end
+  local list = {}
+  for i = 1, (types.n or #types) do list[i] = types[i] end
+  return host.choose_open(title, list)
+end
+function L.files_chooseSave(title, name)
+  if not host or not host.choose_save then needs("Files:chooseSave") end
+  return host.choose_save(title, name)
+end
+function L.files_chooseFolder(title)
+  if not host or not host.choose_folder then needs("Files:chooseFolder") end
+  return host.choose_folder(title)
+end
 function L.files_makeFolder(folder)
   if not host then needs("Files:makeFolder") end
   local e = host.mkdir(folder)

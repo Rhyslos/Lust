@@ -43,7 +43,7 @@ This is **Lust 2**, a fresh start written in Rust. One language, two outputs:
 | Rust, compiled to real programs | `.lst` | apps, tools and servers on Windows, macOS and Linux |
 | LustScript, turned into Lua | `.lsc` | scripting and modding inside other programs, like Garry's Mod, Aventail and Halberd |
 
-**What works today (alpha 26):** both outputs. Every file is checked before anything runs, with mistakes explained in plain words.
+**What works today (alpha 27):** both outputs. Every file is checked before anything runs, with mistakes explained in plain words.
 
 - `.lsc` files turn into plain Lua 5.1 that Garry's Mod (LuaJIT) and Luau can run.
 - `.lst` files turn into Rust, which builds into a real program (an `.exe` on Windows) that runs without Lust.
