@@ -41,8 +41,39 @@ local function f32(x)
   if y < -F32_MAX then return -math.huge end
   return y
 end
+-- Luau keeps a vector's numbers as f32s, so making one rounds a number the same way, in C,
+-- many times faster. It's used only when it gives exactly what f32 above gives.
+do
+  local vector = rawget(_G, "vector")
+  local make = type(vector) == "table" and vector.create
+  if make then
+    local function fast(x) return make(x, 0, 0).x end
+    local ok = pcall(function()
+      for _, x in ipairs({ 0.1, -9.8, 1 / 3, 16777217, 3.4028235677973366e38, 3.4028234663852886e38, 1e-45, 7e-46, 1.5e-39, -0.0, 1e300 }) do
+        if fast(x) ~= f32(x) then error("different") end
+      end
+    end)
+    if ok then L.f32_slow = f32; f32 = fast end
+  end
+end
 L.f32 = f32
-local function vec(x, y, z) return { x = f32(x), y = f32(y), z = f32(z) } end
+local vec = function(x, y, z) return { x = f32(x), y = f32(y), z = f32(z) } end
+local quat = function(x, y, z, w) return { x = f32(x), y = f32(y), z = f32(z), w = f32(w) } end
+-- With Luau's vectors, one call rounds all three numbers.
+do
+  local vector = rawget(_G, "vector")
+  local make = type(vector) == "table" and vector.create
+  if make and L.f32_slow then
+    vec = function(x, y, z)
+      local r = make(x, y, z)
+      return { x = r.x, y = r.y, z = r.z }
+    end
+    quat = function(x, y, z, w)
+      local r = make(x, y, z)
+      return { x = r.x, y = r.y, z = r.z, w = f32(w) }
+    end
+  end
+end
 L.vec = vec
 function L.vwith(v, f, n)
   local w = { x = v.x, y = v.y, z = v.z }
@@ -78,13 +109,40 @@ local RAD = math.pi / 180
 -- Degrees around x, y and z, turned in the order z, x, y (as Solis and glam's EulerRot::ZXY do).
 function L.rot(dx, dy, dz)
   local hx, hy, hz = dx * RAD / 2, dy * RAD / 2, dz * RAD / 2
-  local x, y, z, w = q64(0, 0, math.sin(hz), math.cos(hz), math.sin(hx), 0, 0, math.cos(hx))
-  x, y, z, w = q64(x, y, z, w, 0, math.sin(hy), 0, math.cos(hy))
-  return { x = f32(x), y = f32(y), z = f32(z), w = f32(w) }
+  -- q64 twice, written out: the same steps in the same order, without the calls.
+  local ax, ay, az, aw = 0, 0, math.sin(hz), math.cos(hz)
+  local bx, bw = math.sin(hx), math.cos(hx)
+  local x = aw * bx + ax * bw + ay * 0 - az * 0
+  local y = aw * 0 - ax * 0 + ay * bw + az * bx
+  local z = aw * 0 + ax * 0 - ay * bx + az * bw
+  local w = aw * bw - ax * bx - ay * 0 - az * 0
+  local cy, cw = math.sin(hy), math.cos(hy)
+  return quat(w * 0 + x * cw + y * 0 - z * cy,
+    w * cy - x * 0 + y * cw + z * 0,
+    w * 0 + x * cy - y * 0 + z * cw,
+    w * cw - x * 0 - y * cy - z * 0)
+end
+-- L.rot(0, 0, dz), with sin(0) and cos(0) known: 0 and 1, exactly.
+function L.rotz(dz)
+  local hz = dz * RAD / 2
+  local ax, ay, az, aw = 0, 0, math.sin(hz), math.cos(hz)
+  local bx, bw = 0, 1
+  local x = aw * bx + ax * bw + ay * 0 - az * 0
+  local y = aw * 0 - ax * 0 + ay * bw + az * bx
+  local z = aw * 0 + ax * 0 - ay * bx + az * bw
+  local w = aw * bw - ax * bx - ay * 0 - az * 0
+  local cy, cw = 0, 1
+  return quat(w * 0 + x * cw + y * 0 - z * cy,
+    w * cy - x * 0 + y * cw + z * 0,
+    w * 0 + x * cy - y * 0 + z * cw,
+    w * cw - x * 0 - y * cy - z * 0)
 end
 function L.qmul(a, b)
-  local x, y, z, w = q64(a.x, a.y, a.z, a.w, b.x, b.y, b.z, b.w)
-  return { x = f32(x), y = f32(y), z = f32(z), w = f32(w) }
+  local ax, ay, az, aw, bx, by, bz, bw = a.x, a.y, a.z, a.w, b.x, b.y, b.z, b.w
+  return quat(aw * bx + ax * bw + ay * bz - az * by,
+    aw * by - ax * bz + ay * bw + az * bx,
+    aw * bz + ax * by - ay * bx + az * bw,
+    aw * bw - ax * bx - ay * by - az * bz)
 end
 function L.qmulv(q, v)
   local tx = 2 * (q.y * v.z - q.z * v.y)
@@ -108,7 +166,7 @@ local function f32text(x) return L.ftext(tonumber(fmt("%.7g", x)) + 0) end
 -- numbers rounded to f32 (a Luau vector works too, since it has x, y and z), and a plain list
 -- given its length.
 function L.hvec(v) return vec(v.x, v.y, v.z) end
-function L.hrot(q) return { x = f32(q.x), y = f32(q.y), z = f32(q.z), w = f32(q.w) } end
+function L.hrot(q) return quat(q.x, q.y, q.z, q.w) end
 function L.harr(item)
   return function(t)
     local out = { n = t.n or #t }

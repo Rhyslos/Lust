@@ -44,6 +44,14 @@ jobs:
           cargo test --release
           cargo run --release --manifest-path engine-test/Cargo.toml
 
+      # Components every tick: Rust and Luau must end with exactly the same values; also prints
+      # how long a tick takes each way.
+      - name: Benchmark and Rust/Luau check
+        run: |
+          target/release/lust build bench/game.lst --library
+          cargo run --release --manifest-path bench/Cargo.toml
+          cargo run --release --manifest-path bench/Cargo.toml -- --lua bench/checks.lua
+
       - name: Keep lust.exe
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
