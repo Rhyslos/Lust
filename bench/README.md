@@ -19,5 +19,6 @@ Results on the machine step 6 was made on (a tick, 2,000 movers):
 |---|---|---|---|
 | Before step 6 (alpha 32) | 0.20 ms | 12.2 ms | 13.5 ms |
 | After step 6 (alpha 33) | 0.14 ms | 5.1 ms | 6.2 ms |
+| Luau vectors (alpha 34) | 0.14 ms | 3.4 ms | 3.8 ms |
 
 The times move by about 10% from run to run.

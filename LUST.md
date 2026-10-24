@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (2.0 alpha 33):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (2.0 alpha 34):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -1341,7 +1341,7 @@ What the Rust program sees:
 - **Failures come back as a `LustError`.** Everything gives back a `Result`, and a Lust failure says where it happened: `file`, `line` and `column` (of the statement that failed), and `message`. Shown with `{}`, it's the message Lust prints: `game.lst:24  this is nothing, so it has no fields or methods.` The program decides what to do with it.
 - **`game::LUST_VERSION`** is the version of Lust that wrote the library.
 - Ints, floats, text and bools are Rust's `i64`, `f64`, `String` and `bool`. A thing made from a class is `Option<Weapon>`, since it can be `nothing`. A `vec3` is the library's `Vec3 { x, y, z }` and a `rotation` its `Rotation { x, y, z, w }` (a quaternion), all `f32`, the same layout as Solis's and glam's. An array is a `Vec` of its items, copied each way.
-- **In LustScript**, the host's Lua function hands a `vec3` back as any table with `x`, `y` and `z` (a Luau `vector` works too), a rotation as one with `x`, `y`, `z` and `w`, and an array as a plain list. Lust rounds the numbers to f32 and counts the list, so they're the same as Lust's own.
+- **In LustScript**, the host's Lua function hands a `vec3` back as a Luau `vector` or any table with `x`, `y` and `z`, a rotation as a table with `x`, `y`, `z` and `w`, and an array as a plain list. Lust rounds the numbers to f32 and counts the list, so they're the same as Lust's own. In Luau, the `vec3`s Lust hands over are Luau vectors.
 
 `lust test` tests libraries too: a `game.host.rs` next to `game.lst` is a Rust program that uses it, and its output is compared with `game.out`.
 
@@ -1351,7 +1351,7 @@ An engine can use Lust's compiler itself, as a Rust library: to check a game's L
 
 ```
 [dependencies]
-lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.33", default-features = false }
+lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.34", default-features = false }
 ```
 
 Without its default features it needs nothing but Rust's own library (the default ones are the `lust` command). Lust doesn't open any files: the engine reads them, and hands over each one's path and text, with `/` between folders.
@@ -1380,9 +1380,9 @@ match lust::to_lua("main.lst", &files) {
 - **`changes(old)`**, given the earlier chunk's table, lists the components whose fields `changed`, and those `removed` and `added`, so an inspector knows what to show again.
 - The code outside classes and methods runs again with each new chunk, and objects start over.
 
-**Vectors and rotations** in the Lua are tables (`{ x, y, z }` and `{ x, y, z, w }`). Lust never changes one in place, so it shares them: a vector written with numbers only, like `[0, 0, -9.8]`, is made once. An engine setting one gives a new table (`c.position = { x = 1, y = 2, z = 3 }`), and never changes a table it got from Lust.
+**Vectors and rotations:** in Luau, a `vec3` is a Luau `vector` (`vector.create(x, y, z)`; mlua's `Vector`): in components' fields, in what events carry, and in what native methods are given and give back. Luau keeps a vector's numbers as f32s, as Lust does. A `rotation` is a table, `{ x, y, z, w }`. In plain Lua, which has no vectors, a `vec3` is a table, `{ x, y, z }`, and the chunk's `vectors` says which: `"luau"` or `"table"`. A native method's body may give back a table for a vec3 in Luau too, and Lust turns it into a vector. Lust never changes a rotation in place, so it shares them; an engine setting one gives a new table, and never changes one it got from Lust.
 
-**Speed:** in Luau, Lust rounds numbers to f32 with Luau's own vectors, which is several times faster than plain Lua can. Luau's native code (mlua's `luau-jit` feature) makes it faster again. `bench/` in Lust's own folder ticks 2,000 components both ways, and checks Rust and Luau end with exactly the same values.
+**Speed:** in Luau, Lust's vector maths is Luau's own, and it rounds numbers to f32 with Luau's vectors, which is many times faster than plain Lua can; it gives exactly the numbers Rust gives. Luau's native code (mlua's `luau-jit` feature) makes it faster again. `bench/` in Lust's own folder ticks 2,000 components both ways, and checks Rust and Luau end with exactly the same values.
 
 **A failure** in the Lua comes to the engine as a Lua error. `chunk.locate(&error.to_string())` turns it into a `RunError`, with `file`, `line`, `column` and `message`, pointing at the Lust.
 

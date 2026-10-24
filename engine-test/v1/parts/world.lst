@@ -1,6 +1,7 @@
 -- What the engine gives: methods on their own, with their bodies in the engine's Lua.
 method log(string words) native;
 method entity nearest(entity from) native;
+method vec3 positionOf(entity e) native;
 
-pass log, nearest;
+pass log, nearest, positionOf;
 end

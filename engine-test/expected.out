@@ -6,18 +6,23 @@ main.lst:11:9  there's nothing called sned here. Declare it first, like int sned
 parts/aim.lst:2:12  this method gives back an int, but this is a float. Use .int() to drop the part after the point.
   = parts/aim.lst 2 12
 "there's no file called nope.lst among the files handed over."
+vectors: luau
 Hit carries by entity
 Hit carries damage float
+Hit carries push vec3
 tick 0
+  Hit carries Vector([2.0, 0.05, 0.0])
   Hit handled: true
-  0000000000002 shield at 2.5 after a hit from 0000000000001
+  0000000000002 shield at 2.5 after a hit from 0000000000001, pushed [2.0, 0.05, 0.0]
 tick 1
+  Hit carries Vector([4.0, 0.1, -1.0])
   Hit handled: true
-  0000000000002 shield at 0.0 after a hit from 0000000000001
+  0000000000002 shield at 0.0 after a hit from 0000000000001, pushed [4.0, 0.1, -1.0]
 tick 2
-  main.lst:39  dividing a whole number by zero doesn't work.
-  = main.lst Some(39) Some(17)
-  0000000000002 shield at -2.5 after a hit from 0000000000001
+  Hit carries Vector([6.0, 0.15, -2.0])
+  main.lst:41  dividing a whole number by zero doesn't work.
+  = main.lst Some(41) Some(17)
+  0000000000002 shield at -2.5 after a hit from 0000000000001, pushed [6.0, 0.15, -2.0]
 tick 3
 changed: ["Turret"]
 removed: ["Shield"]
@@ -34,4 +39,5 @@ swap shield: gone
   turret.target = String("0000000000002")
   turret.range = Integer(20)
   turret.label = Nil
-0000000000001 turret v2: heat 0.566666666666667, ammo 10.0, range 20.0, Single
+  turret.aim = Vector([6.0, 0.15, -2.0])
+0000000000001 turret v2: heat 0.566666666666667, ammo 10.0, range 20.0, Single, aim [6.0, 0.15, -2.0]
