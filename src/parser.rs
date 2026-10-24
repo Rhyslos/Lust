@@ -181,7 +181,15 @@ pub struct Parser<'a> {
     passes: Vec<(String, Pos)>,
     /// Inside a view's { }, where column, text, button and the rest are pieces of the screen.
     in_view: bool,
+    /// How deeply what's being read is nested: brackets, blocks, operators in a row.
+    depth: usize,
 }
+
+/// How deeply code can nest. Deeper code would run the compiler out of room (its stack), which
+/// would end the program using it, and Lua refuses code nested past about 200 levels; a limit
+/// makes both a plain mistake instead. Things Lua nests more deeply than Lust count for more
+/// (deeper_by), so whatever Lust accepts, Lua loads. Real code stays far below it.
+pub const MAX_DEPTH: usize = 150;
 
 pub fn parse(toks: Vec<Token>, diags: &mut Diags, is_script: bool, first_id: usize) -> Program {
     let mut p = Parser {
@@ -195,6 +203,7 @@ pub fn parse(toks: Vec<Token>, diags: &mut Diags, is_script: bool, first_id: usi
         is_script,
         uses_lua: false,
         loop_depth: 0,
+        depth: 0,
         last_field: None,
     };
     p.program()
@@ -232,6 +241,24 @@ impl<'a> Parser<'a> {
     fn at_eof(&self) -> bool {
         matches!(self.cur().kind, Tk::Eof)
     }
+    /// One level deeper; a mistake past MAX_DEPTH.
+    fn deeper(&mut self) -> R<()> {
+        self.deeper_by(1)
+    }
+
+    /// Levels deeper, for something its Lua nests more than once.
+    fn deeper_by(&mut self, n: usize) -> R<()> {
+        self.depth += n;
+        if self.depth > MAX_DEPTH {
+            let pos = self.cur().pos;
+            return self.fail(
+                pos,
+                format!("this is nested too deeply: more than {MAX_DEPTH} levels of brackets, blocks or operators inside each other. Split it up with variables or methods."),
+            );
+        }
+        Ok(())
+    }
+
     fn fail<T>(&mut self, pos: Pos, msg: impl Into<String>) -> R<T> {
         self.diags.add(pos, msg);
         Err(Stop)
@@ -374,6 +401,7 @@ impl<'a> Parser<'a> {
                 break;
             }
             let at = self.p;
+            self.depth = 0;
             let r = self.top_level(&mut items, &mut body, &mut seen_other);
             if r.is_err() {
                 self.recover();
@@ -528,6 +556,14 @@ impl<'a> Parser<'a> {
     }
 
     fn state_options(&mut self, open: Pos) -> R<Vec<StateOption>> {
+        let d = self.depth;
+        self.deeper()?;
+        let r = self.state_options_inner(open);
+        self.depth = d;
+        r
+    }
+
+    fn state_options_inner(&mut self, open: Pos) -> R<Vec<StateOption>> {
         let mut out = Vec::new();
         loop {
             if self.at_sym("]") {
@@ -1184,6 +1220,14 @@ impl<'a> Parser<'a> {
     // ----- types -----
 
     fn ty(&mut self) -> R<TypeRef> {
+        let d = self.depth;
+        self.deeper()?;
+        let r = self.ty_inner();
+        self.depth = d;
+        r
+    }
+
+    fn ty_inner(&mut self) -> R<TypeRef> {
         let t = self.cur().clone();
         let mut base = match &t.kind {
             Tk::Ident(w) if w == "hook" => {
@@ -1249,6 +1293,9 @@ impl<'a> Parser<'a> {
             }
         };
         loop {
+            if self.at_word("array") || self.at_word("map") {
+                self.deeper()?;
+            }
             if self.at_word("array") {
                 self.next();
                 base = TypeRef::Array(Box::new(base));
@@ -1323,6 +1370,14 @@ impl<'a> Parser<'a> {
     // ----- statements -----
 
     fn block(&mut self, what: &str) -> R<Vec<Stmt>> {
+        let d = self.depth;
+        self.deeper()?;
+        let r = self.block_inner(what);
+        self.depth = d;
+        r
+    }
+
+    fn block_inner(&mut self, what: &str) -> R<Vec<Stmt>> {
         let open = self.expect_sym("{", &format!("expected {{ to start {what}."))?;
         let mut out = Vec::new();
         loop {
@@ -1333,10 +1388,13 @@ impl<'a> Parser<'a> {
             if self.at_eof() || (self.at_word("end") && self.peek(1).kind == Tk::Eof) {
                 return self.fail(open.pos, "this { is never closed. Add a } where the block ends.");
             }
+            // A mistake deeper in leaves the depth where it was.
+            let d = self.depth;
             match self.statement() {
                 Ok(s) => out.push(s),
                 Err(_) => self.recover(),
             }
+            self.depth = d;
         }
     }
 
@@ -1673,6 +1731,15 @@ impl<'a> Parser<'a> {
     }
 
     fn loop_stmt(&mut self) -> R<Stmt> {
+        // A loop's Lua keeps a few names of its own, and Lua holds 200 at most.
+        let d = self.depth;
+        self.deeper_by(3)?;
+        let r = self.loop_inner();
+        self.depth = d;
+        r
+    }
+
+    fn loop_inner(&mut self) -> R<Stmt> {
         let start = self.next().pos; // loop
         let kind = if self.at_sym("{") {
             LoopKind::Forever
@@ -1772,7 +1839,16 @@ impl<'a> Parser<'a> {
     // ----- expressions -----
 
     fn expr(&mut self) -> R<Expr> {
+        let d = self.depth;
+        self.deeper()?;
+        let e = self.expr_inner();
+        self.depth = d;
+        e
+    }
+
+    fn expr_inner(&mut self) -> R<Expr> {
         if self.at_word("either") {
+            self.deeper()?;
             let t = self.next();
             let check = self.or_expr()?;
             if !self.at_sym("?") {
@@ -1796,8 +1872,16 @@ impl<'a> Parser<'a> {
     }
 
     fn or_expr(&mut self) -> R<Expr> {
+        let d = self.depth;
+        let r = self.or_expr_chain();
+        self.depth = d;
+        r
+    }
+
+    fn or_expr_chain(&mut self) -> R<Expr> {
         let mut left = self.and_expr()?;
         while self.at_sym("||") {
+            self.deeper()?;
             let op = self.next();
             let right = self.and_expr()?;
             left = self.mk(left.pos, ExprKind::Bin(BinOp::Or, Box::new(left), Box::new(right), op.pos));
@@ -1806,8 +1890,16 @@ impl<'a> Parser<'a> {
     }
 
     fn and_expr(&mut self) -> R<Expr> {
+        let d = self.depth;
+        let r = self.and_expr_chain();
+        self.depth = d;
+        r
+    }
+
+    fn and_expr_chain(&mut self) -> R<Expr> {
         let mut left = self.not_expr()?;
         while self.at_sym("&&") {
+            self.deeper()?;
             let op = self.next();
             let right = self.not_expr()?;
             left = self.mk(left.pos, ExprKind::Bin(BinOp::And, Box::new(left), Box::new(right), op.pos));
@@ -1817,8 +1909,11 @@ impl<'a> Parser<'a> {
 
     fn not_expr(&mut self) -> R<Expr> {
         if self.at_word("not") {
+            let d = self.depth;
+            self.deeper_by(2)?;
             let t = self.next();
             let inner = self.not_expr()?;
+            self.depth = d;
             return Ok(self.mk(t.pos, ExprKind::Not(Box::new(inner))));
         }
         self.compare()
@@ -1852,6 +1947,13 @@ impl<'a> Parser<'a> {
     }
 
     fn sum(&mut self) -> R<Expr> {
+        let d = self.depth;
+        let r = self.sum_chain();
+        self.depth = d;
+        r
+    }
+
+    fn sum_chain(&mut self) -> R<Expr> {
         let mut left = self.product()?;
         loop {
             let op = if self.at_sym("+") {
@@ -1861,6 +1963,7 @@ impl<'a> Parser<'a> {
             } else {
                 return Ok(left);
             };
+            self.deeper()?;
             let t = self.next();
             let right = self.product()?;
             left = self.mk(left.pos, ExprKind::Bin(op, Box::new(left), Box::new(right), t.pos));
@@ -1868,6 +1971,13 @@ impl<'a> Parser<'a> {
     }
 
     fn product(&mut self) -> R<Expr> {
+        let d = self.depth;
+        let r = self.product_chain();
+        self.depth = d;
+        r
+    }
+
+    fn product_chain(&mut self) -> R<Expr> {
         let mut left = self.unary()?;
         loop {
             let op = if self.at_sym("*") {
@@ -1879,6 +1989,7 @@ impl<'a> Parser<'a> {
             } else {
                 return Ok(left);
             };
+            self.deeper()?;
             let t = self.next();
             let right = self.unary()?;
             left = self.mk(left.pos, ExprKind::Bin(op, Box::new(left), Box::new(right), t.pos));
@@ -1887,8 +1998,11 @@ impl<'a> Parser<'a> {
 
     fn unary(&mut self) -> R<Expr> {
         if self.at_sym("-") {
+            let d = self.depth;
+            self.deeper_by(3)?;
             let t = self.next();
             let inner = self.unary()?;
+            self.depth = d;
             return Ok(match inner.kind {
                 ExprKind::Int(v) => self.mk(t.pos, ExprKind::Int(-v)),
                 ExprKind::Float(v) => self.mk(t.pos, ExprKind::Float(-v)),
@@ -1896,16 +2010,29 @@ impl<'a> Parser<'a> {
             });
         }
         if self.at_sym("#") {
+            let d = self.depth;
+            self.deeper()?;
             let t = self.next();
             let inner = self.postfix()?;
+            self.depth = d;
             return Ok(self.mk(t.pos, ExprKind::Len(Box::new(inner))));
         }
         self.postfix()
     }
 
     fn postfix(&mut self) -> R<Expr> {
+        let d = self.depth;
+        let r = self.postfix_chain();
+        self.depth = d;
+        r
+    }
+
+    fn postfix_chain(&mut self) -> R<Expr> {
         let mut e = self.primary()?;
         loop {
+            if self.at_sym(".") || self.at_sym(":") || (self.at_sym("[") && !self.cur_space_before()) {
+                self.deeper()?;
+            }
             if self.at_sym(".") {
                 self.next();
                 let (name, pos) = self.ident("a field's name after .")?;
@@ -2049,6 +2176,14 @@ impl<'a> Parser<'a> {
     }
 
     fn list(&mut self) -> R<Expr> {
+        let d = self.depth;
+        self.deeper()?;
+        let r = self.list_inner();
+        self.depth = d;
+        r
+    }
+
+    fn list_inner(&mut self) -> R<Expr> {
         let open = self.next();
         let mut items = Vec::new();
         let mut keys: Option<Vec<Expr>> = None;

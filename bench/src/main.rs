@@ -174,6 +174,28 @@ fn luau(jit: bool) -> (f64, Vec<Values>) {
 }
 
 fn main() {
+    // --load file.lst: compiles it and loads it in Luau, with native code and without.
+    if let Some(i) = std::env::args().position(|a| a == "--load") {
+        let path = std::env::args().nth(i + 1).unwrap();
+        let files = vec![("main.lst".to_string(), std::fs::read_to_string(&path).unwrap())];
+        match lust::to_lua("main.lst", &files) {
+            Err(p) => println!("mistake: {}", p[0]),
+            Ok(chunk) => {
+                for jit in [true, false] {
+                    let lua = Lua::new();
+                    lua.enable_jit(jit);
+                    match lua.load(&chunk.code).set_name(lust::LuaChunk::NAME).exec() {
+                        Ok(()) => println!("loaded (native code: {jit})"),
+                        Err(e) => println!(
+                            "Luau refused it (native code: {jit}): {}",
+                            e.to_string().lines().next().unwrap_or("")
+                        ),
+                    }
+                }
+            }
+        }
+        return;
+    }
     // --lua file: runs a Lua script in Luau after the game's chunk, with the chunk's table as API.
     if let Some(i) = std::env::args().position(|a| a == "--lua") {
         let script = std::fs::read_to_string(std::env::args().nth(i + 1).unwrap()).unwrap();

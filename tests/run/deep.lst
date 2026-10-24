@@ -1,0 +1,368 @@
+-- Code nested nearly as deeply as Lust allows runs both ways: Lua loads it, and Rust builds it.
+method int g(int x) {
+    return x + 1;
+}
+
+int a = 2;
+vec3 v = [1, 2, 3];
+print(not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not not true);
+print(- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - a);
+print(either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? either a > 0? 1 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2 or 2);
+print(#[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[1]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]);
+print(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(1))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))));
+print(a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a + a);
+print(v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v + v);
+print((a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + (a + 1)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))));
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+is a > 0? then {
+print("deep inside");
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+loop 1 times {
+loop 1 times {
+loop 1 times {
+loop 1 times {
+loop 1 times {
+loop 1 times {
+loop 1 times {
+loop 1 times {
+loop 1 times {
+loop 1 times {
+loop 1 times {
+loop 1 times {
+loop 1 times {
+loop 1 times {
+loop 1 times {
+loop 1 times {
+loop 1 times {
+loop 1 times {
+loop 1 times {
+loop 1 times {
+loop 1 times {
+loop 1 times {
+loop 1 times {
+loop 1 times {
+loop 1 times {
+loop 1 times {
+loop 1 times {
+loop 1 times {
+loop 1 times {
+loop 1 times {
+loop 1 times {
+loop 1 times {
+loop 1 times {
+loop 1 times {
+loop 1 times {
+print("looped");
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+}
+end

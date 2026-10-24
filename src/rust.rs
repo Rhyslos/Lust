@@ -458,7 +458,7 @@ pub fn write(prog: &Program, info: &Info, files: &[String], library: bool) -> St
     };
     let what = if library { "a Rust library" } else { "a program" };
     format!(
-        "// Written by Lust from {file}, as {what}. It's rewritten on every build, so don't edit it.\n#![allow(warnings)]\nuse std::cell::RefCell;\nuse std::rc::Rc;\n\nmod rt {{\n{RUNTIME}\n{db}}}\n\n{rows}{defs}{ending}",
+        "// Written by Lust from {file}, as {what}. It's rewritten on every build, so don't edit it.\n#![allow(warnings)]\n// Arrays inside arrays are types inside types; Lust allows them deeper than Rust does by default.\n#![recursion_limit = \"1024\"]\nuse std::cell::RefCell;\nuse std::rc::Rc;\n\nmod rt {{\n{RUNTIME}\n{db}}}\n\n{rows}{defs}{ending}",
         db = {
             let mut m = format!("pub const UI_PROGRAM: bool = {};\n", views(info));
             if !info.databases.is_empty() {

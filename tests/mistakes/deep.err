@@ -1,0 +1,6 @@
+deep.lst:2:159  this is nested too deeply: more than 150 levels of brackets, blocks or operators inside each other. Split it up with variables or methods.
+deep.lst:3:306  this is nested too deeply: more than 150 levels of brackets, blocks or operators inside each other. Split it up with variables or methods.
+deep.lst:4:607  this is nested too deeply: more than 150 levels of brackets, blocks or operators inside each other. Split it up with variables or methods.
+deep.lst:5:9  d is an int, but this is a string. Use .int() to turn text into a number.
+
+4 mistakes. Nothing was run.
