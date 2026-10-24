@@ -1,0 +1,14 @@
+-- Mistakes in two files: every one is reported, each with its file, line and column.
+get "parts/aim":[aim];
+
+component Turret {
+    has {
+        int ammo = "lots";
+    }
+
+    method update(float dt) {
+        ammo = ammo + aim(dt);
+        sned = 1;
+    }
+}
+end

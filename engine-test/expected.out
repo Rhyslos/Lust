@@ -1,0 +1,37 @@
+compiler 2.0.0
+main.lst:6:20  ammo is an int, but this is a string. Use .int() to turn text into a number.
+  = main.lst 6 20
+main.lst:11:9  there's nothing called sned here. Declare it first, like int sned = 0;
+  = main.lst 11 9
+parts/aim.lst:2:12  this method gives back an int, but this is a float. Use .int() to drop the part after the point.
+  = parts/aim.lst 2 12
+"there's no file called nope.lst among the files handed over."
+Hit carries by entity
+Hit carries damage float
+tick 0
+  Hit handled: true
+  0000000000002 shield at 2.5 after a hit from 0000000000001
+tick 1
+  Hit handled: true
+  0000000000002 shield at 0.0 after a hit from 0000000000001
+tick 2
+  main.lst:39  dividing a whole number by zero doesn't work.
+  = main.lst Some(39) Some(17)
+  0000000000002 shield at -2.5 after a hit from 0000000000001
+tick 3
+changed: ["Turret"]
+removed: ["Shield"]
+added: ["Radar"]
+swap turret: kept
+  note: Turret's ammo is float now, not int, so it starts at 10.
+  note: Turret's mode was Burst, which isn't one of its options now, so it starts at Single.
+swap shield: gone
+  note: Shield isn't in the code any more.
+  turret.me = String("0000000000001")
+  turret.ammo = Integer(10)
+  turret.heat = Number(0.06666666666666667)
+  turret.mode = String("Single")
+  turret.target = String("0000000000002")
+  turret.range = Integer(20)
+  turret.label = Nil
+0000000000001 turret v2: heat 0.566666666666667, ammo 10.0, range 20.0, Single

@@ -1,0 +1,6 @@
+method int aim(float dt) {
+    return dt;
+}
+
+pass aim;
+end

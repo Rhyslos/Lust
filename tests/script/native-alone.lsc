@@ -1,0 +1,12 @@
+-- A native method on its own has the same Lua name as Lust's own function for it, so its body
+-- goes in LUST_NATIVES, where Lust finds it.
+fetch lua;
+
+method int double(int n) native;
+
+lua {
+    LUST_NATIVES = { double = function(n) return n * 2 end }
+};
+
+print(double(21));
+end

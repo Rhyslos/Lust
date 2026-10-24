@@ -451,7 +451,7 @@ pub fn write(prog: &Program, info: &Info, files: &[String], library: bool) -> St
     let ending = if library {
         let api = w.library_api(prog, &class_decls);
         format!(
-            "{host}{api}\nconst FILES: &[&str] = &[{files_list}];\n\n/// Runs the Lust code's own start: makes its objects, then runs the code written outside\n/// classes and methods. Call it once, before anything else.\npub fn start() -> Result<(), String> {{\n    rt::catch(FILES, || {{ rt::started(); program() }})\n}}\n\nfn program() {{\n{body}}}\n"
+            "{host}{api}\nconst FILES: &[&str] = &[{files_list}];\n\n/// Runs the Lust code's own start: makes its objects, then runs the code written outside\n/// classes and methods. Call it once, before anything else.\npub fn start() -> Result<(), LustError> {{\n    rt::catch(FILES, || {{ rt::started(); program() }})\n}}\n\nfn program() {{\n{body}}}\n"
         )
     } else {
         format!("{host}\nfn program() {{\n{body}}}\n\nfn main() {{\n    rt::main(program, &[{files_list}]);\n}}\n")
@@ -912,7 +912,7 @@ impl<'a> W<'a> {
             }
         }
         // Vectors and rotations are the runtime's own types, handed out as they are.
-        let mut out = String::from("\npub use rt::{Rotation, Vec3};\n");
+        let mut out = format!("\npub use rt::{{LustError, Rotation, Vec3}};\n\n/// The version of Lust that wrote this library.\npub const LUST_VERSION: &str = {:?};\n", env!("CARGO_PKG_VERSION"));
         for (ci, c) in info.classes.iter().enumerate() {
             let root = self.root(ci);
             let w = ident(&c.name);
@@ -934,7 +934,7 @@ impl<'a> W<'a> {
                 ));
             } else if !c.is_node && !class_decls.iter().any(|d| d.name == c.name && d.is_schema) {
                 items.push_str(&format!(
-                    "    /// A new {shown}, with its fields' starting values.\n    pub fn new() -> Result<{w}, String> {{\n        rt::catch(FILES, || {w}(new{ci}()))\n    }}\n"
+                    "    /// A new {shown}, with its fields' starting values.\n    pub fn new() -> Result<{w}, LustError> {{\n        rt::catch(FILES, || {w}(new{ci}()))\n    }}\n"
                 ));
             }
             let mut seen: Vec<String> = Vec::new();
@@ -962,11 +962,11 @@ impl<'a> W<'a> {
                     let get = snake(&f.name);
                     let set = snake(&format!("set{}{}", f.name[..1].to_uppercase(), &f.name[1..]));
                     items.push_str(&format!(
-                        "    pub fn {get}(&self) -> Result<{ty}, String> {{\n        rt::catch(FILES, || {{ let v = self.0.borrow().{field}.clone(); {} }})\n    }}\n",
+                        "    pub fn {get}(&self) -> Result<{ty}, LustError> {{\n        rt::catch(FILES, || {{ let v = self.0.borrow().{field}.clone(); {} }})\n    }}\n",
                         self.to_api("v", &f.ty)
                     ));
                     items.push_str(&format!(
-                        "    pub fn {set}(&self, v: {ty}) -> Result<(), String> {{\n        rt::catch(FILES, || {{ let v = {}; self.0.borrow_mut().{field} = v; }})\n    }}\n",
+                        "    pub fn {set}(&self, v: {ty}) -> Result<(), LustError> {{\n        rt::catch(FILES, || {{ let v = {}; self.0.borrow_mut().{field} = v; }})\n    }}\n",
                         self.from_api("v", &f.ty)
                     ));
                 }
@@ -988,7 +988,7 @@ impl<'a> W<'a> {
                 }
                 let ret = self.api_ty(&sig.ret);
                 items.push_str(&format!(
-                    "    pub fn {}({}) -> Result<{ret}, String> {{\n        rt::catch(FILES, || {{ let out = d{root}_{m}({}); {} }})\n    }}\n",
+                    "    pub fn {}({}) -> Result<{ret}, LustError> {{\n        rt::catch(FILES, || {{ let out = d{root}_{m}({}); {} }})\n    }}\n",
                     snake(m),
                     decl.join(", "),
                     args.join(", "),
@@ -1044,7 +1044,7 @@ impl<'a> W<'a> {
             }
             let ret = self.api_ty(&sig.ret);
             out.push_str(&format!(
-                "\npub fn {}({}) -> Result<{ret}, String> {{\n    rt::catch(FILES, || {{ let out = t_{}({}); {} }})\n}}\n",
+                "\npub fn {}({}) -> Result<{ret}, LustError> {{\n    rt::catch(FILES, || {{ let out = t_{}({}); {} }})\n}}\n",
                 snake(&m.name),
                 decl.join(", "),
                 ident(&m.name),
@@ -1163,16 +1163,18 @@ impl<'a> W<'a> {
             let event = &m[format!("on{}", crate::ast::MARK).len()..];
             let es = crate::ast::shown(event).to_string();
             let params = self.info.classes[ci].methods[&m].params.clone();
+            let at = self.info.classes[ci].methods[&m].line;
+            let atc = self.info.classes[ci].methods[&m].col;
             let n = params.len();
             let mut b = format!(
-                "            {es:?} => {{\n                if values.len() != {n} {{\n                    return Err(format!(\"{es} carries {n} value{}, but {{}} came.\", values.len()));\n                }}\n",
+                "            {es:?} => {{\n                if values.len() != {n} {{\n                    return Err(rt::error_at(FILES, {at}, {atc}, format!(\"{es} carries {n} value{}, but {{}} came.\", values.len())));\n                }}\n",
                 if n == 1 { "" } else { "s" }
             );
             let mut args = vec!["&self.0".to_string()];
             for (i, (pn, t)) in params.iter().enumerate() {
                 let Some((_, from)) = self.value_kind(t) else { continue };
                 b.push_str(&format!(
-                    "                let a{i} = {{ let v = &values[{i}]; {from} }}.ok_or_else(|| \"{es}'s {pn} should be {}.\".to_string())?;\n",
+                    "                let a{i} = {{ let v = &values[{i}]; {from} }}.ok_or_else(|| rt::error_at(FILES, {at}, {atc}, \"{es}'s {pn} should be {}.\".to_string()))?;\n",
                     match t {
                         Ty::State(s) => {
                             let o = &self.info.states[*s].options;
@@ -1195,11 +1197,11 @@ impl<'a> W<'a> {
             handles.push(format!("{es:?}"));
         }
         let handle = format!(
-            "\n    /// The events it handles, by name.\n    pub const HANDLES: &'static [&'static str] = &[{}];\n\n    /// Runs its handler for an event: false if it has none for this one.\n    pub fn handle(&self, event: &str, values: &[Value]) -> Result<bool, String> {{\n        match event {{\n{arms}            _ => Ok(false),\n        }}\n    }}\n",
+            "\n    /// The events it handles, by name.\n    pub const HANDLES: &'static [&'static str] = &[{}];\n\n    /// Runs its handler for an event: false if it has none for this one.\n    pub fn handle(&self, event: &str, values: &[Value]) -> Result<bool, LustError> {{\n        match event {{\n{arms}            _ => Ok(false),\n        }}\n    }}\n",
             handles.join(", ")
         );
         format!(
-            "{handle}    /// The component's name, as the engine knows it.\n    pub const NAME: &'static str = {shown:?};\n\n    /// Its fields, their kinds and their starting values, in order.\n    pub fn schema() -> Schema {{\n        let d = {w}::new().map(|c| c.to_data()).unwrap_or_default();\n        Schema {{ name: {shown:?}.into(), fields: vec![{}] }}\n    }}\n\n    /// Its fields' values, by name.\n    pub fn to_data(&self) -> Data {{\n        let o = self.0.borrow();\n        let mut d = Data::new();\n{}        d\n    }}\n\n    /// Sets the fields `data` has. A missing value, or one of the wrong kind, is left as it is.\n    pub fn set_data(&self, data: &Data) {{\n{}    }}\n\n    /// A new one with these values, and the starting values for the rest.\n    pub fn from_data(data: &Data) -> Result<{w}, String> {{\n        let c = {w}::new()?;\n        c.set_data(data);\n        Ok(c)\n    }}\n",
+            "{handle}    /// The component's name, as the engine knows it.\n    pub const NAME: &'static str = {shown:?};\n\n    /// Its fields, their kinds and their starting values, in order.\n    pub fn schema() -> Schema {{\n        let d = {w}::new().map(|c| c.to_data()).unwrap_or_default();\n        Schema {{ name: {shown:?}.into(), fields: vec![{}] }}\n    }}\n\n    /// Its fields' values, by name.\n    pub fn to_data(&self) -> Data {{\n        let o = self.0.borrow();\n        let mut d = Data::new();\n{}        d\n    }}\n\n    /// Sets the fields `data` has. A missing value, or one of the wrong kind, is left as it is.\n    pub fn set_data(&self, data: &Data) {{\n{}    }}\n\n    /// A new one with these values, and the starting values for the rest.\n    pub fn from_data(data: &Data) -> Result<{w}, LustError> {{\n        let c = {w}::new()?;\n        c.set_data(data);\n        Ok(c)\n    }}\n",
             kinds.join(", "),
             out_vals.concat(),
             in_vals.concat()
@@ -1261,7 +1263,7 @@ impl<'a> W<'a> {
         let pad = "    ".repeat(depth);
         let ln = s.pos().line;
         if !matches!(s, Stmt::Stop(_) | Stmt::Skip(_)) {
-            out.push_str(&format!("{pad}rt::at({ln});\n"));
+            out.push_str(&format!("{pad}rt::at({ln}, {});\n", s.pos().col));
         }
         match s {
             Stmt::Var { ty, name, value, .. } => {
