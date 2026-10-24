@@ -1295,51 +1295,20 @@ pub fn time_clock() -> f64 {
     STARTED.with(|s| s.elapsed().as_secs_f64())
 }
 
-#[repr(C)]
-struct Tm {
-    // sec, min, hour, day of the month, month from 0, years since 1900, weekday, day of the year, summer time
-    f: [i32; 9],
-    // Room for what some systems add after those.
-    extra: [u64; 4],
-}
-
-#[cfg(unix)]
-extern "C" {
-    fn localtime_r(t: *const i64, out: *mut Tm) -> *mut Tm;
-}
-#[cfg(windows)]
-extern "C" {
-    fn _localtime64_s(out: *mut Tm, t: *const i64) -> i32;
-}
-
-/// The local date and time now, as the computer's clock and time zone say.
+/// The local date and time now, as the computer's clock and time zone say: sec, min, hour, day
+/// of the month, month from 0, years since 1900. local_fields, which knows the time zone, comes
+/// with the program: from the computer in a program of its own, from the engine in a library.
 fn local_now() -> [i32; 9] {
     let t = time_now().floor() as i64;
-    let mut tm = Tm { f: [0; 9], extra: [0; 4] };
-    #[cfg(unix)]
-    let ok = unsafe { !localtime_r(&t, &mut tm).is_null() };
-    #[cfg(windows)]
-    let ok = unsafe { _localtime64_s(&mut tm, &t) == 0 };
-    #[cfg(not(any(unix, windows)))]
-    let ok = false;
-    if ok {
-        return tm.f;
-    }
-    // No time zone to be had: the time in UTC.
+    local_fields(t).unwrap_or_else(|| utc_fields(t))
+}
+
+/// The date and time in UTC at t seconds since 1970, laid out like local_now's.
+pub fn utc_fields(t: i64) -> [i32; 9] {
     let days = t.div_euclid(86400);
     let secs = t.rem_euclid(86400) as i32;
     let (y, m, d) = civil(days);
-    [
-        secs % 60,
-        secs / 60 % 60,
-        secs / 3600,
-        d as i32,
-        m as i32 - 1,
-        y as i32 - 1900,
-        0,
-        0,
-        0,
-    ]
+    [secs % 60, secs / 60 % 60, secs / 3600, d as i32, m as i32 - 1, y as i32 - 1900, 0, 0, 0]
 }
 
 /// Days since 1970-01-01 to year, month, day.

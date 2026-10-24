@@ -42,6 +42,7 @@ mod native_rt {
     // lust itself runs LustScript views on its own main thread.
     pub const UI_PROGRAM: bool = false;
     include!("native_rt.rs");
+    include!("native_localtime.rs");
 }
 // Databases, for built programs that use them, and for LustScript run by lust.
 #[cfg(feature = "cli")]
@@ -438,5 +439,39 @@ mod deep_code {
         too_deep(format!("int array x = {}{};\nend\n", "[".repeat(100_000), "]".repeat(100_000)));
         too_deep(format!("int array array a = [];\nint x = a{};\nend\n", "[0]".repeat(100_000)));
         too_deep(format!("{} x = [];\nend\n", format!("int{}", " array".repeat(100_000))));
+    }
+}
+
+#[cfg(test)]
+mod no_unsafe {
+    //! A library for an engine has no unsafe code, and says so to Rust, which checks it.
+
+    fn library(src: &str) -> String {
+        crate::to_rust_library("game.lst", &[("game.lst".to_string(), src.to_string())]).unwrap()
+    }
+
+    fn safe(rust: &str) {
+        assert!(rust.contains("#![forbid(unsafe_code)]"));
+        assert!(!rust.contains("unsafe {"), "unsafe code in the library");
+        assert!(!rust.contains("extern \"C\""), "C functions in the library");
+    }
+
+    #[test]
+    fn plain_library() {
+        safe(&library("method int twice(int n) {\n    return n * 2;\n}\npass twice;\nend\n"));
+    }
+
+    #[test]
+    fn library_with_local_time() {
+        let rust = library("method string today() {\n    return Time:date() + \" \" + Time:time();\n}\npass today;\nend\n");
+        safe(&rust);
+        assert!(rust.contains("fn local_time_offset(&self, unix_seconds: i64) -> i64;"));
+    }
+
+    #[test]
+    fn components_and_events() {
+        safe(&library(
+            "event Hit(float d);\ncomponent Health {\n    has {\n        float hp = 1;\n    }\n    on Hit(float d) {\n        hp = hp - d;\n        send Hit(d) to me;\n    }\n}\nend\n",
+        ));
     }
 }

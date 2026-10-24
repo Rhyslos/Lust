@@ -19,6 +19,7 @@ pub const DB_RUNTIME: &str = include_str!("native_db.rs");
 pub const WEB_RUNTIME: &str = include_str!("native_web.rs");
 pub const NET_RUNTIME: &str = include_str!("native_net.rs");
 pub const DLG_RUNTIME: &str = include_str!("native_dlg.rs");
+pub const LOCALTIME_RUNTIME: &str = include_str!("native_localtime.rs");
 pub const TEXT_RUNTIME: &str = include_str!("native_text.rs");
 pub const UI_RUNTIME: &str = include_str!("native_ui.rs");
 
@@ -424,6 +425,9 @@ pub fn write(prog: &Program, info: &Info, files: &[String], library: bool) -> St
         i += 1;
     }
 
+    if library && uses(info, &["time_date", "time_time"]) {
+        host_fns.push("    /// Time:date() and Time:time() in Lust: how many seconds the local time zone is ahead of\n    /// UTC (behind, below 0) at this many seconds since 1970. 0 gives UTC.\n    fn local_time_offset(&self, unix_seconds: i64) -> i64;\n".into());
+    }
     if !info.sends.is_empty() {
         host_fns.push("    /// send Hit(…) to target; in Lust: the engine queues the event for the entity's components.\n    fn send_event(&self, to: Option<u64>, event: &str, values: Vec<Value>);\n".into());
     }
@@ -457,10 +461,25 @@ pub fn write(prog: &Program, info: &Info, files: &[String], library: bool) -> St
         format!("{host}\nfn program() {{\n{body}}}\n\nfn main() {{\n    rt::main(program, &[{files_list}]);\n}}\n")
     };
     let what = if library { "a Rust library" } else { "a program" };
+    let forbid = if !library && uses(info, &["time_date", "time_time"]) {
+        ""
+    } else {
+        "// No unsafe code: Rust checks it.\n#![forbid(unsafe_code)]\n"
+    };
     format!(
-        "// Written by Lust from {file}, as {what}. It's rewritten on every build, so don't edit it.\n#![allow(warnings)]\n// Arrays inside arrays are types inside types; Lust allows them deeper than Rust does by default.\n#![recursion_limit = \"1024\"]\nuse std::cell::RefCell;\nuse std::rc::Rc;\n\nmod rt {{\n{RUNTIME}\n{db}}}\n\n{rows}{defs}{ending}",
+        "// Written by Lust from {file}, as {what}. It's rewritten on every build, so don't edit it.\n#![allow(warnings)]\n{forbid}// Arrays inside arrays are types inside types; Lust allows them deeper than Rust does by default.\n#![recursion_limit = \"1024\"]\nuse std::cell::RefCell;\nuse std::rc::Rc;\n\nmod rt {{\n{RUNTIME}\n{db}}}\n\n{rows}{defs}{ending}",
         db = {
             let mut m = format!("pub const UI_PROGRAM: bool = {};\n", views(info));
+            // The time zone: from the computer (unsafe, so only when Time:date() or Time:time()
+            // is used), from the engine in a library, or none (UTC).
+            let local = uses(info, &["time_date", "time_time"]);
+            if local && library {
+                m.push_str("pub fn local_fields(t: i64) -> Option<[i32; 9]> {\n    Some(utc_fields(t + crate::host().local_time_offset(t)))\n}\n");
+            } else if local {
+                m.push_str(LOCALTIME_RUNTIME);
+            } else {
+                m.push_str("fn local_fields(_: i64) -> Option<[i32; 9]> {\n    None\n}\n");
+            }
             if !info.databases.is_empty() {
                 m.push_str(&format!("pub mod db {{\nuse super::*;\nuse std::rc::Rc;\n{DB_RUNTIME}\n}}\n"));
             }
