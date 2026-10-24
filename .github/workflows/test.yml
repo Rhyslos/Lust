@@ -37,6 +37,13 @@ jobs:
           fi
           cat test-output.txt
 
+      # The compiler on its own, as an engine uses it, and its Lua run by Luau.
+      - name: Compiler as a library
+        run: |
+          cargo build --release --no-default-features --lib
+          cargo test --release
+          cargo run --release --manifest-path engine-test/Cargo.toml
+
       - name: Keep lust.exe
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4

@@ -280,7 +280,7 @@ pub fn run(out: &Output, files: &[String]) -> ExitCode {
                 other => other.to_string(),
             };
             let (line, msg) = locate(&raw, &out.lines);
-            let msg = crate::ast::unmark(&friendly(&msg));
+            let msg = crate::ast::unmark(&crate::lua::friendly(&msg));
             match line {
                 Some(l) => {
                     let (f, row) = crate::ast::unpack(l);
@@ -305,20 +305,4 @@ fn locate(raw: &str, lines: &[u32]) -> (Option<u32>, String) {
         }
     }
     (None, first.to_string())
-}
-
-fn friendly(msg: &str) -> String {
-    if msg.contains("attempt to index") && msg.contains("nil value") {
-        return "this is nothing, so it has no fields or methods. Check first: is it !== nothing?".into();
-    }
-    if msg.contains("attempt to call") && msg.contains("nil value") {
-        return "this hook is nothing, so it can't be called. Check first: is it !== nothing?".into();
-    }
-    if msg.contains("stack overflow") {
-        return "methods called each other too deeply. That usually means one calls itself with no way to stop.".into();
-    }
-    if msg.contains("attempt to perform arithmetic") || msg.contains("attempt to concatenate") || msg.contains("attempt to compare") {
-        return "a value here is nothing, so it can't be used in maths or text.".into();
-    }
-    msg.to_string()
 }

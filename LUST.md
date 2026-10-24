@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (2.0 alpha 31):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (2.0 alpha 32):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -1320,7 +1320,7 @@ The game uses it like any other file: `fetch "engine/entity":Entity;` and `get "
 - A native method takes and gives back ints, floats, text, bools, `vec3`s, `rotation`s, things made from classes, and arrays of any of those (`Thing array`, `vec3 array`).
 - Where the body comes from:
   - **built as a Rust library** (below): from the Rust program using it;
-  - **LustScript** (`.lsc`): from the host's own Lua function with the same name, or `Class_method` for a class's method, which is given the thing first;
+  - **LustScript** (`.lsc`) and **Lua for an engine**: from a Lua function in the table `LUST_NATIVES`, by the method's name, or `Class_method` for a class's method, which is given the thing first. A function with the same global name works too, except for a method on its own: Lust's own function for it has that name, so its body goes in `LUST_NATIVES`;
   - **on its own** (`lust run`, or a program built without `--library`): nowhere, so calling it stops with a message saying where its body lives.
 
 ### Lust as a Rust library
@@ -1338,11 +1338,51 @@ What the Rust program sees:
 - **Each class the first file `pass`es** is a Rust type: `Weapon::new()`, a getter and a setter for each field (`ammo()`, `set_ammo(…)`), and each method (`fire(…)`), with names in Rust's style (`lastShot` becomes `last_shot`). An object is `Score::get()`. Methods the first file passes are functions: `game::damage(10, true)`.
 - **Classes with native methods** are always there in full, since they belong to the program: it makes them, and fills in their fields.
 - **The native methods' bodies:** the program implements `game::Host`, one function each (`entity_move_by(&self, this: &Entity, dx: f64)`, `now(&self)`), and hands it over with `game::set_host(…)` before `start`.
-- **Mistakes come back as text.** Everything gives back a `Result`, and a Lust failure is the same message Lust prints, with its file and line: `Err("game.lst:24  this is nothing, so it has no fields or methods.")`. The program decides what to do with it.
+- **Failures come back as a `LustError`.** Everything gives back a `Result`, and a Lust failure says where it happened: `file`, `line` and `column` (of the statement that failed), and `message`. Shown with `{}`, it's the message Lust prints: `game.lst:24  this is nothing, so it has no fields or methods.` The program decides what to do with it.
+- **`game::LUST_VERSION`** is the version of Lust that wrote the library.
 - Ints, floats, text and bools are Rust's `i64`, `f64`, `String` and `bool`. A thing made from a class is `Option<Weapon>`, since it can be `nothing`. A `vec3` is the library's `Vec3 { x, y, z }` and a `rotation` its `Rotation { x, y, z, w }` (a quaternion), all `f32`, the same layout as Solis's and glam's. An array is a `Vec` of its items, copied each way.
 - **In LustScript**, the host's Lua function hands a `vec3` back as any table with `x`, `y` and `z` (a Luau `vector` works too), a rotation as one with `x`, `y`, `z` and `w`, and an array as a plain list. Lust rounds the numbers to f32 and counts the list, so they're the same as Lust's own.
 
 `lust test` tests libraries too: a `game.host.rs` next to `game.lst` is a Rust program that uses it, and its output is compared with `game.out`.
+
+### The compiler inside an engine
+
+An engine can use Lust's compiler itself, as a Rust library: to check a game's Lust and show its mistakes, to turn it into Lua while the game runs, and into Rust for a release. In its `Cargo.toml`, at a version's tag:
+
+```
+[dependencies]
+lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.32", default-features = false }
+```
+
+Without its default features it needs nothing but Rust's own library (the default ones are the `lust` command). Lust doesn't open any files: the engine reads them, and hands over each one's path and text, with `/` between folders.
+
+```
+let files = vec![
+    ("main.lst".to_string(), main_text),
+    ("parts/gun.lst".to_string(), gun_text),
+];
+match lust::to_lua("main.lst", &files) {
+    Ok(chunk) => { /* load chunk.code */ }
+    Err(problems) => { /* show them */ }
+}
+```
+
+- **`lust::check(entry, &files)`**, **`lust::to_lua(entry, &files)`** and **`lust::to_rust_library(entry, &files)`**: `entry` is the program's first file. `fetch` and `get` find the others among `files`, from the project's folder (the nearest one up with a `main.lst`).
+- **Mistakes:** every one found, in order, as a `Problem` with `file`, `line`, `column` and `message`. Shown with `{}`, it's what `lust check` prints: `parts/gun.lst:12:5  ammo is an int, but this is text.`
+- **`lust::VERSION`** is the compiler's version, so an engine can show it and refuse one it doesn't expect.
+- **`to_rust_library`** gives what `lust build --library` puts in `src/lib.rs`.
+
+**The Lua** (`chunk.code`) runs in Lua 5.1, LuaJIT or Luau. Load it with the name `lust::LuaChunk::NAME` (in mlua: `.set_name(lust::LuaChunk::NAME)`), so a failure says where it came from. The engine gives native methods' bodies, and `send_event(to, name, values)`, in the table `LUST_NATIVES` first. Running the chunk runs the program's own start, and gives back a table:
+
+- **`version`**, **`components`** (by name) and **`events`** (by name: what each carries, as `{ key, name, kind }` lists, kinds being `bool`, `int`, `float`, `string`, `state`, `vec3`, `rotation` and `entity`).
+- **`new(name, entity)`** makes a component with its starting values, on an entity. The engine calls its `update(dt)` each tick, and `handle(event, values)` to deliver an event (it gives back whether the component handles it).
+- **`swap(component)`**, on the table from new code, gives a component made by an earlier chunk the new code, in place, so the engine's hold on it stays good. It follows the same rule as `from_data`: a field kept by name keeps its value; a field whose kind changed, or a new one, takes its starting value; a removed field is dropped; the entity it's on stays. It gives back the component and notes on what started over (`Gun's ammo is float now, not int, so it starts at 10.`), or `nil` and a note if the component isn't in the code any more.
+- **`changes(old)`**, given the earlier chunk's table, lists the components whose fields `changed`, and those `removed` and `added`, so an inspector knows what to show again.
+- The code outside classes and methods runs again with each new chunk, and objects start over.
+
+**A failure** in the Lua comes to the engine as a Lua error. `chunk.locate(&error.to_string())` turns it into a `RunError`, with `file`, `line`, `column` and `message`, pointing at the Lust.
+
+`engine-test` in Lust's own folder does all of this in Luau, the way Solis does.
 
 ### Components
 

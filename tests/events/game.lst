@@ -56,6 +56,11 @@ component Gun {
         }
     }
 
+    method int share(int ways) {
+        int each = 12 / ways;
+        return each;
+    }
+
     on Pushed(vec3 push, rotation turn) {
         log(me.text() + " Gun: pushed " + push.text() + " turned " + (turn * [1, 0, 0]).text());
     }

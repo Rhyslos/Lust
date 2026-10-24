@@ -62,4 +62,12 @@ fn main() {
     println!("{:?}", gun.handle("Hit", &[]));
     println!("{:?}", health.handle("Hit", &[game::Value::Entity(None), game::Value::Int(1), game::Value::Text("Cold".into())]));
     println!("{:?}", health.to_data());
+
+    // A failure in Lust code says where it happened: file, line and column, and why.
+    println!("{:?}", gun.share(4));
+    match gun.share(0) {
+        Ok(_) => println!("no failure?"),
+        Err(e) => println!("{e}\n{:?} {:?} {:?}", e.file, e.line, e.column),
+    }
+    println!("Lust {}", game::LUST_VERSION.split('-').next().unwrap());
 }

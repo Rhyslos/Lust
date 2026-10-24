@@ -1,0 +1,43 @@
+-- A tiny game for the engine test: a turret shoots at whatever's nearest.
+get "parts/world":[log, nearest];
+
+state Mode = [Single, Burst];
+
+event Hit(entity by, float damage);
+
+component Turret {
+    has {
+        int ammo = 3;
+        float heat = 0;
+        Mode mode = Mode.Burst;
+        entity target = nothing;
+        string label = "turret";
+    }
+
+    method update(float dt) {
+        heat = heat + dt;
+        is target == nothing? then {
+            target = nearest(me);
+        }
+        is ammo > 0? then {
+            ammo = ammo - 1;
+            send Hit(me, 2.5) to target;
+        }
+    }
+}
+
+component Shield {
+    has {
+        float strength = 5;
+        int layers = 0;
+    }
+
+    on Hit(entity by, float damage) {
+        strength = strength - damage;
+        log(me.text() + " shield at " + strength.text() + " after a hit from " + by.text());
+        is strength < 0? then {
+            int broken = 1 / layers;
+        }
+    }
+}
+end

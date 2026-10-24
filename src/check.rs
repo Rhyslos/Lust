@@ -49,6 +49,9 @@ pub struct FieldInfo {
 pub struct MethodSig {
     pub params: Vec<(String, Ty)>,
     pub ret: Ty,
+    /// Where it's written: file and line, packed like Pos.line. 0 for Lust's own.
+    pub line: u32,
+    pub col: u32,
 }
 
 pub struct ClassInfo {
@@ -381,7 +384,7 @@ impl<'a> Checker<'a> {
                 Item::Style(st) => {
                     if self.info.styles.contains(&st.name) {
                         self.err(st.pos, format!("there's already a style called {}.", st.name));
-                    } else if crate::native_ui::COLOURS.contains(&st.name.as_str()) {
+                    } else if crate::words::COLOURS.contains(&st.name.as_str()) {
                         self.err(
                             st.pos,
                             format!("{} is one of Lust's colours, so a style can't use that name.", st.name),
@@ -409,6 +412,8 @@ impl<'a> Checker<'a> {
                         MethodSig {
                             params: vec![],
                             ret: Ty::Void,
+                            line: m.pos.line,
+                            col: m.pos.col,
                         },
                     );
                 }
@@ -973,7 +978,12 @@ impl<'a> Checker<'a> {
     fn signature(&mut self, m: &MethodDecl) -> MethodSig {
         let params = m.params.iter().map(|p| (p.name.clone(), self.resolve(&p.ty))).collect();
         let ret = m.ret.as_ref().map(|r| self.resolve(r)).unwrap_or(Ty::Void);
-        MethodSig { params, ret }
+        MethodSig {
+            params,
+            ret,
+            line: m.pos.line,
+            col: m.pos.col,
+        }
     }
 
     fn resolve(&mut self, t: &TypeRef) -> Ty {
@@ -1290,7 +1300,7 @@ impl<'a> Checker<'a> {
                         format!("key takes the keys as text, but this is {}: key \"ctrl+s\" {{ … }}", self.a(&t)),
                     );
                 } else if let ExprKind::Str(spec) = &a.kind {
-                    if let Err(why) = crate::native_ui::parse_shortcut(spec) {
+                    if let Err(why) = crate::words::parse_shortcut(spec) {
                         self.err(a.pos, why);
                     }
                 }
@@ -1410,8 +1420,8 @@ impl<'a> Checker<'a> {
         for it in items {
             let n = it.name.as_str();
             let named = self.info.styles.contains(n);
-            let colour_word = crate::native_ui::COLOURS.contains(&n);
-            let ok_word = |w: &str| crate::native_ui::colour(w).is_some();
+            let colour_word = crate::words::COLOURS.contains(&n);
+            let ok_word = |w: &str| crate::words::is_colour(w);
             let number = |me: &mut Self, v: &StyleValue, what: &str| match v {
                 StyleValue::Expr(e) => {
                     let t = me.info.ty(e);
@@ -1532,7 +1542,7 @@ impl<'a> Checker<'a> {
                     };
                     if !window {
                         known.extend(self.info.styles.iter().cloned());
-                        known.extend(crate::native_ui::COLOURS.iter().map(|s| s.to_string()));
+                        known.extend(crate::words::COLOURS.iter().map(|s| s.to_string()));
                     }
                     let s = suggest(n, known.clone());
                     if window {

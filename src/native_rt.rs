@@ -6,14 +6,15 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 thread_local! {
-    static LINE: Cell<u32> = const { Cell::new(0) };
+    /// The file and line (packed, like a Lust position's) in the top half, the column below.
+    static LINE: Cell<u64> = const { Cell::new(0) };
     static DEPTH: Cell<u32> = const { Cell::new(0) };
     static RNG: Cell<u64> = const { Cell::new(0) };
 }
 
-/// The Lust line now running, for error messages.
-pub fn at(line: u32) {
-    LINE.with(|c| c.set(line));
+/// The Lust line and column now running, for error messages.
+pub fn at(line: u32, col: u32) {
+    LINE.with(|c| c.set(((line as u64) << 32) | col as u64));
 }
 
 pub struct Fail(pub String);
@@ -95,28 +96,60 @@ fn run_program(program: fn(), files: &'static [&'static str]) -> i32 {
 
 /// A failure as Lust shows it: "player.lst:12  there's no row with id 7."
 fn failure_text(p: &(dyn std::any::Any + Send), files: &[&str]) -> String {
-    let msg = payload_text(p);
-    // The line has the file's number in its top bits.
-    let packed = LINE.with(|c| c.get());
-    let (f, line) = ((packed >> 20) as usize, packed & 0xFFFFF);
-    let file = files.get(f).copied().unwrap_or("");
-    if line > 0 {
-        format!("{file}:{line}  {msg}")
-    } else {
-        format!("{file}  {msg}")
+    failure(p, files).to_string()
+}
+
+/// A failure in Lust code, for the program using it as a library: the file and line it stopped
+/// at, and why. Shown, it reads like lust run's: `gun.lst:14  ammo can't be below 0`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LustError {
+    /// The file, as the first file sees it: `gun.lst`, `parts/aim.lst`.
+    pub file: String,
+    /// From 1. None when the failure isn't on a line of its own.
+    pub line: Option<u32>,
+    /// From 1: the column of the statement that failed (for `int each = 12 / ways;`, where
+    /// `each` is). None with `line`.
+    pub column: Option<u32>,
+    pub message: String,
+}
+
+impl std::fmt::Display for LustError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self.line {
+            Some(l) => write!(f, "{}:{l}  {}", self.file, self.message),
+            None => write!(f, "{}  {}", self.file, self.message),
+        }
     }
 }
 
+impl std::error::Error for LustError {}
+
+/// A failure at a line packed with its file's number in the top bits.
+pub fn error_at(files: &[&str], packed: u32, col: u32, message: String) -> LustError {
+    let (f, line) = ((packed >> 20) as usize, packed & 0xFFFFF);
+    LustError {
+        file: files.get(f).copied().unwrap_or("").to_string(),
+        line: (line > 0).then_some(line),
+        column: (line > 0 && col > 0).then_some(col),
+        message,
+    }
+}
+
+fn failure(p: &(dyn std::any::Any + Send), files: &[&str]) -> LustError {
+    let at = LINE.with(|c| c.get());
+    error_at(files, (at >> 32) as u32, at as u32, payload_text(p))
+}
+
 /// For Lust built as a library: runs Lust code for the program using it, and gives back a
-/// failure as text instead of stopping that program.
-pub fn catch<R>(files: &[&str], f: impl FnOnce() -> R) -> Result<R, String> {
+/// failure, with where it happened, instead of stopping that program.
+pub fn catch<R>(files: &[&str], f: impl FnOnce() -> R) -> Result<R, LustError> {
     quiet();
     let depth = DEPTH.with(|c| c.get());
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
         Ok(r) => Ok(r),
         Err(p) => {
             DEPTH.with(|c| c.set(depth));
-            Err(failure_text(&*p, files))
+            Err(failure(&*p, files))
         }
     }
 }

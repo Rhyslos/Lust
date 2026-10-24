@@ -3,3 +3,4 @@
 *.exe
 *.db
 *.save
+/engine-test/target

@@ -870,7 +870,7 @@ impl<'a> Parser<'a> {
                 StyleValue::Nested(self.style_list()?)
             } else if self.at_sym(",") || self.at_sym("]") {
                 StyleValue::Flag
-            } else if matches!(&self.cur().kind, Tk::Ident(w) if w == "fill" || crate::native_ui::colour(w).is_some())
+            } else if matches!(&self.cur().kind, Tk::Ident(w) if w == "fill" || crate::words::is_colour(w))
                 && (self.peek(1).is_sym(",") || self.peek(1).is_sym("]"))
             {
                 // Colour words and fill are words; any other name is a value: [grow done].

@@ -436,11 +436,24 @@ end
 
 -- ----- native methods: their bodies are outside Lust -----
 
--- In LustScript, the host program's Lua offers a function by the method's name (Class_method for
--- a class's). lust run has no host, so it says where the body lives.
+-- The program using Lust gives native methods' bodies as Lua functions, by the method's name
+-- (Class_method for a class's): in a table called LUST_NATIVES, or as globals. A method on its
+-- own has the same global name as Lust's own function for it, so for those LUST_NATIVES is the
+-- place. lust run has no such program, so it says where the body lives.
+L.wrappers = setmetatable({}, { __mode = "k" })
+local function host_fn(global)
+  local natives = rawget(_G, "LUST_NATIVES")
+  local f = type(natives) == "table" and natives[global] or nil
+  if f == nil then
+    f = rawget(_G, global)
+    if L.wrappers[f] then f = nil end
+  end
+  if type(f) == "function" then return f end
+  return nil
+end
 function L.native(global, shown, ...)
-  local f = rawget(_G, global)
-  if type(f) ~= "function" then
+  local f = host_fn(global)
+  if not f then
     if rawget(_G, "LUST_HOST") then
       error(shown .. " is native: its body is in the Rust program that uses this Lust as a library (lust build --library), so it can't run on its own.", 3)
     end
@@ -454,14 +467,117 @@ end
 -- send Hit(…) to target: the engine's Lua offers send_event(to, name, values), and queues the
 -- event for the entity's components. values is a list with its count in n.
 function L.send(to, name, values)
-  local f = rawget(_G, "send_event")
-  if type(f) ~= "function" then
+  local f = host_fn("send_event")
+  if not f then
     if rawget(_G, "LUST_HOST") then
       error("send " .. name .. "(…) goes to the engine using this Lust as a library (lust build --library), so it can't run on its own.", 2)
     end
     error("send " .. name .. "(…) needs the engine's Lua to offer a function called send_event.", 2)
   end
   f(to, name, values)
+end
+
+-- ----- for an engine -----
+
+local function same_schema(a, b)
+  a, b = a or {}, b or {}
+  if #a ~= #b then return false end
+  for i = 1, #a do
+    local x, y = a[i], b[i]
+    if x[1] ~= y[1] or x[3] ~= y[3] then return false end
+    local ox, oy = x[4] or {}, y[4] or {}
+    if #ox ~= #oy then return false end
+    for j = 1, #ox do if ox[j] ~= oy[j] then return false end end
+  end
+  return true
+end
+
+-- What an engine's chunk gives back: its components, the events, and how to make, run and swap
+-- them. components: name -> class. events: name -> { { key, name, kind }, … }.
+function L.engine(version, components, events)
+  local api = { version = version, components = components, events = events }
+  -- A new component with its fields' starting values, on an entity.
+  function api.new(name, me)
+    local c = components[name]
+    if c == nil then error("there's no component called " .. tostring(name) .. ".", 2) end
+    local o = L.new(c)
+    o.me = me
+    return o
+  end
+  -- Gives a component made by an earlier chunk this chunk's code, keeping what it can, and
+  -- gives back notes on what started over. nil and a note if this chunk has no such component.
+  function api.swap(o)
+    local old = getmetatable(o)
+    local name = old and old.__name
+    local c = name and components[name]
+    if c == nil then return nil, { tostring(name) .. " isn't in the code any more." } end
+    return L.swap(o, c)
+  end
+  -- What changed since an earlier chunk, for an inspector: components whose fields changed
+  -- (names, kinds, a state's options or their order), ones removed and ones added, each sorted.
+  function api.changes(before)
+    local changed, removed, added = {}, {}, {}
+    for name, c in pairs(before.components) do
+      local now = components[name]
+      if now == nil then
+        removed[#removed + 1] = name
+      elseif not same_schema(c.__schema, now.__schema) then
+        changed[#changed + 1] = name
+      end
+    end
+    for name in pairs(components) do
+      if before.components[name] == nil then added[#added + 1] = name end
+    end
+    table.sort(changed)
+    table.sort(removed)
+    table.sort(added)
+    return { changed = changed, removed = removed, added = added }
+  end
+  return api
+end
+
+local function shown_value(v, kind)
+  if v == nil then return "nothing" end
+  if kind == "vec3" then return L.vtext(v) end
+  if kind == "rotation" then return L.rtext(v) end
+  if kind == "string" then return '"' .. v .. '"' end
+  return tostring(v)
+end
+
+-- Fields are kept by name. A field that's gone goes; a new one starts at its starting value; one
+-- whose kind changed starts at its starting value, with a note. The entity it's on stays.
+function L.swap(o, c)
+  local old = getmetatable(o) or {}
+  local before = {}
+  for _, f in ipairs(old.__schema or {}) do before[f[1]] = f end
+  local saved = {}
+  for k, v in pairs(o) do saved[k] = v end
+  for k in pairs(saved) do o[k] = nil end
+  setmetatable(o, c)
+  c.__fields(o)
+  o.me = saved.me
+  local notes = {}
+  for _, f in ipairs(c.__schema or {}) do
+    local key, name, kind = f[1], f[2], f[3]
+    local was = before[key]
+    if was then
+      local v = saved[key]
+      if was[3] ~= kind then
+        notes[#notes + 1] = c.__name .. "'s " .. name .. " is " .. kind .. " now, not " .. was[3] .. ", so it starts at " .. shown_value(o[key], kind) .. "."
+      elseif kind == "state" and v ~= nil then
+        local found = false
+        for _, opt in ipairs(f[4]) do if opt == v then found = true end end
+        if found then
+          o[key] = v
+        else
+          notes[#notes + 1] = c.__name .. "'s " .. name .. " was " .. v .. ", which isn't one of its options now, so it starts at " .. shown_value(o[key], kind) .. "."
+        end
+      else
+        o[key] = v
+      end
+    end
+  end
+  return o, notes
 end
 
 -- ----- classes -----

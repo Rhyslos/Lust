@@ -1,0 +1,13 @@
+# Lust inside an engine, the way Solis uses it: the compiler as a library (no lust command), and
+# its Lua run by Luau through mlua while the game runs. cargo run here prints what expected.out has.
+[package]
+name = "engine-test"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+lust = { path = "..", default-features = false }
+mlua = { version = "0.10", features = ["luau"] }
+
+[workspace]

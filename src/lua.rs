@@ -26,10 +26,29 @@ pub fn lname(n: &str) -> String {
     }
 }
 
+/// A Lua failure's message in plain words.
+pub fn friendly(msg: &str) -> String {
+    if msg.contains("attempt to index") && msg.contains("nil value") {
+        return "this is nothing, so it has no fields or methods. Check first: is it !== nothing?".into();
+    }
+    if msg.contains("attempt to call") && msg.contains("nil value") {
+        return "this hook is nothing, so it can't be called. Check first: is it !== nothing?".into();
+    }
+    if msg.contains("stack overflow") {
+        return "methods called each other too deeply. That usually means one calls itself with no way to stop.".into();
+    }
+    if msg.contains("attempt to perform arithmetic") || msg.contains("attempt to concatenate") || msg.contains("attempt to compare") {
+        return "a value here is nothing, so it can't be used in maths or text.".into();
+    }
+    msg.to_string()
+}
+
 pub struct Output {
     pub code: String,
     /// For each line of `code` (from 1), the Lust line it came from. 0 for Lust's own runtime.
     pub lines: Vec<u32>,
+    /// And the column of the statement it came from, or 0.
+    pub cols: Vec<u32>,
 }
 
 struct LoopFrame {
@@ -55,6 +74,8 @@ struct W<'a> {
     /// Inside a view: the Lua names of the pieces new pieces go into.
     view_parent: Vec<String>,
     named_styles: HashMap<String, Vec<StyleItem>>,
+    /// The statement being written: its Lust line and column.
+    here: (u32, u32),
 }
 
 /// `exact` is for .lst programs run by lust: whole numbers that Lua can't hold exactly stop the
@@ -62,7 +83,17 @@ struct W<'a> {
 /// The biggest whole number Lua's numbers hold exactly: 2^53 - 1.
 const MAX_EXACT: u64 = 9_007_199_254_740_991;
 
+#[cfg(feature = "cli")]
 pub fn write(prog: &Program, info: &Info, exact: bool) -> Output {
+    write_with(prog, info, exact, false)
+}
+
+/// For an engine: the same, ending with the table it makes and runs components with.
+pub fn write_for_engine(prog: &Program, info: &Info, exact: bool) -> Output {
+    write_with(prog, info, exact, true)
+}
+
+fn write_with(prog: &Program, info: &Info, exact: bool, engine: bool) -> Output {
     let mut w = W {
         info,
         exact,
@@ -83,11 +114,15 @@ pub fn write(prog: &Program, info: &Info, exact: bool) -> Output {
                 _ => None,
             })
             .collect(),
+        here: (0, 0),
     };
     if exact {
         w.line(0, "_L.exact = true");
     }
     w.program(prog);
+    if engine {
+        w.engine_table();
+    }
     // Strip the line markers into a line map.
     let mut code = String::new();
     let mut lines = Vec::new();
@@ -96,7 +131,9 @@ pub fn write(prog: &Program, info: &Info, exact: bool) -> Output {
     code.push_str(RUNTIME);
     code.push_str("\nend)()\n");
     lines.extend(std::iter::repeat_n(0, runtime_lines + 1));
+    let mut cols = vec![0; lines.len()];
     let mut current = 0u32;
+    let mut col = 0u32;
     for raw in w.buf.lines() {
         let mut text = String::new();
         let mut rest = raw;
@@ -104,15 +141,18 @@ pub fn write(prog: &Program, info: &Info, exact: bool) -> Output {
             text.push_str(&rest[..i]);
             let after = &rest[i + 1..];
             let j = after.find('\x02').unwrap_or(0);
-            current = after[..j].parse().unwrap_or(current);
+            let (a, b) = after[..j].split_once('.').unwrap_or((&after[..j], "0"));
+            current = a.parse().unwrap_or(current);
+            col = b.parse().unwrap_or(0);
             rest = &after[j + 1..];
         }
         text.push_str(rest);
         code.push_str(&text);
         code.push('\n');
         lines.push(current);
+        cols.push(col);
     }
-    Output { code, lines }
+    Output { code, lines, cols }
 }
 
 fn lua_string(s: &str) -> String {
@@ -145,7 +185,8 @@ fn has_skip(stmts: &[Stmt]) -> bool {
 
 impl<'a> W<'a> {
     fn line(&mut self, lust_line: u32, text: &str) {
-        self.buf.push_str(&format!("\x01{lust_line}\x02"));
+        let col = if lust_line == self.here.0 { self.here.1 } else { 0 };
+        self.buf.push_str(&format!("\x01{lust_line}.{col}\x02"));
         for _ in 0..self.indent {
             self.buf.push_str("  ");
         }
@@ -156,6 +197,59 @@ impl<'a> W<'a> {
     fn fresh(&mut self, base: &str) -> String {
         self.tmp += 1;
         format!("_{base}{}", self.tmp)
+    }
+
+    /// { key, shown name, kind } for a component's field or what an event carries; a state's
+    /// options come fourth.
+    fn field_entry(&self, name: &str, t: &Ty) -> String {
+        let kind = match t {
+            Ty::Truth => "bool",
+            Ty::Int => "int",
+            Ty::Float => "float",
+            Ty::Str => "string",
+            Ty::State(_) => "state",
+            Ty::Vec3 => "vec3",
+            Ty::Rot => "rotation",
+            Ty::Entity => "entity",
+            _ => "other",
+        };
+        let opts = match t {
+            Ty::State(s) => {
+                let o: Vec<String> = self.info.states[*s].options.iter().map(|o| lua_string(o)).collect();
+                format!(", {{ {} }}", o.join(", "))
+            }
+            _ => String::new(),
+        };
+        format!(
+            "{{ {}, {}, {}{opts} }}",
+            lua_string(&lname(name)),
+            lua_string(name),
+            lua_string(kind)
+        )
+    }
+
+    /// The end of an engine's chunk: the table it makes, runs and swaps components with.
+    fn engine_table(&mut self) {
+        let mut comps = Vec::new();
+        for (ci, c) in self.info.classes.iter().enumerate() {
+            if c.is_component {
+                comps.push(format!("[{}] = {}", lua_string(crate::ast::shown(&c.name)), self.class_table(ci)));
+            }
+        }
+        let mut events = Vec::new();
+        for (name, params) in &self.info.events {
+            let ps: Vec<String> = params.iter().map(|(n, t)| self.field_entry(n, t)).collect();
+            events.push(format!("[{}] = {{ {} }}", lua_string(crate::ast::shown(name)), ps.join(", ")));
+        }
+        self.line(
+            0,
+            &format!(
+                "return _L.engine({}, {{ {} }}, {{ {} }})",
+                lua_string(env!("CARGO_PKG_VERSION")),
+                comps.join(", "),
+                events.join(", ")
+            ),
+        );
     }
 
     fn class_table(&self, c: usize) -> String {
@@ -302,6 +396,10 @@ impl<'a> W<'a> {
                 self.stmts(&m.body);
                 self.indent -= 1;
                 self.line(m.pos.line, "end");
+                if m.native {
+                    // So the program's own function for it is never taken for this one.
+                    self.line(m.pos.line, &format!("_L.wrappers[{}] = true", lname(&m.name)));
+                }
             }
         }
         // Routes: each one turns a request into its method's values, and its answer into JSON.
@@ -369,6 +467,16 @@ impl<'a> W<'a> {
             &format!("{local}{table} = _L.class({}, {parent})", lua_string(crate::ast::shown(&c.name))),
         );
         self.class = None;
+        // A component's fields and their kinds: what a swap to new code keeps.
+        if c.is_component {
+            let fields: Vec<String> = self.info.classes[ci]
+                .fields
+                .iter()
+                .filter(|f| f.name != "me")
+                .map(|f| self.field_entry(&f.name, &f.ty))
+                .collect();
+            self.line(c.pos.line, &format!("{table}.__schema = {{ {} }}", fields.join(", ")));
+        }
         self.line(c.pos.line, &format!("function {table}.__fields(self)"));
         self.indent += 1;
         if parent != "nil" {
@@ -494,6 +602,7 @@ impl<'a> W<'a> {
 
     fn stmt(&mut self, s: &Stmt) {
         let ln = s.pos().line;
+        self.here = (ln, s.pos().col);
         match s {
             Stmt::Var { ty, name, value, .. } => {
                 let v = self.made(ty, value);

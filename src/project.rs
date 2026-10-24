@@ -52,13 +52,47 @@ struct File {
     prog: Program,
 }
 
+/// Where the files come from: the disk (lust itself), or the program using the compiler, which
+/// hands over every file's text by its path.
+pub type Memory = HashMap<PathBuf, String>;
+
+/// A path without . and .. in it, worked out from the text alone: files handed over have no
+/// disk to ask.
+pub fn tidy(p: &Path) -> PathBuf {
+    use std::path::Component;
+    let mut out = PathBuf::new();
+    for c in p.components() {
+        match c {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if !out.pop() {
+                    out.push("..");
+                }
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
+}
+
+fn is_file(p: &Path, mem: Option<&Memory>) -> bool {
+    match mem {
+        Some(m) => m.contains_key(&tidy(p)),
+        None => p.is_file(),
+    }
+}
+
 /// The project's folder: the nearest folder up from the file that has a main.lst (or main.lsc).
-fn root_of(entry: &Path, ext: &str) -> PathBuf {
+fn root_of(entry: &Path, ext: &str, mem: Option<&Memory>) -> PathBuf {
     let start = entry.parent().map(|p| p.to_path_buf()).unwrap_or_default();
-    let start = if start.as_os_str().is_empty() { PathBuf::from(".") } else { start };
+    let start = if start.as_os_str().is_empty() && mem.is_none() {
+        PathBuf::from(".")
+    } else {
+        start
+    };
     let mut dir = Some(start.as_path());
     while let Some(d) = dir {
-        if d.join(format!("main.{ext}")).exists() {
+        if is_file(&d.join(format!("main.{ext}")), mem) {
             return d.to_path_buf();
         }
         dir = d.parent().filter(|p| !p.as_os_str().is_empty());
@@ -72,14 +106,20 @@ fn shown_path(path: &Path, root: &Path) -> String {
 }
 
 /// Reads the program that starts at `entry`, with every file it brings in.
-pub fn load(entry: &Path, src: String, is_script: bool, diags: &mut Diags) -> Project {
+pub fn load(entry: &Path, src: String, is_script: bool, diags: &mut Diags, mem: Option<&Memory>) -> Project {
     let ext = if is_script { "lsc" } else { "lst" };
     // The search for the project's folder starts from the file's full path, so a short one like
     // entities/player.lst still finds main.lst in the folder above.
-    let full = std::path::absolute(entry).unwrap_or_else(|_| entry.to_path_buf());
+    let full = match mem {
+        Some(_) => tidy(entry),
+        None => std::path::absolute(entry).unwrap_or_else(|_| entry.to_path_buf()),
+    };
     let entry = full.as_path();
-    let root = root_of(entry, ext);
-    let canon = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    let root = root_of(entry, ext, mem);
+    let canon = |p: &Path| match mem {
+        Some(_) => tidy(p),
+        None => std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf()),
+    };
     let mut files: Vec<File> = Vec::new();
     // A file's number is its place in the queue.
     let mut queue: Vec<(PathBuf, Option<String>)> = vec![(entry.to_path_buf(), Some(src))];
@@ -90,7 +130,13 @@ pub fn load(entry: &Path, src: String, is_script: bool, diags: &mut Diags) -> Pr
     let mut i = 0;
     while i < queue.len() {
         let (path, src) = queue[i].clone();
-        let src = src.unwrap_or_else(|| std::fs::read_to_string(&path).unwrap_or_default().replace("\r\n", "\n"));
+        let src = src.unwrap_or_else(|| {
+            let text = match mem {
+                Some(m) => m.get(&tidy(&path)).cloned().unwrap_or_default(),
+                None => std::fs::read_to_string(&path).unwrap_or_default(),
+            };
+            text.replace("\r\n", "\n")
+        });
         let toks = crate::lexer::lex(&src, i, diags);
         let prog = crate::parser::parse(toks, diags, is_script, next_id);
         next_id = prog.next_id;
@@ -109,7 +155,7 @@ pub fn load(entry: &Path, src: String, is_script: bool, diags: &mut Diags) -> Pr
                 continue;
             }
             let p = root.join(format!("{}.{ext}", imp.path));
-            if !p.is_file() {
+            if !is_file(&p, mem) {
                 diags.add(pos, format!("there's no file {}.", shown_path(&p, &root)));
                 continue;
             }
