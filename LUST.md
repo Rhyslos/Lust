@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (2.0 alpha 32):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (2.0 alpha 33):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -1347,11 +1347,11 @@ What the Rust program sees:
 
 ### The compiler inside an engine
 
-An engine can use Lust's compiler itself, as a Rust library: to check a game's Lust and show its mistakes, to turn it into Lua while the game runs, and into Rust for a release. In its `Cargo.toml`, at a version's tag:
+An engine can use Lust's compiler itself, as a Rust library: to check a game's Lust and show its mistakes, to turn it into Lua while the game runs, and into Rust for a release. In its `Cargo.toml`, at a version's tag (or at a commit, with `rev = "…"` in place of `tag`):
 
 ```
 [dependencies]
-lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.32", default-features = false }
+lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.33", default-features = false }
 ```
 
 Without its default features it needs nothing but Rust's own library (the default ones are the `lust` command). Lust doesn't open any files: the engine reads them, and hands over each one's path and text, with `/` between folders.
@@ -1379,6 +1379,10 @@ match lust::to_lua("main.lst", &files) {
 - **`swap(component)`**, on the table from new code, gives a component made by an earlier chunk the new code, in place, so the engine's hold on it stays good. It follows the same rule as `from_data`: a field kept by name keeps its value; a field whose kind changed, or a new one, takes its starting value; a removed field is dropped; the entity it's on stays. It gives back the component and notes on what started over (`Gun's ammo is float now, not int, so it starts at 10.`), or `nil` and a note if the component isn't in the code any more.
 - **`changes(old)`**, given the earlier chunk's table, lists the components whose fields `changed`, and those `removed` and `added`, so an inspector knows what to show again.
 - The code outside classes and methods runs again with each new chunk, and objects start over.
+
+**Vectors and rotations** in the Lua are tables (`{ x, y, z }` and `{ x, y, z, w }`). Lust never changes one in place, so it shares them: a vector written with numbers only, like `[0, 0, -9.8]`, is made once. An engine setting one gives a new table (`c.position = { x = 1, y = 2, z = 3 }`), and never changes a table it got from Lust.
+
+**Speed:** in Luau, Lust rounds numbers to f32 with Luau's own vectors, which is several times faster than plain Lua can. Luau's native code (mlua's `luau-jit` feature) makes it faster again. `bench/` in Lust's own folder ticks 2,000 components both ways, and checks Rust and Luau end with exactly the same values.
 
 **A failure** in the Lua comes to the engine as a Lua error. `chunk.locate(&error.to_string())` turns it into a `RunError`, with `file`, `line`, `column` and `message`, pointing at the Lust.
 

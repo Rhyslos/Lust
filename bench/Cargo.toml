@@ -1,0 +1,17 @@
+# Step 6's benchmark: many components ticked the way Solis ticks them, in Rust (a library built
+# by lust build --library) and in Luau (the compiler's Lua). See README.md here.
+[package]
+name = "bench"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+game = { path = "game_library" }
+lust = { path = "..", default-features = false }
+mlua = { version = "0.10", features = ["luau-jit"] }
+
+[profile.release]
+debug = 1
+
+[workspace]

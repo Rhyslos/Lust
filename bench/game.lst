@@ -1,0 +1,46 @@
+-- The benchmark's game: many movers with vector maths every tick, and events between them.
+event Bumped(entity by, float force);
+
+state Mood = [Calm, Busy];
+
+component Mover {
+    has {
+        vec3 position = [0, 0, 5];
+        vec3 velocity = [1, 0.5, 0];
+        rotation facing = [0, 0, 0];
+        float speed = 2;
+        int bounces = 0;
+        Mood mood = Mood.Calm;
+        entity other = nothing;
+    }
+
+    method update(float dt) {
+        velocity = velocity + [0, 0, -9.8] * dt;
+        position = position + velocity * (dt * speed);
+        is position.z < 0? then {
+            position.z = 0;
+            velocity.z = -velocity.z * 0.8;
+            bounces = bounces + 1;
+            mood = Mood.Busy;
+            is other != nothing? then {
+                send Bumped(me, velocity:length()) to other;
+            }
+        }
+        rotation turn = [0, 0, dt * 30];
+        facing = facing * turn;
+        vec3 ahead = facing * [1, 0, 0];
+        float d = position:distance([0, 0, 0]) + ahead:dot(velocity);
+        is d > 100? then {
+            position = position:normalized() * 100;
+        }
+        loop 4 times {
+            speed = speed * 0.9999 + 0.0001 * 2;
+        }
+    }
+
+    on Bumped(entity by, float force) {
+        speed = speed * 0.99 + force * 0.001;
+        mood = Mood.Calm;
+    }
+}
+end

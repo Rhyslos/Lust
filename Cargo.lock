@@ -1282,7 +1282,7 @@ dependencies = [
 
 [[package]]
 name = "lust"
-version = "2.0.0-alpha.31"
+version = "2.0.0-alpha.33"
 dependencies = [
  "ab_glyph",
  "arboard",

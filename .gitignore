@@ -4,3 +4,5 @@
 *.db
 *.save
 /engine-test/target
+/bench/target
+/bench/game_library

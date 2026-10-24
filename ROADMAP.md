@@ -36,7 +36,7 @@ The order Lust gets built in. Each step makes Lust more useful on its own, and n
 | ✅ | **12.3 Components:** `component` with `me` and `update`, the `entity` type, and schemas and values for the engine | Done (alpha 30) |
 | ✅ | **12.4 Events:** `event`, `on` in components, and `send … to`, queued and delivered by the engine | Done (alpha 31) |
 | ✅ | **12.5 The compiler inside an engine:** the compiler as a library taking files' text, mistakes and failures with file, line and column, Lua for Luau with components swapped in while the game runs | Done (alpha 32) |
-| | **12.6 Faster code for every tick** | Next |
+| ✅ | **12.6 Faster code for every tick:** Lua in Luau over twice as fast (f32 rounding in Luau's vectors, vectors of numbers made once, turning around z alone), with a benchmark that also checks Rust and Luau agree | Done (alpha 33) |
 | | 🏁 *The Lust 2.0 release.* | |
 
 ## Decisions along the way

@@ -76,6 +76,8 @@ struct W<'a> {
     named_styles: HashMap<String, Vec<StyleItem>>,
     /// The statement being written: its Lust line and column.
     here: (u32, u32),
+    /// Vectors written with numbers only, made once: _K[1], _K[2], …
+    consts: Vec<String>,
 }
 
 /// `exact` is for .lst programs run by lust: whole numbers that Lua can't hold exactly stop the
@@ -115,6 +117,7 @@ fn write_with(prog: &Program, info: &Info, exact: bool, engine: bool) -> Output 
             })
             .collect(),
         here: (0, 0),
+        consts: Vec::new(),
     };
     if exact {
         w.line(0, "_L.exact = true");
@@ -122,6 +125,10 @@ fn write_with(prog: &Program, info: &Info, exact: bool, engine: bool) -> Output 
     w.program(prog);
     if engine {
         w.engine_table();
+    }
+    if !w.consts.is_empty() {
+        // Lust never changes a vector in place, so one made once can be shared.
+        w.buf = format!("\x010.0\x02local _K = {{ {} }}\n{}", w.consts.join(", "), w.buf);
     }
     // Strip the line markers into a line map.
     let mut code = String::new();
@@ -153,6 +160,38 @@ fn write_with(prog: &Program, info: &Info, exact: bool, engine: bool) -> Output 
         cols.push(col);
     }
     Output { code, lines, cols }
+}
+
+/// A number written as one: 3, 0.5 or -2.
+fn num(e: &Expr) -> Option<f64> {
+    match &e.kind {
+        ExprKind::Int(n) => Some(*n as f64),
+        ExprKind::Float(x) => Some(*x),
+        ExprKind::Neg(inner) => num(inner).map(|x| -x),
+        _ => None,
+    }
+}
+
+/// 0 written as a number, and not -0.
+fn plus_zero(e: &Expr) -> bool {
+    num(e).is_some_and(|x| x == 0.0 && x.is_sign_positive())
+}
+
+/// A vec3 written with numbers only, made from them already rounded to f32.
+fn const_vec(items: &[Expr]) -> Option<String> {
+    if items.len() != 3 {
+        return None;
+    }
+    let mut parts = Vec::new();
+    for (k, e) in ["x", "y", "z"].iter().zip(items) {
+        let v = num(e)? as f32 as f64;
+        if !v.is_finite() {
+            return None;
+        }
+        let _ = k;
+        parts.push(format!("{v:?}"));
+    }
+    Some(format!("_L.vec({})", parts.join(", ")))
 }
 
 fn lua_string(s: &str) -> String {
@@ -1117,7 +1156,8 @@ impl<'a> W<'a> {
             }
             ExprKind::Method(t, m, args, _) => {
                 let tc = self.expr(t);
-                let a: Vec<String> = args.iter().map(|x| self.expr(x)).collect();
+                let builtin = matches!(self.info.calls.get(&e.id), Some(CallRes::Builtin));
+                let a: Vec<String> = args.iter().map(|x| if builtin { self.operand(x) } else { self.expr(x) }).collect();
                 match self.info.calls.get(&e.id) {
                     Some(CallRes::Builtin) => {
                         let prefix = match self.info.ty(t) {
@@ -1199,6 +1239,12 @@ impl<'a> W<'a> {
                 }
             }
             ExprKind::List { items, keys } => match self.info.ty(e) {
+                // Numbers only: rounded to f32 now, not each time it runs.
+                Ty::Vec3 if const_vec(items).is_some() => const_vec(items).unwrap(),
+                // Turning around z (up) only: half the work, and exactly the same numbers.
+                Ty::Rot if items.len() == 3 && plus_zero(&items[0]) && plus_zero(&items[1]) => {
+                    format!("_L.rotz({})", self.expr(&items[2]))
+                }
                 t @ (Ty::Vec3 | Ty::Rot) => {
                     let vs: Vec<String> = items.iter().map(|v| self.expr(v)).collect();
                     format!("_L.{}({})", if t == Ty::Vec3 { "vec" } else { "rot" }, vs.join(", "))
@@ -1572,10 +1618,35 @@ impl<'a> W<'a> {
         }
     }
 
+    /// A value used once and let go, like an operand: a vector of numbers only is made once.
+    fn operand(&mut self, e: &Expr) -> String {
+        if let ExprKind::List { items, .. } = &e.kind {
+            let made = match self.info.ty(e) {
+                Ty::Vec3 => const_vec(items),
+                Ty::Rot if items.iter().all(|i| num(i).is_some()) => Some(self.expr(e)),
+                _ => None,
+            };
+            {
+                if let Some(v) = made {
+                    let i = match self.consts.iter().position(|c| *c == v) {
+                        Some(i) => i,
+                        None => {
+                            self.consts.push(v);
+                            self.consts.len() - 1
+                        }
+                    };
+                    return format!("_K[{}]", i + 1);
+                }
+            }
+        }
+        self.expr(e)
+    }
+
     fn binary(&mut self, op: BinOp, l: &Expr, r: &Expr) -> String {
         let lt = self.info.ty(l);
-        let lc = self.expr(l);
-        let rc = self.expr(r);
+        let vecs = matches!(lt, Ty::Vec3 | Ty::Rot) || matches!(self.info.ty(r), Ty::Vec3 | Ty::Rot);
+        let lc = if vecs { self.operand(l) } else { self.expr(l) };
+        let rc = if vecs { self.operand(r) } else { self.expr(r) };
         let rt = self.info.ty(r);
         let ints = lt == Ty::Int && rt == Ty::Int;
         // Vectors and rotations.
