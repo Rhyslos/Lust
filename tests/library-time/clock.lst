@@ -1,0 +1,12 @@
+-- Built as a library, Time:date() and Time:time() take the time zone from the engine, so the
+-- library has no unsafe code at all.
+method string today() {
+    return Time:date();
+}
+
+method string now() {
+    return Time:time();
+}
+
+pass today, now;
+end
