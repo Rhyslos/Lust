@@ -119,10 +119,8 @@ fn luau(jit: bool) -> (f64, Vec<Values>) {
     for i in 0..N {
         let m: Table = new.call(("Mover", id(i))).unwrap();
         m.set("other", id((i + 1) % N)).unwrap();
-        let v = lua.create_table().unwrap();
-        v.set("x", (i % 7) as f64 * 0.5).unwrap();
-        v.set("y", 0.25).unwrap();
-        v.set("z", (i % 5) as f64).unwrap();
+        // In Luau, a vec3 is a Luau vector.
+        let v = mlua::Vector::new((i % 7) as f32 * 0.5, 0.25, (i % 5) as f32);
         m.set("velocity", v).unwrap();
         updates.push(m.get::<Function>("update").unwrap());
         handles.push(m.get::<Function>("handle").unwrap());

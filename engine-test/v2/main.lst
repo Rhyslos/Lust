@@ -1,9 +1,9 @@
 -- The same game, edited while it runs.
-get "parts/world":[log, nearest];
+get "parts/world":[log, nearest, positionOf];
 
 state Mode = [Single, Spread];
 
-event Hit(entity by, float damage);
+event Hit(entity by, float damage, vec3 push);
 
 component Turret {
     has {
@@ -12,11 +12,12 @@ component Turret {
         Mode mode = Mode.Single;
         entity target = nothing;
         float range = 20;
+        vec3 aim = [0, 0, 1];
     }
 
     method update(float dt) {
         heat = heat + dt;
-        log(me.text() + " turret v2: heat " + heat.text() + ", ammo " + ammo.text() + ", range " + range.text() + ", " + mode.text());
+        log(me.text() + " turret v2: heat " + heat.text() + ", ammo " + ammo.text() + ", range " + range.text() + ", " + mode.text() + ", aim " + aim.text());
     }
 }
 

@@ -69,6 +69,14 @@ fn main() {
             lua.create_function(|_, _from: Option<String>| Ok("0000000000002")).unwrap(),
         )
         .unwrap();
+    // A vec3 goes both ways as a Luau vector.
+    natives
+        .set(
+            "positionOf",
+            lua.create_function(|_, _e: Option<String>| Ok(mlua::Vector::new(4.0, 0.1, -2.0)))
+                .unwrap(),
+        )
+        .unwrap();
     let queue = lua.create_table().unwrap();
     lua.globals().set("QUEUE", queue.clone()).unwrap();
     let send: Function = lua
@@ -83,6 +91,7 @@ fn main() {
     let new: Function = api1.get("new").unwrap();
     let turret: Table = new.call(("Turret", "0000000000001")).unwrap();
     let shield: Table = new.call(("Shield", "0000000000002")).unwrap();
+    writeln!(out, "vectors: {}", api1.get::<String>("vectors").unwrap()).unwrap();
     let events: Table = api1.get("events").unwrap();
     let hit: Table = events.get("Hit").unwrap();
     for f in hit.sequence_values::<Table>() {
@@ -98,6 +107,12 @@ fn main() {
         let mut i = 1;
         while let Ok(Value::Table(e)) = queue.get::<Value>(i) {
             let name: String = e.get("name").unwrap();
+            writeln!(
+                out,
+                "  {name} carries {:?}",
+                e.get::<Table>("values").unwrap().get::<Value>(3).unwrap()
+            )
+            .unwrap();
             let handle: Function = shield.get("handle").unwrap();
             match handle.call::<bool>((shield.clone(), name.clone(), e.get::<Table>("values").unwrap())) {
                 Ok(handled) => writeln!(out, "  {name} handled: {handled}").unwrap(),
@@ -138,7 +153,7 @@ fn main() {
             writeln!(out, "  note: {}", n.unwrap()).unwrap();
         }
     }
-    for k in ["me", "ammo", "heat", "mode", "target", "range", "label"] {
+    for k in ["me", "ammo", "heat", "mode", "target", "range", "label", "aim"] {
         writeln!(out, "  turret.{k} = {:?}", turret.get::<Value>(k).unwrap()).unwrap();
     }
     let update: Function = turret.get("update").unwrap();

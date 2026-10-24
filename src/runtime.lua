@@ -20,7 +20,8 @@ function L.btext(v) if v then return "true" else return "false" end end
 
 -- ----- vectors and rotations -----
 -- A vec3 is {x, y, z} and a rotation {x, y, z, w} (a quaternion), each number kept as an f32,
--- as engines keep them. They're never changed in place, so sharing one is like copying it.
+-- as engines keep them. In Luau a vec3 is Luau's own vector instead, which keeps f32s itself.
+-- They're never changed in place, so sharing one is like copying it.
 -- Every step is worked out with Lua's numbers (doubles) and rounded to f32, the same way the
 -- Rust runtime does it, so both give exactly the same numbers.
 local frexp, ldexp, sqrt = math.frexp, math.ldexp, math.sqrt
@@ -59,15 +60,14 @@ end
 L.f32 = f32
 local vec = function(x, y, z) return { x = f32(x), y = f32(y), z = f32(z) } end
 local quat = function(x, y, z, w) return { x = f32(x), y = f32(y), z = f32(z), w = f32(w) } end
--- With Luau's vectors, one call rounds all three numbers.
+-- In Luau, a vec3 is a Luau vector, and a rotation's first three numbers are rounded with one.
+L.vectors = "table"
 do
   local vector = rawget(_G, "vector")
   local make = type(vector) == "table" and vector.create
   if make and L.f32_slow then
-    vec = function(x, y, z)
-      local r = make(x, y, z)
-      return { x = r.x, y = r.y, z = r.z }
-    end
+    L.vectors = "luau"
+    vec = make
     quat = function(x, y, z, w)
       local r = make(x, y, z)
       return { x = r.x, y = r.y, z = r.z, w = f32(w) }
@@ -99,6 +99,20 @@ function L.vdistance(a, b)
   return sqrt(dx * dx + dy * dy + dz * dz)
 end
 function L.vlerp(a, b, t) return vec(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t) end
+-- Luau vectors add, take away and turn negative in f32 themselves, which gives exactly what
+-- working it out in doubles and rounding does (doubles have more than twice f32's bits).
+-- Multiplying by a number still goes through doubles: Luau would round the number first.
+if L.vectors == "luau" then
+  local make = vec
+  function L.vwith(v, f, n)
+    if f == "x" then return make(n, v.y, v.z) end
+    if f == "y" then return make(v.x, n, v.z) end
+    return make(v.x, v.y, n)
+  end
+  function L.vadd(a, b) return a + b end
+  function L.vsub(a, b) return a - b end
+  function L.vneg(a) return -a end
+end
 local function q64(ax, ay, az, aw, bx, by, bz, bw)
   return aw * bx + ax * bw + ay * bz - az * by,
     aw * by - ax * bz + ay * bw + az * bx,
@@ -553,7 +567,8 @@ end
 -- What an engine's chunk gives back: its components, the events, and how to make, run and swap
 -- them. components: name -> class. events: name -> { { key, name, kind }, … }.
 function L.engine(version, components, events)
-  local api = { version = version, components = components, events = events }
+  -- vectors: "luau" when a vec3 is a Luau vector, "table" in plain Lua.
+  local api = { version = version, components = components, events = events, vectors = L.vectors }
   -- A new component with its fields' starting values, on an entity.
   function api.new(name, me)
     local c = components[name]
