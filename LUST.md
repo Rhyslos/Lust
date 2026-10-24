@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (2.0 alpha 34):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (2.0 alpha 35):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -1351,7 +1351,7 @@ An engine can use Lust's compiler itself, as a Rust library: to check a game's L
 
 ```
 [dependencies]
-lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.34", default-features = false }
+lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.35", default-features = false }
 ```
 
 Without its default features it needs nothing but Rust's own library (the default ones are the `lust` command). Lust doesn't open any files: the engine reads them, and hands over each one's path and text, with `/` between folders.
@@ -1369,6 +1369,7 @@ match lust::to_lua("main.lst", &files) {
 
 - **`lust::check(entry, &files)`**, **`lust::to_lua(entry, &files)`** and **`lust::to_rust_library(entry, &files)`**: `entry` is the program's first file. `fetch` and `get` find the others among `files`, from the project's folder (the nearest one up with a `main.lst`).
 - **Mistakes:** every one found, in order, as a `Problem` with `file`, `line`, `column` and `message`. Shown with `{}`, it's what `lust check` prints: `parts/gun.lst:12:5  ammo is an int, but this is text.`
+- **Deep code is a mistake, not a crash.** Code nested more than 150 levels deep (brackets, blocks, or operators in a row like `a + b + c …`) is reported as a `Problem` like any other, so Lua and Rust can always take what Lust accepts. The compiler runs on a thread of its own with room to spare (64 MB of stack, reserved but not used), so it never runs the engine out of stack, whatever it's given.
 - **`lust::VERSION`** is the compiler's version, so an engine can show it and refuse one it doesn't expect.
 - **`to_rust_library`** gives what `lust build --library` puts in `src/lib.rs`.
 

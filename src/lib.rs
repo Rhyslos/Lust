@@ -220,16 +220,43 @@ fn checked(path: &Path, src: String, is_script: bool, mem: Option<&project::Memo
     })
 }
 
+/// How much stack the compiler gets: it runs on a thread of its own, so the program using it
+/// needs none to spare. Code nested as deeply as Lust allows needs well under this, even in a
+/// debug build; the room is only reserved, not used, until it's needed.
+const STACK: usize = 64 << 20;
+
+/// Runs the compiler on its own thread with STACK room, or here if a thread can't be made.
+fn on_own_stack<T: Send>(f: impl FnOnce() -> T + Send) -> T {
+    let mut f = Some(f);
+    let result = std::thread::scope(|s| {
+        let run = &mut f;
+        std::thread::Builder::new()
+            .name("lust compiler".into())
+            .stack_size(STACK)
+            .spawn_scoped(s, move || run.take().map(|f| f()))
+            .ok()
+            .map(|h| h.join().expect("Lust's compiler stopped unexpectedly"))
+    });
+    match result {
+        Some(Some(r)) => r,
+        _ => (f.take().expect("the compiler runs once"))(),
+    }
+}
+
 /// Checks a program: `entry` is its first file's path, and `files` every file's path and text,
 /// with / between folders (\\ works too). Gives back every mistake found, each with its file,
 /// line and column, in order.
 pub fn check(entry: &str, files: &[(String, String)]) -> Result<(), Vec<Problem>> {
-    front_from(entry, files).map(|_| ())
+    on_own_stack(|| front_from(entry, files).map(|_| ()))
 }
 
 /// Lua for an engine to load (Lua 5.1, LuaJIT or Luau): Lust's runtime, the program, and at the
 /// end a table the engine uses to make, run and swap components. See LUST.md, section 21.
 pub fn to_lua(entry: &str, files: &[(String, String)]) -> Result<LuaChunk, Vec<Problem>> {
+    on_own_stack(|| lua_chunk(entry, files))
+}
+
+fn lua_chunk(entry: &str, files: &[(String, String)]) -> Result<LuaChunk, Vec<Problem>> {
     let c = front_from(entry, files)?;
     let out = lua::write_for_engine(&c.prog, &c.info, !c.is_script);
     Ok(LuaChunk {
@@ -243,6 +270,10 @@ pub fn to_lua(entry: &str, files: &[(String, String)]) -> Result<LuaChunk, Vec<P
 /// A Rust library made from a .lst program: what `lust build --library` puts in its src/lib.rs.
 /// Its Cargo.toml needs no dependencies, unless the Lust uses databases, the web or windows.
 pub fn to_rust_library(entry: &str, files: &[(String, String)]) -> Result<String, Vec<Problem>> {
+    on_own_stack(|| rust_library(entry, files))
+}
+
+fn rust_library(entry: &str, files: &[(String, String)]) -> Result<String, Vec<Problem>> {
     let c = front_from(entry, files)?;
     if c.is_script {
         return Err(whole(
@@ -332,3 +363,80 @@ impl std::fmt::Display for RunError {
 }
 
 impl std::error::Error for RunError {}
+
+#[cfg(test)]
+mod deep_code {
+    //! Code nested very deeply is a mistake, not a crash: the compiler must never run out of stack.
+
+    /// Checks one file from a thread with a tiny stack (128 KB): the compiler makes its own room,
+    /// so the program using it needs none. Gives back the messages.
+    fn messages(src: String) -> Vec<String> {
+        std::thread::Builder::new()
+            .stack_size(128 << 10)
+            .spawn(move || {
+                let files = vec![("main.lst".to_string(), src)];
+                let mut out = Vec::new();
+                match crate::check("main.lst", &files) {
+                    Ok(()) => {}
+                    Err(problems) => out.extend(problems.into_iter().map(|p| p.message)),
+                }
+                // The outputs walk the same trees, so they're tried too when there's nothing wrong.
+                if out.is_empty() {
+                    crate::to_lua("main.lst", &files).unwrap();
+                    crate::to_rust_library("main.lst", &files).unwrap();
+                }
+                out
+            })
+            .unwrap()
+            .join()
+            .expect("the compiler ran out of stack")
+    }
+
+    fn too_deep(src: String) {
+        let m = messages(src);
+        assert!(m.iter().any(|m| m.contains("nested too deeply")), "{m:?}");
+    }
+
+    fn fine(src: String) {
+        let m = messages(src);
+        assert!(m.is_empty(), "{m:?}");
+    }
+
+    fn method(body: &str) -> String {
+        format!("method int f(int a) {{\n{body}\n}}\nend\n")
+    }
+
+    #[test]
+    fn brackets() {
+        too_deep(method(&format!("return {}1{};", "(".repeat(100_000), ")".repeat(100_000))));
+        fine(method(&format!("return {}1{};", "(".repeat(140), ")".repeat(140))));
+    }
+
+    #[test]
+    fn operators_in_a_row() {
+        too_deep(method(&format!("return {};", vec!["a"; 100_000].join(" + "))));
+        too_deep(method(&format!("return {};", vec!["a"; 100_000].join(" * "))));
+        too_deep(method(&format!("bool b = {}true;\nreturn a;", "not ".repeat(100_000))));
+        too_deep(method(&format!("return {}a;", "- ".repeat(100_000))));
+        too_deep(method(&format!("bool b = {};\nreturn a;", vec!["true"; 100_000].join(" && "))));
+        too_deep(method(&format!("bool b = {};\nreturn a;", vec!["true"; 100_000].join(" || "))));
+        fine(method(&format!("return {};", vec!["a"; 140].join(" + "))));
+        fine(method(&format!("bool b = {}true;\nreturn a;", "not ".repeat(70))));
+    }
+
+    #[test]
+    fn blocks_and_lists() {
+        let ifs = |n: usize| {
+            method(&format!(
+                "{}a = a + 1;{}\nreturn a;",
+                "is a > 0? then {\n".repeat(n),
+                "\n}".repeat(n)
+            ))
+        };
+        too_deep(ifs(50_000));
+        fine(ifs(140));
+        too_deep(format!("int array x = {}{};\nend\n", "[".repeat(100_000), "]".repeat(100_000)));
+        too_deep(format!("int array array a = [];\nint x = a{};\nend\n", "[0]".repeat(100_000)));
+        too_deep(format!("{} x = [];\nend\n", format!("int{}", " array".repeat(100_000))));
+    }
+}
