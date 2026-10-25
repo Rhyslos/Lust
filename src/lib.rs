@@ -92,6 +92,8 @@ mod tests;
 #[cfg(feature = "cli")]
 mod cli;
 #[cfg(feature = "cli")]
+mod update;
+#[cfg(feature = "cli")]
 pub(crate) use cli::{build_host, build_native, compile};
 
 /// The lust command: lust run, lust build, lust test and the rest.
