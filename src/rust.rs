@@ -683,6 +683,12 @@ fn walk_stmts(stmts: &[Stmt], f: &mut dyn FnMut(&Expr)) {
                     walk_stmts(o, f);
                 }
             }
+            Stmt::Match { subject, arms, .. } => {
+                walk_expr(subject, f);
+                for a in arms {
+                    walk_stmts(&a.body, f);
+                }
+            }
             Stmt::Loop { kind, body, .. } => {
                 match kind {
                     LoopKind::Times(e) | LoopKind::While(e) => walk_expr(e, f),
@@ -820,6 +826,11 @@ fn declared(stmts: &[Stmt], out: &mut HashSet<String>) {
                 }
                 if let Some(o) = otherwise {
                     declared(o, out);
+                }
+            }
+            Stmt::Match { arms, .. } => {
+                for a in arms {
+                    declared(&a.body, out);
                 }
             }
             Stmt::Loop { kind, body, .. } => {
@@ -1299,6 +1310,40 @@ impl<'a> W<'a> {
             Stmt::Expr(e) => {
                 let c = self.expr(e);
                 out.push_str(&format!("{pad}{c};\n"));
+            }
+            Stmt::Match { subject, arms, .. } => {
+                let v = self.expr(subject);
+                let m = format!("m{}", self.fresh());
+                let opts = match self.info.ty(subject) {
+                    Ty::State(si) => self.info.states[si].options.clone(),
+                    _ => vec![],
+                };
+                out.push_str(&format!("{pad}{{\n{pad}    let {m} = {v};\n"));
+                let inner = "    ".repeat(depth + 1);
+                for (i, arm) in arms.iter().enumerate() {
+                    // Every option has a when, so the last one needs no question.
+                    if i + 1 == arms.len() && i > 0 {
+                        out.push_str(&format!("{inner}}} else {{\n"));
+                    } else {
+                        let tests: Vec<String> = arm
+                            .options
+                            .iter()
+                            .map(|(o, _)| match o.as_str() {
+                                "true" | "false" if opts.is_empty() => format!("{m} == {o}"),
+                                _ if opts.iter().any(|x| x.starts_with(&format!("{o}."))) => format!("rt::within({m}, {o:?})"),
+                                _ => format!("{m} == {o:?}"),
+                            })
+                            .collect();
+                        let cond = if arms.len() == 1 { "true".to_string() } else { tests.join(" || ") };
+                        let word = if i == 0 { "if" } else { "} else if" };
+                        out.push_str(&format!("{inner}{word} {cond} {{\n"));
+                    }
+                    self.stmts(&arm.body, out, depth + 2);
+                }
+                if !arms.is_empty() {
+                    out.push_str(&format!("{inner}}}\n"));
+                }
+                out.push_str(&format!("{pad}}}\n"));
             }
             Stmt::If { branches, otherwise, .. } => {
                 for (i, (c, b)) in branches.iter().enumerate() {

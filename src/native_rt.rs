@@ -684,6 +684,11 @@ pub fn frandom(lo: f64, hi: f64) -> f64 {
 
 /// Is a the option b, or inside it?
 /// == on state options: the same option, or one inside the other, whichever side it's written on.
+/// match's when: the option a is b, or one inside b (not the other way round).
+pub fn within(a: &str, b: &str) -> bool {
+    a == b || (a.len() > b.len() && a.starts_with(b) && a.as_bytes()[b.len()] == b'.')
+}
+
 pub fn sin(a: &str, b: &str) -> bool {
     let inside = |a: &str, b: &str| a.len() > b.len() && a.starts_with(b) && a.as_bytes()[b.len()] == b'.';
     a == b || inside(a, b) || inside(b, a)

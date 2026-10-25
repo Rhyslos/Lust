@@ -40,6 +40,7 @@ The order Lust gets built in. Each step makes Lust more useful on its own, and n
 | ✅ | **12.7 Luau vectors:** in Luau a `vec3` is Luau's own `vector`, in fields, events and native methods, with its maths done by Luau and still exactly the same as Rust's | Done (alpha 34) |
 | ✅ | **12.8 Deep code:** code nested more than 150 levels deep is a mistake, and the compiler runs on its own stack, so nothing given to it can crash the engine | Done (alpha 35) |
 | ✅ | **12.9 No unsafe code in libraries:** a library forbids unsafe code, and gets the time zone from the engine | Done (alpha 36) |
+| ✅ | **13.1 match:** `match x { when A { … } when B, C { … } }` for a state's options and bools, with every option covered | Done (alpha 37) |
 | | 🏁 *The Lust 2.0 release.* | |
 
 ## Decisions along the way

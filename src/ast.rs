@@ -150,6 +150,14 @@ pub enum Item {
     Event(EventDecl),
 }
 
+/// One `when` of a match: the options it's for (Calm, ActiveGame.Combat, true), and its block.
+#[derive(Clone)]
+pub struct MatchArm {
+    pub options: Vec<(String, Pos)>,
+    pub body: Vec<Stmt>,
+    pub pos: Pos,
+}
+
 /// An event a game sends to entities, and its components handle with on: what it carries.
 pub struct EventDecl {
     pub name: String,
@@ -296,6 +304,13 @@ pub enum Stmt {
         otherwise: Option<Vec<Stmt>>,
         pos: Pos,
     },
+    /// match mood { when Calm { … } when Busy, Angry { … } }: one block for each of a state's
+    /// options (or a bool's true and false), every one covered.
+    Match {
+        subject: Expr,
+        arms: Vec<MatchArm>,
+        pos: Pos,
+    },
     Loop {
         kind: LoopKind,
         body: Vec<Stmt>,
@@ -362,6 +377,7 @@ impl Stmt {
             | Stmt::Assign { pos, .. }
             | Stmt::SetState { pos, .. }
             | Stmt::If { pos, .. }
+            | Stmt::Match { pos, .. }
             | Stmt::Loop { pos, .. }
             | Stmt::Try { pos, .. }
             | Stmt::Lua { pos, .. }

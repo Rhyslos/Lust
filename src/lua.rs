@@ -217,6 +217,7 @@ fn has_skip(stmts: &[Stmt]) -> bool {
         Stmt::If { branches, otherwise, .. } => {
             branches.iter().any(|(_, b)| has_skip(b)) || otherwise.as_ref().map(|o| has_skip(o)).unwrap_or(false)
         }
+        Stmt::Match { arms, .. } => arms.iter().any(|a| has_skip(&a.body)),
         Stmt::Try { body, handler, .. } => has_skip(body) || has_skip(handler),
         _ => false,
     })
@@ -670,6 +671,46 @@ impl<'a> W<'a> {
                     self.stmts(o);
                     self.indent -= 1;
                 }
+                self.line(ln, "end");
+            }
+            Stmt::Match { subject, arms, .. } => {
+                let v = self.expr(subject);
+                let m = self.fresh("match");
+                let opts = match self.info.ty(subject) {
+                    Ty::State(si) => self.info.states[si].options.clone(),
+                    _ => vec![],
+                };
+                self.line(ln, "do");
+                self.indent += 1;
+                self.line(ln, &format!("local {m} = {v}"));
+                for (i, arm) in arms.iter().enumerate() {
+                    // Every option has a when, so the last one needs no question.
+                    if i + 1 == arms.len() && i > 0 {
+                        self.line(arm.pos.line, "else");
+                    } else {
+                        let tests: Vec<String> = arm
+                            .options
+                            .iter()
+                            .map(|(o, _)| match o.as_str() {
+                                "true" | "false" if opts.is_empty() => format!("{m} == {o}"),
+                                _ if opts.iter().any(|x| x.starts_with(&format!("{o}."))) => {
+                                    format!("_L.within({m}, {})", lua_string(o))
+                                }
+                                _ => format!("{m} == {}", lua_string(o)),
+                            })
+                            .collect();
+                        let word = if i == 0 { "if" } else { "elseif" };
+                        let cond = if arms.len() == 1 { "true".to_string() } else { tests.join(" or ") };
+                        self.line(arm.pos.line, &format!("{word} {cond} then"));
+                    }
+                    self.indent += 1;
+                    self.stmts(&arm.body);
+                    self.indent -= 1;
+                }
+                if !arms.is_empty() {
+                    self.line(ln, "end");
+                }
+                self.indent -= 1;
                 self.line(ln, "end");
             }
             Stmt::Loop { kind, body, .. } => self.loop_stmt(ln, kind, body),

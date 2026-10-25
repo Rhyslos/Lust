@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (2.0 alpha 36):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (2.0 alpha 37):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -123,6 +123,41 @@ is hp == 0? then {
     print("Fine");
 }
 ```
+
+### match
+
+`match` goes through a state's options, with one `when` block for each:
+
+```
+state Mood = [Calm, Busy, Angry];
+
+match mood {
+    when Calm {
+        print("relaxed");
+    }
+    when Busy, Angry {
+        print("working");
+    }
+}
+```
+
+- **Every option is covered, always.** A match has no "anything else": leave an option out and Lust says which one is missing. So when a state gets a new option, Lust points at every match that needs a `when` for it.
+- **One `when` can cover several options:** `when Busy, Angry { … }`.
+- **Options inside options:** a `when` for an option covers the options inside it, the same way `==` does. A more particular one goes first, and the general one after it catches the rest:
+
+  ```
+  match now {
+      when ActiveGame.Combat { … }     -- only Combat
+      when ActiveGame { … }            -- ActiveGame itself, and Exploration
+      when MainMenu { … }
+  }
+  ```
+
+  The other way round, `when ActiveGame.Combat` could never run, and Lust says so.
+- **Write the option on its own,** without the state's name: `when Calm`, not `when Mood.Calm`. The match already knows it's a `Mood`.
+- **Bools** work too, with `when true { … }` and `when false { … }`.
+- **Numbers and text** use questions instead (`is hp == 0? then { … } or is hp < 5? then { … }`), since there's no list of every value to cover.
+- Each `when` has its own `{ }`, so there's nothing to forget at the end of one: the next can't run by accident.
 
 ### Comparing
 
@@ -1352,7 +1387,7 @@ An engine can use Lust's compiler itself, as a Rust library: to check a game's L
 
 ```
 [dependencies]
-lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.36", default-features = false }
+lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.37", default-features = false }
 ```
 
 Without its default features it needs nothing but Rust's own library (the default ones are the `lust` command). Lust doesn't open any files: the engine reads them, and hands over each one's path and text, with `/` between folders.
@@ -1489,6 +1524,7 @@ either     not        true       false      loop       stop
 skip       in         try        error      state      save
 load       saved      end        database   int        float
 string     bool       array      cMap       map        native
+component  match      when
 ```
 
 The built-ins can't be used as names either:
