@@ -54,6 +54,8 @@ pub const RESERVED: &[&str] = &[
     "cMap",
     "map",
     "component",
+    "match",
+    "when",
 ];
 /// The pieces a view is made of.
 pub const ELEMENTS: &[&str] = &[
@@ -77,10 +79,11 @@ fn hint_for(word: &str) -> Option<&'static str> {
         "var" | "let" | "const" | "auto" => "put the type first: int lives = 3;",
         "null" | "nil" | "None" => "Lust calls it nothing.",
         "self" | "this" => "inside a method, use a field's name on its own: hp, not self.hp.",
-        "send" | "export" => "Lust shares things with pass: pass Player;",
+        "export" => "Lust shares things with pass: pass Player;",
         "import" | "require" => "Lust brings in other files with fetch.",
         "give" => "Lust gives values back with return.",
-        "switch" | "match" | "case" => "Lust asks questions: is x == 1? then { } or is x == 2? then { }",
+        "switch" => "Lust uses match, with a when for each option: match mood { when Calm { … } when Busy { … } }",
+        "case" => "in a match, each choice starts with when: when Calm { … }",
         "enum" => "Lust calls it a state: state Mood = [Happy, Grumpy];",
         "extends" | "inherits" => "Lust uses like: class Wizard like Player { }",
         "truth" | "boolean" | "Boolean" => "Lust calls it bool: bool alive = true;",
@@ -1490,6 +1493,8 @@ impl<'a> Parser<'a> {
             }
             match w.as_str() {
                 "is" => return self.if_chain(),
+                "match" => return self.match_stmt(),
+                "when" => return self.fail(t.pos, "when goes inside a match: match mood { when Calm { … } }"),
                 "loop" => return self.loop_stmt(),
                 "stop" | "skip" => {
                     self.next();
@@ -1728,6 +1733,77 @@ impl<'a> Parser<'a> {
             otherwise,
             pos: start,
         })
+    }
+
+    /// match mood { when Calm { … } when Busy, Angry { … } }
+    fn match_stmt(&mut self) -> R<Stmt> {
+        let start = self.next().pos; // match
+        let subject = self.expr()?;
+        let open = self.expect_sym(
+            "{",
+            "a match lists its choices in { }: match mood { when Calm { … } when Busy { … } }",
+        )?;
+        let d = self.depth;
+        self.deeper()?;
+        let mut arms = Vec::new();
+        loop {
+            if self.at_sym("}") {
+                self.next();
+                break;
+            }
+            if self.at_eof() || (self.at_word("end") && self.peek(1).kind == Tk::Eof) {
+                return self.fail(open.pos, "this { is never closed. Add a } where the match ends.");
+            }
+            let wpos = self.cur().pos;
+            if self.at_word("or") && self.peek(1).is_sym("{") {
+                // Read past it, so the rest of the match is still checked.
+                self.diags.add(
+                    wpos,
+                    "a match has no or { }: it has a when for every option, so nothing is ever left over.",
+                );
+                self.next();
+                self.block("the other case")?;
+                continue;
+            }
+            if self.at_word("when") {
+                self.next();
+            } else if matches!(self.cur().kind, Tk::Ident(_))
+                && (self.peek(1).is_sym("{") || self.peek(1).is_sym(",") || self.peek(1).is_sym("."))
+            {
+                // Calm { … }: the when is missing, but it's clear what's meant.
+                self.diags.add(wpos, "each choice in a match starts with when: when Calm { … }");
+            } else {
+                return self.fail(wpos, "each choice in a match starts with when: when Calm { … }");
+            }
+            let mut options = Vec::new();
+            loop {
+                let t = self.cur().clone();
+                let Tk::Ident(w) = &t.kind else {
+                    return self.fail(t.pos, "when names the option it's for: when Calm { … }, or when true { … }");
+                };
+                self.next();
+                let mut path = w.clone();
+                while self.at_sym(".") {
+                    self.next();
+                    let (n, _) = self.ident("an option's name after .")?;
+                    path.push('.');
+                    path.push_str(&n);
+                }
+                options.push((path, t.pos));
+                if self.at_sym(",") {
+                    self.next();
+                } else {
+                    break;
+                }
+            }
+            let body = self.block("the choice")?;
+            arms.push(MatchArm { options, body, pos: wpos });
+        }
+        self.depth = d;
+        if self.at_sym(";") {
+            self.next();
+        }
+        Ok(Stmt::Match { subject, arms, pos: start })
     }
 
     fn loop_stmt(&mut self) -> R<Stmt> {

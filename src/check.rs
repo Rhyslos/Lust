@@ -1661,6 +1661,114 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// match x { when … { } }: x is a state option or a bool, and every option has exactly one
+    /// when that runs for it. A when for an option covers the options inside it, so a more
+    /// particular one goes first (when ActiveGame.Combat, then when ActiveGame).
+    fn match_stmt(&mut self, subject: &Expr, arms: &[MatchArm], pos: Pos, ctx: &mut Ctx) {
+        let t = self.expr(subject, ctx, None);
+        // Every option there is, and the ones inside each (a bool's are true and false).
+        let (whole, opts): (String, Vec<String>) = match &t {
+            Ty::State(si) => {
+                let st = &self.info.states[*si];
+                (crate::ast::shown(&st.name).to_string(), st.options.clone())
+            }
+            Ty::Truth => ("a bool".into(), vec!["true".into(), "false".into()]),
+            Ty::Error => (String::new(), vec![]),
+            other => {
+                let a = self.a(other);
+                self.err(
+                    subject.pos,
+                    format!(
+                        "match goes through a state's options, or a bool's true and false, but this is {a}. For numbers and text, ask questions: is hp == 0? then {{ … }} or is hp < 5? then {{ … }}"
+                    ),
+                );
+                (String::new(), vec![])
+            }
+        };
+        let known = !opts.is_empty();
+        let inside = |o: &str, x: &str| x == o || x.starts_with(&format!("{o}."));
+        // Which when covers each option, so far.
+        let mut covered: Vec<(String, String)> = Vec::new();
+        for arm in arms {
+            for (o, p) in &arm.options {
+                if !known {
+                    continue;
+                }
+                if !opts.contains(o) {
+                    let state_prefix = format!("{whole}.");
+                    if let Some(rest) = o.strip_prefix(&state_prefix).filter(|r| opts.iter().any(|x| x == r)) {
+                        self.err(
+                            *p,
+                            format!("a match knows it's a {whole}, so write the option on its own: when {rest} {{ … }}"),
+                        );
+                    } else if t == Ty::Truth {
+                        self.err(
+                            *p,
+                            format!("a bool is true or false, so its match has when true {{ … }} and when false {{ … }}, but this is {o}."),
+                        );
+                    } else {
+                        let hint = suggest(o, opts.iter().cloned());
+                        self.err(*p, format!("{whole} has no option called {o}.{hint}"));
+                    }
+                    continue;
+                }
+                if let Some((_, by)) = covered.iter().find(|(x, _)| x == o) {
+                    let msg = if by == o {
+                        format!("there's already a when for {o} in this match.")
+                    } else {
+                        format!(
+                            "{o} is inside {by}, and the when for {by} above already covers it, so this never runs. Put when {o} first."
+                        )
+                    };
+                    self.err(*p, msg);
+                    continue;
+                }
+                for x in &opts {
+                    if inside(o, x) && !covered.iter().any(|(c, _)| c == x) {
+                        covered.push((x.clone(), o.clone()));
+                    }
+                }
+            }
+            self.block(&arm.body, ctx);
+        }
+        if !known {
+            return;
+        }
+        // What's left: an option on its own counts once, not again for each option inside it.
+        let missing: Vec<&String> = opts.iter().filter(|x| !covered.iter().any(|(c, _)| c == *x)).collect();
+        let mut tell: Vec<String> = Vec::new();
+        for m in &missing {
+            let parent = m.rsplit_once('.').map(|(p, _)| p.to_string());
+            if parent.as_ref().is_some_and(|p| missing.iter().any(|x| *x == p)) {
+                continue;
+            }
+            let some_inside_covered = opts
+                .iter()
+                .any(|x| x.starts_with(&format!("{m}.")) && covered.iter().any(|(c, _)| c == x));
+            tell.push(if some_inside_covered {
+                format!("{m} itself")
+            } else {
+                m.to_string()
+            });
+        }
+        if !tell.is_empty() {
+            let list = match tell.split_last() {
+                Some((last, rest)) if !rest.is_empty() => format!("{} and {last}", rest.join(", ")),
+                _ => tell.join(""),
+            };
+            let first = tell[0].trim_end_matches(" itself");
+            let every = if t == Ty::Truth {
+                "both true and false".to_string()
+            } else {
+                format!("every option of {whole}")
+            };
+            self.err(
+                pos,
+                format!("this match has no when for {list}. A match covers {every}: add when {first} {{ … }}"),
+            );
+        }
+    }
+
     fn block(&mut self, stmts: &[Stmt], ctx: &mut Ctx) {
         ctx.scopes.push(HashMap::new());
         for s in stmts {
@@ -1883,6 +1991,7 @@ impl<'a> Checker<'a> {
                     );
                 }
             }
+            Stmt::Match { subject, arms, pos } => self.match_stmt(subject, arms, *pos, ctx),
             Stmt::If { branches, otherwise, .. } => {
                 for (cond, body) in branches {
                     let t = self.expr(cond, ctx, Some(&Ty::Truth));
@@ -3943,6 +4052,8 @@ pub fn returns(stmts: &[Stmt]) -> bool {
             otherwise: Some(o),
             ..
         } => branches.iter().all(|(_, b)| returns(b)) && returns(o),
+        // Every option has its when, so one of them always runs.
+        Stmt::Match { arms, .. } => !arms.is_empty() && arms.iter().all(|a| returns(&a.body)),
         Stmt::Try { body, handler, .. } => returns(body) && returns(handler),
         Stmt::Loop {
             kind: LoopKind::Forever,
@@ -3959,6 +4070,7 @@ fn has_stop(stmts: &[Stmt]) -> bool {
         Stmt::If { branches, otherwise, .. } => {
             branches.iter().any(|(_, b)| has_stop(b)) || otherwise.as_ref().map(|o| has_stop(o)).unwrap_or(false)
         }
+        Stmt::Match { arms, .. } => arms.iter().any(|a| has_stop(&a.body)),
         Stmt::Try { body, handler, .. } => has_stop(body) || has_stop(handler),
         _ => false,
     })

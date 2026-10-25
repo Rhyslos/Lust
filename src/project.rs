@@ -341,6 +341,11 @@ fn value_names(p: &Program, out: &mut HashSet<String>) {
                         stmts(o, out);
                     }
                 }
+                Stmt::Match { arms, .. } => {
+                    for a in arms {
+                        stmts(&a.body, out);
+                    }
+                }
                 Stmt::Loop { kind, body, .. } => {
                     if let LoopKind::Each { vars, .. } = kind {
                         for (_, n, _) in vars {
@@ -568,6 +573,12 @@ impl<'a> Renamer<'a> {
                 }
                 if let Some(o) = otherwise {
                     self.stmts(o);
+                }
+            }
+            Stmt::Match { subject, arms, .. } => {
+                self.expr(subject);
+                for a in arms {
+                    self.stmts(&mut a.body);
                 }
             }
             Stmt::Loop { kind, body, .. } => {

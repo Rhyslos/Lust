@@ -505,6 +505,8 @@ local function inside(a, b) return a:sub(1, #b + 1) == b .. "." end
 function L.sin(a, b)
   return a == b or (a ~= nil and b ~= nil and (inside(a, b) or inside(b, a)))
 end
+-- match's when: the option a is b, or one inside b (not the other way round).
+function L.within(a, b) return a == b or inside(a, b) end
 
 -- ----- native methods: their bodies are outside Lust -----
 

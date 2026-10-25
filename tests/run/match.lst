@@ -1,0 +1,115 @@
+-- match: one block for each of a state's options, or a bool's true and false.
+state Mood = [Calm, Busy, Angry];
+
+state GameState = [
+    MainMenu,
+    ActiveGame [
+        Exploration,
+        Combat [
+            Melee,
+            Ranged
+        ]
+    ],
+    Paused
+];
+
+method string describe(Mood m) {
+    match m {
+        when Calm {
+            return "relaxed";
+        }
+        when Busy, Angry {
+            return "working";
+        }
+    }
+}
+
+-- A more particular option first, then the one it's inside.
+method string where(GameState g) {
+    match g {
+        when ActiveGame.Combat.Ranged {
+            return "shooting";
+        }
+        when ActiveGame.Combat {
+            return "fighting up close, or just in combat";
+        }
+        when ActiveGame {
+            return "out exploring, or just in the game";
+        }
+        when MainMenu, Paused {
+            return "not playing";
+        }
+    }
+}
+
+print(describe(Mood.Calm));
+print(describe(Mood.Busy));
+print(describe(Mood.Angry));
+
+print(where(GameState.ActiveGame.Combat.Ranged));
+print(where(GameState.ActiveGame.Combat.Melee));
+print(where(GameState.ActiveGame.Combat));
+print(where(GameState.ActiveGame.Exploration));
+print(where(GameState.ActiveGame));
+print(where(GameState.Paused));
+
+-- Bools.
+bool sunny = false;
+match sunny {
+    when true {
+        print("go outside");
+    }
+    when false {
+        print("stay in");
+    }
+}
+
+-- Inside loops, with skip and stop; the value is worked out once.
+Mood array moods = [Mood.Calm, Mood.Angry, Mood.Busy, Mood.Calm, Mood.Angry];
+int calm = 0;
+loop (Mood m in moods) {
+    match m {
+        when Calm {
+            calm = calm + 1;
+            skip;
+        }
+        when Busy {
+            print("busy, so stopping");
+            stop;
+        }
+        when Angry {
+            print("angry");
+        }
+    }
+    print("after the match");
+}
+print("calm: " + calm.text());
+
+-- A class's own state.
+class Guard {
+    has {
+        state is Mood.Calm;
+        int alarms = 0;
+    }
+
+    method react() {
+        match state {
+            when Calm {
+                state is Mood.Busy;
+            }
+            when Busy {
+                state is Mood.Angry;
+            }
+            when Angry {
+                alarms = alarms + 1;
+            }
+        }
+    }
+}
+
+Guard g = new Guard;
+loop 4 times {
+    g:react();
+}
+print(g.alarms);
+end

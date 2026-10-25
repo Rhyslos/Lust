@@ -1,0 +1,16 @@
+match.lst:17:1  this match has no when for Busy and Angry. A match covers every option of Mood: add when Busy { … }
+match.lst:24:1  this match has no when for Calm and Busy. A match covers every option of Mood: add when Calm { … }
+match.lst:25:10  a match knows it's a Mood, so write the option on its own: when Calm { … }
+match.lst:28:10  Mood has no option called Bussy. Did you mean Busy?
+match.lst:31:17  there's already a when for Angry in this match.
+match.lst:41:10  ActiveGame.Combat is inside ActiveGame, and the when for ActiveGame above already covers it, so this never runs. Put when ActiveGame.Combat first.
+match.lst:49:1  this match has no when for ActiveGame itself. A match covers every option of GameState: add when ActiveGame { … }
+match.lst:56:7  match goes through a state's options, or a bool's true and false, but this is an int. For numbers and text, ask questions: is hp == 0? then { … } or is hp < 5? then { … }
+match.lst:63:1  this match has no when for true and false. A match covers both true and false: add when true { … }
+match.lst:64:10  a bool is true or false, so its match has when true { … } and when false { … }, but this is yes.
+match.lst:70:1  this match has no when for Busy and Angry. A match covers every option of Mood: add when Busy { … }
+match.lst:74:5  a match has no or { }: it has a when for every option, so nothing is ever left over.
+match.lst:81:5  each choice in a match starts with when: when Calm { … }
+match.lst:89:1  when goes inside a match: match mood { when Calm { … } }
+
+14 mistakes. Nothing was run.

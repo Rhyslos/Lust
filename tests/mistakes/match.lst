@@ -1,0 +1,92 @@
+-- Mistakes with match.
+state Mood = [Calm, Busy, Angry];
+
+state GameState = [
+    MainMenu,
+    ActiveGame [
+        Exploration,
+        Combat
+    ]
+];
+
+Mood m = Mood.Calm;
+GameState g = GameState.MainMenu;
+int hp = 3;
+
+-- Missing options.
+match m {
+    when Calm {
+        print("a");
+    }
+}
+
+-- The state's name in front, a typo, and the same option twice.
+match m {
+    when Mood.Calm {
+        print("a");
+    }
+    when Bussy {
+        print("b");
+    }
+    when Angry, Angry {
+        print("c");
+    }
+}
+
+-- A general option before a particular one, and an option itself left out.
+match g {
+    when ActiveGame {
+        print("a");
+    }
+    when ActiveGame.Combat {
+        print("b");
+    }
+    when MainMenu {
+        print("c");
+    }
+}
+
+match g {
+    when ActiveGame.Exploration, ActiveGame.Combat, MainMenu {
+        print("d");
+    }
+}
+
+-- Not a state or a bool.
+match hp {
+    when Calm {
+        print("e");
+    }
+}
+
+-- Bools.
+match hp > 2 {
+    when yes {
+        print("f");
+    }
+}
+
+-- or isn't part of a match.
+match m {
+    when Calm {
+        print("g");
+    }
+    or {
+        print("h");
+    }
+}
+
+-- A choice without its when.
+match m {
+    Calm {
+        print("j");
+    }
+    when Busy, Angry {
+        print("k");
+    }
+}
+
+when Calm {
+    print("i");
+}
+end
