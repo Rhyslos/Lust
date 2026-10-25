@@ -1,0 +1,96 @@
+# Builds lust.exe and its installer on Windows. On a pull request they're kept as an artifact,
+# so the installer is tried before it's merged. When a new version (in Cargo.toml) reaches main,
+# they're published as a release: v<version>, with lust.exe, lust-setup.exe and SHA256SUMS,
+# which lust update checks downloads against. A version with a test label (like -alpha.38) is
+# marked as a pre-release.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build lust.exe
+        run: cargo build --release
+
+      - name: Version
+        id: version
+        run: |
+          v=$(grep -m1 '^version' Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "Lust $v"
+          test "$(target/release/lust.exe version)" = "Lust $v"
+
+      - name: Build the installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup --no-progress -y
+          }
+          & $iscc "/DVersion=${{ steps.version.outputs.version }}" installer\lust.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # The installer, tried: installed quietly, then lust from where it went, then uninstalled.
+      - name: Try the installer
+        shell: pwsh
+        run: |
+          Start-Process dist\lust-setup.exe -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait
+          $lust = "$env:LOCALAPPDATA\Programs\Lust\lust.exe"
+          & $lust version
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $path = [Environment]::GetEnvironmentVariable('Path', 'User')
+          if (-not ($path -like "*Programs\Lust*")) { Write-Error "Lust isn't on PATH"; exit 1 }
+          Start-Process "$env:LOCALAPPDATA\Programs\Lust\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES' -Wait
+          Start-Sleep -Seconds 3
+          if (Test-Path $lust) { Write-Error "the uninstaller left lust.exe"; exit 1 }
+          $path = [Environment]::GetEnvironmentVariable('Path', 'User')
+          if ($path -like "*Programs\Lust*") { Write-Error "the uninstaller left Lust on PATH"; exit 1 }
+
+      - name: Checksums
+        run: |
+          cp target/release/lust.exe dist/lust.exe
+          cd dist
+          sha256sum lust.exe lust-setup.exe > SHA256SUMS
+          cat SHA256SUMS
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lust-release
+          path: dist/
+
+      - name: Publish the release
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="${{ steps.version.outputs.version }}"
+          if gh release view "v$v" > /dev/null 2>&1; then
+            echo "v$v is out already."
+            exit 0
+          fi
+          pre=""
+          case "$v" in *-*) pre="--prerelease" ;; esac
+          gh release create "v$v" dist/lust.exe dist/lust-setup.exe dist/SHA256SUMS \
+            --target "$GITHUB_SHA" --title "Lust $v" --generate-notes $pre

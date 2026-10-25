@@ -41,7 +41,8 @@ The order Lust gets built in. Each step makes Lust more useful on its own, and n
 | ✅ | **12.8 Deep code:** code nested more than 150 levels deep is a mistake, and the compiler runs on its own stack, so nothing given to it can crash the engine | Done (alpha 35) |
 | ✅ | **12.9 No unsafe code in libraries:** a library forbids unsafe code, and gets the time zone from the engine | Done (alpha 36) |
 | ✅ | **13.1 match:** `match x { when A { … } when B, C { … } }` for a state's options and bools, with every option covered | Done (alpha 37) |
-| | 🏁 *The Lust 2.0 release.* | |
+| ✅ | **13.2 Install and update:** a Windows installer, releases made by themselves, and `lust update` | Done (alpha 38) |
+| | 🏁 *Lust's first release that isn't a test version.* | |
 
 ## Decisions along the way
 

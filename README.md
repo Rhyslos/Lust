@@ -34,16 +34,16 @@ ada:hurt(12);
 end
 ```
 
-## Lust 2
+## Lust
 
-This is **Lust 2**, a fresh start written in Rust. One language, two outputs:
+Lust is written in Rust, and has one language with two outputs:
 
 | Output | Files | For |
 | --- | --- | --- |
 | Rust, compiled to real programs | `.lst` | apps, tools and servers on Windows, macOS and Linux |
 | LustScript, turned into Lua | `.lsc` | scripting and modding inside other programs, like Garry's Mod, Aventail and Halberd |
 
-**What works today (alpha 37):** both outputs. Every file is checked before anything runs, with mistakes explained in plain words.
+**What works today (alpha 38):** both outputs. Every file is checked before anything runs, with mistakes explained in plain words.
 
 - `.lsc` files turn into plain Lua 5.1 that Garry's Mod (LuaJIT) and Luau can run.
 - `.lst` files turn into Rust, which builds into a real program (an `.exe` on Windows) that runs without Lust.
@@ -62,7 +62,17 @@ Every test runs both ways, through Lua and as a real program, and both have to p
 
 The full rules are in **[LUST.md](LUST.md)**, and what gets built next is in **[ROADMAP.md](ROADMAP.md)**. Lust 1, the version that compiled to C#, lives on the [`v1`](https://github.com/Rhyslos/Lust/tree/v1) branch.
 
-## Try it
+## Install
+
+On Windows, download **lust-setup.exe** from the newest [release](https://github.com/Rhyslos/Lust/releases) and run it. It needs no administrator: it puts Lust in your own programs folder and adds it to your PATH, so `lust` works in any new terminal. Lust is still a test version (alpha), so things can change between releases.
+
+- **Updates:** `lust update` gets the newest Lust, after checking the download against the release's checksums. `lust update check` only looks. When you run, build or check a file, Lust says at most once a day when a newer one is out; `lust update off` stops that.
+- **Building real programs** (`lust build`) also needs [Rust](https://rustup.rs). `lust run` doesn't. The first `lust build` without Rust says how to get it.
+- **Uninstalling:** Windows' Settings → Apps → Lust. It takes Lust off your PATH too.
+
+A new release comes out by itself whenever a new version of Lust reaches `main`.
+
+## Try it from the source
 
 You need [Rust](https://rustup.rs). Then:
 
@@ -86,6 +96,7 @@ The second line makes `tests/run/player` (`player.exe` on Windows), a real progr
 | `lust lua file` | shows the Lua it turns into |
 | `lust rust file.lst` | shows the Rust it turns into |
 | `lust test tests` | runs the test programs, both ways. `lust test tests/player.lst` runs one |
+| `lust update` | gets the newest Lust. `lust update check` only looks, `lust update off` stops the notes about new ones |
 
 Mistakes come out all at once, before anything runs:
 
@@ -101,7 +112,7 @@ Mistakes that only show up while running point at the Lust line, in Lua and in r
 missing-row.lst:2  there's no row with id 7. The ids are 1, 2.
 ```
 
-Every push builds a ready-made `lust.exe`: open the **Actions** tab, click the latest **Test** run, and download **lust-windows**.
+Every push also builds a ready-made `lust.exe`: open the **Actions** tab, click the latest **Test** run, and download **lust-windows**. Releases are the easier way to get it.
 
 ## Writing Lua inside LustScript
 

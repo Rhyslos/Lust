@@ -6,7 +6,7 @@ use std::process::ExitCode;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-const USAGE: &str = "Lust 2 (alpha)
+const USAGE: &str = "Lust (alpha)
 
   lust run <file>      check a .lst or .lsc file, then run it
   lust check <file>    only check it, and list any mistakes
@@ -20,6 +20,8 @@ const USAGE: &str = "Lust 2 (alpha)
                        .lst: make a Rust library from it, for a Rust program to use
   lust test <folder>   run the test programs in a folder (or one test file)
   lust version         show which Lust this is
+  lust update          get the newest Lust (lust update check only looks)
+  lust update off      stop the note saying a newer Lust is out (lust update on: back on)
 
 lust <file> is the same as lust run <file>.
 lust run is quick to start, so it runs .lst files through Lua too.
@@ -71,7 +73,25 @@ pub fn compile_as(path: &Path, quiet: bool, library: bool) -> Option<Compiled> {
 }
 
 pub fn main() -> ExitCode {
+    crate::update::tidy();
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some("update") {
+        return crate::update::command(args.get(1).map(String::as_str));
+    }
+    // A person running a program, building or checking may hear that a newer Lust is out.
+    let first = args.first().map(String::as_str).unwrap_or("");
+    let watched = matches!(first, "run" | "build" | "check" | "new") || first.ends_with(".lst") || first.ends_with(".lsc");
+    let note = if watched {
+        crate::update::start()
+    } else {
+        crate::update::Note::none()
+    };
+    let code = command(args);
+    crate::update::finish(note);
+    code
+}
+
+fn command(args: Vec<String>) -> ExitCode {
     let (cmd, file) = match args.as_slice() {
         [] => {
             println!("{USAGE}");
@@ -204,6 +224,16 @@ const CARGO_TOML: &str = "[package]\nname = \"lust_program\"\nversion = \"0.1.0\
 
 /// Builds a program that needs outside libraries with Cargo, in a folder of Lust's own. The
 /// libraries are shared, so they're only compiled the first time on each computer.
+/// What lust build says when Rust isn't on the computer.
+const NEEDS_RUST: &str = "building a real program needs Rust, which isn't on this computer yet. lust run works without it.
+To get Rust: download rustup-init.exe from https://rustup.rs and run it. On Windows it also offers the Visual Studio build tools Rust needs: say yes. It's a few GB, and takes a while.
+Then open a new terminal, and build again.";
+
+/// What lust build says when Rust is there, but Windows' build tools (its linker) aren't.
+const NEEDS_TOOLS: &str = "Rust is here, but Windows' build tools aren't, and Rust needs them to make a program.
+Get them by running rustup-init.exe from https://rustup.rs again and saying yes to the Visual Studio build tools, or install \"Build Tools for Visual Studio\" with \"Desktop development with C++\" from https://visualstudio.microsoft.com/downloads/
+Then open a new terminal, and build again.";
+
 fn build_with_cargo(path: &Path, rust: &str, exe: &Path) -> Result<(), String> {
     let cache = cache_dir();
     let stem = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
@@ -247,8 +277,13 @@ fn build_with_cargo(path: &Path, rust: &str, exe: &Path) -> Result<(), String> {
         .arg(&toml)
         .env("CARGO_TARGET_DIR", &target)
         .output()
-        .map_err(|_| "building needs Rust, and it isn't installed. Get it from https://rustup.rs, then try again.".to_string())?;
+        .map_err(|_| NEEDS_RUST.to_string())?;
     if !out.status.success() {
+        let said = String::from_utf8_lossy(&out.stderr);
+        // No linker: Rust without Windows' build tools.
+        if said.contains("link.exe") && (said.contains("not found") || said.contains("could not be found")) {
+            return Err(NEEDS_TOOLS.to_string());
+        }
         return Err(format!(
             "Lust made Rust that doesn't build, or Cargo couldn't get SQLite. Rust said:\n{}\nThe Rust is in {}.",
             String::from_utf8_lossy(&out.stderr),
@@ -443,7 +478,7 @@ pub fn build_library_in(path: &Path, rust: &str, dir: &Path) -> Result<(), Strin
         .arg(dir.join("Cargo.toml"))
         .env("CARGO_TARGET_DIR", cache_dir().join("target"))
         .output()
-        .map_err(|_| "building needs Rust, and it isn't installed. Get it from https://rustup.rs, then try again.".to_string())?;
+        .map_err(|_| NEEDS_RUST.to_string())?;
     if !out.status.success() {
         return Err(format!(
             "Lust made Rust that doesn't build. That's a bug in Lust, not your program. Rust said:\n{}\nThe Rust is in {}.",
@@ -485,7 +520,7 @@ pub fn build_host(path: &Path, host: &Path) -> Result<PathBuf, String> {
         .arg(proj.join("Cargo.toml"))
         .env("CARGO_TARGET_DIR", &target)
         .output()
-        .map_err(|_| "building needs Rust, and it isn't installed.".to_string())?;
+        .map_err(|_| NEEDS_RUST.to_string())?;
     if !out.status.success() {
         return Err(format!(
             "the Rust program using it didn't build:\n{}",
@@ -526,7 +561,8 @@ pub fn build_native(path: &Path, rust: &str) -> Result<std::path::PathBuf, Strin
         .output();
     let _ = std::fs::remove_file(&src);
     match result {
-        Err(_) => Err("building needs Rust, and it isn't installed. Get it from https://rustup.rs, then try again.".into()),
+        Err(_) => Err(NEEDS_RUST.into()),
+        Ok(o) if !o.status.success() && String::from_utf8_lossy(&o.stderr).contains("link.exe") => Err(NEEDS_TOOLS.into()),
         Ok(o) if !o.status.success() => {
             let keep = dir.join(format!("{stem}.rs"));
             let _ = std::fs::write(&keep, rust);

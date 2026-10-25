@@ -1,6 +1,6 @@
 # Ideas for later
 
-> Written during Lust 1, so its examples use Lust 1's syntax. [LUST.md](LUST.md) now describes Lust 2, and wins wherever the two disagree (Rust instead of LLVM and .NET, `method` instead of `do`, `==` in questions).
+> Written during Lust 1, so its examples use Lust 1's syntax. [LUST.md](LUST.md) now describes today's Lust, and wins wherever the two disagree (Rust instead of LLVM and .NET, `method` instead of `do`, `==` in questions).
 
 Lust's long-term plan: everything we've talked about but haven't built yet. Some ideas are decided in direction (marked as such), but each one still gets designed together in detail before it's built, the way saves were. The rules that are real today live in [LUST.md](LUST.md).
 
