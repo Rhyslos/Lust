@@ -233,6 +233,9 @@ pub struct Checker<'a> {
     /// How many menus and canvases the piece being checked is inside.
     menus: usize,
     canvases: usize,
+    /// The + of each hp += 5, and what was written; and the one being checked now.
+    compound: HashMap<usize, &'static str>,
+    compound_now: Option<&'static str>,
 }
 
 pub fn check(prog: &Program, diags: &mut Diags, is_script: bool) -> Info {
@@ -246,6 +249,8 @@ pub fn check(prog: &Program, diags: &mut Diags, is_script: bool) -> Info {
         loop_keys: vec![],
         menus: 0,
         canvases: 0,
+        compound: prog.compound.clone(),
+        compound_now: None,
     };
     c.run(prog, is_script);
     c.info
@@ -2559,7 +2564,10 @@ impl<'a> Checker<'a> {
                 self.expect_truth(inner, &t, "not");
                 Ty::Truth
             }
-            ExprKind::Bin(op, l, r, opos) => self.binary(*op, l, r, *opos, ctx, expected),
+            ExprKind::Bin(op, l, r, opos) => {
+                self.compound_now = self.compound.get(&e.id).copied();
+                self.binary(*op, l, r, *opos, ctx, expected)
+            }
             ExprKind::Either(c, a, b) => {
                 let ct = self.expr(c, ctx, Some(&Ty::Truth));
                 self.expect_truth(c, &ct, "either");
@@ -3912,7 +3920,66 @@ impl<'a> Checker<'a> {
         Ty::Array(Box::new(el))
     }
 
+    /// hp += 5, name += "!", at *= 2, facing *= turn: what fits, and mistakes that speak of +=.
+    fn compound(&mut self, sym: &str, op: BinOp, l: &Expr, r: &Expr, opos: Pos, ctx: &mut Ctx) -> Ty {
+        let lt = self.expr(l, ctx, None);
+        let hint = match (&lt, op) {
+            (Ty::Vec3, BinOp::Add | BinOp::Sub) | (Ty::Rot, BinOp::Mul) => Some(lt.clone()),
+            _ => None,
+        };
+        let rt = self.expr(r, ctx, hint.as_ref());
+        if lt == Ty::Error || rt == Ty::Error {
+            return Ty::Error;
+        }
+        let fits = match (op, &lt, &rt) {
+            (BinOp::Add, Ty::Str, Ty::Str) => Some(Ty::Str),
+            (BinOp::Add | BinOp::Sub, Ty::Vec3, Ty::Vec3) => Some(Ty::Vec3),
+            (BinOp::Mul | BinOp::Div, Ty::Vec3, n) if n.is_number() => Some(Ty::Vec3),
+            (BinOp::Mul, Ty::Rot, Ty::Rot) => Some(Ty::Rot),
+            (_, Ty::Int, Ty::Int) => Some(Ty::Int),
+            (_, a, b) if a.is_number() && b.is_number() => Some(Ty::Float),
+            _ => None,
+        };
+        if let Some(t) = fits {
+            if op == BinOp::Div && lt == Ty::Int && rt == Ty::Int {
+                if let ExprKind::Int(0) = r.kind {
+                    self.err(r.pos, "dividing by zero doesn't work.");
+                }
+            }
+            return t;
+        }
+        let left = describe(l);
+        let need = match (&lt, op) {
+            (Ty::Int | Ty::Float, _) => Some("a number"),
+            (Ty::Str, BinOp::Add) => Some("text"),
+            (Ty::Vec3, BinOp::Add | BinOp::Sub) => Some("a vec3"),
+            (Ty::Vec3, _) => Some("a number"),
+            (Ty::Rot, BinOp::Mul) => Some("a rotation"),
+            _ => None,
+        };
+        let msg = match need {
+            Some(n) => {
+                let fix = if lt == Ty::Str && (rt.is_number() || rt == Ty::Truth || matches!(rt, Ty::State(_))) {
+                    format!(" Write {{ }} around it inside text instead: {left} += \"{{…}}\"")
+                } else {
+                    String::new()
+                };
+                format!("{left} is {}, so {sym} needs {n}, but this is {}.{fix}", self.a(&lt), self.a(&rt))
+            }
+            None => format!(
+                "{left} is {}, and {sym} doesn't work on that. It works on numbers{} and vec3s.",
+                self.a(&lt),
+                if sym == "+=" { ", text" } else { "" }
+            ),
+        };
+        self.err(opos, msg);
+        Ty::Error
+    }
+
     fn binary(&mut self, op: BinOp, l: &Expr, r: &Expr, opos: Pos, ctx: &mut Ctx, expected: Option<&Ty>) -> Ty {
+        if let Some(sym) = self.compound_now.take() {
+            return self.compound(sym, op, l, r, opos, ctx);
+        }
         // Where a vec3 is wanted, a list on the left is one: [1, 0, 0] * speed.
         let vec_hint = if expected == Some(&Ty::Vec3) && matches!(l.kind, ExprKind::List { .. }) {
             Some(&Ty::Vec3)
