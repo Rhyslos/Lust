@@ -135,6 +135,9 @@ pub struct Program {
     pub passes: Vec<(String, Pos)>,
     /// The next expression id after this file's, so the next file's ids don't overlap.
     pub next_id: usize,
+    /// hp += 5 is hp = hp + 5: the ids of those + expressions, with what was written (+=), so
+    /// mistakes speak of +=.
+    pub compound: std::collections::HashMap<usize, &'static str>,
 }
 
 pub enum Item {

@@ -43,6 +43,7 @@ The order Lust gets built in. Each step makes Lust more useful on its own, and n
 | ✅ | **13.1 match:** `match x { when A { … } when B, C { … } }` for a state's options and bools, with every option covered | Done (alpha 37) |
 | ✅ | **13.2 Install and update:** a Windows installer, releases made by themselves, and `lust update` | Done (alpha 38) |
 | ✅ | **13.3 print and text:** `print(a, b, c)` with any values, and values in text with `"hp: {hp}"` | Done (alpha 41) |
+| ✅ | **13.4 `+=` `-=` `*=` `/=`:** change a value using itself, on numbers, text, vectors and rotations | Done (alpha 42) |
 | | 🏁 *Lust's first release that isn't a test version.* | |
 
 ## Decisions along the way

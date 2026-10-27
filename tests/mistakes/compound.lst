@@ -1,0 +1,23 @@
+-- Mistakes with += and friends.
+class Bag {
+    has {
+        int array items = [1];
+    }
+
+    method int slot() {
+        return 0;
+    }
+}
+
+int hp = 3;
+string name = "Ada";
+bool alive = true;
+Bag b = new Bag;
+
+hp += "lots";
+name -= "a";
+alive += true;
+b.items[b:slot()] += 1;
+3 += hp;
+hp +=;
+end

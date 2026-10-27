@@ -1,0 +1,8 @@
+compound.lst:17:4  hp is an int, so += needs a number, but this is a string.
+compound.lst:18:6  name is a string, and -= doesn't work on that. It works on numbers and vec3s.
+compound.lst:19:7  alive is a bool, and += doesn't work on that. It works on numbers, text and vec3s.
+compound.lst:20:9  += reads and changes its left side, so the left side can't call a method. Put the result in a variable first, then use the variable with +=, or write = and + in full.
+compound.lst:21:1  the left side of += must be something that can change, like hp or player.hp.
+compound.lst:22:6  expected a value here, but found ;.
+
+6 mistakes. Nothing was run.

@@ -186,6 +186,8 @@ pub struct Parser<'a> {
     in_view: bool,
     /// How deeply what's being read is nested: brackets, blocks, operators in a row.
     depth: usize,
+    /// The + of each hp += 5, and what was written.
+    compound: std::collections::HashMap<usize, &'static str>,
 }
 
 /// How deeply code can nest. Deeper code would run the compiler out of room (its stack), which
@@ -207,6 +209,7 @@ pub fn parse(toks: Vec<Token>, diags: &mut Diags, is_script: bool, first_id: usi
         uses_lua: false,
         loop_depth: 0,
         depth: 0,
+        compound: Default::default(),
         last_field: None,
     };
     p.program()
@@ -296,6 +299,16 @@ impl<'a> Parser<'a> {
     }
     fn mk(&mut self, pos: Pos, kind: ExprKind) -> Expr {
         Expr { id: self.id(), pos, kind }
+    }
+
+    /// The left side of hp += 5 again, for reading it: the same names, with ids of its own.
+    fn copy_expr(&mut self, e: &Expr) -> Expr {
+        let kind = match &e.kind {
+            ExprKind::Field(x, n, p) => ExprKind::Field(Box::new(self.copy_expr(x)), n.clone(), *p),
+            ExprKind::Index(a, b) => ExprKind::Index(Box::new(self.copy_expr(a)), b.clone()),
+            other => other.clone(),
+        };
+        self.mk(e.pos, kind)
     }
 
     /// The ; at the end of a statement. A missing one is reported where the line ends.
@@ -425,6 +438,7 @@ impl<'a> Parser<'a> {
             imports: std::mem::take(&mut self.imports),
             passes: std::mem::take(&mut self.passes),
             next_id: self.next_id + 1,
+            compound: std::mem::take(&mut self.compound),
         }
     }
 
@@ -1620,6 +1634,42 @@ impl<'a> Parser<'a> {
             return Ok(Stmt::Var { ty, name, pos, value });
         }
         let target = self.expr()?;
+        // hp += 5; is hp = hp + 5;
+        let op = [("+=", BinOp::Add), ("-=", BinOp::Sub), ("*=", BinOp::Mul), ("/=", BinOp::Div)]
+            .into_iter()
+            .find(|(s, _)| self.at_sym(s));
+        if let Some((sym, op)) = op {
+            let opos = self.next().pos;
+            if !matches!(target.kind, ExprKind::Name(_) | ExprKind::Field(..) | ExprKind::Index(..)) {
+                return self.fail(
+                    t.pos,
+                    format!("the left side of {sym} must be something that can change, like hp or player.hp."),
+                );
+            }
+            // The left side is worked out twice (once to read, once to change), so it can't call
+            // anything, which might do something twice.
+            fn calls(e: &Expr) -> Option<Pos> {
+                match &e.kind {
+                    ExprKind::Call(..) | ExprKind::Method(..) => Some(e.pos),
+                    ExprKind::Field(x, ..) => calls(x),
+                    ExprKind::Index(a, b) => calls(a).or_else(|| calls(b)),
+                    _ => None,
+                }
+            }
+            if let Some(p) = calls(&target) {
+                let short = &sym[..1];
+                return self.fail(
+                    p,
+                    format!("{sym} reads and changes its left side, so the left side can't call a method. Put the result in a variable first, then use the variable with {sym}, or write = and {short} in full."),
+                );
+            }
+            let value = self.expr()?;
+            self.semi()?;
+            let read = self.copy_expr(&target);
+            let value = self.mk(opos, ExprKind::Bin(op, Box::new(read), Box::new(value), opos));
+            self.compound.insert(value.id, sym);
+            return Ok(Stmt::Assign { target, value, pos: t.pos });
+        }
         if self.at_sym("=") {
             self.next();
             if !matches!(target.kind, ExprKind::Name(_) | ExprKind::Field(..) | ExprKind::Index(..)) {

@@ -274,6 +274,7 @@ pub fn load(entry: &Path, src: String, is_script: bool, diags: &mut Diags, mem: 
     let mut items = Vec::new();
     let mut body = Vec::new();
     let mut uses_lua = false;
+    let mut compound = HashMap::new();
     for (f, file) in files.into_iter().enumerate() {
         let mut r = Renamer {
             visible: &visible[f],
@@ -288,6 +289,7 @@ pub fn load(entry: &Path, src: String, is_script: bool, diags: &mut Diags, mem: 
             r.item(item);
         }
         uses_lua |= prog.uses_lua;
+        compound.extend(prog.compound.drain());
         if f == 0 {
             r.stmts(&mut prog.body);
             body = prog.body;
@@ -302,6 +304,7 @@ pub fn load(entry: &Path, src: String, is_script: bool, diags: &mut Diags, mem: 
             imports: vec![],
             passes: exports,
             next_id,
+            compound,
         },
         files: shown,
     }

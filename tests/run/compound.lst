@@ -1,0 +1,59 @@
+-- += -= *= /=: change a value using itself.
+class Player {
+    has {
+        int hp = 10;
+        float speed = 2;
+        string log = "";
+        vec3 at = [0, 0, 0];
+        int array scores = [1, 2, 3];
+    }
+
+    method hit(int damage) {
+        hp -= damage;
+        log += "hit for {damage}. ";
+    }
+}
+
+int score = 5;
+score += 10;
+score -= 3;
+score *= 2;
+score /= 5;
+print(score);
+
+float half = 9;
+half /= 2;
+print(half);
+
+string name = "Ada";
+name += " Lovelace";
+print(name);
+
+Player p = new Player;
+p:hit(3);
+p:hit(4);
+print(p.hp);
+print(p.log);
+p.speed *= 1.5;
+print(p.speed);
+
+-- Vectors: += adds, *= scales, and a part changes on its own.
+p.at += [1, 2, 3];
+p.at *= 2;
+p.at.z -= 1;
+print(p.at);
+
+-- Arrays and maps, by index.
+p.scores[2] += 40;
+print(p.scores);
+int map lives = ["ada" 3];
+lives["ada"] -= 1;
+print(lives["ada"]);
+
+-- In a loop.
+int total = 0;
+loop (int s in p.scores) {
+    total += s;
+}
+print(total);
+end
