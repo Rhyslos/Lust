@@ -280,9 +280,28 @@ function L.I(x)
 end
 -- Whole numbers are checked when they become text (print, .text()), which costs nothing extra, so
 -- one that has grown past what Lua holds exactly never shows up wrong.
+-- An int going into a sized number (int8 hp): it has to fit.
+function L.narrow(v, lo, hi, name)
+  if v < lo or v > hi then
+    local a = name:sub(1, 1) == "u" and "a" or "an"
+    error(L.itext(v) .. " doesn't fit in " .. a .. " " .. name .. ", which holds " .. lo .. " to " .. hi .. ".", 2)
+  end
+  return v
+end
+function L.jr_narrow(lo, hi, name)
+  return function(v, at) return L.narrow(L.jr.int(v, at), lo, hi, name) end
+end
+
+-- A whole number as text. Lua 5.1's %d goes through C's long, which is 32 bits on Windows, so
+-- bigger numbers are written with %.0f, which is exact for every whole number Lua holds.
+local function whole(v)
+  if v >= -2147483648 and v <= 2147483647 then return fmt("%d", v) end
+  return fmt("%.0f", v)
+end
+L.whole = whole
 function L.itext(v)
   if L.exact and (v > EXACT or v < -EXACT) then too_big(2) end
-  return fmt("%d", v)
+  return whole(v)
 end
 function L.toint(v)
   if v ~= v then error("this float isn't a number, so it can't be an int.", 2) end
@@ -325,7 +344,7 @@ local function seed()
   end
 end
 function L.random(lo, hi)
-  if lo > hi then error("Random's lowest number (" .. fmt("%d", lo) .. ") is bigger than its highest (" .. fmt("%d", hi) .. ").", 2) end
+  if lo > hi then error("Random's lowest number (" .. whole(lo) .. ") is bigger than its highest (" .. whole(hi) .. ").", 2) end
   if RHOST and RHOST.random then return RHOST.random(lo, hi) end
   seed()
   return math.random(lo, hi)
@@ -406,7 +425,7 @@ end
 
 local function keytext(c, k)
   if c.textkey then return "\"" .. k .. "\"" end
-  return fmt("%d", k)
+  return whole(k)
 end
 local function keys(c)
   local list = {}
@@ -1303,7 +1322,7 @@ local function block(open, close, parts, d)
 end
 local function pair(k, v, d) if d then return jquote(k) .. ": " .. v end return jquote(k) .. ":" .. v end
 L.jw = {}
-function L.jw.int(v) return fmt("%d", v) end
+function L.jw.int(v) return whole(v) end
 function L.jw.float(v)
   if v ~= v or v == math.huge or v == -math.huge then error("JSON can't hold " .. L.ftext(v) .. ".", 0) end
   return L.ftext(v)

@@ -1110,7 +1110,12 @@ impl<'a> W<'a> {
 
     /// An expression as a value. A table or a query used as a value is a copy of its rows, as a cMap.
     fn expr(&mut self, e: &Expr) -> String {
-        let c = self.raw(e);
+        let mut c = self.raw(e);
+        // An int going into a sized place (int8 hp): checked to fit.
+        if let Some(w) = self.info.narrowing.get(&e.id) {
+            let (lo, hi) = w.range();
+            c = format!("_L.narrow({c}, {lo}, {hi}, {})", lua_string(w.name()));
+        }
         match self.info.ty(e) {
             Ty::Table(_) | Ty::Query(_) => format!("_L.q_cmap({c})"),
             _ => c,
@@ -1525,7 +1530,7 @@ impl<'a> W<'a> {
     /// A Lua function that writes a value of type `t` as JSON.
     fn jenc(&self, t: &Ty) -> String {
         match t {
-            Ty::Int => "_L.jw.int".into(),
+            Ty::Int | Ty::Sized(_) => "_L.jw.int".into(),
             Ty::Float => "_L.jw.float".into(),
             Ty::Truth => "_L.jw.truth".into(),
             Ty::Str | Ty::State(_) => "_L.jw.string".into(),
@@ -1543,6 +1548,10 @@ impl<'a> W<'a> {
     fn jdec(&self, t: &Ty) -> String {
         match t {
             Ty::Int => "_L.jr.int".into(),
+            Ty::Sized(w) => {
+                let (lo, hi) = w.range();
+                format!("_L.jr_narrow({lo}, {hi}, {})", lua_string(w.name()))
+            }
             Ty::Float => "_L.jr.float".into(),
             Ty::Truth => "_L.jr.truth".into(),
             Ty::Str => "_L.jr.string".into(),
@@ -1657,7 +1666,7 @@ impl<'a> W<'a> {
     /// A Lua function that turns a value of type `t` into text, for print and lists.
     fn fmt(&self, t: &Ty) -> String {
         match t {
-            Ty::Int => "_L.itext".into(),
+            Ty::Int | Ty::Sized(_) => "_L.itext".into(),
             Ty::Float => "_L.ftext".into(),
             Ty::Vec3 => "_L.vtext".into(),
             Ty::Rot => "_L.rtext".into(),

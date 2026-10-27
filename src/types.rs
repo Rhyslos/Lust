@@ -2,9 +2,67 @@
 
 use std::rc::Rc;
 
+/// A sized whole number's size: int8 to int32, uint8 to uint32.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Width {
+    I8,
+    I16,
+    I32,
+    U8,
+    U16,
+    U32,
+}
+
+impl Width {
+    pub const ALL: [Width; 6] = [Width::I8, Width::I16, Width::I32, Width::U8, Width::U16, Width::U32];
+
+    /// As Lust writes it: int8.
+    pub fn name(self) -> &'static str {
+        match self {
+            Width::I8 => "int8",
+            Width::I16 => "int16",
+            Width::I32 => "int32",
+            Width::U8 => "uint8",
+            Width::U16 => "uint16",
+            Width::U32 => "uint32",
+        }
+    }
+
+    /// As Rust writes it: i8.
+    pub fn rust(self) -> &'static str {
+        match self {
+            Width::I8 => "i8",
+            Width::I16 => "i16",
+            Width::I32 => "i32",
+            Width::U8 => "u8",
+            Width::U16 => "u16",
+            Width::U32 => "u32",
+        }
+    }
+
+    /// The smallest and biggest numbers it holds.
+    pub fn range(self) -> (i64, i64) {
+        match self {
+            Width::I8 => (i8::MIN as i64, i8::MAX as i64),
+            Width::I16 => (i16::MIN as i64, i16::MAX as i64),
+            Width::I32 => (i32::MIN as i64, i32::MAX as i64),
+            Width::U8 => (0, u8::MAX as i64),
+            Width::U16 => (0, u16::MAX as i64),
+            Width::U32 => (0, u32::MAX as i64),
+        }
+    }
+
+    pub fn from_name(n: &str) -> Option<Width> {
+        Width::ALL.into_iter().find(|w| w.name() == n)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Ty {
     Int,
+    /// A whole number kept in fewer bits: int8 hp = 3;. Only places that keep a value (variables,
+    /// fields, items, parameters) have one; reading it gives an int.
+    Sized(Width),
     Float,
     Str,
     Truth,
@@ -57,7 +115,7 @@ pub struct HookSig {
 
 impl Ty {
     pub fn is_number(&self) -> bool {
-        matches!(self, Ty::Int | Ty::Float)
+        matches!(self, Ty::Int | Ty::Float | Ty::Sized(_))
     }
     /// Values that can be `nothing`.
     pub fn can_be_nothing(&self) -> bool {
@@ -74,6 +132,7 @@ impl<'a> Names<'a> {
     pub fn show(&self, t: &Ty) -> String {
         match t {
             Ty::Int => "int".into(),
+            Ty::Sized(w) => w.name().into(),
             Ty::Float => "float".into(),
             Ty::Str => "string".into(),
             Ty::Truth => "bool".into(),
@@ -118,7 +177,8 @@ impl<'a> Names<'a> {
             return s;
         }
         let first = s.chars().next().unwrap_or('x').to_ascii_lowercase();
-        if "aeiou".contains(first) {
+        // "a uint8": u sounds like you there.
+        if "aeiou".contains(first) && !s.starts_with("uint") {
             format!("an {s}")
         } else {
             format!("a {s}")

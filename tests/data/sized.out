@@ -1,0 +1,6 @@
+{"mood":-3,"xs":[1,2]}
+-3 [1, 2]
+999 doesn't fit in an int8, which holds -128 to 127.
+9 [10, 20]
+10
+200

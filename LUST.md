@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (alpha 42):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (alpha 43):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -82,6 +82,7 @@ bool alive = true;
 | Type | Holds | Examples |
 | --- | --- | --- |
 | `int` | whole numbers | `0`, `42`, `-7` |
+| `int8` … `uint32` | whole numbers kept in fewer bits, when you want to save memory (see below) | `int8 hp = 3;` |
 | `float` | numbers with a point | `1.5`, `0.25` |
 | `string` | text, in double quotes | `"Ada"`, `"line\n"` |
 | `bool` | yes or no | `true`, `false`, `not true` |
@@ -98,6 +99,22 @@ bool alive = true;
 
 - A variable keeps its type forever.
 - An `int` fits where a `float` goes. The other way needs `.int()`.
+- **Sized numbers, if you want them.** An `int` takes 64 bits. Where a smaller one will do, `int8`, `int16`, `int32`, `uint8`, `uint16` and `uint32` take fewer, in the real program `lust build` makes: `uint8 array tiles` with a million tiles takes 1 MB instead of 8. They're completely optional; `int` works everywhere.
+
+  | Type | Holds |
+  | --- | --- |
+  | `int8` | -128 to 127 |
+  | `int16` | -32768 to 32767 |
+  | `int32` | -2147483648 to 2147483647 |
+  | `uint8` | 0 to 255 |
+  | `uint16` | 0 to 65535 |
+  | `uint32` | 0 to 4294967295 |
+
+  - Reading one gives an `int`, so maths, text and comparisons work as they do for any int: `int total = hp + 1000;`, `"hp: {hp}"`.
+  - Putting a number into one checks it fits. A number written out has to fit before anything runs (`int8 x = 300;` is a mistake). One worked out while running stops the program if it doesn't fit, with what happened: `303 doesn't fit in a uint8, which holds 0 to 255.` It never wraps round quietly.
+  - They go in variables, fields, parameters, what a method gives back, arrays, maps, cMaps, hooks, saves and JSON. Not yet in components, events, database tables or native methods: use `int` there.
+  - `loop (int c in colours)` goes through a `uint8 array` too.
+  - Under `lust run`, numbers are Lua's, so the memory is the same there; the checks are too, so a number that doesn't fit stops the program in both.
 - **How big an `int` can be.** A built program holds whole numbers up to 9223372036854775807 (and down to minus that), and stops with a message if a sum goes past it. `lust run` runs programs through Lua, whose numbers only hold whole numbers exactly up to 9007199254740991, so there a bigger one stops the program with a message saying so (when it's written out, printed, or turned into text) instead of quietly showing a wrong number. Build the program to use bigger ones.
 - A variable declared inside `{ }` only exists inside those braces.
 - A name can't be declared twice while it still exists.
@@ -1404,7 +1421,7 @@ An engine can use Lust's compiler itself, as a Rust library: to check a game's L
 
 ```
 [dependencies]
-lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.42", default-features = false }
+lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.43", default-features = false }
 ```
 
 Without its default features it needs nothing but Rust's own library (the default ones are the `lust` command). Lust doesn't open any files: the engine reads them, and hands over each one's path and text, with `/` between folders.

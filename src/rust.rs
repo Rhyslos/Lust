@@ -899,6 +899,7 @@ impl<'a> W<'a> {
     fn ty(&mut self, t: &Ty) -> String {
         match t {
             Ty::Int => "i64".into(),
+            Ty::Sized(w) => w.rust().into(),
             Ty::Float => "f64".into(),
             Ty::Str => "String".into(),
             Ty::Truth => "bool".into(),
@@ -1723,7 +1724,16 @@ impl<'a> W<'a> {
 
     /// An expression as a value. A table or a query used as a value is a copy of its rows, as a cMap.
     fn expr(&mut self, e: &Expr) -> String {
-        let c = self.raw(e);
+        let mut c = self.raw(e);
+        // A sized number read is an int (i64) in the maths around it.
+        if self.info.narrow_reads.contains_key(&e.id) {
+            c = format!("({c} as i64)");
+        }
+        // An int going into a sized place: checked to fit.
+        if let Some(w) = self.info.narrowing.get(&e.id) {
+            let (lo, hi) = w.range();
+            c = format!("rt::narrow::<{}>({c}, {lo}, {hi}, {:?})", w.rust(), w.name());
+        }
         match self.info.ty(e) {
             Ty::Table(t) | Ty::Query(t) => {
                 let dec = self.row_decoder(&t);
@@ -2483,6 +2493,7 @@ impl<'a> W<'a> {
         let tt = self.ty(t);
         match t {
             Ty::Int => "rt::jw_int".into(),
+            Ty::Sized(_) => format!("(|v: &{tt}, d: Option<usize>| -> String {{ rt::jw_int(&(*v as i64), d) }})"),
             Ty::Float => "rt::jw_float".into(),
             Ty::Truth => "rt::jw_truth".into(),
             Ty::Str => "rt::jw_string".into(),
@@ -2518,6 +2529,13 @@ impl<'a> W<'a> {
         let tt = self.ty(t);
         match t {
             Ty::Int => "rt::jr_int".into(),
+            Ty::Sized(w) => {
+                let (lo, hi) = w.range();
+                format!(
+                    "(|v: &rt::Json, at: &str| -> {tt} {{ rt::narrow::<{tt}>(rt::jr_int(v, at), {lo}, {hi}, {:?}) }})",
+                    w.name()
+                )
+            }
             Ty::Float => "rt::jr_float".into(),
             Ty::Truth => "rt::jr_truth".into(),
             Ty::Str => "rt::jr_string".into(),
@@ -2614,6 +2632,7 @@ impl<'a> W<'a> {
         let tt = self.ty(t);
         match t {
             Ty::Int => format!("|v: &{tt}| rt::itext(*v)"),
+            Ty::Sized(_) => format!("|v: &{tt}| rt::itext(*v as i64)"),
             Ty::Float => format!("|v: &{tt}| rt::ftext(*v)"),
             Ty::Vec3 => format!("|v: &{tt}| rt::vtext(*v)"),
             Ty::Rot => format!("|v: &{tt}| rt::rtext(*v)"),

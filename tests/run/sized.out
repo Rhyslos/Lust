@@ -1,0 +1,12 @@
+70 1070
+4000000000
+8000000000
+203
+-25
+-340
+[255, 128, 64, 7] 4
+454
+15
+hp is 70, half is 35, as a float 35.0
+303 doesn't fit in a uint8, which holds 0 to 255.
+210 doesn't fit in an int8, which holds -128 to 127.

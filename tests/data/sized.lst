@@ -1,0 +1,39 @@
+-- Sized numbers kept and read back: saves, JSON, hooks and cMaps.
+object Game {
+    has {
+        uint8 level = 3;
+        int16 array scores = [10, 20];
+    }
+}
+
+save sizedSession = [Game];
+
+class Stats {
+    has {
+        int8 mood = -3;
+        uint16 array xs = [1, 2];
+    }
+}
+
+Stats s = new Stats;
+string j = Json:write(s);
+print(j);
+Stats back = Json:read(j);
+print(back.mood, back.xs);
+Stats bad = new Stats;
+try {
+    Stats b2 = Json:read("{\"mood\": 999, \"xs\": []}");
+    print(b2.mood);
+} error (string m) {
+    print(m);
+}
+Game.level = 9;
+save sizedSession;
+Game.level = 1;
+load sizedSession;
+print(Game.level, Game.scores);
+hook int(int8 n) twice = new hook { return n * 2; };
+print(twice(5));
+cMap(int id, uint8 hp) mobs = [[1, 200]];
+print(mobs[1].hp);
+end

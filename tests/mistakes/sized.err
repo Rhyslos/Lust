@@ -1,0 +1,11 @@
+sized.lst:2:15  300 doesn't fit in an int8, which holds -128 to 127.
+sized.lst:3:18  -1 doesn't fit in a uint8, which holds 0 to 255.
+sized.lst:4:24  200 doesn't fit in an int8, which holds -128 to 127.
+sized.lst:4:29  -129 doesn't fit in an int8, which holds -128 to 127.
+sized.lst:5:14  half is an int16, but this is a float. Use .int() to drop the part after the point.
+sized.lst:7:1  an int is already 64 bits, so there's no int64: write int.
+sized.lst:11:14  a component's fields are what the engine keeps and shows: bool, int, float, string, a state, vec3, rotation and entity. small is an int8.
+sized.lst:20:23  a native method takes ints, floats, text, bools, vec3s, rotations, things made from classes, and arrays of those, but by is a uint8.
+sized.lst:24:21  narrow is an int8 array, but this is an int array.
+
+9 mistakes. Nothing was run.
