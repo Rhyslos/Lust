@@ -43,7 +43,7 @@ Lust is written in Rust, and has one language with two outputs:
 | Rust, compiled to real programs | `.lst` | apps, tools and servers on Windows, macOS and Linux |
 | LustScript, turned into Lua | `.lsc` | scripting and modding inside other programs, like Garry's Mod, Aventail and Halberd |
 
-**What works today (alpha 39):** both outputs. Every file is checked before anything runs, with mistakes explained in plain words.
+**What works today (alpha 40):** both outputs. Every file is checked before anything runs, with mistakes explained in plain words.
 
 - `.lsc` files turn into plain Lua 5.1 that Garry's Mod (LuaJIT) and Luau can run.
 - `.lst` files turn into Rust, which builds into a real program (an `.exe` on Windows) that runs without Lust.
@@ -131,6 +131,12 @@ shout("hello");
 
 end
 ```
+
+## Licence and privacy
+
+Lust is free and open source, for ever, under the [MIT licence](LICENSE): use it, change it and share it, for anything, as long as the licence comes along. It comes with no warranty.
+
+Lust collects nothing about you. The only thing it does online is check GitHub for a newer Lust, at most once a day, and you can turn that off. [PRIVACY.md](PRIVACY.md) says exactly what it does.
 
 ## The name
 

@@ -33,11 +33,15 @@ SetupIconFile=..\assets\lust.ico
 UninstallDisplayIcon={app}\lust.exe
 UninstallDisplayName=Lust
 WizardStyle=modern
+; The licence, shown before installing.
+LicenseFile=..\LICENSE
 Compression=lzma2/max
 SolidCompression=yes
 
 [Files]
 Source: "..\target\release\lust.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
+Source: "..\PRIVACY.md"; DestDir: "{app}"; DestName: "PRIVACY.md"; Flags: ignoreversion
 
 [InstallDelete]
 ; What an earlier lust update left behind.

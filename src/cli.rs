@@ -485,7 +485,11 @@ fn warm_up() -> ExitCode {
             .unwrap_or(false);
     let _ = std::fs::remove_dir_all(&dir);
     let _ = std::fs::remove_file(&lock);
-    if ok { ExitCode::SUCCESS } else { ExitCode::from(1) }
+    if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    }
 }
 
 /// The name a Lust file's library has in Rust: game.lst is the crate game.
