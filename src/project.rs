@@ -687,6 +687,13 @@ impl<'a> Renamer<'a> {
                 self.expr(b);
                 self.expr(c);
             }
+            ExprKind::Template(parts) => {
+                for p in parts {
+                    if let TemplatePart::Value(v) = p {
+                        self.expr(v);
+                    }
+                }
+            }
             ExprKind::List { items, keys } => {
                 for i in items {
                     self.expr(i);

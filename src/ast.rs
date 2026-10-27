@@ -150,6 +150,13 @@ pub enum Item {
     Event(EventDecl),
 }
 
+/// A piece of text with values in it.
+#[derive(Clone)]
+pub enum TemplatePart {
+    Text(String),
+    Value(Expr),
+}
+
 /// One `when` of a match: the options it's for (Calm, ActiveGame.Combat, true), and its block.
 #[derive(Clone)]
 pub struct MatchArm {
@@ -465,6 +472,8 @@ pub enum ExprKind {
     Int(i64),
     Float(f64),
     Str(String),
+    /// "hp: {hp}, name: {name}": text with values in it, each turned into text.
+    Template(Vec<TemplatePart>),
     Bool(bool),
     Nothing,
     Name(String),

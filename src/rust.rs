@@ -775,6 +775,13 @@ pub fn walk_expr(e: &Expr, f: &mut dyn FnMut(&Expr)) {
             walk_expr(b, f);
             walk_expr(c, f);
         }
+        ExprKind::Template(parts) => {
+            for p in parts {
+                if let TemplatePart::Value(v) = p {
+                    walk_expr(v, f);
+                }
+            }
+        }
         ExprKind::List { items, keys } => {
             for i in items {
                 walk_expr(i, f);
@@ -1797,6 +1804,22 @@ impl<'a> W<'a> {
             ExprKind::Int(v) => format!("({v}i64)"),
             ExprKind::Float(v) => format!("({v:?}f64)"),
             ExprKind::Str(s) => format!("{s:?}.to_string()"),
+            ExprKind::Template(parts) => {
+                let mut b = String::from("{ let mut t = String::new(); ");
+                for p in parts {
+                    match p {
+                        TemplatePart::Text(s) => b.push_str(&format!("t.push_str({s:?}); ")),
+                        TemplatePart::Value(v) => {
+                            let ty = self.info.ty(v);
+                            let c = self.expr(v);
+                            let shown = self.show(&c, &ty);
+                            b.push_str(&format!("t.push_str(&{shown}); "));
+                        }
+                    }
+                }
+                b.push_str("t }");
+                b
+            }
             ExprKind::Bool(b) => b.to_string(),
             ExprKind::Nothing if self.info.ty(e) == Ty::Entity => "0u64".into(),
             ExprKind::Nothing => "None".into(),
@@ -2186,10 +2209,20 @@ impl<'a> W<'a> {
     fn builtin(&mut self, name: &str, args: &[Expr]) -> String {
         match name {
             "print" => {
-                let t = self.info.ty(&args[0]);
-                let c = self.expr(&args[0]);
-                let shown = self.show(&c, &t);
-                format!("rt::print({shown})")
+                let mut parts = Vec::new();
+                for a in args {
+                    let t = self.info.ty(a);
+                    let c = self.expr(a);
+                    parts.push(self.show(&c, &t));
+                }
+                match parts.len() {
+                    0 => "rt::print(String::new())".into(),
+                    1 => format!("rt::print({})", parts[0]),
+                    _ => format!(
+                        "rt::print([{}].join(\" \"))",
+                        parts.iter().map(|p| format!("String::from({p})")).collect::<Vec<_>>().join(", ")
+                    ),
+                }
             }
             "ask" => format!("rt::ask({})", self.expr(&args[0])),
             "readText" => format!("rt::read_text({})", self.expr(&args[0])),
@@ -2203,6 +2236,8 @@ impl<'a> W<'a> {
     fn show(&mut self, code: &str, t: &Ty) -> String {
         match t {
             Ty::Str => code.to_string(),
+            // A plain nothing, like print(nothing).
+            Ty::Nothing => "String::from(\"nothing\")".into(),
             Ty::State(_) => format!("{code}.to_string()"),
             _ => {
                 let f = self.fmt(t, false);

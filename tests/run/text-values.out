@@ -1,0 +1,15 @@
+Score: 120 lives: 3
+Ada 12 1.5 Calm true nothing [1.0, 2.5, 0.0]
+[1, 2, 3] and ["a", "b"]
+
+after an empty line
+Hello, Ada! You have 3 lives.
+Ada has 12 hp and moves at 1.5
+3 letters. 4 next time, plenty
+Calm at [1.0, 2.5, 0.0]
+nested: inner 3
+hi ADA
+{"name": "Ada"}
+[0-9]{4}
+{}, { spaced }
+{lives} is written {lives}

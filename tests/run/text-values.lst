@@ -1,0 +1,42 @@
+-- print with commas, and values inside text with { }.
+state Mood = [Calm, Busy];
+
+class Player {
+    has {
+        string name = "Ada";
+        int hp = 12;
+        float speed = 1.5;
+        Mood mood = Mood.Calm;
+    }
+
+    method string card() {
+        return "{name} has {hp} hp and moves at {speed}";
+    }
+}
+
+Player p = new Player;
+int lives = 3;
+vec3 at = [1, 2.5, 0];
+
+-- Commas: any values, with spaces between, no .text() needed.
+print("Score:", 120, "lives:", lives);
+print(p.name, p.hp, p.speed, p.mood, true, nothing, at);
+print([1, 2, 3], "and", ["a", "b"]);
+print();
+print("after an empty line");
+
+-- Values in text.
+print("Hello, {p.name}! You have {lives} lives.");
+print(p:card());
+print("{#p.name} letters. {lives + 1} next time, {either lives > 2? "plenty" or "careful"}");
+print("{p.mood} at {at}");
+print("nested: {"inner {lives}"}");
+string greeting = "hi {p.name.upper()}";
+print(greeting);
+
+-- Plain braces stay plain: JSON, patterns, and \{ for a { before a name.
+print("{\"name\": \"Ada\"}");
+print("[0-9]{4}");
+print("{}, { spaced }");
+print("\{lives} is written \{lives}");
+end

@@ -12,10 +12,19 @@ pub enum Tk {
     Sym(&'static str),
     /// The raw Lua inside `lua { … }`.
     LuaCode(String),
+    /// Text with values in it: "hp: {hp}". Text with none is a Str.
+    Text(Vec<TextPart>),
     Eof,
 }
 
-#[derive(Clone, Debug)]
+/// A piece of text with values in it: plain text, or a value's tokens (ending with Eof).
+#[derive(Clone, Debug, PartialEq)]
+pub enum TextPart {
+    Plain(String),
+    Value(Vec<Token>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct Token {
     pub kind: Tk,
     pub pos: Pos,
@@ -34,7 +43,7 @@ impl Token {
         match &self.kind {
             Tk::Ident(s) => format!("the word {s}"),
             Tk::Int(_) | Tk::Float(..) => "a number".into(),
-            Tk::Str(_) => "some text".into(),
+            Tk::Str(_) | Tk::Text(_) => "some text".into(),
             Tk::Sym(s) => s.to_string(),
             Tk::LuaCode(_) => "a lua block".into(),
             Tk::Eof => "the end of the file".into(),
@@ -211,6 +220,7 @@ pub fn lex(src: &str, file: usize, diags: &mut Diags) -> Vec<Token> {
         if c == '"' {
             advance!(1);
             let mut s = String::new();
+            let mut parts: Vec<TextPart> = Vec::new();
             let mut closed = false;
             while i < chars.len() && at(i) != '\n' {
                 let ch = at(i);
@@ -226,15 +236,85 @@ pub fn lex(src: &str, file: usize, diags: &mut Diags) -> Vec<Token> {
                         't' => s.push('\t'),
                         '"' => s.push('"'),
                         '\\' => s.push('\\'),
+                        '{' => s.push('{'),
+                        '}' => s.push('}'),
                         _ => {
                             diags.add(
                                 Pos { line, col },
-                                format!("\\{e} isn't a known escape. Use \\n, \\t, \\\" or \\\\."),
+                                format!("\\{e} isn't a known escape. Use \\n, \\t, \\\", \\\\, or \\{{ for a plain {{."),
                             );
                             s.push(e);
                         }
                     }
                     advance!(2);
+                    continue;
+                }
+                // "hp: {hp}": a { straight before a name, a bracket, # or text starts a value. Any
+                // other { is plain text, so JSON and patterns like [0-9]{4} need nothing special.
+                let next = at(i + 1);
+                if ch == '{' && (next.is_alphabetic() || matches!(next, '(' | '#' | '"')) {
+                    // Find the } that ends the value: past brackets and text inside it.
+                    let (mut j, mut depth) = (i + 1, 1);
+                    while j < chars.len() && at(j) != '\n' {
+                        match at(j) {
+                            '"' => {
+                                j += 1;
+                                while j < chars.len() && at(j) != '"' && at(j) != '\n' {
+                                    if at(j) == '\\' {
+                                        j += 1;
+                                    }
+                                    j += 1;
+                                }
+                            }
+                            '{' => depth += 1,
+                            '}' => {
+                                depth -= 1;
+                                if depth == 0 {
+                                    break;
+                                }
+                            }
+                            _ => {}
+                        }
+                        j += 1;
+                    }
+                    if at(j) != '}' {
+                        diags.add(
+                            Pos { line, col },
+                            "this { in the text is never closed. Add a } after the value, or write \\{ for a plain {.",
+                        );
+                        s.push(ch);
+                        advance!(1);
+                        continue;
+                    }
+                    let code: String = chars[i + 1..j].iter().collect();
+                    let at_col = col + 1;
+                    // The value's tokens, where they are in the file.
+                    let mut inner = Diags::default();
+                    let mut toks = lex(&code, 0, &mut inner);
+                    for t in toks.iter_mut() {
+                        t.pos = Pos {
+                            line,
+                            col: at_col + t.pos.col - 1,
+                        };
+                        t.end = Pos {
+                            line,
+                            col: at_col + t.end.col - 1,
+                        };
+                    }
+                    for (p, m) in inner.list {
+                        diags.add(
+                            Pos {
+                                line,
+                                col: at_col + p.col - 1,
+                            },
+                            m,
+                        );
+                    }
+                    if !s.is_empty() {
+                        parts.push(TextPart::Plain(std::mem::take(&mut s)));
+                    }
+                    parts.push(TextPart::Value(toks));
+                    advance!(j - i + 1);
                     continue;
                 }
                 s.push(ch);
@@ -243,8 +323,16 @@ pub fn lex(src: &str, file: usize, diags: &mut Diags) -> Vec<Token> {
             if !closed {
                 diags.add(pos, "this text is never closed. Add a \" at its end, on the same line.");
             }
+            let kind = if parts.is_empty() {
+                Tk::Str(s)
+            } else {
+                if !s.is_empty() {
+                    parts.push(TextPart::Plain(s));
+                }
+                Tk::Text(parts)
+            };
             out.push(Token {
-                kind: Tk::Str(s),
+                kind,
                 pos,
                 end: Pos { line, col },
             });

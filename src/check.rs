@@ -2386,6 +2386,19 @@ impl<'a> Checker<'a> {
             ExprKind::Int(_) => Ty::Int,
             ExprKind::Float(_) => Ty::Float,
             ExprKind::Str(_) => Ty::Str,
+            ExprKind::Template(parts) => {
+                for p in parts {
+                    if let TemplatePart::Value(v) = p {
+                        if self.expr(v, ctx, None) == Ty::Void {
+                            self.err(
+                                v.pos,
+                                format!("{} doesn't give anything back, so there's nothing to put in the text.", describe(v)),
+                            );
+                        }
+                    }
+                }
+                Ty::Str
+            }
             ExprKind::Bool(_) => Ty::Truth,
             ExprKind::Random(lo, hi) => {
                 let a = self.expr(lo, ctx, None);
@@ -3423,6 +3436,19 @@ impl<'a> Checker<'a> {
     }
 
     fn call(&mut self, e: &Expr, name: &str, args: &[Expr], ctx: &mut Ctx) -> Ty {
+        if name == "print" {
+            // print(a, b, c): any values, shown with spaces between.
+            self.info.calls.insert(e.id, CallRes::Builtin);
+            for a in args {
+                if self.expr(a, ctx, None) == Ty::Void {
+                    self.err(
+                        a.pos,
+                        format!("{} doesn't give anything back, so there's nothing to print.", describe(a)),
+                    );
+                }
+            }
+            return Ty::Void;
+        }
         if BUILTINS.contains(&name) {
             self.info.calls.insert(e.id, CallRes::Builtin);
             let (params, ret): (Vec<(&str, Option<Ty>)>, Ty) = match name {
