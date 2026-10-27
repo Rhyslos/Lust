@@ -1,0 +1,41 @@
+-- lock: a variable or field that keeps the value it starts with.
+lock int maxLives = 3;
+lock string title = "Lust";
+
+class Player {
+    has {
+        lock int maxHp = 20;
+        int hp = 20;
+        lock int array startItems = [1, 2];
+    }
+
+    method heal(int amount) {
+        hp = Maths:min(hp + amount, maxHp);
+    }
+}
+
+class Bag {
+    has {
+        int size = 1;
+    }
+}
+
+-- A locked field gets its value when the thing is made, and keeps it.
+Player p = new Player { maxHp = 30, hp = 5 };
+p:heal(100);
+print(title, maxLives, p.hp, p.maxHp);
+
+-- A locked thing is always the same thing, but its fields and items can change.
+lock Bag bag = new Bag;
+bag.size += 4;
+print(bag.size);
+p.startItems[0] = 9;
+p.startItems:inject(3);
+print(p.startItems);
+
+-- lock works inside methods and loops too.
+loop (int i in [1, 2]) {
+    lock int doubled = i * 2;
+    print(doubled);
+}
+end

@@ -1,0 +1,25 @@
+-- Mistakes with lock.
+lock int maxLives = 3;
+maxLives = 4;
+maxLives += 1;
+
+state Mood = [Calm, Busy];
+lock Mood mood = Mood.Calm;
+mood is Mood.Busy;
+
+class Player {
+    has {
+        lock int maxHp = 20;
+        lock state is Mood.Calm;
+    }
+
+    method boost() {
+        maxHp = 99;
+    }
+}
+
+Player p = new Player;
+p.maxHp = 50;
+lock p.maxHp = 1;
+lock int noValue;
+end

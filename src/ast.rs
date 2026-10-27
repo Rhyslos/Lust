@@ -267,6 +267,8 @@ pub struct FieldDecl {
     pub name: String,
     pub pos: Pos,
     pub default: Option<Expr>,
+    /// lock int maxHp = 20;: it keeps the value it starts with.
+    pub locked: bool,
 }
 
 #[derive(Clone)]
@@ -297,6 +299,8 @@ pub enum Stmt {
         name: String,
         pos: Pos,
         value: Expr,
+        /// lock int max = 3;: it can't be given a new value.
+        locked: bool,
     },
     Assign {
         target: Expr,

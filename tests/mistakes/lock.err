@@ -1,0 +1,10 @@
+lock.lst:3:1  maxLives is locked, so it keeps the value it started with. To change it, leave out lock where it's declared.
+lock.lst:4:1  maxLives is locked, so it keeps the value it started with. To change it, leave out lock where it's declared.
+lock.lst:8:1  mood is locked, so it keeps the value it started with. To change it, leave out lock where it's declared.
+lock.lst:13:14  a class's own state changes as it goes, so it can't be locked.
+lock.lst:17:9  maxHp is a locked field, so it keeps the value it started with. To change it, leave out lock in has { }.
+lock.lst:22:3  maxHp is a locked field, so it keeps the value it started with. To change it, leave out lock in has { }.
+lock.lst:23:6  lock goes in front of a new variable, with its type: lock int maxHp = 20;
+lock.lst:24:10  noValue needs a starting value: int noValue = …;
+
+8 mistakes. Nothing was run.
