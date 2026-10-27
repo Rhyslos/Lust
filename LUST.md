@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (alpha 40):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (alpha 41):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -189,7 +189,22 @@ string mood = either hp > 10? "happy" or "grumpy";
 
 - `+ - * / %` work on `int` and `float`. `( )` groups.
 - `int / int` gives an `int`: `7 / 2` is `3`. Use `7.float() / 2` for `3.5`.
-- `+` joins text. Anything else must be turned into text first: `"Score: " + score.text()`.
+- `+` joins text: `"Hello, " + name`. It never turns other values into text by itself, so `hp + lives` always adds numbers.
+
+### Values in text
+
+Put a value in text by writing it in `{ }`:
+
+```
+print("Hello, {name}! You have {lives} lives.");
+string card = "{name} has {hp} hp and moves at {speed}";
+print("{lives + 1} next time, {either lives > 2? "plenty" or "careful"}");
+```
+
+- Anything goes in the `{ }`: a variable, a field, maths, a method call, even more text. Each value is shown the way `print` shows it, so there's no `.text()` to write.
+- A `{` straight before a name, a bracket, `#` or text starts a value. Any other `{` is just a brace, so JSON (`"{\"name\": \"Ada\"}"`) and patterns (`"[0-9]{4}"`) need nothing special.
+- For a plain `{` before a name, write `\{`: `"\{lives} is written like this"`.
+
 
 | Method | Does |
 | --- | --- |
@@ -1186,7 +1201,8 @@ string reply = Web:post("https://example.com/scores", Json:write(score));
 
 | Built-in | Does |
 | --- | --- |
-| `print(x);` | shows `x` on its own line |
+| `print(x);` | shows `x` on its own line. Any type: numbers, text, bools, lists, vectors, states and `nothing` |
+| `print(a, b, c);` | shows several values on one line, with a space between each: `print("Score:", score, "lives:", lives);` |
 | `wait seconds;` | pauses |
 | `ask(question)` | shows a question and gives back what's typed |
 
@@ -1387,7 +1403,7 @@ An engine can use Lust's compiler itself, as a Rust library: to check a game's L
 
 ```
 [dependencies]
-lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.40", default-features = false }
+lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.41", default-features = false }
 ```
 
 Without its default features it needs nothing but Rust's own library (the default ones are the `lust` command). Lust doesn't open any files: the engine reads them, and hands over each one's path and text, with `/` between folders.

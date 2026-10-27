@@ -2181,6 +2181,30 @@ impl<'a> Parser<'a> {
                 self.next();
                 Ok(self.mk(t.pos, ExprKind::Str(s.clone())))
             }
+            Tk::Text(parts) => {
+                self.next();
+                let mut out = Vec::new();
+                for p in parts {
+                    match p {
+                        crate::lexer::TextPart::Plain(s) => out.push(TemplatePart::Text(s.clone())),
+                        crate::lexer::TextPart::Value(toks) => {
+                            // The value's own tokens, read as an expression of their own.
+                            let start = toks[0].pos;
+                            let saved = (std::mem::replace(&mut self.toks, toks.clone()), std::mem::replace(&mut self.p, 0));
+                            let e = self.expr();
+                            let rest = (!self.at_eof()).then(|| self.cur().pos);
+                            (self.toks, self.p) = saved;
+                            let e = e?;
+                            if let Some(pos) = rest {
+                                return self.fail(pos, "a { } in text holds one value: \"hp: {hp}\". Write \\{ for a plain {.");
+                            }
+                            let _ = start;
+                            out.push(TemplatePart::Value(e));
+                        }
+                    }
+                }
+                Ok(self.mk(t.pos, ExprKind::Template(out)))
+            }
             Tk::Sym("(") => {
                 self.next();
                 let e = self.expr()?;

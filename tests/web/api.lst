@@ -70,7 +70,7 @@ print(Web:request("GET", "/api/users/two", ""));
 print(Web:request("GET", "/api/users/1.5", ""));
 print(Web:request("GET", "/api/hello/Garry%20Newman?x=1", ""));
 print(Web:request("POST", "/api/users", "{\"age\": 3}"));
-print(Web:request("POST", "/api/users", "{oops"));
+print(Web:request("POST", "/api/users", "\{oops"));
 print(Web:request("PUT", "/api/users", ""));
 print(Web:request("GET", "/nowhere", ""));
 print(Web:request("GET", "/api/crash/0", ""));

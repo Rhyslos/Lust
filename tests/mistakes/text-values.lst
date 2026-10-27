@@ -1,0 +1,13 @@
+-- Mistakes with values in text.
+method greet() {
+    print("hi");
+}
+
+int hp = 3;
+print("hp: {hp");
+print("hp: {hp hp}");
+print("{greet()}");
+print("{hpp} left");
+print("bad \q escape");
+print(greet());
+end

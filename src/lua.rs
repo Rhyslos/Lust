@@ -1163,6 +1163,24 @@ impl<'a> W<'a> {
                 }
             }
             ExprKind::Str(s) => lua_string(s),
+            ExprKind::Template(parts) => {
+                let mut pieces = Vec::new();
+                for p in parts {
+                    match p {
+                        TemplatePart::Text(s) => pieces.push(lua_string(s)),
+                        TemplatePart::Value(v) => {
+                            let t = self.info.ty(v);
+                            let c = self.expr(v);
+                            pieces.push(self.text(&c, &t));
+                        }
+                    }
+                }
+                if pieces.is_empty() {
+                    "\"\"".into()
+                } else {
+                    format!("({})", pieces.join(" .. "))
+                }
+            }
             ExprKind::Bool(b) => b.to_string(),
             ExprKind::Nothing => "nil".into(),
             ExprKind::Name(n) => {
@@ -1608,9 +1626,17 @@ impl<'a> W<'a> {
     fn builtin(&mut self, name: &str, args: &[Expr]) -> String {
         match name {
             "print" => {
-                let t = self.info.ty(&args[0]);
-                let c = self.expr(&args[0]);
-                format!("_L.print({})", self.text(&c, &t))
+                let mut parts = Vec::new();
+                for a in args {
+                    let t = self.info.ty(a);
+                    let c = self.expr(a);
+                    parts.push(self.text(&c, &t));
+                }
+                if parts.is_empty() {
+                    "_L.print(\"\")".into()
+                } else {
+                    format!("_L.print({})", parts.join(" .. \" \" .. "))
+                }
             }
             _ => {
                 let a: Vec<String> = args.iter().map(|x| self.expr(x)).collect();

@@ -1,0 +1,8 @@
+text-values.lst:7:12  this { in the text is never closed. Add a } after the value, or write \{ for a plain {.
+text-values.lst:8:16  a { } in text holds one value: "hp: {hp}". Write \{ for a plain {.
+text-values.lst:9:9  greet(…) doesn't give anything back, so there's nothing to put in the text.
+text-values.lst:10:9  there's nothing called hpp here. Did you mean hp?
+text-values.lst:11:12  \q isn't a known escape. Use \n, \t, \", \\, or \{ for a plain {.
+text-values.lst:12:7  greet(…) doesn't give anything back, so there's nothing to print.
+
+6 mistakes. Nothing was run.
