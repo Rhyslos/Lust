@@ -1,0 +1,25 @@
+-- Mistakes with sized numbers.
+int8 tooBig = 300;
+uint8 negative = -1;
+int8 array mixed = [1, 200, -129];
+int16 half = 1.5;
+uint32 fine = 4294967295;
+int64 notAType = 3;
+
+component Thing {
+    has {
+        int8 small = 1;
+    }
+}
+
+class Box {
+    has {
+        int id = 0;
+    }
+
+    method grow(uint8 by) native;
+}
+
+int array plain = [1, 2];
+int8 array narrow = plain;
+end

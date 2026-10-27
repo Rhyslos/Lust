@@ -7,7 +7,7 @@ use std::rc::Rc;
 use crate::ast::*;
 use crate::diag::Diags;
 use crate::parser::BUILTINS;
-use crate::types::{HookSig, Names, TableTy, Ty};
+use crate::types::{HookSig, Names, TableTy, Ty, Width};
 
 pub struct StateInfo {
     pub name: String,
@@ -133,6 +133,10 @@ pub struct Info {
     pub state_index: HashMap<String, usize>,
     /// Events, by name: what each one carries, in order.
     pub events: std::collections::BTreeMap<String, Vec<(String, Ty)>>,
+    /// Expressions that read a sized number (int8 hp): what it's kept in. Reading gives an int.
+    pub narrow_reads: HashMap<usize, Width>,
+    /// Expressions whose int goes into a sized place, and is checked to fit on the way in.
+    pub narrowing: HashMap<usize, Width>,
     /// Where `send` is: like a native method, it needs the program using this as a library.
     pub sends: Vec<Pos>,
 }
@@ -996,6 +1000,7 @@ impl<'a> Checker<'a> {
         match t {
             TypeRef::Named(n, pos) => match n.as_str() {
                 "int" => Ty::Int,
+                n if Width::from_name(n).is_some() => Ty::Sized(Width::from_name(n).unwrap()),
                 "float" => Ty::Float,
                 "string" => Ty::Str,
                 "bool" => Ty::Truth,
@@ -1020,8 +1025,19 @@ impl<'a> Checker<'a> {
                                 .map(|s| s.to_string()),
                         )
                         .collect();
+                    if matches!(n.as_str(), "int64" | "i64" | "long") {
+                        self.err(*pos, format!("an int is already 64 bits, so there's no {n}: write int."));
+                        return Ty::Error;
+                    }
+                    if matches!(n.as_str(), "uint64" | "u64") {
+                        self.err(
+                            *pos,
+                            format!("there's no {n}: the biggest sized number is uint32, and an int holds up to 9223372036854775807."),
+                        );
+                        return Ty::Error;
+                    }
                     let s = suggest(n, known);
-                    self.err(*pos, format!("Lust doesn't have a type called {n}.{s} The types are int, float, string, bool, vec3, rotation, entity, arrays, maps, cMaps, hooks, classes and states."));
+                    self.err(*pos, format!("Lust doesn't have a type called {n}.{s} The types are int (and int8, int16, int32, uint8, uint16 and uint32), float, string, bool, vec3, rotation, entity, arrays, maps, cMaps, hooks, classes and states."));
                     Ty::Error
                 }
             },
@@ -1913,7 +1929,11 @@ impl<'a> Checker<'a> {
                 }
             }
             Stmt::Assign { target, value, pos } => {
-                let want = self.expr(target, ctx, None);
+                let mut want = self.expr(target, ctx, None);
+                // Where it's kept, not what reading it gives: int8 hp = …; checks the new value fits.
+                if let Some(w) = self.info.narrow_reads.get(&target.id) {
+                    want = Ty::Sized(*w);
+                }
                 if ctx.in_hook {
                     if let ExprKind::Name(n) = &target.kind {
                         let outer = ctx
@@ -2218,7 +2238,7 @@ impl<'a> Checker<'a> {
 
     fn each(&mut self, vars: &[(TypeRef, String, Pos)], source: &Expr, ctx: &mut Ctx) {
         let src = self.expr(source, ctx, None);
-        let declared: Vec<Ty> = vars.iter().map(|(t, _, _)| self.resolve(t)).collect();
+        let mut declared: Vec<Ty> = vars.iter().map(|(t, _, _)| self.resolve(t)).collect();
         let wanted: Option<Vec<Ty>> = match &src {
             Ty::Array(e) => Some(vec![(**e).clone()]),
             Ty::Map(v) => Some(vec![Ty::Str, (**v).clone()]),
@@ -2256,6 +2276,12 @@ impl<'a> Checker<'a> {
                     ),
                 );
             } else {
+                // int item over sized numbers: each is read as an int, as anywhere.
+                for (d, want) in declared.iter_mut().zip(&w) {
+                    if *d == Ty::Int && matches!(want, Ty::Sized(_)) {
+                        *d = want.clone();
+                    }
+                }
                 for ((d, (_, name, pos)), want) in declared.iter().zip(vars).zip(&w) {
                     if d != want && *d != Ty::Error && *want != Ty::Error {
                         self.err(
@@ -2343,6 +2369,8 @@ impl<'a> Checker<'a> {
         }
         match (got, want) {
             (Ty::Int, Ty::Float) => true,
+            // An int goes into a sized number if it fits, checked as it goes in.
+            (Ty::Int | Ty::Sized(_), Ty::Sized(_)) | (Ty::Sized(_), Ty::Int | Ty::Float) => true,
             (Ty::Nothing, w) => w.can_be_nothing(),
             (Ty::Class(a), Ty::Class(b)) => self.info.is_like(*a, *b),
             (Ty::Hook(a), Ty::Hook(b)) => {
@@ -2357,6 +2385,22 @@ impl<'a> Checker<'a> {
     }
 
     fn expect_fits(&mut self, e: &Expr, got: &Ty, want: &Ty, subject: &str) {
+        if let (Ty::Int | Ty::Sized(_), Ty::Sized(w)) = (got, want) {
+            self.info.narrowing.insert(e.id, *w);
+            // A number written out has to fit now.
+            fn literal(e: &Expr) -> Option<i64> {
+                match &e.kind {
+                    ExprKind::Int(n) => Some(*n),
+                    ExprKind::Neg(x) => literal(x).map(|n| -n),
+                    _ => None,
+                }
+            }
+            let (lo, hi) = w.range();
+            if let Some(n) = literal(e).filter(|n| *n < lo || *n > hi) {
+                self.err(e.pos, format!("{n} doesn't fit in {}, which holds {lo} to {hi}.", self.a(want)));
+            }
+            return;
+        }
         if self.fits(got, want) {
             return;
         }
@@ -2365,7 +2409,7 @@ impl<'a> Checker<'a> {
             return;
         }
         let fix = match (got, want) {
-            (Ty::Float, Ty::Int) => " Use .int() to drop the part after the point.".to_string(),
+            (Ty::Float, Ty::Int | Ty::Sized(_)) => " Use .int() to drop the part after the point.".to_string(),
             (g, Ty::Str) if g.is_number() || *g == Ty::Truth || matches!(g, Ty::State(_)) => " Use .text() to turn it into text.".into(),
             (Ty::Str, w) if w.is_number() => format!(
                 " Use .{}() to turn text into a number.",
@@ -2381,7 +2425,12 @@ impl<'a> Checker<'a> {
     // ----- expressions -----
 
     fn expr(&mut self, e: &Expr, ctx: &mut Ctx, expected: Option<&Ty>) -> Ty {
-        let t = self.expr_inner(e, ctx, expected);
+        let mut t = self.expr_inner(e, ctx, expected);
+        // A sized number read is an int; the outputs widen it.
+        if let Ty::Sized(w) = t {
+            self.info.narrow_reads.insert(e.id, w);
+            t = Ty::Int;
+        }
         self.info.types.insert(e.id, t.clone());
         t
     }

@@ -1,0 +1,63 @@
+-- Sized whole numbers: int8, int16, int32, uint8, uint16, uint32. Optional: int still works.
+class Tile {
+    has {
+        uint8 height = 3;
+        int16 temperature = -40;
+        int count = 0;
+    }
+
+    method raise(uint8 by) {
+        height += by;
+    }
+
+    method int16 warmer(int16 by) {
+        return temperature + by;
+    }
+}
+
+int8 hp = 100;
+hp -= 30;
+int total = hp + 1000;
+print(hp, total);
+
+uint32 big = 4000000000;
+print(big);
+print(big + big);
+
+Tile t = new Tile;
+t:raise(200);
+print(t.height);
+print(t:warmer(15));
+t.temperature = t:warmer(-300);
+print(t.temperature);
+
+-- Arrays and maps of them.
+uint8 array colours = [255, 128, 0];
+colours[2] += 64;
+colours:inject(7);
+print(colours, #colours);
+int sum = 0;
+loop (int c in colours) {
+    sum += c;
+}
+print(sum);
+int16 map heights = ["hill" 300, "pit" 20];
+heights["pit"] -= 5;
+print(heights["pit"]);
+
+-- Text and maths read them as ints.
+print("hp is {hp}, half is {hp / 2}, as a float {hp.float() / 2}");
+
+-- Too big, found while running: stops with where and why.
+try {
+    t:raise(100);
+} error (string message) {
+    print(message);
+}
+try {
+    int8 small = hp * 3;
+    print(small);
+} error (string message) {
+    print(message);
+}
+end

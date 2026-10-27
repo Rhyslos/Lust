@@ -339,6 +339,14 @@ pub fn like<T: HasClass>(o: &Option<Rc<RefCell<T>>>, ids: &[u32]) -> bool {
 
 // ----- text -----
 
+/// An int going into a sized number (int8 hp): it has to fit.
+pub fn narrow<T: TryFrom<i64>>(v: i64, lo: i64, hi: i64, name: &str) -> T {
+    match T::try_from(v) {
+        Ok(x) => x,
+        Err(_) => fail(format!("{v} doesn't fit in {} {name}, which holds {lo} to {hi}.", if name.starts_with('u') { "a" } else { "an" })),
+    }
+}
+
 pub fn itext(v: i64) -> String {
     v.to_string()
 }

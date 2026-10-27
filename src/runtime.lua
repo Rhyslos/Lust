@@ -280,6 +280,18 @@ function L.I(x)
 end
 -- Whole numbers are checked when they become text (print, .text()), which costs nothing extra, so
 -- one that has grown past what Lua holds exactly never shows up wrong.
+-- An int going into a sized number (int8 hp): it has to fit.
+function L.narrow(v, lo, hi, name)
+  if v < lo or v > hi then
+    local a = name:sub(1, 1) == "u" and "a" or "an"
+    error(L.itext(v) .. " doesn't fit in " .. a .. " " .. name .. ", which holds " .. lo .. " to " .. hi .. ".", 2)
+  end
+  return v
+end
+function L.jr_narrow(lo, hi, name)
+  return function(v, at) return L.narrow(L.jr.int(v, at), lo, hi, name) end
+end
+
 function L.itext(v)
   if L.exact and (v > EXACT or v < -EXACT) then too_big(2) end
   return fmt("%d", v)
