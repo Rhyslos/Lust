@@ -97,6 +97,7 @@ fn command(args: Vec<String>) -> ExitCode {
             println!("{USAGE}");
             return ExitCode::SUCCESS;
         }
+        [c] if c == "warm-up" => return warm_up(),
         [c] if c == "version" || c == "--version" => {
             println!("Lust {VERSION}");
             return ExitCode::SUCCESS;
@@ -385,25 +386,106 @@ fn new_project(name: &str, app: bool) -> ExitCode {
     } else {
         println!("Made {name}, with a main.lst to start from.");
     }
-    // A small program with a database, built once, so the first real build is quick.
-    let warm = dir.join("lust-warm-up.lst");
-    let src = "database Warm in \"warm.db\" {\n    cMap(int id, string name) things;\n}\nprint(#Warm.things);\nend\n";
-    let ready = std::fs::write(&warm, src).is_ok()
-        && compile(&warm, true)
-            .and_then(|c| c.rust)
-            .map(|r| build_native(&warm, &r).map(|exe| std::fs::remove_file(exe).is_ok()).is_ok())
-            .unwrap_or(false);
-    let _ = std::fs::remove_file(&warm);
-    if ready {
-        println!("Built programs are ready to go on this computer.");
-    } else {
-        println!("lust run works now. lust build needs Rust: get it from https://rustup.rs.");
+    // Built programs share compiled libraries (SQLite and the rest) that take a minute or two to
+    // make the first time on a computer. That happens in the background, so lust new itself is
+    // instant; once it's done, the first real build is quick.
+    if !warm_ready() {
+        if which("cargo") {
+            if start_warm_up() {
+                println!("Built programs are getting ready in the background (once on this computer).");
+            }
+        } else {
+            println!("lust run works now. lust build needs Rust: get it from https://rustup.rs.");
+        }
     }
     println!();
     println!("  cd {name}");
     println!("  lust run main.lst");
     println!("  lust build main.lst");
     ExitCode::SUCCESS
+}
+
+/// Whether the shared libraries built programs use are compiled on this computer already.
+fn warm_ready() -> bool {
+    cache_dir()
+        .join("target")
+        .join("release")
+        .join("deps")
+        .read_dir()
+        .map(|d| d.flatten().any(|e| e.file_name().to_string_lossy().contains("rusqlite")))
+        .unwrap_or(false)
+}
+
+fn which(tool: &str) -> bool {
+    std::process::Command::new(tool)
+        .arg("--version")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+/// Starts `lust warm-up` on its own, detached: no window, no output, and it keeps going after
+/// lust new (or the editor that ran it) is done.
+fn start_warm_up() -> bool {
+    let Ok(me) = std::env::current_exe() else { return false };
+    let spawn = |flags: u32| {
+        let mut c = std::process::Command::new(&me);
+        c.arg("warm-up")
+            .current_dir(std::env::temp_dir())
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            c.creation_flags(flags);
+        }
+        #[cfg(not(windows))]
+        let _ = flags;
+        c.spawn().is_ok()
+    };
+    // CREATE_NO_WINDOW | DETACHED_PROCESS, and out of the starter's job object where that's allowed
+    // (CREATE_BREAKAWAY_FROM_JOB), so closing the editor doesn't stop it half-way.
+    spawn(0x0800_0000 | 0x0000_0008 | 0x0100_0000) || spawn(0x0800_0000 | 0x0000_0008)
+}
+
+/// `lust warm-up`: builds a small program with a database once, in a scratch folder, so the
+/// libraries built programs share are compiled. One at a time; quietly does nothing when they're
+/// ready already.
+fn warm_up() -> ExitCode {
+    if warm_ready() {
+        return ExitCode::SUCCESS;
+    }
+    let cache = cache_dir();
+    let _ = std::fs::create_dir_all(&cache);
+    let lock = cache.join("warm-up.lock");
+    // Another warm-up is running (a lock younger than half an hour).
+    let fresh = std::fs::metadata(&lock)
+        .and_then(|m| m.modified())
+        .map(|t| t.elapsed().map(|e| e.as_secs() < 1800).unwrap_or(true))
+        .unwrap_or(false);
+    if fresh {
+        return ExitCode::SUCCESS;
+    }
+    let _ = std::fs::remove_file(&lock); // an old one, from a warm-up that was stopped
+    if std::fs::OpenOptions::new().write(true).create_new(true).open(&lock).is_err() {
+        return ExitCode::SUCCESS; // another one started just now
+    }
+    let dir = std::env::temp_dir().join(format!("lust-warm-up-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let warm = dir.join("lust-warm-up.lst");
+    let src = "database Warm in \"warm.db\" {\n    cMap(int id, string name) things;\n}\nprint(#Warm.things);\nend\n";
+    let ok = std::fs::write(&warm, src).is_ok()
+        && compile(&warm, true)
+            .and_then(|c| c.rust)
+            .map(|r| build_native(&warm, &r).is_ok())
+            .unwrap_or(false);
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_file(&lock);
+    if ok { ExitCode::SUCCESS } else { ExitCode::from(1) }
 }
 
 /// The name a Lust file's library has in Rust: game.lst is the crate game.
