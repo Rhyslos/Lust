@@ -43,6 +43,8 @@ pub enum SaveItem {
 pub struct FieldInfo {
     pub name: String,
     pub ty: Ty,
+    /// lock int maxHp = 20;: it keeps the value it starts with.
+    pub locked: bool,
 }
 
 #[derive(Clone)]
@@ -205,6 +207,8 @@ impl Info {
 struct Local {
     ty: Ty,
     readonly: bool,
+    /// lock int max = 3;
+    locked: bool,
     pos: Pos,
 }
 
@@ -628,12 +632,17 @@ impl<'a> Checker<'a> {
                         );
                     }
                 }
-                self.info.classes[ci].fields.push(FieldInfo { name: f.name.clone(), ty });
+                self.info.classes[ci].fields.push(FieldInfo {
+                    name: f.name.clone(),
+                    ty,
+                    locked: f.locked,
+                });
             }
             // A component knows the entity it's on: me.
             if c.is_component {
                 self.info.classes[ci].fields.push(FieldInfo {
                     name: "me".into(),
+                    locked: false,
                     ty: Ty::Entity,
                 });
                 if let Some((_, p)) = &c.parent {
@@ -1229,6 +1238,7 @@ impl<'a> Checker<'a> {
                     Local {
                         ty: t,
                         readonly: true,
+                        locked: false,
                         pos: a.pos,
                     },
                 );
@@ -1651,6 +1661,7 @@ impl<'a> Checker<'a> {
                 Local {
                     ty: ty.clone(),
                     readonly: false,
+                    locked: false,
                     pos: p.pos,
                 },
             );
@@ -1822,7 +1833,15 @@ impl<'a> Checker<'a> {
                 );
             }
         }
-        ctx.scopes.last_mut().unwrap().insert(name.to_string(), Local { ty, readonly, pos });
+        ctx.scopes.last_mut().unwrap().insert(
+            name.to_string(),
+            Local {
+                ty,
+                readonly,
+                locked: false,
+                pos,
+            },
+        );
     }
 
     /// Does this class have a state of its own (state is …; in its has)?
@@ -1914,7 +1933,13 @@ impl<'a> Checker<'a> {
                 let got = self.expr(to, ctx, Some(&Ty::Entity));
                 self.expect_fits(to, &got, &Ty::Entity, "an event goes to an entity");
             }
-            Stmt::Var { ty, name, pos, value } => {
+            Stmt::Var {
+                ty,
+                name,
+                pos,
+                value,
+                locked,
+            } => {
                 self.maker_ok = true;
                 let want = self.resolve(ty);
                 self.key_maker(ty, &want, ctx);
@@ -1922,6 +1947,11 @@ impl<'a> Checker<'a> {
                 self.expect_fits(value, &got, &want, &format!("{name} is {}", self.a(&want)));
                 self.info.decl_types.insert(value.id, want.clone());
                 self.declare(ctx, name, want, *pos, false);
+                if *locked {
+                    if let Some(l) = ctx.scopes.last_mut().and_then(|s| s.get_mut(name)) {
+                        l.locked = true;
+                    }
+                }
                 if self.makes_owned(value, ctx) {
                     ctx.made.insert(name.clone());
                 } else {
@@ -2302,20 +2332,41 @@ impl<'a> Checker<'a> {
             ExprKind::Name(n) if n == "me" && self.info.names.get(&target.id) == Some(&NameRes::Field) => {
                 self.err(pos, "me is the entity this component is on, so it can't be changed.");
             }
-            ExprKind::Name(n) => match self.info.names.get(&target.id) {
-                Some(NameRes::Local) => {
-                    if self.lookup(ctx, n).map(|l| l.readonly).unwrap_or(false) {
-                        self.err(pos, format!("{n} is the loop's current item, so it can't be changed here."));
+            ExprKind::Name(n) => {
+                match self.info.names.get(&target.id) {
+                    Some(NameRes::Local) => {
+                        if self.lookup(ctx, n).map(|l| l.readonly).unwrap_or(false) {
+                            self.err(pos, format!("{n} is the loop's current item, so it can't be changed here."));
+                        } else if self.lookup(ctx, n).map(|l| l.locked).unwrap_or(false) {
+                            self.err(pos, format!("{n} is locked, so it keeps the value it started with. To change it, leave out lock where it's declared."));
+                        }
+                    }
+                    Some(NameRes::Field) => {
+                        if let Some(c) = ctx.class {
+                            if self.info.field(c, n).is_some_and(|f| f.locked) {
+                                self.err(pos, format!("{n} is a locked field, so it keeps the value it started with. To change it, leave out lock in has {{ }}."));
+                            }
+                        }
+                    }
+                    None => {}
+                    Some(NameRes::Object) => self.err(
+                        pos,
+                        format!("{n} is an object; it can't be replaced. Change its fields instead: {n}.something = …;"),
+                    ),
+                    Some(_) => self.err(pos, format!("{n} can't be changed.")),
+                }
+            }
+            ExprKind::Field(t, f, fp) => {
+                if let Ty::Class(c) = self.info.ty(t) {
+                    if self.info.field(c, f).is_some_and(|x| x.locked) {
+                        self.err(
+                            *fp,
+                            format!(
+                                "{f} is a locked field, so it keeps the value it started with. To change it, leave out lock in has {{ }}."
+                            ),
+                        );
                     }
                 }
-                Some(NameRes::Field) | None => {}
-                Some(NameRes::Object) => self.err(
-                    pos,
-                    format!("{n} is an object; it can't be replaced. Change its fields instead: {n}.something = …;"),
-                ),
-                Some(_) => self.err(pos, format!("{n} can't be changed.")),
-            },
-            ExprKind::Field(t, f, fp) => {
                 if let Ty::TableRow(tt) = self.info.ty(t) {
                     if tt.cols.first().map(|c| &c.0) == Some(f) {
                         self.err(
@@ -2731,6 +2782,7 @@ impl<'a> Checker<'a> {
                         Local {
                             ty: t.clone(),
                             readonly: false,
+                            locked: false,
                             pos: e.pos,
                         },
                     );
@@ -3007,6 +3059,7 @@ impl<'a> Checker<'a> {
                                 Local {
                                     ty: t.clone(),
                                     readonly: true,
+                                    locked: false,
                                     pos: mpos,
                                 },
                             )

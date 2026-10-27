@@ -56,6 +56,7 @@ pub const RESERVED: &[&str] = &[
     "component",
     "match",
     "when",
+    "lock",
 ];
 /// The pieces a view is made of.
 pub const ELEMENTS: &[&str] = &[
@@ -1086,12 +1087,22 @@ impl<'a> Parser<'a> {
                 name: "state".into(),
                 pos: t.pos,
                 default: Some(opt),
+                locked: false,
             });
             return Ok(());
         }
         if matches!(self.cur().kind, Tk::Ident(_)) && self.peek(1).is_sym("[") && !self.at_word("cMap") {
             let pos = self.cur().pos;
             return self.fail(pos, "v2 writes fields like variables: int hp = 20;");
+        }
+        // lock int maxHp = 20;: a field that keeps its starting value.
+        let locked = self.at_word("lock");
+        if locked {
+            self.next();
+            if self.at_word("state") {
+                let p = self.cur().pos;
+                return self.fail(p, "a class's own state changes as it goes, so it can't be locked.");
+            }
         }
         let ty = self.ty()?;
         let (name, pos) = self.ident("the field's name")?;
@@ -1107,6 +1118,7 @@ impl<'a> Parser<'a> {
             name,
             pos,
             default,
+            locked,
         });
         Ok(())
     }
@@ -1621,6 +1633,15 @@ impl<'a> Parser<'a> {
                 }
             }
         }
+        // lock int maxHp = 20;
+        let locked = self.at_word("lock");
+        if locked {
+            self.next();
+            if !self.looks_like_decl() {
+                let p = self.cur().pos;
+                return self.fail(p, "lock goes in front of a new variable, with its type: lock int maxHp = 20;");
+            }
+        }
         if self.looks_like_decl() {
             let ty = self.ty()?;
             let (name, pos) = self.ident("the variable's name")?;
@@ -1631,7 +1652,13 @@ impl<'a> Parser<'a> {
             self.expect_sym("=", &format!("expected = after {name}."))?;
             let value = self.expr()?;
             self.semi()?;
-            return Ok(Stmt::Var { ty, name, pos, value });
+            return Ok(Stmt::Var {
+                ty,
+                name,
+                pos,
+                value,
+                locked,
+            });
         }
         let target = self.expr()?;
         // hp += 5; is hp = hp + 5;
