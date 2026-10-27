@@ -87,7 +87,7 @@ The second line makes `tests/run/player` (`player.exe` on Windows), a real progr
 | Command | Does |
 | --- | --- |
 | `lust run file` | checks the file, then runs it straight away. `lust file` works too |
-| `lust new name` | makes a project folder with a `main.lst`, and gets built programs ready |
+| `lust new name` | makes a project folder with a `main.lst`, straight away (the first time on a computer, built programs get ready in the background) |
 | `lust new name app` | the same, starting with a window and a piece of it in `ui/` |
 | `lust check file` | only checks, and lists any mistakes |
 | `lust build file.lst` | builds a real program next to it, through Rust |
