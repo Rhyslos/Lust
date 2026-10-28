@@ -292,6 +292,34 @@ impl<'a> W<'a> {
         );
     }
 
+    /// A piece's action: a function kept for later. Like a hook, it keeps the values of the
+    /// variables around it as they were when the piece was made (as the built program's closures
+    /// do), so a button made in a loop sees that time round's values, not the last ones.
+    fn action(&mut self, ln: u32, slot: &str, param: &str, body: &[Stmt]) {
+        let params: Vec<String> = if param.is_empty() {
+            vec![]
+        } else {
+            vec![crate::parser::VALUE.to_string()]
+        };
+        let copies: Vec<String> = crate::rust::captures(body, &params, self.info).iter().map(|c| lname(c)).collect();
+        let c = copies.join(", ");
+        if copies.is_empty() {
+            self.line(ln, &format!("{slot} = function({param})"));
+        } else {
+            self.line(ln, &format!("{slot} = (function({c}) return function({param})"));
+        }
+        self.indent += 1;
+        let saved = std::mem::take(&mut self.loops);
+        self.stmts(body);
+        self.loops = saved;
+        self.indent -= 1;
+        if copies.is_empty() {
+            self.line(ln, "end");
+        } else {
+            self.line(ln, &format!("end end)({c})"));
+        }
+    }
+
     fn class_table(&self, c: usize) -> String {
         let ci = &self.info.classes[c];
         if ci.is_object {
@@ -834,22 +862,10 @@ impl<'a> W<'a> {
                 self.view_parent.pop();
                 if let Some(a) = action {
                     let param = if bound { lname(crate::parser::VALUE) } else { String::new() };
-                    self.line(ln, &format!("{v}.f = function({param})"));
-                    self.indent += 1;
-                    let saved = std::mem::take(&mut self.loops);
-                    self.stmts(a);
-                    self.loops = saved;
-                    self.indent -= 1;
-                    self.line(ln, "end");
+                    self.action(ln, &format!("{v}.f"), &param, a);
                 }
                 if let Some(a) = enter {
-                    self.line(ln, &format!("{v}.e = function()"));
-                    self.indent += 1;
-                    let saved = std::mem::take(&mut self.loops);
-                    self.stmts(a);
-                    self.loops = saved;
-                    self.indent -= 1;
-                    self.line(ln, "end");
+                    self.action(ln, &format!("{v}.e"), "", a);
                 }
                 self.indent -= 1;
                 self.line(ln, "end");

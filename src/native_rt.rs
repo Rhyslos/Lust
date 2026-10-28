@@ -1219,6 +1219,32 @@ pub fn maths_cos(x: f64) -> f64 {
 pub fn maths_tan(x: f64) -> f64 {
     x.tan()
 }
+fn unit(name: &str, x: f64) {
+    if !(-1.0..=1.0).contains(&x) {
+        fail(format!("{name} takes a number from -1 to 1, but this is {}.", ftext(x)));
+    }
+}
+pub fn maths_asin(x: f64) -> f64 {
+    unit("asin", x);
+    x.asin()
+}
+pub fn maths_acos(x: f64) -> f64 {
+    unit("acos", x);
+    x.acos()
+}
+pub fn maths_atan(x: f64) -> f64 {
+    x.atan()
+}
+pub fn maths_atan2(y: f64, x: f64) -> f64 {
+    y.atan2(x)
+}
+/// Worked out the same way as the Lua runtime does, so both give the same number.
+pub fn maths_degrees(r: f64) -> f64 {
+    r * 180.0 / std::f64::consts::PI
+}
+pub fn maths_radians(d: f64) -> f64 {
+    d * std::f64::consts::PI / 180.0
+}
 pub fn maths_pi() -> f64 {
     std::f64::consts::PI
 }

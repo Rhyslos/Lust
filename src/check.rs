@@ -1146,9 +1146,14 @@ impl<'a> Checker<'a> {
             }
             ("text" | "button", Some(a)) => {
                 let t = self.expr(a, ctx, Some(&Ty::Str));
-                if t != Ty::Str && t != Ty::Error {
-                    let fix = if matches!(t, Ty::Int | Ty::Float | Ty::Truth) {
-                        format!(" Use {}.text() to turn it into text.", describe(a))
+                if t == Ty::Void {
+                    self.err(
+                        a.pos,
+                        format!("{} doesn't give anything back, so there's nothing for {kind} to show.", describe(a)),
+                    );
+                } else if t != Ty::Str && t != Ty::Error {
+                    let fix = if matches!(t, Ty::Int | Ty::Float | Ty::Truth | Ty::State(_) | Ty::Vec3 | Ty::Rot) {
+                        format!(" Put it in text: {kind} \"{{{}}}\";", describe(a))
                     } else {
                         String::new()
                     };
@@ -1245,7 +1250,15 @@ impl<'a> Checker<'a> {
             }
             ("menu", Some(a)) | ("item", Some(a)) => {
                 let t = self.expr(a, ctx, Some(&Ty::Str));
-                if t != Ty::Str && t != Ty::Error {
+                if t == Ty::Void {
+                    self.err(
+                        a.pos,
+                        format!(
+                            "{} doesn't give anything back, so there's nothing for the {kind} to show.",
+                            describe(a)
+                        ),
+                    );
+                } else if t != Ty::Str && t != Ty::Error {
                     let an = if kind == "item" { "an" } else { "a" };
                     self.err(a.pos, format!("{an} {kind} shows text, but this is {}.", self.a(&t)));
                 }
@@ -2536,6 +2549,17 @@ impl<'a> Checker<'a> {
             ExprKind::Field(target, f, fpos) => self.field(e, target, f, *fpos, ctx),
             ExprKind::Method(target, m, args, mpos) => self.method_call(e, target, m, args, *mpos, ctx, expected),
             ExprKind::MethodRef(target, m, mpos) => {
+                // Maths:pi, Maths:sqrt without ( ): the built-in objects aren't values.
+                if let ExprKind::Name(obj) = &target.kind {
+                    if crate::stdlib::OBJECTS.contains(&obj.as_str()) && self.lookup(ctx, obj).is_none() {
+                        if obj == "Maths" && m == "pi" {
+                            self.err(*mpos, "pi is a number, not a method, so it's written with a dot: Maths.pi");
+                        } else {
+                            self.err(*mpos, format!("{obj}'s methods are called with ( ): {obj}:{m}(…)"));
+                        }
+                        return Ty::Error;
+                    }
+                }
                 let t = self.expr(target, ctx, None);
                 match t {
                     Ty::Class(c) => match self.info.method(c, m).cloned() {

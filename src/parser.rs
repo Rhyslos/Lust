@@ -324,6 +324,13 @@ impl<'a> Parser<'a> {
             return Ok(());
         }
         let pos = self.cur().pos;
+        // a > b ? x : y, from other languages.
+        if self.at_sym("?") {
+            return self.fail(
+                pos,
+                "Lust chooses between two values with either: either hp > 0? \"up\" or \"down\"",
+            );
+        }
         self.fail(pos, format!("expected ; here, but found {}.", self.cur().describe()))
     }
 
@@ -2188,6 +2195,14 @@ impl<'a> Parser<'a> {
             }
             if self.at_sym(".") {
                 self.next();
+                // 0 .. 10, from other languages.
+                if self.at_sym(".") {
+                    let p = self.cur().pos;
+                    return self.fail(
+                        p,
+                        "Lust has no ranges like 0 .. 10. To go round a number of times: loop 10 { … }. To know each item's place in an array, keep a counter: int i = 0; and i += 1; in the loop.",
+                    );
+                }
                 let (name, pos) = self.ident("a field's name after .")?;
                 if self.at_sym("(") {
                     if let Some((_, conv)) = CONVERSIONS.iter().find(|(n, _)| *n == name) {

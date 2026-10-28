@@ -917,7 +917,18 @@ function L.maths_sqrt(x)
   return math.sqrt(x)
 end
 function L.maths_power(a, b) return a ^ b end
-L.maths_sin, L.maths_cos, L.maths_tan = math.sin, math.cos, math.tan
+L.maths_sin, L.maths_cos, L.maths_tan, L.maths_atan = math.sin, math.cos, math.tan, math.atan
+local function unit(name, x)
+  if not (x >= -1 and x <= 1) then
+    error(name .. " takes a number from -1 to 1, but this is " .. L.ftext(x) .. ".", 3)
+  end
+end
+function L.maths_asin(x) unit("asin", x) return math.asin(x) end
+function L.maths_acos(x) unit("acos", x) return math.acos(x) end
+function L.maths_atan2(y, x) return math.atan2(y, x) end
+-- Worked out the same way as the Rust runtime does, so both give the same number.
+function L.maths_degrees(r) return r * 180 / math.pi end
+function L.maths_radians(d) return d * math.pi / 180 end
 function L.maths_pi() return math.pi end
 
 -- Files.

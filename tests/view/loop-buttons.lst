@@ -1,0 +1,16 @@
+-- A button made in a loop keeps that time round's values, the same in Lua and Rust.
+assembly A {
+    has { int sel = -1; int n = 0; }
+    view [title "c"] {
+        column {
+            int i = 0;
+            loop (int v in [10, 20, 30]) {
+                button "b{v}" { sel = i; }
+                i += 1;
+            }
+            text "sel {sel}";
+        }
+    }
+}
+A:open();
+end

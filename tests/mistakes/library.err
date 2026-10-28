@@ -1,5 +1,5 @@
 library.lsc:2:12  join works on string arrays. Turn the items into text first.
-library.lsc:3:13  Maths has no method called squareRoot. It has abs, min, max, clamp, round, floor, ceil, sqrt, power, sin, cos and tan, and Maths.pi.
+library.lsc:3:13  Maths has no method called squareRoot. It has abs, min, max, clamp, round, floor, ceil, sqrt, power, sin, cos, tan, asin, acos, atan, atan2, degrees and radians, and Maths.pi.
 library.lsc:4:18  Maths:sqrt's number is a float, but this is a string. Use .float() to turn text into a number.
 library.lsc:5:13  Maths has no field called e. Its methods are called with : like Maths:abs(…).
 library.lsc:6:18  Files:read's file is a string, but this is an int. Use .text() to turn it into text.
