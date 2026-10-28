@@ -411,7 +411,17 @@ pub enum LoopKind {
     Forever,
     Times(Expr),
     While(Expr),
-    Each { vars: Vec<(TypeRef, String, Pos)>, source: Expr },
+    Each {
+        vars: Vec<(TypeRef, String, Pos)>,
+        source: Expr,
+    },
+    /// loop (int i = 0; i < 10; i += 1) { … }: a new variable, the check before each round, and
+    /// the change after each round (also after skip).
+    Count {
+        init: Box<Stmt>,
+        cond: Expr,
+        step: Box<Stmt>,
+    },
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

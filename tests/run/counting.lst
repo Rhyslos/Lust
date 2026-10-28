@@ -1,0 +1,51 @@
+-- Counting loops: loop (int i = 0; i < 10; i += 1) { … }, the same in Lua and Rust.
+loop (int i = 0; i < 5; i += 1) {
+    print(i);
+}
+
+-- Each item with its place.
+string array names = ["Ash", "Bo", "Cy"];
+loop (int i = 0; i < #names; i += 1) {
+    print(i, names[i]);
+}
+
+-- Counting down, and by more than one.
+loop (int i = 10; i > 0; i -= 3) {
+    print("down {i}");
+}
+loop (float x = 0.0; x < 1.0; x += 0.25) {
+    print(x);
+}
+
+-- skip still steps, and stop leaves.
+loop (int i = 0; i < 10; i += 1) {
+    is i % 2 == 1? then { skip; }
+    is i > 6? then { stop; }
+    print("even {i}");
+}
+
+-- A check that's false at the start: no rounds.
+loop (int i = 5; i < 5; i += 1) {
+    print("never");
+}
+
+-- i belongs to its loop, so the next loop can use the name again.
+int total = 0;
+loop (int i = 1; i <= 4; i += 1) {
+    loop (int j = 1; j <= i; j += 1) {
+        total += j;
+    }
+}
+print("total {total}");
+
+-- Changing the counter inside the loop counts too.
+loop (int i = 0; i < 10; i += 1) {
+    i += 3;
+    print("jump {i}");
+}
+
+-- The step can be any change, like doubling.
+loop (int n = 1; n < 100; n = n * 2) {
+    print(n);
+}
+end

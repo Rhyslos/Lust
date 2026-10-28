@@ -1030,6 +1030,16 @@ impl<'a> W<'a> {
                 let i = self.fresh("i");
                 self.line(ln, &format!("for {i} = 1, {n} do"));
             }
+            LoopKind::Count { init, cond, .. } => {
+                // do local i = 0 while i < 10 do … i = i + 1 end end. The step goes after the
+                // repeat … until true that skip leaves, so skip still steps.
+                self.line(ln, "do");
+                self.indent += 1;
+                self.stmt(init);
+                let c = self.expr(cond);
+                self.line(ln, &format!("while {c} do"));
+                close = vec!["end".into(), "end".into()];
+            }
             LoopKind::Each { vars, source } => {
                 let src = self.expr(source);
                 let names: Vec<String> = vars.iter().map(|(_, n, _)| lname(n)).collect();
@@ -1110,6 +1120,9 @@ impl<'a> W<'a> {
             self.indent -= 1;
             self.line(ln, "until true");
             self.line(ln, &format!("if {stop_var} then break end"));
+        }
+        if let LoopKind::Count { step, .. } = kind {
+            self.stmt(step);
         }
         self.indent -= 1;
         // The array and map loops opened a do … end around the loop.

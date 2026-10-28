@@ -1,6 +1,6 @@
 [package]
 name = "lust"
-version = "2.0.0-alpha.47"
+version = "2.0.0-alpha.48"
 edition = "2021"
 description = "The Lust programming language: its compiler, and the lust command"
 repository = "https://github.com/Rhyslos/Lust"

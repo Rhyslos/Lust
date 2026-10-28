@@ -1,0 +1,9 @@
+counting.lst:1:7  a counting loop starts with a new variable, with its type: loop (int i = 0; i < 10; i += 1) { }
+counting.lst:4:18  a counting loop needs a check in the middle, for when to keep going: loop (int i = 0; i < 10; i += 1) { }
+counting.lst:7:24  a counting loop needs a step at the end, to change the counter: loop (int i = 0; i < 10; i += 1) { }
+counting.lst:10:25  a counting loop's step changes the counter, like i += 1: loop (int i = 0; i < 10; i += 1) { }
+counting.lst:12:18  the loop's check needs a yes-or-no answer, but this is an int. Compare it, like this > 0
+counting.lst:14:7  a loop's counter changes every round, so it can't be locked.
+counting.lst:18:7  there's nothing called i here. Declare it first, like int i = 0;
+
+7 mistakes. Nothing was run.

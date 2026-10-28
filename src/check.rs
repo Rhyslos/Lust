@@ -2085,6 +2085,12 @@ impl<'a> Checker<'a> {
                         self.expect_truth(c, &t, "the loop's check");
                     }
                     LoopKind::Each { vars, source } => self.each(vars, source, ctx),
+                    LoopKind::Count { init, cond, step } => {
+                        self.stmt(init, ctx);
+                        let t = self.expr(cond, ctx, Some(&Ty::Truth));
+                        self.expect_truth(cond, &t, "the loop's check");
+                        self.stmt(step, ctx);
+                    }
                 }
                 // Pieces in a loop over keys are told apart by the key, not their turn.
                 let keyed = match kind {
