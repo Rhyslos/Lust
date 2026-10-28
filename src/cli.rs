@@ -617,7 +617,7 @@ pub fn build_host(path: &Path, host: &Path) -> Result<PathBuf, String> {
 }
 
 pub fn build_native(path: &Path, rust: &str) -> Result<std::path::PathBuf, String> {
-    if ["db", "web", "net", "pat", "ui"]
+    if ["db", "web", "net", "pat", "ui", "dlg"]
         .iter()
         .any(|m| rust.contains(&format!("\npub mod {m} {{\n")))
     {

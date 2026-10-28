@@ -1,0 +1,11 @@
+-- File boxes in a program without a window: [] means any type, and the program builds with them.
+method string pick() {
+    return Files:chooseOpen("Open anything", []);
+}
+
+method string pickPicture() {
+    return Files:chooseOpen("Open a picture", ["png", "jpg"]);
+}
+
+print("ready to choose files");
+end

@@ -3286,10 +3286,21 @@ impl<'a> Checker<'a> {
                 _ => {}
             }
         } else {
-            let types: Vec<Ty> = args.iter().map(|a| self.expr(a, ctx, None)).collect();
+            // An empty list ([] for any file type) has no type of its own: it takes the
+            // parameter's, once the method is known.
+            let empty = |a: &Expr| matches!(&a.kind, ExprKind::List { items, keys } if items.is_empty() && keys.is_none());
+            let mut types: Vec<Ty> = args
+                .iter()
+                .map(|a| if empty(a) { Ty::Error } else { self.expr(a, ctx, None) })
+                .collect();
             if let Some(found) = crate::stdlib::object_method(obj, m, &types) {
                 match found {
                     Ok(lib) => {
+                        for ((a, t), (_, pt)) in args.iter().zip(types.iter_mut()).zip(&lib.params) {
+                            if empty(a) {
+                                *t = self.expr(a, ctx, Some(pt));
+                            }
+                        }
                         self.info.calls.insert(e.id, CallRes::Builtin);
                         if args.len() != lib.params.len() {
                             self.err(
@@ -3989,6 +4000,10 @@ impl<'a> Checker<'a> {
         }
         if items.is_empty() {
             if expected.map(|t| *t == Ty::Error).unwrap_or(false) {
+                return Ty::Error;
+            }
+            if let Some(exp) = expected.filter(|t| !matches!(t, Ty::Array(_) | Ty::Map(_) | Ty::CMap(_))) {
+                self.err(e.pos, format!("this is a list, but {} is expected here.", self.a(exp)));
                 return Ty::Error;
             }
             self.err(
