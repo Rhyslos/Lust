@@ -1,4 +1,4 @@
--- Mistakes with match.
+-- Mistakes with check.
 state Mood = [Calm, Busy, Angry];
 
 state GameState = [
@@ -14,14 +14,14 @@ GameState g = GameState.MainMenu;
 int hp = 3;
 
 -- Missing options.
-match m {
+check m {
     when Calm {
         print("a");
     }
 }
 
 -- The state's name in front, a typo, and the same option twice.
-match m {
+check m {
     when Mood.Calm {
         print("a");
     }
@@ -34,7 +34,7 @@ match m {
 }
 
 -- A general option before a particular one, and an option itself left out.
-match g {
+check g {
     when ActiveGame {
         print("a");
     }
@@ -46,28 +46,28 @@ match g {
     }
 }
 
-match g {
+check g {
     when ActiveGame.Exploration, ActiveGame.Combat, MainMenu {
         print("d");
     }
 }
 
 -- Not a state or a bool.
-match hp {
+check hp {
     when Calm {
         print("e");
     }
 }
 
 -- Bools.
-match hp > 2 {
+check hp > 2 {
     when yes {
         print("f");
     }
 }
 
--- or isn't part of a match.
-match m {
+-- or isn't part of a check.
+check m {
     when Calm {
         print("g");
     }
@@ -77,7 +77,7 @@ match m {
 }
 
 -- A choice without its when.
-match m {
+check m {
     Calm {
         print("j");
     }
@@ -88,5 +88,12 @@ match m {
 
 when Calm {
     print("i");
+}
+
+-- match was its old name.
+match m {
+    when Calm {
+        print("l");
+    }
 }
 end

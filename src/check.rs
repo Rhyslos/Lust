@@ -1711,7 +1711,7 @@ impl<'a> Checker<'a> {
                 self.err(
                     subject.pos,
                     format!(
-                        "match goes through a state's options, or a bool's true and false, but this is {a}. For numbers and text, ask questions: is hp == 0? then {{ … }} or is hp < 5? then {{ … }}"
+                        "check goes through a state's options, or a bool's true and false, but this is {a}. For numbers and text, ask questions: is hp == 0? then {{ … }} or is hp < 5? then {{ … }}"
                     ),
                 );
                 (String::new(), vec![])
@@ -1731,12 +1731,12 @@ impl<'a> Checker<'a> {
                     if let Some(rest) = o.strip_prefix(&state_prefix).filter(|r| opts.iter().any(|x| x == r)) {
                         self.err(
                             *p,
-                            format!("a match knows it's a {whole}, so write the option on its own: when {rest} {{ … }}"),
+                            format!("a check knows it's a {whole}, so write the option on its own: when {rest} {{ … }}"),
                         );
                     } else if t == Ty::Truth {
                         self.err(
                             *p,
-                            format!("a bool is true or false, so its match has when true {{ … }} and when false {{ … }}, but this is {o}."),
+                            format!("a bool is true or false, so its check has when true {{ … }} and when false {{ … }}, but this is {o}."),
                         );
                     } else {
                         let hint = suggest(o, opts.iter().cloned());
@@ -1746,7 +1746,7 @@ impl<'a> Checker<'a> {
                 }
                 if let Some((_, by)) = covered.iter().find(|(x, _)| x == o) {
                     let msg = if by == o {
-                        format!("there's already a when for {o} in this match.")
+                        format!("there's already a when for {o} in this check.")
                     } else {
                         format!(
                             "{o} is inside {by}, and the when for {by} above already covers it, so this never runs. Put when {o} first."
@@ -1796,7 +1796,7 @@ impl<'a> Checker<'a> {
             };
             self.err(
                 pos,
-                format!("this match has no when for {list}. A match covers {every}: add when {first} {{ … }}"),
+                format!("this check has no when for {list}. A check covers {every}: add when {first} {{ … }}"),
             );
         }
     }

@@ -46,6 +46,7 @@ The order Lust gets built in. Each step makes Lust more useful on its own, and n
 | ✅ | **13.4 `+=` `-=` `*=` `/=`:** change a value using itself, on numbers, text, vectors and rotations | Done (alpha 42) |
 | ✅ | **13.5 Sized numbers:** `int8`, `int16`, `int32`, `uint8`, `uint16` and `uint32`, checked to fit, alongside `int` | Done (alpha 43) |
 | ✅ | **13.6 lock:** variables and fields that keep the value they start with | Done (alpha 44) |
+| ✅ | **13.7 `match` is now `check`:** `check mood { when Calm { … } }`, the same block with the word the project lead preferred | Done (alpha 45) |
 | | 🏁 *Lust's first release that isn't a test version.* | |
 
 ## Decisions along the way

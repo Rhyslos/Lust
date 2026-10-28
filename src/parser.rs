@@ -54,7 +54,7 @@ pub const RESERVED: &[&str] = &[
     "cMap",
     "map",
     "component",
-    "match",
+    "check",
     "when",
     "lock",
 ];
@@ -83,8 +83,8 @@ fn hint_for(word: &str) -> Option<&'static str> {
         "export" => "Lust shares things with pass: pass Player;",
         "import" | "require" => "Lust brings in other files with fetch.",
         "give" => "Lust gives values back with return.",
-        "switch" => "Lust uses match, with a when for each option: match mood { when Calm { … } when Busy { … } }",
-        "case" => "in a match, each choice starts with when: when Calm { … }",
+        "switch" | "match" => "Lust uses check, with a when for each option: check mood { when Calm { … } when Busy { … } }",
+        "case" => "in a check, each choice starts with when: when Calm { … }",
         "enum" => "Lust calls it a state: state Mood = [Happy, Grumpy];",
         "extends" | "inherits" => "Lust uses like: class Wizard like Player { }",
         "truth" | "boolean" | "Boolean" => "Lust calls it bool: bool alive = true;",
@@ -1519,8 +1519,8 @@ impl<'a> Parser<'a> {
             }
             match w.as_str() {
                 "is" => return self.if_chain(),
-                "match" => return self.match_stmt(),
-                "when" => return self.fail(t.pos, "when goes inside a match: match mood { when Calm { … } }"),
+                "check" => return self.match_stmt(),
+                "when" => return self.fail(t.pos, "when goes inside a check: check mood { when Calm { … } }"),
                 "loop" => return self.loop_stmt(),
                 "stop" | "skip" => {
                     self.next();
@@ -1812,13 +1812,13 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// match mood { when Calm { … } when Busy, Angry { … } }
+    /// check mood { when Calm { … } when Busy, Angry { … } }
     fn match_stmt(&mut self) -> R<Stmt> {
-        let start = self.next().pos; // match
+        let start = self.next().pos; // check
         let subject = self.expr()?;
         let open = self.expect_sym(
             "{",
-            "a match lists its choices in { }: match mood { when Calm { … } when Busy { … } }",
+            "a check lists its choices in { }: check mood { when Calm { … } when Busy { … } }",
         )?;
         let d = self.depth;
         self.deeper()?;
@@ -1829,14 +1829,14 @@ impl<'a> Parser<'a> {
                 break;
             }
             if self.at_eof() || (self.at_word("end") && self.peek(1).kind == Tk::Eof) {
-                return self.fail(open.pos, "this { is never closed. Add a } where the match ends.");
+                return self.fail(open.pos, "this { is never closed. Add a } where the check ends.");
             }
             let wpos = self.cur().pos;
             if self.at_word("or") && self.peek(1).is_sym("{") {
-                // Read past it, so the rest of the match is still checked.
+                // Read past it, so the rest of the check is still checked.
                 self.diags.add(
                     wpos,
-                    "a match has no or { }: it has a when for every option, so nothing is ever left over.",
+                    "a check has no or { }: it has a when for every option, so nothing is ever left over.",
                 );
                 self.next();
                 self.block("the other case")?;
@@ -1848,9 +1848,9 @@ impl<'a> Parser<'a> {
                 && (self.peek(1).is_sym("{") || self.peek(1).is_sym(",") || self.peek(1).is_sym("."))
             {
                 // Calm { … }: the when is missing, but it's clear what's meant.
-                self.diags.add(wpos, "each choice in a match starts with when: when Calm { … }");
+                self.diags.add(wpos, "each choice in a check starts with when: when Calm { … }");
             } else {
-                return self.fail(wpos, "each choice in a match starts with when: when Calm { … }");
+                return self.fail(wpos, "each choice in a check starts with when: when Calm { … }");
             }
             let mut options = Vec::new();
             loop {
