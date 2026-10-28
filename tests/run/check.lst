@@ -1,4 +1,4 @@
--- match: one block for each of a state's options, or a bool's true and false.
+-- check: one block for each of a state's options, or a bool's true and false.
 state Mood = [Calm, Busy, Angry];
 
 state GameState = [
@@ -14,7 +14,7 @@ state GameState = [
 ];
 
 method string describe(Mood m) {
-    match m {
+    check m {
         when Calm {
             return "relaxed";
         }
@@ -26,7 +26,7 @@ method string describe(Mood m) {
 
 -- A more particular option first, then the one it's inside.
 method string where(GameState g) {
-    match g {
+    check g {
         when ActiveGame.Combat.Ranged {
             return "shooting";
         }
@@ -55,7 +55,7 @@ print(where(GameState.Paused));
 
 -- Bools.
 bool sunny = false;
-match sunny {
+check sunny {
     when true {
         print("go outside");
     }
@@ -68,7 +68,7 @@ match sunny {
 Mood array moods = [Mood.Calm, Mood.Angry, Mood.Busy, Mood.Calm, Mood.Angry];
 int calm = 0;
 loop (Mood m in moods) {
-    match m {
+    check m {
         when Calm {
             calm = calm + 1;
             skip;
@@ -81,7 +81,7 @@ loop (Mood m in moods) {
             print("angry");
         }
     }
-    print("after the match");
+    print("after the check");
 }
 print("calm: " + calm.text());
 
@@ -93,7 +93,7 @@ class Guard {
     }
 
     method react() {
-        match state {
+        check state {
             when Calm {
                 state is Mood.Busy;
             }
