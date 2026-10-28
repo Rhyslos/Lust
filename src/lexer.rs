@@ -185,13 +185,24 @@ pub fn lex(src: &str, file: usize, diags: &mut Diags) -> Vec<Token> {
                     advance!(1);
                 }
             }
+            // 1e30, 1.5e-7, 2E+5: a power of ten after the number, as Lust prints very big and
+            // very small numbers. Always a float.
+            let exp_digit = |k: usize| at(k).is_ascii_digit();
+            if (at(i) == 'e' || at(i) == 'E') && (exp_digit(i + 1) || (matches!(at(i + 1), '+' | '-') && exp_digit(i + 2))) {
+                is_float = true;
+                advance!(if exp_digit(i + 1) { 1 } else { 2 });
+                while at(i).is_ascii_digit() {
+                    advance!(1);
+                }
+            }
             let text: String = chars[start..i].iter().collect();
-            if at(i) == 'e' || at(i) == 'E' {
-                diags.add(pos, "Lust writes numbers out in full, without e.");
-            } else if at(i).is_alphabetic() || at(i) == '_' {
+            if at(i).is_alphabetic() || at(i) == '_' {
                 diags.add(pos, "a name can't start with a number.");
             }
             let end = Pos { line, col };
+            if is_float && text.parse::<f64>().map(|v| v.is_infinite()).unwrap_or(false) {
+                diags.add(pos, format!("{text} is too big for a float, which goes up to about 1.8e308."));
+            }
             if is_float {
                 out.push(Token {
                     kind: Tk::Float(text.parse().unwrap_or(0.0), text),

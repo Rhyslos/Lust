@@ -1,0 +1,12 @@
+window "c" 640x480
+  column 0,0 640x118
+    button "b10" 0,0 54x33
+    button "b20" 0,33 57x33
+    button "b30" 0,66 57x33
+    text "sel 0" 0,99 34x19
+window "c" 640x480
+  column 0,0 640x118
+    button "b10" 0,0 54x33
+    button "b20" 0,33 57x33
+    button "b30" 0,66 57x33
+    text "sel 2" 0,99 34x19

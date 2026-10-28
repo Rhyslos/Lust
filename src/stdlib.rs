@@ -40,7 +40,7 @@ fn numeric(args: &[Ty]) -> Option<Ty> {
 /// What the methods of each built-in object are, for messages.
 pub fn listing(obj: &str) -> &'static str {
     match obj {
-        "Maths" => "abs, min, max, clamp, round, floor, ceil, sqrt, power, sin, cos and tan, and Maths.pi",
+        "Maths" => "abs, min, max, clamp, round, floor, ceil, sqrt, power, sin, cos, tan, asin, acos, atan, atan2, degrees and radians, and Maths.pi",
         "Files" => "read, write, append, exists, remove, list, makeFolder, chooseOpen, chooseSave and chooseFolder",
         "Time" => "now, clock, date, time, addDays, daysBetween, weekday and isDate",
         "Web" => "serve, request, fail, get and post",
@@ -71,7 +71,10 @@ pub fn object_method(obj: &str, m: &str, args: &[Ty]) -> Option<Result<Lib, Stri
             None => Err("Maths:clamp works on numbers: Maths:clamp(hp, 0, 100).".into()),
         },
         ("Maths", "round" | "floor" | "ceil") => lib(&format!("maths_{m}"), vec![("number", f())], Int),
-        ("Maths", "sqrt" | "sin" | "cos" | "tan") => lib(&format!("maths_{m}"), vec![("number", f())], Float),
+        ("Maths", "sqrt" | "sin" | "cos" | "tan" | "asin" | "acos" | "atan") => lib(&format!("maths_{m}"), vec![("number", f())], Float),
+        ("Maths", "atan2") => lib("maths_atan2", vec![("y", f()), ("x", f())], Float),
+        ("Maths", "degrees") => lib("maths_degrees", vec![("radians", f())], Float),
+        ("Maths", "radians") => lib("maths_radians", vec![("degrees", f())], Float),
         ("Maths", "power") => lib("maths_power", vec![("number", f()), ("power", f())], Float),
         ("Files", "read") => lib("files_read", vec![("file", Str)], Str),
         ("Files", "write" | "append") => lib(&format!("files_{m}"), vec![("file", Str), ("text", Str)], Void),

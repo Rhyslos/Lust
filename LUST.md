@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (alpha 46):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (alpha 47):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -209,6 +209,8 @@ string mood = either hp > 10? "happy" or "grumpy";
 
 - `+ - * / %` work on `int` and `float`. `( )` groups.
 - `int / int` gives an `int`: `7 / 2` is `3`. Use `7.float() / 2` for `3.5`.
+- **Below zero:** `int / int` drops what's after the point, towards zero: `-7 / 2` is `-3`. `%` takes the sign of the number on its left: `-7 % 3` is `-1` and `7 % -3` is `1` (`-7.5 % 2` is `-1.5`). `Maths:round` takes a half away from zero: `Maths:round(2.5)` is `3` and `Maths:round(-2.5)` is `-3`. Built programs and `lust run` agree on all of these.
+- **Very big and very small numbers** can be written with `e`, a power of ten, as Lust prints them: `1e30`, `2.5e-7`, `1E+20`. They're always floats.
 - `+=`, `-=`, `*=` and `/=` change a value using itself: `hp -= damage;` is `hp = hp - damage;`. They work on variables, fields (`player.hp += 5;`) and items (`scores[2] += 1;`). `+=` adds to text too (`log += "done. ";`), `+=` and `-=` move a vec3 (`at += [0, 0, 1];`), `*=` and `/=` scale one, and `*=` turns a rotation (`facing *= turn;`).
 - `+` joins text: `"Hello, " + name`. It never turns other values into text by itself, so `hp + lives` always adds numbers.
 
@@ -259,6 +261,7 @@ print(pos);                            -- [0.03333334, 0.0, 0.0]
 - **Copied like numbers.** `vec3 b = a;` makes a copy, so changing `b.x` doesn't change `a`. It's the same in arrays, maps and fields.
 - **As an engine keeps them.** Each number is a 32-bit float, so a vec3 holds about 7 digits, and `.text()` shows them to 7. The degrees turn in the order z, then x, then y, the same as Solis and glam's `EulerRot::ZXY`: x tilts, y rolls, and z turns like a compass. Z is up.
 - **The same everywhere.** Every step is worked out the same way in a built program and through `lust run`, down to the last bit, so a game gives the same numbers in both.
+- **Compare with a little room.** 32-bit numbers can't hold every turn exactly: a quarter turn gives `facing * [1, 0, 0]` as `[3.4e-08, 0.9999999, 0.0]`, not `[0, 1, 0]`. So ask whether two vectors are close rather than equal: `is a:distance(b) < 0.0001? then { … }`.
 - Vectors and rotations can't go into JSON, saves or databases yet.
 
 ---
@@ -668,7 +671,7 @@ A screen is described, not built step by step. `view` says what the window shoul
 
 An assembly with a `view` opens a window with `App:open();`, through `lust run` and as a built program. `lust new name app` starts a project with a window and a piece in `ui/` to build on.
 
-- **Pieces:** `column`, `row`, `stack`, `space`, `text` and `button`. A button's `{ }` runs when it's clicked, and the window redraws afterwards.
+- **Pieces:** `column`, `row`, `stack`, `space`, `text` and `button`. A button's `{ }` runs when it's clicked, and the window redraws afterwards. Like a hook, it keeps the values of the variables around it as they were when it was drawn, so a button made in a loop sees that time round's values.
 - **Scrolling, pictures and timers:** `scroll`, `image` and `every` (see below).
 - **Inputs:** `input`, `textarea` (several lines), `checkbox` and `slider`, each bound to a field (see below), with the mouse, the keyboard and the clipboard.
 - **Your own pieces:** any assembly with a view, used inside another view as `TodoRow { label = task };`, from the same file or fetched from files in `ui/` folders (see below).
@@ -1279,6 +1282,9 @@ Lust comes with five objects. Their methods are called like any object's: `Maths
 | `Maths:abs(x)`, `Maths:min(a, b)`, `Maths:max(a, b)`, `Maths:clamp(x, low, high)` | an int for ints, a float when there's a float |
 | `Maths:round(x)`, `Maths:floor(x)`, `Maths:ceil(x)` | the nearest whole number, the one below, the one above (an int) |
 | `Maths:sqrt(x)`, `Maths:power(x, p)`, `Maths:sin(x)`, `Maths:cos(x)`, `Maths:tan(x)` | a float. Angles are in radians |
+| `Maths:asin(x)`, `Maths:acos(x)`, `Maths:atan(x)` | the angle (in radians) whose sine, cosine or tangent is x. `asin` and `acos` take -1 to 1 |
+| `Maths:atan2(y, x)` | the angle of the direction (x, y), from -π to π: which way something points. `Maths:atan2(d.y, d.x)` for a vec3 `d` |
+| `Maths:degrees(r)`, `Maths:radians(d)` | radians to degrees, and back |
 | `Maths.pi` | 3.14159… |
 
 **Files.** Paths are from the folder the program runs in.
@@ -1424,7 +1430,7 @@ An engine can use Lust's compiler itself, as a Rust library: to check a game's L
 
 ```
 [dependencies]
-lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.46", default-features = false }
+lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.47", default-features = false }
 ```
 
 Without its default features it needs nothing but Rust's own library (the default ones are the `lust` command). Lust doesn't open any files: the engine reads them, and hands over each one's path and text, with `/` between folders.
