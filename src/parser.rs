@@ -75,7 +75,9 @@ fn hint_for(word: &str) -> Option<&'static str> {
     Some(match word {
         "if" => "Lust asks questions instead of if: is hp == 0? then { }",
         "else" | "elif" | "elseif" => "Lust writes or { } for the other case, and or is …? then { } for another question.",
-        "while" | "for" | "foreach" | "repeat" => "Lust has one loop: loop (hp > 0) { }, loop 3 { }, loop (int x in list) { }",
+        "while" | "for" | "foreach" | "repeat" => {
+            "Lust has one loop: loop (hp > 0) { }, loop 3 { }, loop (int x in list) { }, loop (int i = 0; i < 10; i += 1) { }"
+        }
         "function" | "def" | "fn" | "func" | "do" => "Lust makes methods with method: method greet() { }",
         "var" | "let" | "const" | "auto" => "put the type first: int lives = 3;",
         "null" | "nil" | "None" => "Lust calls it nothing.",
@@ -180,6 +182,8 @@ pub struct Parser<'a> {
     is_script: bool,
     uses_lua: bool,
     loop_depth: usize,
+    /// Reading the step of loop (int i = 0; i < 10; i += 1): it ends at ) with no ;.
+    in_loop_step: bool,
     last_field: Option<FieldDecl>,
     imports: Vec<Import>,
     passes: Vec<(String, Pos)>,
@@ -209,6 +213,7 @@ pub fn parse(toks: Vec<Token>, diags: &mut Diags, is_script: bool, first_id: usi
         is_script,
         uses_lua: false,
         loop_depth: 0,
+        in_loop_step: false,
         depth: 0,
         compound: Default::default(),
         last_field: None,
@@ -314,6 +319,9 @@ impl<'a> Parser<'a> {
 
     /// The ; at the end of a statement. A missing one is reported where the line ends.
     fn semi(&mut self) -> R<()> {
+        if self.in_loop_step && self.at_sym(")") {
+            return Ok(());
+        }
         if self.at_sym(";") {
             self.next();
             return Ok(());
@@ -1906,7 +1914,21 @@ impl<'a> Parser<'a> {
         } else if self.at_sym("(") {
             self.next();
             let each = self.looks_like_each();
-            let k = if each {
+            let k = if self.looks_like_count() {
+                match self.count_head() {
+                    Ok(k) => k,
+                    // Said what's wrong with the loop's ( ): skip the whole loop, so its
+                    // counter's name doesn't bring more mistakes.
+                    Err(_) => {
+                        self.skip_loop();
+                        return Ok(Stmt::Loop {
+                            kind: LoopKind::Forever,
+                            body: Vec::new(),
+                            pos: start,
+                        });
+                    }
+                }
+            } else if each {
                 let mut vars = Vec::new();
                 loop {
                     let ty = self.ty()?;
@@ -1945,6 +1967,116 @@ impl<'a> Parser<'a> {
             kind,
             body: body?,
             pos: start,
+        })
+    }
+
+    /// loop (int i = 0; i < 10; i += 1): a ; before the loop's ) closes.
+    fn looks_like_count(&self) -> bool {
+        let mut depth = 0;
+        let mut n = 0;
+        loop {
+            match &self.peek(n).kind {
+                Tk::Eof | Tk::Sym("{") => return false,
+                Tk::Sym("(") | Tk::Sym("[") => depth += 1,
+                Tk::Sym(")") | Tk::Sym("]") => {
+                    if depth == 0 {
+                        return false;
+                    }
+                    depth -= 1
+                }
+                Tk::Sym(";") if depth == 0 => return true,
+                _ => {}
+            }
+            n += 1;
+        }
+    }
+
+    /// After a mistake in a counting loop's ( ): past the ) and the loop's { }.
+    fn skip_loop(&mut self) {
+        let mut depth = 0;
+        while !self.at_eof() {
+            if self.at_sym("(") {
+                depth += 1;
+            } else if self.at_sym(")") {
+                if depth == 0 {
+                    break;
+                }
+                depth -= 1;
+            } else if self.at_sym("{") {
+                break;
+            }
+            self.next();
+        }
+        if self.at_sym(")") {
+            self.next();
+        }
+        if !self.at_sym("{") {
+            return;
+        }
+        let mut depth = 0;
+        while !self.at_eof() {
+            if self.at_sym("{") {
+                depth += 1;
+            } else if self.at_sym("}") {
+                depth -= 1;
+                if depth == 0 {
+                    self.next();
+                    return;
+                }
+            }
+            self.next();
+        }
+    }
+
+    /// The three parts of loop (int i = 0; i < 10; i += 1), up to the ).
+    fn count_head(&mut self) -> R<LoopKind> {
+        const SHAPE: &str = "loop (int i = 0; i < 10; i += 1) { }";
+        let ipos = self.cur().pos;
+        if self.at_word("lock") {
+            return self.fail(ipos, "a loop's counter changes every round, so it can't be locked.");
+        }
+        if !self.looks_like_decl() {
+            return self.fail(ipos, format!("a counting loop starts with a new variable, with its type: {SHAPE}"));
+        }
+        let init = self.statement()?;
+        if !matches!(init, Stmt::Var { locked: false, .. }) {
+            return self.fail(ipos, format!("a counting loop starts with a new variable, with its type: {SHAPE}"));
+        }
+        if self.at_sym(";") {
+            let p = self.cur().pos;
+            return self.fail(
+                p,
+                format!("a counting loop needs a check in the middle, for when to keep going: {SHAPE}"),
+            );
+        }
+        let cond = self.expr()?;
+        if !self.at_sym(";") {
+            let p = self.cur().pos;
+            return self.fail(p, format!("expected ; after the loop's check: {SHAPE}"));
+        }
+        self.next();
+        let spos = self.cur().pos;
+        if self.at_sym(")") {
+            return self.fail(
+                spos,
+                format!("a counting loop needs a step at the end, to change the counter: {SHAPE}"),
+            );
+        }
+        let was = std::mem::replace(&mut self.in_loop_step, true);
+        let step = self.statement();
+        self.in_loop_step = was;
+        let step = step?;
+        if !matches!(step, Stmt::Assign { .. }) {
+            return self.fail(spos, format!("a counting loop's step changes the counter, like i += 1: {SHAPE}"));
+        }
+        if self.at_sym(";") {
+            let p = self.cur().pos;
+            return self.fail(p, format!("the step has no ; after it: {SHAPE}"));
+        }
+        Ok(LoopKind::Count {
+            init: Box::new(init),
+            cond,
+            step: Box::new(step),
         })
     }
 
@@ -2200,7 +2332,7 @@ impl<'a> Parser<'a> {
                     let p = self.cur().pos;
                     return self.fail(
                         p,
-                        "Lust has no ranges like 0 .. 10. To go round a number of times: loop 10 { … }. To know each item's place in an array, keep a counter: int i = 0; and i += 1; in the loop.",
+                        "Lust has no ranges like 0 .. 10. To go round a number of times: loop 10 { … }. To count: loop (int i = 0; i < 10; i += 1) { … }.",
                     );
                 }
                 let (name, pos) = self.ident("a field's name after .")?;

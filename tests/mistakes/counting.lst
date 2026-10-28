@@ -1,0 +1,19 @@
+loop (i = 0; i < 3; i += 1) {
+    print(i);
+}
+loop (int i = 0; ; i += 1) {
+    print(i);
+}
+loop (int i = 0; i < 3;) {
+    print(i);
+}
+loop (int i = 0; i < 3; print(i)) {
+}
+loop (int i = 0; i + 3; i += 1) {
+}
+loop (lock int i = 0; i < 3; i += 1) {
+}
+loop (int i = 0; i < 3; i += 1) {
+}
+print(i);
+end

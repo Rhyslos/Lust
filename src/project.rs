@@ -355,6 +355,9 @@ fn value_names(p: &Program, out: &mut HashSet<String>) {
                             out.insert(n.clone());
                         }
                     }
+                    if let LoopKind::Count { init, .. } = kind {
+                        stmts(std::slice::from_ref(&**init), out);
+                    }
                     stmts(body, out);
                 }
                 Stmt::Try { body, err, handler, .. } => {
@@ -592,6 +595,11 @@ impl<'a> Renamer<'a> {
                             self.ty(t);
                         }
                         self.expr(source);
+                    }
+                    LoopKind::Count { init, cond, step } => {
+                        self.stmts(std::slice::from_mut(&mut **init));
+                        self.expr(cond);
+                        self.stmts(std::slice::from_mut(&mut **step));
                     }
                     LoopKind::Forever => {}
                 }

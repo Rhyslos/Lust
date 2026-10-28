@@ -693,6 +693,11 @@ fn walk_stmts(stmts: &[Stmt], f: &mut dyn FnMut(&Expr)) {
                 match kind {
                     LoopKind::Times(e) | LoopKind::While(e) => walk_expr(e, f),
                     LoopKind::Each { source, .. } => walk_expr(source, f),
+                    LoopKind::Count { init, cond, step } => {
+                        walk_stmts(std::slice::from_ref(&**init), f);
+                        walk_expr(cond, f);
+                        walk_stmts(std::slice::from_ref(&**step), f);
+                    }
                     LoopKind::Forever => {}
                 }
                 walk_stmts(body, f);
@@ -845,6 +850,9 @@ fn declared(stmts: &[Stmt], out: &mut HashSet<String>) {
                     for (_, n, _) in vars {
                         out.insert(n.clone());
                     }
+                }
+                if let LoopKind::Count { init, .. } = kind {
+                    declared(std::slice::from_ref(&**init), out);
                 }
                 declared(body, out);
             }
@@ -1372,6 +1380,24 @@ impl<'a> W<'a> {
             Stmt::Loop { kind, body, .. } => {
                 match kind {
                     LoopKind::Forever => out.push_str(&format!("{pad}loop {{\n")),
+                    LoopKind::Count { init, cond, step } => {
+                        // { let mut i = 0; let mut first = true; loop { if !first { step } … } }:
+                        // the step runs at the top of each round after the first, so skip
+                        // (continue) still steps.
+                        let inner = "    ".repeat(depth + 1);
+                        let f = self.fresh();
+                        out.push_str(&format!("{pad}{{\n"));
+                        self.stmt(init, out, depth + 1);
+                        out.push_str(&format!("{inner}let mut first{f} = true;\n{inner}loop {{\n"));
+                        out.push_str(&format!("{inner}    if !first{f} {{\n"));
+                        self.stmt(step, out, depth + 3);
+                        out.push_str(&format!("{inner}    }}\n{inner}    first{f} = false;\n"));
+                        let cc = self.expr(cond);
+                        out.push_str(&format!("{inner}    if !({cc}) {{\n{inner}        break;\n{inner}    }}\n"));
+                        self.stmts(body, out, depth + 2);
+                        out.push_str(&format!("{inner}}}\n{pad}}}\n"));
+                        return;
+                    }
                     LoopKind::Times(n) => {
                         let nc = self.expr(n);
                         out.push_str(&format!("{pad}for _ in 0..{nc} {{\n"));
