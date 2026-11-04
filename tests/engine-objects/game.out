@@ -1,0 +1,5 @@
+Clock: ["day", "hour", "season"]
+Money: ["coins"]
+day Int(2), hour Float(1.0), Text("Spring"), coins Int(51)
+day Int(2), hour Float(6.0), Text("Spring"), coins Int(51)
+day Int(2), hour Float(1.0), Text("Spring"), coins Int(51)

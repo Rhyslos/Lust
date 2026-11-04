@@ -597,9 +597,39 @@ end
 
 -- What an engine's chunk gives back: its components, the events, and how to make, run and swap
 -- them. components: name -> class. events: name -> { { key, name, kind }, … }.
-function L.engine(version, components, events, classes)
+function L.engine(version, components, events, classes, objects, ticked)
   -- vectors: "luau" when a vec3 is a Luau vector, "table" in plain Lua.
-  local api = { version = version, components = components, events = events, vectors = L.vectors, classes = classes }
+  local api = { version = version, components = components, events = events, vectors = L.vectors, classes = classes, objects = objects }
+  -- The objects' names in order, so the engine ticks them the same way every time.
+  local names = {}
+  for name in pairs(objects) do names[#names + 1] = name end
+  table.sort(names)
+  api.objectNames = names
+  -- One tick for every object with an update(float dt), in name order: the engine calls it once
+  -- a tick, before the entities' components.
+  function api.tick(dt)
+    for _, name in ipairs(names) do
+      if ticked[name] then objects[name]:update(dt) end
+    end
+  end
+  -- An object's fields the engine keeps (by its __schema): for a save, and back.
+  function api.save(name)
+    local o = objects[name]
+    local out = {}
+    for _, f in ipairs(getmetatable(o).__schema or {}) do
+      if f[3] ~= "other" and f[3] ~= "object" then out[f[2]] = o[f[1]] end
+    end
+    return out
+  end
+  -- Gives an object saved values back: those its fields still have, of the same kind.
+  function api.load(name, values)
+    local o = objects[name]
+    if o == nil then return end
+    for _, f in ipairs(getmetatable(o).__schema or {}) do
+      local v = values[f[2]]
+      if v ~= nil and f[3] ~= "other" and f[3] ~= "object" then o[f[1]] = v end
+    end
+  end
   -- A thing of one of the engine's own classes, with these values for its fields (by name), to
   -- fill a component's field the engine fills in: o.anim = api.make("FarmerAnimator", { id = 3 }).
   function api.make(name, values)

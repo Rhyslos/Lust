@@ -34,6 +34,22 @@ component Farmer {
     }
 }
 
+-- One for the whole game: ticked by the engine before the components, and saved.
+object Clock {
+    has {
+        int day = 1;
+        float hour = 23.5;
+    }
+
+    method update(float dt) {
+        hour += dt;
+        is hour >= 24? then {
+            hour = hour - 24;
+            day += 1;
+        }
+    }
+}
+
 method log(string words) native;
 
 end

@@ -1,0 +1,36 @@
+-- Objects are one of each for the whole game: the engine ticks their update in name order before
+-- the components, and saves their fields.
+state Season = [Spring, Summer];
+
+object Clock {
+    has {
+        int day = 1;
+        float hour = 22;
+        Season season = Season.Spring;
+    }
+
+    method update(float dt) {
+        hour += dt;
+        is hour >= 24? then {
+            hour = hour - 24;
+            day += 1;
+        }
+    }
+}
+
+object Money {
+    has {
+        int coins = 50;
+    }
+}
+
+component Farmer {
+    method update(float dt) {
+        is Clock.hour < 1? then {
+            Money.coins += 1;
+        }
+    }
+}
+
+pass Farmer;
+end
