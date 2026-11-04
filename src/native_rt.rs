@@ -1702,6 +1702,17 @@ pub fn jr_truth(v: &Json, at: &str) -> bool {
         _ => misfit(at, "a bool (true or false)", v),
     }
 }
+/// A state's option a native method's body gave back, by its full name: one the state doesn't
+/// have stops the program, on the line that called it.
+pub fn host_state(v: &str, opts: &[&'static str], state: &str) -> &'static str {
+    match opts.iter().find(|o| **o == v) {
+        Some(o) => o,
+        None => fail(format!(
+            "the program gave back \"{v}\" for a {state}, but {state} has no such option: it has {}.",
+            opts.join(", ")
+        )),
+    }
+}
 pub fn jr_state(v: &Json, at: &str, opts: &[&'static str]) -> &'static str {
     if let Json::Str(s) = v {
         if let Some(o) = opts.iter().find(|o| **o == s.as_str()) {

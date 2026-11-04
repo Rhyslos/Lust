@@ -181,6 +181,16 @@ local function f32text(x) return L.ftext(tonumber(fmt("%.7g", x)) + 0) end
 -- given its length.
 function L.hvec(v) return vec(v.x, v.y, v.z) end
 function L.hrot(q) return quat(q.x, q.y, q.z, q.w) end
+-- A state's option a native gave back, by its full name ("Farmer.Walk"): one the state doesn't
+-- have stops the program, on the line that called the native (level: how far up that is).
+function L.hstate(opts, state, level)
+  return function(v)
+    for _, o in ipairs(opts) do if v == o then return v end end
+    local shown = type(v) == "string" and ("\"" .. v .. "\"") or tostring(v)
+    error("the program gave back " .. shown .. " for a " .. state .. ", but " .. state
+      .. " has no such option: it has " .. table.concat(opts, ", ") .. ".", level)
+  end
+end
 function L.harr(item)
   return function(t)
     local out = { n = t.n or #t }

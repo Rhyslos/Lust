@@ -1,0 +1,16 @@
+-- A state's option the program gives back is checked by name: one the state doesn't have
+-- stops the program on the line that asked.
+fetch lua;
+
+state Clip = [Idle, Walk];
+
+method Clip playing() native;
+
+lua {
+    LUST_NATIVES = { playing = function() return "Run" end }
+};
+
+print("before");
+Clip c = playing();
+print("never");
+end

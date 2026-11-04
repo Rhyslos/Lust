@@ -191,7 +191,7 @@ pub fn write(prog: &Program, info: &Info, files: &[String], library: bool) -> St
                     decl.push(format!("{}: {}", snake(&p.name), w.api_ty(t)));
                     args.push(w.to_api(&format!("v_{}", p.name), t));
                 }
-                host_fns.push(format!("    fn {name}({}){};\n", decl.join(", "), w.api_ret(&sig.ret)));
+                host_fns.push(format!("    fn {name}({}){};\n", decl.join(", "), w.host_ret(&sig.ret)));
                 let shown = format!("{}:{}", crate::ast::shown(&c.name), m.name);
                 b.push_str(&w.native_body(&name, &shown, &args, &sig.ret));
             }
@@ -306,7 +306,7 @@ pub fn write(prog: &Program, info: &Info, files: &[String], library: bool) -> St
                     decl.push(format!("{}: {}", snake(&p.name), w.api_ty(t)));
                     args.push(w.to_api(&format!("v_{}", p.name), t));
                 }
-                host_fns.push(format!("    fn {name}({}){};\n", decl.join(", "), w.api_ret(&sig.ret)));
+                host_fns.push(format!("    fn {name}({}){};\n", decl.join(", "), w.host_ret(&sig.ret)));
                 b.push_str(&w.native_body(&name, crate::ast::shown(&m.name), &args, &sig.ret));
             }
             w.stmts(&m.body, &mut b, 1);
@@ -1118,11 +1118,35 @@ impl<'a> W<'a> {
         }
     }
 
-    fn api_ret(&mut self, t: &Ty) -> String {
+
+    /// What a native method's body gives back, in the program's types. A state's option comes
+    /// back as its full name in a `String` (`"Farmer.Walk"`), checked as it arrives.
+    fn host_ret(&mut self, t: &Ty) -> String {
+        fn host_ty(w: &mut W<'_>, t: &Ty) -> String {
+            match t {
+                Ty::State(_) => "String".into(),
+                Ty::Array(e) => format!("Vec<{}>", host_ty(w, e)),
+                other => w.api_ty(other),
+            }
+        }
         if *t == Ty::Void {
             String::new()
         } else {
-            format!(" -> {}", self.api_ty(t))
+            format!(" -> {}", host_ty(self, t))
+        }
+    }
+
+    /// A value a native method's body gave back: a state's option is checked by name, and one
+    /// its state doesn't have stops the program.
+    fn from_host(&self, code: &str, t: &Ty) -> String {
+        match t {
+            Ty::State(s) => {
+                let st = &self.info.states[*s];
+                let opts: Vec<String> = st.options.iter().map(|o| format!("{o:?}")).collect();
+                format!("rt::host_state(&{code}, &[{}], {:?})", opts.join(", "), crate::ast::shown(&st.name))
+            }
+            Ty::Array(e) => format!("rt::arr({code}.into_iter().map(|x| {}).collect())", self.from_host("x", e)),
+            _ => self.from_api(code, t),
         }
     }
 
@@ -1288,7 +1312,7 @@ impl<'a> W<'a> {
         if *ret == Ty::Void {
             format!("    {call};\n")
         } else {
-            format!("    let r = {call};\n    return {};\n", self.from_api("r", ret))
+            format!("    let r = {call};\n    return {};\n", self.from_host("r", ret))
         }
     }
 

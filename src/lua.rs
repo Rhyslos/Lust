@@ -458,7 +458,7 @@ impl<'a> W<'a> {
                     let mut args = vec![lua_string(shown), lua_string(shown)];
                     args.extend(params.iter().cloned());
                     let ret = self.info.methods.get(&m.name).map(|s| s.ret.clone()).unwrap_or(Ty::Void);
-                    let call = host_in(&ret, format!("_L.native({})", args.join(", ")));
+                    let call = host_in(self.info, &ret, format!("_L.native({})", args.join(", ")));
                     self.line(m.pos.line, &format!("return {call}"));
                 }
                 self.stmts(&m.body);
@@ -586,7 +586,7 @@ impl<'a> W<'a> {
                     .get(&m.name)
                     .map(|s| s.ret.clone())
                     .unwrap_or(Ty::Void);
-                let call = host_in(&ret, format!("_L.native({})", args.join(", ")));
+                let call = host_in(self.info, &ret, format!("_L.native({})", args.join(", ")));
                 self.line(m.pos.line, &format!("return {call}"));
             }
             self.stmts(&m.body);
@@ -605,7 +605,7 @@ impl<'a> W<'a> {
                     .params
                     .iter()
                     .enumerate()
-                    .map(|(i, (_, t))| host_in(t, format!("values[{}]", i + 1)))
+                    .map(|(i, (_, t))| host_in(self.info, t, format!("values[{}]", i + 1)))
                     .collect();
                 self.line(m.pos.line, &format!("if event == {} then", lua_string(crate::ast::shown(ev))));
                 self.indent += 1;
@@ -1851,16 +1851,31 @@ pub fn sql_bin(
 
 /// What a host's Lua function gives back, made into a Lust value of this type: vectors rounded to
 /// f32, and lists given their length.
-fn host_in(t: &Ty, call: String) -> String {
-    fn conv(t: &Ty) -> Option<String> {
+fn host_in(info: &Info, t: &Ty, call: String) -> String {
+    // depth: how many conversions down; a state's mistake is told on the line that called the
+    // native, which is that many levels up, past the native's own function.
+    fn conv(info: &Info, t: &Ty, depth: usize) -> Option<String> {
         match t {
             Ty::Vec3 => Some("_L.hvec".into()),
             Ty::Rot => Some("_L.hrot".into()),
-            Ty::Array(e) => Some(format!("_L.harr({})", conv(e).unwrap_or_else(|| "nil".into()))),
+            Ty::State(s) => {
+                let st = &info.states[*s];
+                let opts: Vec<String> = st.options.iter().map(|o| lua_string(o)).collect();
+                Some(format!(
+                    "_L.hstate({{{}}}, {}, {})",
+                    opts.join(", "),
+                    lua_string(crate::ast::shown(&st.name)),
+                    depth + 3
+                ))
+            }
+            Ty::Array(e) => Some(format!(
+                "_L.harr({})",
+                conv(info, e, depth + 1).unwrap_or_else(|| "nil".into())
+            )),
             _ => None,
         }
     }
-    match conv(t) {
+    match conv(info, t, 0) {
         Some(f) => format!("{f}({call})"),
         None => call,
     }

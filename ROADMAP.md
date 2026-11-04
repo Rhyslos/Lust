@@ -49,6 +49,7 @@ The order Lust gets built in. Each step makes Lust more useful on its own, and n
 | ✅ | **13.7 `match` is now `check`:** `check mood { when Calm { … } }`, the same block with the word the project lead preferred | Done (alpha 45) |
 | ✅ | **13.8 From the trial run:** buttons in loops keep their values under `lust run` too, `atan2` and friends, `e` in numbers, and clearer mistakes | Done (alpha 47) |
 | ✅ | **13.9 Counting loops:** `loop (int i = 0; i < 10; i += 1) { … }` | Done (alpha 48) |
+| ✅ | **14.1 States in native methods** (for Solis): a native takes and gives back a state's option, as its full name; one the program gives back is checked by name | Done (alpha 49) |
 | | 🏁 *Lust's first release that isn't a test version.* | |
 
 ## Decisions along the way
