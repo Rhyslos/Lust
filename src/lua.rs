@@ -1924,10 +1924,7 @@ fn host_in(info: &Info, t: &Ty, call: String) -> String {
                     depth + 3
                 ))
             }
-            Ty::Array(e) => Some(format!(
-                "_L.harr({})",
-                conv(info, e, depth + 1).unwrap_or_else(|| "nil".into())
-            )),
+            Ty::Array(e) => Some(format!("_L.harr({})", conv(info, e, depth + 1).unwrap_or_else(|| "nil".into()))),
             _ => None,
         }
     }

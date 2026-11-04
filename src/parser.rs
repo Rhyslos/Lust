@@ -1209,7 +1209,9 @@ impl<'a> Parser<'a> {
             let p = self.cur().pos;
             return self.fail(
                 p,
-                format!("a method on entity has its body in the engine: end it with native; instead of {{ … }}: method entity:{name}() native;"),
+                format!(
+                    "a method on entity has its body in the engine: end it with native; instead of {{ … }}: method entity:{name}() native;"
+                ),
             );
         }
         let body = self.block("the method")?;
