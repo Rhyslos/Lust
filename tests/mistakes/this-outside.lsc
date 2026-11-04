@@ -1,0 +1,14 @@
+-- this is the entity a component is on: only a component's methods have it.
+class Hero {
+    has {
+        int hp = 3;
+    }
+
+    method heal() {
+        print(this);
+        this.hp = 4;
+    }
+}
+
+entity e = this;
+end

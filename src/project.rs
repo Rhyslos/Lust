@@ -339,6 +339,7 @@ pub fn load(
     let mut body = Vec::new();
     let mut uses_lua = false;
     let mut compound = HashMap::new();
+    let mut this_ids = HashSet::new();
     for (f, file) in files.into_iter().enumerate() {
         let mut r = Renamer {
             visible: &visible[f],
@@ -354,6 +355,7 @@ pub fn load(
         }
         uses_lua |= prog.uses_lua;
         compound.extend(prog.compound.drain());
+        this_ids.extend(prog.this_ids.drain());
         if f == 0 {
             r.stmts(&mut prog.body);
             body = prog.body;
@@ -370,6 +372,7 @@ pub fn load(
             next_id,
             compound,
             host_files,
+            this_ids,
         },
         files: shown,
     }

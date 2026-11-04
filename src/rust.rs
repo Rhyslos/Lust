@@ -2078,6 +2078,18 @@ impl<'a> W<'a> {
                     let a = self.args(args, &sig.params.iter().map(|(t, _)| t.clone()).collect::<Vec<_>>());
                     format!("{{ let h = rt::hk(&v_{name}); h({a}) }}")
                 }
+                Some(CallRes::Ability) => {
+                    let c = self.class.unwrap();
+                    let me = self.field_of(c, "me");
+                    let sig = self.info.entity_methods[name].clone();
+                    let a = self.args(args, &sig.params.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>());
+                    let all = if a.is_empty() {
+                        format!("this.borrow().{me}")
+                    } else {
+                        format!("{{ let m = this.borrow().{me}; m }}, {a}")
+                    };
+                    format!("e_{}({all})", ident(name))
+                }
                 Some(CallRes::Entity) | None => "()".into(),
             },
             ExprKind::Index(t, i) if matches!(self.info.ty(t), Ty::Table(_)) => {

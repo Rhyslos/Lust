@@ -51,6 +51,7 @@ The order Lust gets built in. Each step makes Lust more useful on its own, and n
 | ✅ | **13.9 Counting loops:** `loop (int i = 0; i < 10; i += 1) { … }` | Done (alpha 48) |
 | ✅ | **14.1 States in native methods** (for Solis): a native takes and gives back a state's option, as its full name; one the program gives back is checked by name | Done (alpha 49) |
 | ✅ | **14.2 Methods on entity** (for Solis): `method vec3 entity:position() native;` in the engine's own files (its host folders), called on any entity; `lust::Engine` and `lust.host` name those folders | Done (alpha 50) |
+| ✅ | **14.3 Abilities and `this`** (for Solis): inside a component, the entity's abilities are called bare (`moveTo(place)`), the component's own methods first; `this` is the entity, and `me` gets a note | Done (alpha 51) |
 | | 🏁 *Lust's first release that isn't a test version.* | |
 
 ## Decisions along the way

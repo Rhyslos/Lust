@@ -87,6 +87,8 @@ pub enum CallRes {
     Builtin,
     /// `target:position()` on an entity: a method the engine's files give entity.
     Entity,
+    /// `position()` bare inside a component: the entity's own ability, on `this`.
+    Ability,
     Top,
     Own,
     LocalHook,
@@ -234,6 +236,8 @@ struct Ctx {
 
 pub struct Checker<'a> {
     pub info: Info,
+    /// The expressions written this, by id (inside Lust they're me).
+    this_ids: std::collections::HashSet<usize>,
     diags: &'a mut Diags,
     top_vars: HashMap<String, Pos>,
     class_names: Vec<String>,
@@ -263,6 +267,7 @@ pub fn check(prog: &Program, diags: &mut Diags, is_script: bool) -> Info {
         canvases: 0,
         compound: prog.compound.clone(),
         compound_now: None,
+        this_ids: prog.this_ids.clone(),
     };
     c.run(prog, is_script);
     c.info
@@ -2951,6 +2956,21 @@ impl<'a> Checker<'a> {
     }
 
     fn name(&mut self, e: &Expr, n: &str, ctx: &mut Ctx) -> Ty {
+        // this (written me before): the entity a component is on.
+        if n == "me" {
+            let component = ctx.class.is_some_and(|c| self.info.classes[c].is_component);
+            if self.this_ids.contains(&e.id) {
+                if !component {
+                    self.err(
+                        e.pos,
+                        "this is the entity a component is on, so only a component's methods have it. Inside a class's method, use a field's name on its own.",
+                    );
+                    return Ty::Error;
+                }
+            } else if component {
+                self.diags.note(e.pos, "me is now this: write this instead. me keeps working for now.");
+            }
+        }
         if let Some(l) = self.lookup(ctx, n) {
             self.info.names.insert(e.id, NameRes::Local);
             return l.ty;
@@ -3681,10 +3701,15 @@ impl<'a> Checker<'a> {
                 self.args(args, &params, name, e.pos, ctx);
                 return sig.ret.clone();
             }
-            if l.ty != Ty::Error {
-                self.err(e.pos, format!("{name} is {}, so it can't be called.", self.a(&l.ty)));
+            // vec3 velocity = velocity();: a variable can share its name with an ability.
+            let ability = ctx.class.is_some_and(|c| self.info.classes[c].is_component)
+                && self.info.entity_methods.contains_key(name);
+            if !ability {
+                if l.ty != Ty::Error {
+                    self.err(e.pos, format!("{name} is {}, so it can't be called.", self.a(&l.ty)));
+                }
+                return Ty::Error;
             }
-            return Ty::Error;
         }
         if let Some(c) = ctx.class {
             if let Some(sig) = self.info.method(c, name).cloned() {
@@ -3705,6 +3730,15 @@ impl<'a> Checker<'a> {
             self.info.calls.insert(e.id, CallRes::Top);
             self.args(args, &sig.params, name, e.pos, ctx);
             return sig.ret;
+        }
+        // Inside a component, the entity's own abilities are called bare: moveTo(place) is
+        // this:moveTo(place). The component's own methods, and methods brought in, come first.
+        if ctx.class.is_some_and(|c| self.info.classes[c].is_component) {
+            if let Some(sig) = self.info.entity_methods.get(name).cloned() {
+                self.info.calls.insert(e.id, CallRes::Ability);
+                self.args(args, &sig.params, name, e.pos, ctx);
+                return sig.ret;
+            }
         }
         for a in args {
             self.expr(a, ctx, None);

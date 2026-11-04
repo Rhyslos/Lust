@@ -193,6 +193,7 @@ pub struct Parser<'a> {
     depth: usize,
     /// The + of each hp += 5, and what was written.
     compound: std::collections::HashMap<usize, &'static str>,
+    this_ids: std::collections::HashSet<usize>,
 }
 
 /// How deeply code can nest. Deeper code would run the compiler out of room (its stack), which
@@ -216,6 +217,7 @@ pub fn parse(toks: Vec<Token>, diags: &mut Diags, is_script: bool, first_id: usi
         in_loop_step: false,
         depth: 0,
         compound: Default::default(),
+        this_ids: Default::default(),
         last_field: None,
     };
     p.program()
@@ -456,6 +458,7 @@ impl<'a> Parser<'a> {
             next_id: self.next_id + 1,
             compound: std::mem::take(&mut self.compound),
             host_files: Default::default(),
+            this_ids: std::mem::take(&mut self.this_ids),
         }
     }
 
@@ -1660,7 +1663,9 @@ impl<'a> Parser<'a> {
                         // `do`, `if` and friends at the start of a line are other languages' words.
                         let next = &self.peek(1);
                         let used_as_name = next.is_sym("=") || next.is_sym(".") || next.is_sym(":") || next.is_sym("[");
-                        if !used_as_name || matches!(w.as_str(), "self" | "this") {
+                        // this:jump(); is a component's own entity, so it's left to the expression.
+                        let this_call = w == "this" && next.is_sym(":");
+                        if !this_call && (!used_as_name || matches!(w.as_str(), "self" | "this")) {
                             return self.fail(t.pos, h);
                         }
                     }
@@ -2482,6 +2487,15 @@ impl<'a> Parser<'a> {
                         Ok(self.mk(t.pos, ExprKind::Saved(name)))
                     }
                     "null" | "nil" | "None" => self.fail(t.pos, "Lust calls it nothing."),
+                    // this, in a component: the entity it's on, handed over whole (send Hit(this, 6)
+                    // to target;) or asked for its abilities (this:jump()). The checker turns it
+                    // away anywhere else. this.field is still the hint below.
+                    "this" if !self.peek(1).is_sym(".") => {
+                        self.next();
+                        let e = self.mk(t.pos, ExprKind::Name("me".into()));
+                        self.this_ids.insert(e.id);
+                        Ok(e)
+                    }
                     "self" | "this" => {
                         let h = if self.peek(1).is_sym(".") {
                             if let Tk::Ident(f) = &self.peek(2).kind {

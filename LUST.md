@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (alpha 50):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (alpha 51):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -88,7 +88,7 @@ bool alive = true;
 | `bool` | yes or no | `true`, `false`, `not true` |
 | `vec3` | three numbers: a position, a direction or a speed (section 6) | `[1, 0, 2]` |
 | `rotation` | a turn in 3D, written as degrees around x, y and z (section 6) | `[0, 0, 90]` |
-| `entity` | a thing in a game engine, given by the engine, or `nothing` (section 21) | `me`, `nothing` |
+| `entity` | a thing in a game engine, given by the engine, or `nothing` (section 21) | `this`, `nothing` |
 | a class name | one thing made from a class | `Player`, `Weapon` |
 | `T array` | a list of `T` | `int array` |
 | `cMap(...)` | a table of rows, found by their key (the first column) | `cMap(int id, string itemName, int amount)` |
@@ -1432,7 +1432,7 @@ end
 -- a game's file: nothing to bring in.
 entity p = player();
 p:moveTo(p:position() + [1, 0, 0]);
-me:moveTo(me:position() + [speed * dt, 0, 0]);      -- in a component
+moveTo(position() + [speed * dt, 0, 0]);      -- in a component: abilities are called bare
 ```
 
 - **Only the engine's own files** give them: the files in its **host folders** (`solis/` for Solis). An engine names them when it uses the compiler (`lust::Engine`, below); on the disk, a project names them in a `lust.host` file in its folder, one to a line. Those files come with every program, so the methods work everywhere without `fetch` or `get`; anything else in them is still brought in as usual.
@@ -1469,7 +1469,7 @@ An engine can use Lust's compiler itself, as a Rust library: to check a game's L
 
 ```
 [dependencies]
-lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.50", default-features = false }
+lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.51", default-features = false }
 ```
 
 Without its default features it needs nothing but Rust's own library (the default ones are the `lust` command). Lust doesn't open any files: the engine reads them, and hands over each one's path and text, with `/` between folders.
@@ -1504,6 +1504,8 @@ match lust::to_lua("main.lst", &files) {
 
 **Speed:** in Luau, Lust's vector maths is Luau's own, and it rounds numbers to f32 with Luau's vectors, which is many times faster than plain Lua can; it gives exactly the numbers Rust gives. Luau's native code (mlua's `luau-jit` feature) makes it faster again. `bench/` in Lust's own folder ticks 2,000 components both ways, and checks Rust and Luau end with exactly the same values.
 
+**Notes:** `chunk.notes` lists what's worth showing but isn't a mistake (a component still writing `me`), each a `Problem` with its file, line and column; the chunk runs either way.
+
 **A failure** in the Lua comes to the engine as a Lua error. `chunk.locate(&error.to_string())` turns it into a `RunError`, with `file`, `line`, `column` and `message`, pointing at the Lust.
 
 `engine-test` in Lust's own folder does all of this in Luau, the way Solis does.
@@ -1526,7 +1528,7 @@ component Gun {
     method update(float dt) {
         cooldown = cooldown - dt;
         is target == nothing? then {
-            target = nearest(me);           -- a native method the engine gives
+            target = nearest(this);         -- a native method the engine gives
         }
     }
 }
@@ -1534,10 +1536,11 @@ component Gun {
 pass Gun;
 ```
 
-- **`me`** is the entity the component is on. Every component has it, and it can't be changed.
+- **`this`** is the entity the component is on. Every component has it, and it can't be changed. Hand it over whole (`send Hit(this, 6) to target;`), or ask it for an ability (`this:jump()`). It was written `me` before; `me` still works for now, with a note saying to write `this`, and becomes a mistake once Solis has moved over. Outside a component, `this` is a mistake.
+- **Abilities are called bare.** Inside a component, the methods the engine gives `entity` (above) are the component's own abilities: `moveTo(position() + [1, 0, 0])` is `this:moveTo(this:position() + …)`. A variable can share an ability's name (`float velocity = velocity();`). The component's own methods come first, then methods brought in with `get`, then the abilities: so a component's own `jump()` wins over the engine's, and `this:jump()` still reaches the engine's.
 - **Fields** hold what the engine can keep and show: `bool`, `int`, `float`, `string`, a state (shown as a choice of its options), `vec3`, `rotation` and `entity`.
 - **`update(float dt)`** runs once a tick, with how long a tick is. The engine runs the entities in order of their IDs, and an entity's components in order of their names, so a game runs the same way every time.
-- **`entity`** is a value the engine hands over: an entity, or `nothing`. Entities can be compared with `==`, and `.text()` gives the 13 letters and digits Solis writes them as. Lust can't make one; it gets them from the engine's native methods and from `me`.
+- **`entity`** is a value the engine hands over: an entity, or `nothing`. Entities can be compared with `==`, and `.text()` gives the 13 letters and digits Solis writes them as. Lust can't make one; it gets them from the engine's native methods and from `this`.
 - A component can't be `like` another one yet.
 - A component's methods can't be called `handle`, `schema`, `toData`, `setData`, `fromData` or `setMe`: the engine uses those on every component.
 
@@ -1565,7 +1568,7 @@ component Health {
     on Hit(entity by, float damage) {
         hp = hp - damage;
         is hp <= 0? then {
-            send Died() to me;
+            send Died() to this;
         }
     }
 }
@@ -1576,7 +1579,7 @@ component Gun {
     }
 
     method update(float dt) {
-        send Hit(me, 6) to target;
+        send Hit(this, 6) to target;
     }
 }
 ```
