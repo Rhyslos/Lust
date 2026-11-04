@@ -1,0 +1,40 @@
+-- Native methods take and give back states' options, built as a Rust library: the program gets
+-- an option as its full name ("Farmer.Walk") and gives one back as text, checked by name.
+state Clip = [Idle, Farmer [Walk, Hoe]];
+
+class Sprite {
+    has {
+        int id = 0;
+    }
+
+    method play(Clip clip) native;
+    method Clip playing() native;
+    method Clip array clips() native;
+}
+
+method Clip first() native;
+
+method show(Sprite s) {
+    s:play(Clip.Farmer.Walk);
+    Clip c = s:playing();
+    print(c);
+    is c == Clip.Farmer? then {
+        print("a farmer clip");
+    }
+    check c {
+        when Farmer.Walk {
+            print("walking");
+        }
+        when Farmer {
+            print("farming");
+        }
+        when Idle {
+            print("idle");
+        }
+    }
+    print(s:clips());
+    print(first());
+}
+
+pass Sprite, show;
+end

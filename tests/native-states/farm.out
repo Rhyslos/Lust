@@ -1,0 +1,7 @@
+play Farmer.Walk
+Farmer.Walk
+a farmer clip
+walking
+[Idle, Farmer.Hoe]
+Farmer
+farm.lst:19  the program gave back "Farmer.Run" for a Clip, but Clip has no such option: it has Idle, Farmer, Farmer.Walk, Farmer.Hoe.

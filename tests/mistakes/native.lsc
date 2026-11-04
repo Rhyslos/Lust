@@ -12,4 +12,10 @@ class Entity {
 method int native() {
     return 1;
 }
+
+-- A state's option is checked like any other value.
+state Clip = [Idle, Walk];
+state Mood = [Calm];
+method play(Clip clip) native;
+play(Mood.Calm);
 end

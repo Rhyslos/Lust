@@ -1620,7 +1620,17 @@ impl<'a> Checker<'a> {
                     Ty::Array(e) => plain(e) && !matches!(**e, Ty::Void | Ty::Array(_)),
                     _ => matches!(
                         t,
-                        Ty::Int | Ty::Float | Ty::Str | Ty::Truth | Ty::Vec3 | Ty::Rot | Ty::Entity | Ty::Class(_) | Ty::Void | Ty::Error
+                        Ty::Int
+                            | Ty::Float
+                            | Ty::Str
+                            | Ty::Truth
+                            | Ty::Vec3
+                            | Ty::Rot
+                            | Ty::Entity
+                            | Ty::Class(_)
+                            | Ty::State(_)
+                            | Ty::Void
+                            | Ty::Error
                     ),
                 }
             }
@@ -1629,7 +1639,7 @@ impl<'a> Checker<'a> {
                     self.err(
                         p.pos,
                         format!(
-                            "a native method takes ints, floats, text, bools, vec3s, rotations, things made from classes, and arrays of those, but {} is {}.",
+                            "a native method takes ints, floats, text, bools, vec3s, rotations, states' options, things made from classes, and arrays of those, but {} is {}.",
                             p.name,
                             self.a(ty)
                         ),
@@ -1640,7 +1650,7 @@ impl<'a> Checker<'a> {
                 self.err(
                     m.pos,
                     format!(
-                        "a native method gives back an int, a float, text, a bool, a vec3, a rotation, a thing made from a class, or an array of those, but {} gives back {}.",
+                        "a native method gives back an int, a float, text, a bool, a vec3, a rotation, a state's option, a thing made from a class, or an array of those, but {} gives back {}.",
                         m.name,
                         self.a(&sig.ret)
                     ),
