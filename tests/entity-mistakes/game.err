@@ -1,7 +1,10 @@
 game.lsc:5:15  only the engine's own files give entity methods, so entity:fly can't be declared here.
-game.lsc:8:8  force is a vec3, but this is an int.
-game.lsc:9:3  e is an entity, which has no method called jump.
+game.lsc:7:12  entity_len is the name the engine's entity:len goes by, so a method can't have it. Give it another name.
+game.lsc:11:12  this is the entity a component is on, so only a component's methods have it.
+game.lsc:15:8  force is a vec3, but this is an int.
+game.lsc:16:3  e is an entity, which has no method called jump.
 solis/entity.lsc:3:21  entity:position is already given on line 2 of the engine's files.
 solis/entity.lsc:5:23  a native method gives back an int, a float, text, a bool, a vec3, a rotation, a state's option, a thing made from a class, or an array of those, but hits gives back an int map.
+solis/entity.lsc:7:22  entity already has text(), Lust's own: it gives the entity's name as the engine writes it. Give this one another name.
 
-5 mistakes. Nothing was run.
+8 mistakes. Nothing was run.

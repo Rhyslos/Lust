@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (alpha 56):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (alpha 57):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -1435,10 +1435,11 @@ p:moveTo(p:position() + [1, 0, 0]);
 moveTo(position() + [speed * dt, 0, 0]);      -- in a component: abilities are called bare
 ```
 
-- **Only the engine's own files** give them: the files in its **host folders** (`solis/` for Solis). An engine names them when it uses the compiler (`lust::Engine`, below); on the disk, a project names them in a `lust.host` file in its folder, one to a line. Those files come with every program, so the methods work everywhere without `fetch` or `get`; anything else in them is still brought in as usual.
+- **Only the engine's own files** give them: the files in its **host folders** (`solis/` for Solis). An engine names them when it uses the compiler (`lust::Engine`, below); on the disk, a project names them in a `lust.host` file in its folder, one to a line (for trying an engine's files with `lust check` and tests; an engine using the compiler only goes by its own `lust::Engine`, never a `lust.host`). Those files come with every program, so the methods work everywhere without `fetch` or `get`; anything else in them is still brought in as usual.
 - They're checked like any method: what goes in and what comes back. Each is given once.
 - Their bodies: in Rust, the program's `entity_move_to(&self, this: Option<u64>, place: Vec3)`, the entity first; in Lua, the function `entity_moveTo(e, place)` in `LUST_NATIVES`.
-- `.text()` and `==` work as before.
+- `.text()` and `==` work as before, and stay Lust's own: an `entity:text()` is a mistake.
+- `entity:len` goes by `entity_len` in Rust and Lua, so a method of the game's called `entity_len` is a mistake that says so.
 
 ### Lust as a Rust library
 
@@ -1469,7 +1470,7 @@ An engine can use Lust's compiler itself, as a Rust library: to check a game's L
 
 ```
 [dependencies]
-lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.56", default-features = false }
+lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.57", default-features = false }
 ```
 
 Without its default features it needs nothing but Rust's own library (the default ones are the `lust` command). Lust doesn't open any files: the engine reads them, and hands over each one's path and text, with `/` between folders.
@@ -1562,7 +1563,7 @@ component Gun {
 pass Gun;
 ```
 
-- **`this`** is the entity the component is on. Every component has it, and it can't be changed. Hand it over whole (`send Hit(this, 6) to target;`), or ask it for an ability (`this:jump()`). It was written `me` before; `me` still works for now, with a note saying to write `this`, and becomes a mistake once Solis has moved over. Outside a component, `this` is a mistake.
+- **`this`** is the entity the component is on. Every component has it, and it can't be changed. Hand it over whole (`send Hit(this, 6) to target;`), or ask it for an ability (`this:jump()`). It was written `me` before; `me` still works for now, with a note saying to write `this` (from `lust check`, `lust run` and the others, and in a Lua chunk's `notes`; a Rust library has nowhere to put notes), and becomes a mistake once Solis has moved over. Outside a component, `this` is a mistake.
 - **Abilities are called bare.** Inside a component, the methods the engine gives `entity` (above) are the component's own abilities: `moveTo(position() + [1, 0, 0])` is `this:moveTo(this:position() + …)`. A variable can share an ability's name (`float velocity = velocity();`). The component's own methods come first, then methods brought in with `get`, then the abilities: so a component's own `jump()` wins over the engine's, and `this:jump()` still reaches the engine's.
 - **Fields** hold what the engine can keep and show: `bool`, `int`, `float`, `string`, a state (shown as a choice of its options), `vec3`, `rotation` and `entity`.
 - **Things the engine made for it.** A component can hold a thing of one of the engine's own classes (from its host folders), such as the animator its editor made: `FarmerAnimator anim;`, with **no starting value**. The engine fills it in before the first `update`; using it before then stops on its line, as anything that's still `nothing` does. A class of the game's own can't be a component's field (keep those in a class or an object), and one of the engine's can't be given a starting value.

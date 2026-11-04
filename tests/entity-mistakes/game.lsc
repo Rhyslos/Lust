@@ -3,6 +3,13 @@
 fetch lua;
 
 method entity:fly() native;
+-- The engine's entity:len goes by entity_len, so a method can't have that name.
+method int entity_len() native;
+
+-- this is a component's own.
+method entity who() {
+    return this;
+}
 
 entity e = nothing;
 e:push(3);
