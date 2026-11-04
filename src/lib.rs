@@ -32,6 +32,7 @@ mod project;
 mod rust;
 mod stdlib;
 mod types;
+mod values;
 mod words;
 
 // The runtime that goes into built programs. lust uses its file functions too, so
@@ -266,6 +267,8 @@ fn on_own_stack<T: Send>(f: impl FnOnce() -> T + Send) -> T {
         _ => (f.take().expect("the compiler runs once"))(),
     }
 }
+
+pub use values::{read_values, Fixed, Named, Values};
 
 /// What Lust knows of the engine it's inside.
 #[derive(Debug, Clone, Default)]
