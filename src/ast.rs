@@ -138,6 +138,9 @@ pub struct Program {
     /// hp += 5 is hp = hp + 5: the ids of those + expressions, with what was written (+=), so
     /// mistakes speak of +=.
     pub compound: std::collections::HashMap<usize, &'static str>,
+    /// The files in the engine's own folders (its host folders, like solis/), by number: only
+    /// they may give `entity` methods.
+    pub host_files: std::collections::HashSet<usize>,
 }
 
 pub enum Item {
@@ -151,6 +154,16 @@ pub enum Item {
     Style(StyleDecl),
     /// event Hit(entity by, float damage);
     Event(EventDecl),
+}
+
+impl Item {
+    /// The item, if it's a method the engine's files give entity.
+    pub fn filter_entity(&self) -> Option<&Item> {
+        match self {
+            Item::Method(m) if m.on_entity => Some(self),
+            _ => None,
+        }
+    }
 }
 
 /// A piece of text with values in it.
@@ -283,6 +296,9 @@ pub struct MethodDecl {
     pub native: bool,
     /// `on Hit(entity by, float damage) { … }` in a component: the event it handles.
     pub on: Option<(String, Pos)>,
+    /// `method vec3 entity:position() native;`: a method on the engine's `entity`, given only by
+    /// the engine's own files (its host folders), and always native.
+    pub on_entity: bool,
 }
 
 #[derive(Clone)]

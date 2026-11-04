@@ -1,0 +1,7 @@
+-- The engine's files give entity methods: always native, each once.
+method vec3 entity:position() native;
+method float entity:position() native;
+method entity:push(vec3 force) native;
+method int map entity:hits() native;
+
+end

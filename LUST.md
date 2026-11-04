@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (alpha 49):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (alpha 50):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -1417,6 +1417,29 @@ The game uses it like any other file: `fetch "engine/entity":Entity;` and `get "
   - **LustScript** (`.lsc`) and **Lua for an engine**: from a Lua function in the table `LUST_NATIVES`, by the method's name, or `Class_method` for a class's method, which is given the thing first. A function with the same global name works too, except for a method on its own: Lust's own function for it has that name, so its body goes in `LUST_NATIVES`;
   - **on its own** (`lust run`, or a program built without `--library`): nowhere, so calling it stops with a message saying where its body lives.
 
+### Methods on entity
+
+An engine can give its `entity` type methods of its own, so what it does to one entity reads as a method on it: `target:position()`, `crop:destroy()`. Its own files declare them, always `native`:
+
+```
+-- solis/entity.lst: made by the engine.
+method vec3 entity:position() native;
+method entity:moveTo(vec3 place) native;
+end
+```
+
+```
+-- a game's file: nothing to bring in.
+entity p = player();
+p:moveTo(p:position() + [1, 0, 0]);
+me:moveTo(me:position() + [speed * dt, 0, 0]);      -- in a component
+```
+
+- **Only the engine's own files** give them: the files in its **host folders** (`solis/` for Solis). An engine names them when it uses the compiler (`lust::Engine`, below); on the disk, a project names them in a `lust.host` file in its folder, one to a line. Those files come with every program, so the methods work everywhere without `fetch` or `get`; anything else in them is still brought in as usual.
+- They're checked like any method: what goes in and what comes back. Each is given once.
+- Their bodies: in Rust, the program's `entity_move_to(&self, this: Option<u64>, place: Vec3)`, the entity first; in Lua, the function `entity_moveTo(e, place)` in `LUST_NATIVES`.
+- `.text()` and `==` work as before.
+
 ### Lust as a Rust library
 
 `lust build game.lst --library` makes `game_library`, a folder holding a Rust library, next to the file. A Rust program uses it with one line in its `Cargo.toml`, which Lust prints:
@@ -1446,7 +1469,7 @@ An engine can use Lust's compiler itself, as a Rust library: to check a game's L
 
 ```
 [dependencies]
-lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.49", default-features = false }
+lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.50", default-features = false }
 ```
 
 Without its default features it needs nothing but Rust's own library (the default ones are the `lust` command). Lust doesn't open any files: the engine reads them, and hands over each one's path and text, with `/` between folders.
@@ -1463,6 +1486,7 @@ match lust::to_lua("main.lst", &files) {
 ```
 
 - **`lust::check(entry, &files)`**, **`lust::to_lua(entry, &files)`** and **`lust::to_rust_library(entry, &files)`**: `entry` is the program's first file. `fetch` and `get` find the others among `files`, from the project's folder (the nearest one up with a `main.lst`).
+- **`lust::check_with(&engine, entry, &files)`**, **`to_lua_with`** and **`to_rust_library_with`** do the same inside an engine: `lust::Engine { folders: vec!["solis".into()] }` names its host folders, whose files come with every program and may give `entity` methods. The calls without `_with` are these with no host folders.
 - **Mistakes:** every one found, in order, as a `Problem` with `file`, `line`, `column` and `message`. Shown with `{}`, it's what `lust check` prints: `parts/gun.lst:12:5  ammo is an int, but this is text.`
 - **Deep code is a mistake, not a crash.** Code nested more than 150 levels deep (brackets, blocks, or operators in a row like `a + b + c …`) is reported as a `Problem` like any other, so Lua and Rust can always take what Lust accepts. The compiler runs on a thread of its own with room to spare (64 MB of stack, reserved but not used), so it never runs the engine out of stack, whatever it's given.
 - **`lust::VERSION`** is the compiler's version, so an engine can show it and refuse one it doesn't expect.

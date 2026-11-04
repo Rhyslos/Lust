@@ -106,7 +106,50 @@ fn shown_path(path: &Path, root: &Path) -> String {
 }
 
 /// Reads the program that starts at `entry`, with every file it brings in.
-pub fn load(entry: &Path, src: String, is_script: bool, diags: &mut Diags, mem: Option<&Memory>) -> Project {
+/// Every file in the engine's own folders (`host`, like `solis`), from the project's folder:
+/// they're part of every program, so the `entity` methods they give work everywhere.
+fn host_paths(root: &Path, host: &[String], ext: &str, mem: Option<&Memory>) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    for folder in host {
+        let dir = tidy(&root.join(folder.trim_end_matches('/')));
+        match mem {
+            Some(m) => {
+                let mut found: Vec<PathBuf> = m
+                    .keys()
+                    .filter(|p| p.starts_with(&dir) && p.extension().and_then(|e| e.to_str()) == Some(ext))
+                    .cloned()
+                    .collect();
+                found.sort();
+                out.extend(found);
+            }
+            None => {
+                fn walk(d: &Path, ext: &str, out: &mut Vec<PathBuf>) {
+                    let Ok(entries) = std::fs::read_dir(d) else { return };
+                    let mut entries: Vec<PathBuf> = entries.filter_map(|e| e.ok().map(|e| e.path())).collect();
+                    entries.sort();
+                    for p in entries {
+                        if p.is_dir() {
+                            walk(&p, ext, out);
+                        } else if p.extension().and_then(|e| e.to_str()) == Some(ext) {
+                            out.push(p);
+                        }
+                    }
+                }
+                walk(&dir, ext, &mut out);
+            }
+        }
+    }
+    out
+}
+
+pub fn load(
+    entry: &Path,
+    src: String,
+    is_script: bool,
+    diags: &mut Diags,
+    mem: Option<&Memory>,
+    host: &[String],
+) -> Project {
     let ext = if is_script { "lsc" } else { "lst" };
     // The search for the project's folder starts from the file's full path, so a short one like
     // entities/player.lst still finds main.lst in the folder above.
@@ -116,6 +159,14 @@ pub fn load(entry: &Path, src: String, is_script: bool, diags: &mut Diags, mem: 
     };
     let entry = full.as_path();
     let root = root_of(entry, ext, mem);
+    // On the disk, a project names its engine's folders in lust.host, one to a line.
+    let mut host = host.to_vec();
+    if mem.is_none() {
+        if let Ok(text) = std::fs::read_to_string(root.join("lust.host")) {
+            host.extend(text.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with("--")).map(String::from));
+        }
+    }
+    let host = host.as_slice();
     let canon = |p: &Path| match mem {
         Some(_) => tidy(p),
         None => std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf()),
@@ -124,6 +175,19 @@ pub fn load(entry: &Path, src: String, is_script: bool, diags: &mut Diags, mem: 
     // A file's number is its place in the queue.
     let mut queue: Vec<(PathBuf, Option<String>)> = vec![(entry.to_path_buf(), Some(src))];
     let mut index: HashMap<PathBuf, usize> = HashMap::from([(canon(entry), 0)]);
+    // The engine's own files come with every program.
+    let mut host_files: HashSet<usize> = HashSet::new();
+    for p in host_paths(&root, host, ext, mem) {
+        let at = match index.get(&canon(&p)) {
+            Some(&at) => at,
+            None => {
+                queue.push((p.clone(), None));
+                index.insert(canon(&p), queue.len() - 1);
+                queue.len() - 1
+            }
+        };
+        host_files.insert(at);
+    }
     // The file each import points at, by (file, import number).
     let mut targets: HashMap<(usize, usize), usize> = HashMap::new();
     let mut next_id = 0;
@@ -305,6 +369,7 @@ pub fn load(entry: &Path, src: String, is_script: bool, diags: &mut Diags, mem: 
             passes: exports,
             next_id,
             compound,
+            host_files,
         },
         files: shown,
     }
@@ -316,6 +381,8 @@ fn declarations(p: &Program) -> HashMap<String, Kind> {
         match item {
             Item::State(s) => d.insert(s.name.clone(), Kind::State),
             Item::Class(c) => d.insert(c.name.clone(), if c.is_object { Kind::Object } else { Kind::Class }),
+            // A method on entity isn't a name of its own: it's called on an entity.
+            Item::Method(m) if m.on_entity => None,
             Item::Method(m) => d.insert(m.name.clone(), Kind::Method),
             Item::Assembly(a) => d.insert(a.name.clone(), Kind::Assembly),
             Item::Database(b) => d.insert(b.name.clone(), Kind::Database),
@@ -467,7 +534,9 @@ impl<'a> Renamer<'a> {
                 }
             }
             Item::Method(m) => {
-                self.name(&mut m.name, m.pos, false);
+                if !m.on_entity {
+                    self.name(&mut m.name, m.pos, false);
+                }
                 self.method(m);
             }
             Item::Style(s) => {
