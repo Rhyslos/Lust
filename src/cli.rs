@@ -63,6 +63,12 @@ pub fn compile_as(path: &Path, quiet: bool, library: bool) -> Option<Compiled> {
             return None;
         }
     };
+    // Notes aren't mistakes (me, which is now this): said, and everything goes on.
+    if !quiet {
+        for n in &c.notes {
+            eprintln!("{n}");
+        }
+    }
     let rust = (!c.is_script).then(|| rust::write(&c.prog, &c.info, &c.files, library));
     Some(Compiled {
         out: lua::write(&c.prog, &c.info, !c.is_script),

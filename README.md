@@ -43,7 +43,7 @@ Lust is written in Rust, and has one language with two outputs:
 | Rust, compiled to real programs | `.lst` | apps, tools and servers on Windows, macOS and Linux |
 | LustScript, turned into Lua | `.lsc` | scripting and modding inside other programs, like Garry's Mod, Aventail and Halberd |
 
-**What works today (alpha 56):** both outputs. Every file is checked before anything runs, with mistakes explained in plain words.
+**What works today (alpha 57):** both outputs. Every file is checked before anything runs, with mistakes explained in plain words.
 
 - `.lsc` files turn into plain Lua 5.1 that Garry's Mod (LuaJIT) and Luau can run.
 - `.lst` files turn into Rust, which builds into a real program (an `.exe` on Windows) that runs without Lust.
@@ -60,7 +60,7 @@ Every test runs both ways, through Lua and as a real program, and both have to p
 
 [Ledger](https://github.com/Rhyslos/ledger), our editor, colours, checks, runs and builds Lust files.
 
-The full rules are in **[LUST.md](LUST.md)**, and what gets built next is in **[ROADMAP.md](ROADMAP.md)**. Lust 1, the version that compiled to C#, lives on the [`v1`](https://github.com/Rhyslos/Lust/tree/v1) branch.
+The full rules are in **[LUST.md](LUST.md)**, and what gets built next is in **[ROADMAP.md](ROADMAP.md)**. An engine using Lust (Solis, say) reads **[ENGINES.md](ENGINES.md)** when it moves to a newer Lust: what changed for engines, version by version, and what to do. Lust 1, the version that compiled to C#, lives on the [`v1`](https://github.com/Rhyslos/Lust/tree/v1) branch.
 
 ## Install
 

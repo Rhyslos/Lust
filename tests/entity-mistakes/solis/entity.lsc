@@ -3,5 +3,8 @@ method vec3 entity:position() native;
 method float entity:position() native;
 method entity:push(vec3 force) native;
 method int map entity:hits() native;
+-- entity has text() already, Lust's own.
+method string entity:text() native;
+method int entity:len() native;
 
 end

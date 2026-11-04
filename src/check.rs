@@ -575,6 +575,8 @@ impl<'a> Checker<'a> {
                             m.pos,
                             format!("entity:{} is already given on line {line} of the engine's files.", m.name),
                         );
+                    } else if m.name == "text" {
+                        self.err(m.pos, "entity already has text(), Lust's own: it gives the entity's name as the engine writes it. Give this one another name.");
                     } else {
                         self.info.entity_methods.insert(m.name.clone(), sig);
                     }
@@ -601,6 +603,28 @@ impl<'a> Checker<'a> {
                 }
                 _ => {}
             }
+        }
+        // entity:len reaches the engine as entity_len, so a method of that name would be the same
+        // one twice, there and in Rust.
+        let mut clashes: Vec<(crate::ast::Pos, String)> = self
+            .info
+            .entity_methods
+            .keys()
+            .filter_map(|n| {
+                let own = format!("entity_{n}");
+                self.info
+                    .methods
+                    .get(&own)
+                    .map(|s| (crate::ast::Pos { line: s.line, col: s.col }, own))
+            })
+            .collect();
+        clashes.sort_by_key(|(p, _)| (p.line, p.col));
+        for (pos, own) in clashes {
+            let n = &own["entity_".len()..];
+            self.err(
+                pos,
+                format!("{own} is the name the engine's entity:{n} goes by, so a method can't have it. Give it another name."),
+            );
         }
         // Fields go in parent-first order, so a class can see its parent's fields.
         let order = self.class_order(prog);
@@ -3006,9 +3030,15 @@ impl<'a> Checker<'a> {
             let component = ctx.class.is_some_and(|c| self.info.classes[c].is_component);
             if self.this_ids.contains(&e.id) {
                 if !component {
+                    // In a class's method, what's meant is most likely one of its fields.
+                    let hint = if ctx.class.is_some() {
+                        " Inside a class's method, use a field's name on its own."
+                    } else {
+                        ""
+                    };
                     self.err(
                         e.pos,
-                        "this is the entity a component is on, so only a component's methods have it. Inside a class's method, use a field's name on its own.",
+                        format!("this is the entity a component is on, so only a component's methods have it.{hint}"),
                     );
                     return Ty::Error;
                 }
