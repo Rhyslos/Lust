@@ -182,6 +182,15 @@ pub fn attempt(f: impl FnOnce()) -> Option<String> {
 
 // ----- things and hooks that may be nothing -----
 
+/// A component's field the engine fills in, read: before the engine has filled it, the program
+/// stops, naming the field.
+pub fn filled<T>(v: Option<T>, name: &str) -> Option<T> {
+    match v {
+        Some(v) => Some(v),
+        None => fail(format!("{name} is filled in by the engine before the component's first update, and hasn't been yet.")),
+    }
+}
+
 pub fn obj<T: HasClass>(o: &Option<Rc<RefCell<T>>>) -> Rc<RefCell<T>> {
     match o {
         Some(r) => {

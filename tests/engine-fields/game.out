@@ -1,4 +1,4 @@
 filled: [("anim", "FarmerAnimator")]
 kept and shown: ["speed"]
-game.lst:12  this is nothing, so it has no fields or methods. Check first: is it !== nothing?
+game.lst:12  anim is filled in by the engine before the component's first update, and hasn't been yet.
 animator 12 plays Walk

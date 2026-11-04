@@ -58,6 +58,7 @@ The order Lust gets built in. Each step makes Lust more useful on its own, and n
 | ✅ | **14.7 Data files, as planned:** `read_values` checks a data file like any file, only state options count as dotted names, and 19 MB reads in under a second | Done (alpha 55) |
 | ✅ | **14.8 Engine objects, as planned:** only passed objects are ticked and saved, a wrong `update` is a mistake, Lua loads check kinds | Done (alpha 56) |
 | ✅ | **14.9 Tidy-ups from review:** `entity:text()` and `entity_…` clashes refused, the `me` note shown by `lust check`, clearer `this` messages, and [ENGINES.md](ENGINES.md) for engines moving to a newer Lust | Done (alpha 57) |
+| ✅ | **14.10 An unfilled engine field is named:** reading a component's field before the engine has filled it stops saying which field, not only "this is nothing" | Done (alpha 58) |
 | | 🏁 *Lust's first release that isn't a test version.* | |
 
 ## Decisions along the way

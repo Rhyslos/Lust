@@ -1273,7 +1273,10 @@ impl<'a> W<'a> {
                     }
                 }
                 match self.info.names.get(&e.id) {
-                    Some(NameRes::Field) => format!("self.{}", lname(n)),
+                    Some(NameRes::Field) => match self.info.filled_reads.get(&e.id) {
+                        Some(name) => format!("_L.filled(self.{}, {})", lname(n), lua_string(name)),
+                        None => format!("self.{}", lname(n)),
+                    },
                     Some(NameRes::OwnMethod) => format!("_L.bind(self, {})", lua_string(&lname(n))),
                     _ => lname(n),
                 }

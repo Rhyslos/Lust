@@ -181,6 +181,14 @@ local function f32text(x) return L.ftext(tonumber(fmt("%.7g", x)) + 0) end
 -- given its length.
 function L.hvec(v) return vec(v.x, v.y, v.z) end
 function L.hrot(q) return quat(q.x, q.y, q.z, q.w) end
+-- A component's field the engine fills in, read: before the engine has filled it, the program
+-- stops, naming the field.
+function L.filled(v, name)
+  if v == nil then
+    error(name .. " is filled in by the engine before the component's first update, and hasn't been yet.", 2)
+  end
+  return v
+end
 -- A state's option a native gave back, by its full name ("Farmer.Walk"): one the state doesn't
 -- have stops the program, on the line that called the native (level: how far up that is).
 function L.hstate(opts, state, level)
