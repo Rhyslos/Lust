@@ -340,6 +340,23 @@ pub fn load(entry: &Path, src: String, is_script: bool, diags: &mut Diags, mem: 
         .collect();
     // What the first file passes: what a library made from it shows to the program using it.
     let exports: Vec<(String, Pos)> = files[0].prog.passes.iter().map(|(n, p)| (inner(0, n), *p)).collect();
+    // The files the game reaches: the first and what it fetches and gets, on and on. An engine
+    // file nothing reaches comes with the program for its entity methods (and what they need),
+    // but its components and objects only count once the game fetches it: a ready-made
+    // component in the engine's folder doesn't join every game, and can't clash with a game's
+    // own of the same name.
+    let mut reached = vec![false; files.len()];
+    let mut todo = vec![0];
+    while let Some(f) = todo.pop() {
+        if std::mem::replace(&mut reached[f], true) {
+            continue;
+        }
+        for k in 0..files[f].prog.imports.len() {
+            if let Some(&t) = targets.get(&(f, k)) {
+                todo.push(t);
+            }
+        }
+    }
     let mut items = Vec::new();
     let mut body = Vec::new();
     let mut uses_lua = false;
@@ -355,6 +372,9 @@ pub fn load(entry: &Path, src: String, is_script: bool, diags: &mut Diags, mem: 
             diags,
         };
         let mut prog = file.prog;
+        if !reached[f] {
+            prog.items.retain(|item| !matches!(item, Item::Class(c) if c.is_component || c.is_object));
+        }
         for item in &mut prog.items {
             r.item(item);
         }

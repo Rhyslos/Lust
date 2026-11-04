@@ -519,6 +519,33 @@ mod deep_code {
     }
 
     #[test]
+    fn an_engine_s_components_join_only_when_fetched() {
+        let kit = "component Walker {\n    has { float speed = 4; }\n    method update(float dt) { }\n}\n\
+            object Weather {\n    has { float rain = 0; }\n    method update(float dt) { }\n}\npass Walker, Weather;\nend\n";
+        let mut files = vec![
+            ("main.lst".to_string(), "component Walker {\n    has { int steps = 0; }\n}\nend\n".to_string()),
+            ("solis/entity.lst".to_string(), "method vec3 entity:position() native;\nend\n".to_string()),
+            ("solis/kit/walker.lst".to_string(), kit.to_string()),
+        ];
+        let engine = crate::Engine {
+            folders: vec!["solis".into()],
+        };
+        // Not fetched: the game's own Walker is the only one, with no clash.
+        crate::check_with(&engine, "main.lst", &files).unwrap();
+        let chunk = crate::to_lua_with(&engine, "main.lst", &files).unwrap();
+        assert!(chunk.code.contains("steps"), "{}", chunk.code);
+        assert!(!chunk.code.contains("speed"), "{}", chunk.code);
+        assert!(!chunk.code.contains("Weather"), "{}", chunk.code);
+        let rust = crate::to_rust_library_with(&engine, "main.lst", &files).unwrap();
+        assert!(!rust.contains("Weather"));
+        // Fetched: the engine's Walker and Weather are the game's.
+        files[0].1 = "fetch \"solis/kit/walker\":[Walker, Weather];\nend\n".to_string();
+        let chunk = crate::to_lua_with(&engine, "main.lst", &files).unwrap();
+        assert!(chunk.code.contains("speed"), "{}", chunk.code);
+        assert!(chunk.code.contains("[\"Weather\"] = true"), "{}", chunk.code);
+    }
+
+    #[test]
     fn an_engine_ticks_and_saves_only_the_objects_files_pass() {
         let game = "object Clock {\n    has { float hour = 0; }\n    method update(float dt) { hour += dt; }\n}\n\
             object Notes {\n    has { int seen = 0; }\n    method update(float dt) { seen += 1; }\n}\npass Clock;\nend\n";
