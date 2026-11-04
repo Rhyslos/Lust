@@ -381,6 +381,7 @@ impl<'a> W<'a> {
         let mut forward = Vec::new();
         for item in &prog.items {
             match item {
+                Item::Method(m) if m.on_entity => forward.push(format!("_E_{}", lname(&m.name))),
                 Item::Method(m) => forward.push(lname(&m.name)),
                 Item::Assembly(a) => {
                     for (class, _, _) in &a.recipes {
@@ -447,6 +448,24 @@ impl<'a> W<'a> {
         }
         // Methods on their own.
         for item in &prog.items {
+            // A method the engine's files give entity: the host's entity_name does the work, given
+            // the entity first.
+            if let Some(Item::Method(m)) = item.filter_entity() {
+                self.class = None;
+                let params: Vec<String> = m.params.iter().map(|p| lname(&p.name)).collect();
+                let mut all = vec!["this".to_string()];
+                all.extend(params.iter().cloned());
+                self.line(m.pos.line, &format!("_E_{} = function({})", lname(&m.name), all.join(", ")));
+                self.indent += 1;
+                let mut args = vec![lua_string(&format!("entity_{}", m.name)), lua_string(&format!("entity:{}", m.name))];
+                args.extend(all.iter().cloned());
+                let ret = self.info.entity_methods.get(&m.name).map(|s| s.ret.clone()).unwrap_or(Ty::Void);
+                let call = host_in(self.info, &ret, format!("_L.native({})", args.join(", ")));
+                self.line(m.pos.line, &format!("return {call}"));
+                self.indent -= 1;
+                self.line(m.pos.line, "end");
+                continue;
+            }
             if let Item::Method(m) = item {
                 self.class = None;
                 let params: Vec<String> = m.params.iter().map(|p| lname(&p.name)).collect();
@@ -1265,6 +1284,11 @@ impl<'a> W<'a> {
                         format!("_L.{prefix}{m}({})", all.join(", "))
                     }
                     Some(CallRes::FieldHook) => format!("{tc}.{}({})", lname(m), a.join(", ")),
+                    Some(CallRes::Entity) => {
+                        let mut all = vec![tc];
+                        all.extend(a);
+                        format!("_E_{}({})", lname(m), all.join(", "))
+                    }
                     _ => format!("{tc}:{}({})", lname(m), a.join(", ")),
                 }
             }

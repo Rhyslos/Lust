@@ -85,6 +85,8 @@ pub enum NameRes {
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum CallRes {
     Builtin,
+    /// `target:position()` on an entity: a method the engine's files give entity.
+    Entity,
     Top,
     Own,
     LocalHook,
@@ -130,6 +132,8 @@ pub struct Info {
     pub saves: HashMap<String, Vec<(String, SaveItem)>>,
     pub states: Vec<StateInfo>,
     pub classes: Vec<ClassInfo>,
+    /// Methods the engine's own files give `entity`, by name: `method vec3 entity:position() native;`.
+    pub entity_methods: HashMap<String, MethodSig>,
     pub methods: HashMap<String, MethodSig>,
     pub class_index: HashMap<String, usize>,
     pub state_index: HashMap<String, usize>,
@@ -416,6 +420,7 @@ impl<'a> Checker<'a> {
                         tables: vec![],
                     });
                 }
+                Item::Method(m) if m.on_entity => {}
                 Item::Method(m) => {
                     if self.name_taken(&m.name, m.pos) {
                         continue;
@@ -533,6 +538,20 @@ impl<'a> Checker<'a> {
         }
         for item in &prog.items {
             match item {
+                Item::Method(m) if m.on_entity => {
+                    let sig = self.signature(m);
+                    if !prog.host_files.contains(&m.pos.file()) {
+                        self.err(
+                            m.pos,
+                            format!("only the engine's own files give entity methods, so entity:{} can't be declared here.", m.name),
+                        );
+                    } else if let Some(was) = self.info.entity_methods.get(&m.name) {
+                        let line = crate::ast::Pos { line: was.line, col: was.col }.row();
+                        self.err(m.pos, format!("entity:{} is already given on line {line} of the engine's files.", m.name));
+                    } else {
+                        self.info.entity_methods.insert(m.name.clone(), sig);
+                    }
+                }
                 Item::Method(m) => {
                     let sig = self.signature(m);
                     self.info.methods.insert(m.name.clone(), sig);
@@ -1609,6 +1628,7 @@ impl<'a> Checker<'a> {
     fn method_body(&mut self, m: &MethodDecl, class: Option<usize>) {
         let sig = match class {
             Some(c) => self.info.classes[c].methods.get(&m.name).cloned(),
+            None if m.on_entity => self.info.entity_methods.get(&m.name).cloned(),
             None => self.info.methods.get(&m.name).cloned(),
         };
         let Some(sig) = sig else { return };
@@ -3882,6 +3902,12 @@ impl<'a> Checker<'a> {
                     self.expr(a, ctx, None);
                 }
                 Ty::Error
+            }
+            Ty::Entity if self.info.entity_methods.contains_key(m) => {
+                let sig = self.info.entity_methods[m].clone();
+                self.info.calls.insert(e.id, CallRes::Entity);
+                self.args(args, &sig.params, m, mpos, ctx);
+                sig.ret
             }
             other => {
                 for a in args {

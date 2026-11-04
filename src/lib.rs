@@ -149,11 +149,11 @@ pub(crate) fn front(path: &Path) -> Result<Checked, Vec<Problem>> {
         Ok(s) => s.replace("\r\n", "\n"),
         Err(_) => return Err(whole(&display, format!("there's no file called {}.", path.display()))),
     };
-    checked(path, src, is_script, None)
+    checked(path, src, is_script, None, &[])
 }
 
 /// The same, with every file's text handed over by its path: Lust doesn't open any files.
-fn front_from(entry: &str, files: &[(String, String)]) -> Result<Checked, Vec<Problem>> {
+fn front_from(entry: &str, files: &[(String, String)], engine: &Engine) -> Result<Checked, Vec<Problem>> {
     let mem: project::Memory = files
         .iter()
         .map(|(p, text)| (project::tidy(Path::new(&p.replace('\\', "/"))), text.clone()))
@@ -163,7 +163,7 @@ fn front_from(entry: &str, files: &[(String, String)]) -> Result<Checked, Vec<Pr
     let Some(src) = mem.get(&path).cloned() else {
         return Err(whole(entry, format!("there's no file called {entry} among the files handed over.")));
     };
-    checked(&path, src.replace("\r\n", "\n"), is_script, Some(&mem))
+    checked(&path, src.replace("\r\n", "\n"), is_script, Some(&mem), &engine.folders)
 }
 
 fn whole(file: &str, message: String) -> Vec<Problem> {
@@ -197,9 +197,15 @@ fn kind_of(path: &Path, display: &str) -> Result<bool, Vec<Problem>> {
     Ok(ext == "lsc")
 }
 
-fn checked(path: &Path, src: String, is_script: bool, mem: Option<&project::Memory>) -> Result<Checked, Vec<Problem>> {
+fn checked(
+    path: &Path,
+    src: String,
+    is_script: bool,
+    mem: Option<&project::Memory>,
+    host: &[String],
+) -> Result<Checked, Vec<Problem>> {
     let mut diags = diag::Diags::default();
-    let project = project::load(path, src, is_script, &mut diags, mem);
+    let project = project::load(path, src, is_script, &mut diags, mem, host);
     let prog = project.program;
     let files = project.files;
     let info = check::check(&prog, &mut diags, is_script);
@@ -246,21 +252,40 @@ fn on_own_stack<T: Send>(f: impl FnOnce() -> T + Send) -> T {
     }
 }
 
+/// What Lust knows of the engine it's inside.
+#[derive(Debug, Clone, Default)]
+pub struct Engine {
+    /// The folders holding the engine's own files, from the project's folder (`"solis"`). Those
+    /// files are part of every program, and only they may give `entity` methods
+    /// (`method vec3 entity:position() native;`).
+    pub folders: Vec<String>,
+}
+
 /// Checks a program: `entry` is its first file's path, and `files` every file's path and text,
 /// with / between folders (\\ works too). Gives back every mistake found, each with its file,
 /// line and column, in order.
 pub fn check(entry: &str, files: &[(String, String)]) -> Result<(), Vec<Problem>> {
-    on_own_stack(|| front_from(entry, files).map(|_| ()))
+    check_with(&Engine::default(), entry, files)
+}
+
+/// [`check`], inside an engine: its own folders' files come with every program.
+pub fn check_with(engine: &Engine, entry: &str, files: &[(String, String)]) -> Result<(), Vec<Problem>> {
+    on_own_stack(|| front_from(entry, files, engine).map(|_| ()))
 }
 
 /// Lua for an engine to load (Lua 5.1, LuaJIT or Luau): Lust's runtime, the program, and at the
 /// end a table the engine uses to make, run and swap components. See LUST.md, section 21.
 pub fn to_lua(entry: &str, files: &[(String, String)]) -> Result<LuaChunk, Vec<Problem>> {
-    on_own_stack(|| lua_chunk(entry, files))
+    to_lua_with(&Engine::default(), entry, files)
 }
 
-fn lua_chunk(entry: &str, files: &[(String, String)]) -> Result<LuaChunk, Vec<Problem>> {
-    let c = front_from(entry, files)?;
+/// [`to_lua`], inside an engine: its own folders' files come with every program.
+pub fn to_lua_with(engine: &Engine, entry: &str, files: &[(String, String)]) -> Result<LuaChunk, Vec<Problem>> {
+    on_own_stack(|| lua_chunk(entry, files, engine))
+}
+
+fn lua_chunk(entry: &str, files: &[(String, String)], engine: &Engine) -> Result<LuaChunk, Vec<Problem>> {
+    let c = front_from(entry, files, engine)?;
     let out = lua::write_for_engine(&c.prog, &c.info, !c.is_script);
     Ok(LuaChunk {
         code: out.code,
@@ -273,11 +298,16 @@ fn lua_chunk(entry: &str, files: &[(String, String)]) -> Result<LuaChunk, Vec<Pr
 /// A Rust library made from a .lst program: what `lust build --library` puts in its src/lib.rs.
 /// Its Cargo.toml needs no dependencies, unless the Lust uses databases, the web or windows.
 pub fn to_rust_library(entry: &str, files: &[(String, String)]) -> Result<String, Vec<Problem>> {
-    on_own_stack(|| rust_library(entry, files))
+    to_rust_library_with(&Engine::default(), entry, files)
 }
 
-fn rust_library(entry: &str, files: &[(String, String)]) -> Result<String, Vec<Problem>> {
-    let c = front_from(entry, files)?;
+/// [`to_rust_library`], inside an engine: its own folders' files come with every program.
+pub fn to_rust_library_with(engine: &Engine, entry: &str, files: &[(String, String)]) -> Result<String, Vec<Problem>> {
+    on_own_stack(|| rust_library(entry, files, engine))
+}
+
+fn rust_library(entry: &str, files: &[(String, String)], engine: &Engine) -> Result<String, Vec<Problem>> {
+    let c = front_from(entry, files, engine)?;
     if c.is_script {
         return Err(whole(
             entry,
@@ -407,6 +437,28 @@ mod deep_code {
 
     fn method(body: &str) -> String {
         format!("method int f(int a) {{\n{body}\n}}\nend\n")
+    }
+
+    #[test]
+    fn an_engine_s_folders_give_entity_methods() {
+        let files = vec![
+            ("main.lst".to_string(), "entity e = nothing;\nvec3 at = e:position();\nend\n".to_string()),
+            ("solis/entity.lst".to_string(), "method vec3 entity:position() native;\nend\n".to_string()),
+        ];
+        let engine = crate::Engine {
+            folders: vec!["solis".into()],
+        };
+        crate::check_with(&engine, "main.lst", &files).unwrap();
+        let chunk = crate::to_lua_with(&engine, "main.lst", &files).unwrap();
+        assert!(chunk.code.contains("entity_position"));
+        let rust = crate::to_rust_library_with(&engine, "main.lst", &files).unwrap();
+        assert!(rust.contains("fn entity_position(&self, this: Option<u64>) -> Vec3"));
+        // Without the engine's folders, the file isn't the engine's: it's not even part of the
+        // program, and its declaration is refused when it is.
+        let problems = crate::check("main.lst", &files).unwrap_err();
+        assert!(problems[0].message.contains("no method called position"), "{}", problems[0]);
+        let problems = crate::check("solis/entity.lst", &files).unwrap_err();
+        assert!(problems[0].message.contains("only the engine's own files"), "{}", problems[0]);
     }
 
     #[test]

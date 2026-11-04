@@ -1,0 +1,7 @@
+game.lsc:5:15  only the engine's own files give entity methods, so entity:fly can't be declared here.
+game.lsc:8:8  force is a vec3, but this is an int.
+game.lsc:9:3  e is an entity, which has no method called jump.
+solis/entity.lsc:3:21  entity:position is already given on line 2 of the engine's files.
+solis/entity.lsc:5:23  a native method gives back an int, a float, text, a bool, a vec3, a rotation, a state's option, a thing made from a class, or an array of those, but hits gives back an int map.
+
+5 mistakes. Nothing was run.

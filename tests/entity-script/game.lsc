@@ -1,0 +1,20 @@
+-- Methods the engine's files give entity are called on any entity, without bringing them in.
+fetch lua;
+get "solis/entity":player;
+
+lua {
+    local places = { P0000000000001 = { x = 1, y = 2, z = 0 } }
+    LUST_NATIVES = {
+        player = function() return "P0000000000001" end,
+        entity_position = function(e) return places[e] end,
+        entity_moveTo = function(e, to) places[e] = to end,
+        entity_name = function(e) return "the farmer" end,
+    }
+};
+
+entity p = player();
+print(p:position());
+p:moveTo(p:position() + [3, 0, 0]);
+print(p:position());
+print(p:name() + " is at " + p:position().x.text());
+end

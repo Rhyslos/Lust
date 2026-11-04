@@ -1,0 +1,4 @@
+-- A method on entity has its body in the engine, so it ends with native;.
+method entity:wave() {
+}
+end

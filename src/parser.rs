@@ -455,6 +455,7 @@ impl<'a> Parser<'a> {
             passes: std::mem::take(&mut self.passes),
             next_id: self.next_id + 1,
             compound: std::mem::take(&mut self.compound),
+            host_files: Default::default(),
         }
     }
 
@@ -1141,10 +1142,12 @@ impl<'a> Parser<'a> {
     fn method_decl(&mut self) -> R<MethodDecl> {
         self.next(); // method
         let mut ret = None;
+        // method entity:position() native; gives back nothing.
+        let entity_first = self.at_word("entity") && self.peek(1).is_sym(":");
         // A name followed by ( is the method's own, unless it's a type that's written with ( ):
         // method cMap(int id, string item) starter() gives back a cMap.
         let typed = self.at_word("cMap") || self.at_word("hook");
-        if typed || !(matches!(self.cur().kind, Tk::Ident(_)) && self.peek(1).is_sym("(")) {
+        if !entity_first && (typed || !(matches!(self.cur().kind, Tk::Ident(_)) && self.peek(1).is_sym("("))) {
             if self.at_word("void") {
                 let pos = self.cur().pos;
                 return self.fail(pos, "Lust has no void. Leave the return type out when nothing comes back.");
@@ -1155,6 +1158,12 @@ impl<'a> Parser<'a> {
                 return self.fail(end, format!("expected ( after {t}, even when it takes nothing: method {t}() {{ }}"));
             }
             ret = Some(t);
+        }
+        // method vec3 entity:position() native;: a method on the engine's entity.
+        let on_entity = self.at_word("entity") && self.peek(1).is_sym(":");
+        if on_entity {
+            self.next();
+            self.next();
         }
         let (name, pos) = self.ident("the method's name")?;
         check_name(self.diags, &name, pos, NameKind::Value, "method");
@@ -1190,7 +1199,15 @@ impl<'a> Parser<'a> {
                 body: vec![],
                 native: true,
                 on: None,
+                on_entity,
             });
+        }
+        if on_entity {
+            let p = self.cur().pos;
+            return self.fail(
+                p,
+                format!("a method on entity has its body in the engine: end it with native; instead of {{ … }}: method entity:{name}() native;"),
+            );
         }
         let body = self.block("the method")?;
         Ok(MethodDecl {
@@ -1201,6 +1218,7 @@ impl<'a> Parser<'a> {
             body,
             native: false,
             on: None,
+            on_entity: false,
         })
     }
 
@@ -1258,6 +1276,7 @@ impl<'a> Parser<'a> {
             body,
             native: false,
             on: Some((event, epos)),
+            on_entity: false,
         })
     }
 

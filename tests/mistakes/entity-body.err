@@ -1,0 +1,3 @@
+entity-body.lsc:2:22  a method on entity has its body in the engine: end it with native; instead of { … }: method entity:wave() native;
+
+1 mistake. Nothing was run.

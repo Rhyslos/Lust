@@ -1,0 +1,11 @@
+-- Entity methods come only from the engine's files, are checked like any method, and an entity
+-- has only the ones they give.
+fetch lua;
+
+method entity:fly() native;
+
+entity e = nothing;
+e:push(3);
+e:jump();
+print(e:position().x);
+end

@@ -287,6 +287,32 @@ pub fn write(prog: &Program, info: &Info, files: &[String], library: bool) -> St
 
     // Methods on their own.
     for item in &prog.items {
+        // A method the engine's files give entity: a function taking the entity first, whose
+        // body is the program's entity_name.
+        if let Some(Item::Method(m)) = item.filter_entity() {
+            let Some(sig) = info.entity_methods.get(&m.name).cloned() else { continue };
+            let mut params = vec!["v_this: u64".to_string()];
+            params.extend(m.params.iter().zip(&sig.params).map(|(p, (_, t))| format!("mut v_{}: {}", p.name, w.ty(t))));
+            let mut b = String::from("    let _depth = rt::Depth::enter();\n");
+            w.class = None;
+            w.current_ret = Some(sig.ret.clone());
+            let name = format!("entity_{}", snake(&m.name));
+            let mut decl = vec!["&self".to_string(), "this: Option<u64>".to_string()];
+            let mut args = vec![w.to_api("v_this", &Ty::Entity)];
+            for (p, (_, t)) in m.params.iter().zip(&sig.params) {
+                decl.push(format!("{}: {}", snake(&p.name), w.api_ty(t)));
+                args.push(w.to_api(&format!("v_{}", p.name), t));
+            }
+            host_fns.push(format!("    fn {name}({}){};\n", decl.join(", "), w.host_ret(&sig.ret)));
+            b.push_str(&w.native_body(&name, &format!("entity:{}", m.name), &args, &sig.ret));
+            defs.push_str(&format!(
+                "#[allow(unused_mut)]\nfn e_{}({}){} {{\n{b}}}\n",
+                ident(&m.name),
+                params.join(", "),
+                w.ret(&sig.ret)
+            ));
+            continue;
+        }
         if let Item::Method(m) = item {
             let sig = info.methods[&m.name].clone();
             let params: Vec<String> = m
@@ -1075,7 +1101,7 @@ impl<'a> W<'a> {
         }
         for item in &prog.items {
             let Item::Method(m) = item else { continue };
-            if !exported(&m.name) {
+            if m.on_entity || !exported(&m.name) {
                 continue;
             }
             let sig = info.methods[&m.name].clone();
@@ -1996,6 +2022,12 @@ impl<'a> W<'a> {
                         (Ty::CMap(_), "reverse") => format!("rt::creverse(&{tc})"),
                         _ => "()".into(),
                     },
+                    Some(CallRes::Entity) => {
+                        let sig = self.info.entity_methods[m].clone();
+                        let a = self.args(args, &sig.params.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>());
+                        let all = if a.is_empty() { tc } else { format!("{tc}, {a}") };
+                        format!("e_{}({all})", ident(m))
+                    }
                     Some(CallRes::FieldHook) => {
                         let Ty::Class(c) = tt else { return "()".into() };
                         let fname = self.field_of(c, m);
@@ -2046,7 +2078,7 @@ impl<'a> W<'a> {
                     let a = self.args(args, &sig.params.iter().map(|(t, _)| t.clone()).collect::<Vec<_>>());
                     format!("{{ let h = rt::hk(&v_{name}); h({a}) }}")
                 }
-                None => "()".into(),
+                Some(CallRes::Entity) | None => "()".into(),
             },
             ExprKind::Index(t, i) if matches!(self.info.ty(t), Ty::Table(_)) => {
                 let Ty::Table(tt) = self.info.ty(t) else { return "()".into() };

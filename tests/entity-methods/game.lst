@@ -1,0 +1,23 @@
+-- Methods the engine's files give entity, built as a Rust library: called on any entity,
+-- without bringing them in, and on me inside a component.
+get "solis/entity":player;
+
+component Walker {
+    has {
+        float speed = 2;
+    }
+
+    method update(float dt) {
+        me:moveTo(me:position() + [speed * dt, 0, 0]);
+    }
+}
+
+method show() {
+    entity p = player();
+    print(p:position());
+    p:moveTo(p:position() + [3, 0, 0]);
+    print(p:name() + " is at " + p:position().x.text());
+}
+
+pass Walker, show;
+end

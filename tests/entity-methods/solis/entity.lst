@@ -1,0 +1,9 @@
+-- What the engine gives every entity: made by the engine, bodies in Rust.
+method vec3 entity:position() native;
+method entity:moveTo(vec3 place) native;
+method string entity:name() native;
+
+method entity player() native;
+
+pass player;
+end
