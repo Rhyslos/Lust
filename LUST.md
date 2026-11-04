@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (alpha 53):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (alpha 54):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -1469,7 +1469,7 @@ An engine can use Lust's compiler itself, as a Rust library: to check a game's L
 
 ```
 [dependencies]
-lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.53", default-features = false }
+lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.54", default-features = false }
 ```
 
 Without its default features it needs nothing but Rust's own library (the default ones are the `lust` command). Lust doesn't open any files: the engine reads them, and hands over each one's path and text, with `/` between folders.
@@ -1576,6 +1576,28 @@ Built as a library, each component also has what the engine needs to keep, show 
 - `gun.set_data(&data)` changes only the fields `data` has, so an edit made in the editor while the game runs keeps the rest, like ammo left and cooldowns.
 - `gun.set_me(Some(id))` puts it on an entity, and `gun.update(dt)` runs a tick. An entity is its 64-bit ID, `Option<u64>`, with `None` for nothing.
 - `Value` is `Bool`, `Int`, `Float`, `Text`, `List` (a vec3's three numbers, a rotation's four) and `Entity`, and `FieldKind` is `Bool`, `Int`, `Float`, `Text`, `Choice` (with the options), `Vec3`, `Rotation` and `Entity`.
+
+### Objects in an engine
+
+An `object` is one thing for the whole program (section 10). In an engine it's one for the whole **game**: a clock and calendar, money, the weather. Game code anywhere reads and changes it by name (`Clock.hour`), and the engine runs and keeps it:
+
+```
+object Clock {
+    has {
+        int day = 1;
+        float hour = 6;
+    }
+
+    method update(float dt) {
+        hour += dt / 60;
+    }
+}
+```
+
+- **Ticked:** an object's `update(float dt)` runs once a tick, objects in order of their names, before the entities' components.
+- **Saved:** the engine keeps its fields of the kinds a component's are (`bool`, `int`, `float`, `string`, a state, `vec3`, `rotation`, `entity`), and gives them back when a save loads. Other fields (arrays, things) start as written.
+- **In Lua:** the chunk's `objects` (by name) and `objectNames` (in order); `tick(dt)` runs the updates; `save(name)` gives an object's kept fields by name, and `load(name, values)` gives them back.
+- **Built as a library:** each object has `NAME`, `schema()`, `to_data()` and `set_data(&data)`; `objects()` lists their schemas and `tick_objects(dt)` runs the updates.
 
 ### Events
 

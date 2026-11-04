@@ -204,6 +204,20 @@ fn main() {
     update.call::<()>((farmer.clone(), 0.5)).unwrap();
     out.push_str(&log.borrow_mut().split_off(0));
 
+    // 6. Objects: the engine ticks them (name order, before components) and saves their fields.
+    let names: Vec<String> = api3.get::<Table>("objectNames").unwrap().sequence_values().map(|n| n.unwrap()).collect();
+    writeln!(out, "objects: {names:?}").unwrap();
+    let tick: Function = api3.get("tick").unwrap();
+    let save: Function = api3.get("save").unwrap();
+    let load_back: Function = api3.get("load").unwrap();
+    tick.call::<()>(1.0).unwrap();
+    let saved: Table = save.call("Clock").unwrap();
+    writeln!(out, "saved: day {} hour {}", saved.get::<i64>("day").unwrap(), saved.get::<f64>("hour").unwrap()).unwrap();
+    tick.call::<()>(10.0).unwrap();
+    load_back.call::<()>(("Clock", saved)).unwrap();
+    let clock: Table = api3.get::<Table>("objects").unwrap().get("Clock").unwrap();
+    writeln!(out, "loaded: day {} hour {}", clock.get::<i64>("day").unwrap(), clock.get::<f64>("hour").unwrap()).unwrap();
+
     let expected_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("expected.out");
     if std::env::args().any(|a| a == "--print") {
         print!("{out}");

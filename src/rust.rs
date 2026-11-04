@@ -995,7 +995,9 @@ impl<'a> W<'a> {
             ));
             // Classes with native methods belong to the program using the library, so it always
             // sees all of them. Otherwise, what the first file passes.
-            let owned = class_decls.iter().any(|d| d.name == c.name && d.methods.iter().any(|m| m.native)) || c.is_component;
+            let owned = class_decls.iter().any(|d| d.name == c.name && d.methods.iter().any(|m| m.native))
+                || c.is_component
+                || (c.is_object && !c.is_node);
             if !exported(&c.name) && !owned {
                 continue;
             }
@@ -1070,12 +1072,39 @@ impl<'a> W<'a> {
             if c.is_component {
                 items.push_str(&self.component_api(ci, &shown, &w));
             }
+            if c.is_object && !c.is_node {
+                items.push_str(&self.object_api(ci, &shown));
+            }
             out.push_str(&format!("impl {w} {{\n{items}}}\n"));
         }
         // Components: what the engine needs to keep, show and run them.
         let comps: Vec<String> = info.classes.iter().filter(|c| c.is_component).map(|c| ident(&c.name)).collect();
-        if !comps.is_empty() || !info.events.is_empty() || !info.sends.is_empty() {
+        // Objects: one of each for the whole game, ticked and saved by the engine.
+        let mut objs: Vec<(String, String, bool)> = info
+            .classes
+            .iter()
+            .filter(|c| c.is_object && !c.is_node)
+            .map(|c| {
+                let ticked = c.methods.get("update").is_some_and(|m| {
+                    m.ret == Ty::Void && m.params.len() == 1 && m.params[0].1 == Ty::Float
+                });
+                (crate::ast::shown(&c.name).to_string(), ident(&c.name), ticked)
+            })
+            .collect();
+        objs.sort();
+        if !comps.is_empty() || !objs.is_empty() || !info.events.is_empty() || !info.sends.is_empty() {
             out.push_str(COMPONENT_API);
+            if !objs.is_empty() {
+                let ticks: String = objs
+                    .iter()
+                    .filter(|(_, _, t)| *t)
+                    .map(|(_, w, _)| format!("    {w}::get().update(dt)?;\n"))
+                    .collect();
+                out.push_str(&format!(
+                    "\n/// Every object's schema (one of each for the whole game), in name order, for saving.\npub fn objects() -> Vec<Schema> {{\n    vec![{}]\n}}\n\n/// Runs every object's update(float dt) once, in name order: the engine calls it once a tick,\n/// before the entities' components.\npub fn tick_objects(dt: f64) -> Result<(), LustError> {{\n{ticks}    Ok(())\n}}\n",
+                    objs.iter().map(|(_, w, _)| format!("{w}::schema()")).collect::<Vec<_>>().join(", ")
+                ));
+            }
             out.push_str(&format!(
                 "\n/// Every component's schema, for the inspector.\npub fn components() -> Vec<Schema> {{\n    vec![{}]\n}}\n",
                 comps.iter().map(|c| format!("{c}::schema()")).collect::<Vec<_>>().join(", ")
@@ -1308,6 +1337,30 @@ impl<'a> W<'a> {
         format!(
             "{handle}    /// The component's name, as the engine knows it.\n    pub const NAME: &'static str = {shown:?};\n\n    /// The fields the engine fills in before the first update (things of its own classes), with\n    /// each one's class: fill them with their setters.\n    pub const FILLED: &'static [(&'static str, &'static str)] = &[{}];\n\n    /// Its fields, their kinds and their starting values, in order.\n    pub fn schema() -> Schema {{\n        let d = {w}::new().map(|c| c.to_data()).unwrap_or_default();\n        Schema {{ name: {shown:?}.into(), fields: vec![{}] }}\n    }}\n\n    /// Its fields' values, by name.\n    pub fn to_data(&self) -> Data {{\n        let o = self.0.borrow();\n        let mut d = Data::new();\n{}        d\n    }}\n\n    /// Sets the fields `data` has. A missing value, or one of the wrong kind, is left as it is.\n    pub fn set_data(&self, data: &Data) {{\n{}    }}\n\n    /// A new one with these values, and the starting values for the rest.\n    pub fn from_data(data: &Data) -> Result<{w}, LustError> {{\n        let c = {w}::new()?;\n        c.set_data(data);\n        Ok(c)\n    }}\n",
             filled.join(", "),
+            kinds.join(", "),
+            out_vals.concat(),
+            in_vals.concat()
+        )
+    }
+
+    /// An object's name, schema, and its fields as values, both ways: what an engine saves.
+    fn object_api(&mut self, ci: usize, shown: &str) -> String {
+        let fields: Vec<(String, Ty)> = self.info.classes[ci].fields.iter().map(|f| (f.name.clone(), f.ty.clone())).collect();
+        let mut kinds = Vec::new();
+        let mut out_vals = Vec::new();
+        let mut in_vals = Vec::new();
+        for (n, t) in &fields {
+            let f = self.field_of(ci, n);
+            let Some((kind, from)) = self.value_kind(t) else { continue };
+            let to = self.value_of(&format!("o.{f}"), t);
+            kinds.push(format!("FieldInfo {{ name: {n:?}.into(), kind: {kind}, default: d[{n:?}].clone() }}"));
+            out_vals.push(format!("        d.insert({n:?}.into(), {to});\n"));
+            in_vals.push(format!(
+                "        if let Some(x) = data.get({n:?}).and_then(|v| {from}) {{\n            self.0.borrow_mut().{f} = x;\n        }}\n"
+            ));
+        }
+        format!(
+            "\n    /// The object's name, as the engine knows it.\n    pub const NAME: &'static str = {shown:?};\n\n    /// The fields an engine keeps (bools, numbers, text, states, vectors, rotations and\n    /// entities), their kinds and their values now, in order.\n    pub fn schema() -> Schema {{\n        let d = Self::get().to_data();\n        Schema {{ name: {shown:?}.into(), fields: vec![{}] }}\n    }}\n\n    /// The fields an engine keeps, by name: for a save.\n    pub fn to_data(&self) -> Data {{\n        let o = self.0.borrow();\n        let mut d = Data::new();\n{}        d\n    }}\n\n    /// Sets the fields `data` has (a save loaded). A missing value, or one of the wrong kind, is\n    /// left as it is.\n    pub fn set_data(&self, data: &Data) {{\n{}    }}\n",
             kinds.join(", "),
             out_vals.concat(),
             in_vals.concat()

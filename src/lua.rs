@@ -279,6 +279,19 @@ impl<'a> W<'a> {
                 comps.push(format!("[{}] = {}", lua_string(crate::ast::shown(&c.name)), self.class_table(ci)));
             }
         }
+        // Objects (one of each for the whole game), by name: the engine ticks and saves them.
+        let mut objects = Vec::new();
+        let mut ticked = Vec::new();
+        for c in self.info.classes.iter() {
+            if c.is_object && !c.is_node {
+                let shown = lua_string(crate::ast::shown(&c.name));
+                objects.push(format!("[{shown}] = {}", lname(&c.name)));
+                // Ticked: an update(float dt) that gives nothing back.
+                if c.methods.get("update").is_some_and(|m| m.ret == Ty::Void && m.params.len() == 1 && m.params[0].1 == Ty::Float) {
+                    ticked.push(format!("[{shown}] = true"));
+                }
+            }
+        }
         // The engine's own classes, so it can make things of them to fill components' fields.
         let mut classes = Vec::new();
         for (ci, c) in self.info.classes.iter().enumerate() {
@@ -294,11 +307,13 @@ impl<'a> W<'a> {
         self.line(
             0,
             &format!(
-                "return _L.engine({}, {{ {} }}, {{ {} }}, {{ {} }})",
+                "return _L.engine({}, {{ {} }}, {{ {} }}, {{ {} }}, {{ {} }}, {{ {} }})",
                 lua_string(env!("CARGO_PKG_VERSION")),
                 comps.join(", "),
                 events.join(", "),
-                classes.join(", ")
+                classes.join(", "),
+                objects.join(", "),
+                ticked.join(", ")
             ),
         );
     }
@@ -565,8 +580,9 @@ impl<'a> W<'a> {
             &format!("{local}{table} = _L.class({}, {parent})", lua_string(crate::ast::shown(&c.name))),
         );
         self.class = None;
-        // A component's fields and their kinds: what a swap to new code keeps.
-        if c.is_component {
+        // A component's or an object's fields and their kinds: what a swap to new code keeps, and
+        // what an engine saves.
+        if c.is_component || (c.is_object && !c.is_node) {
             let fields: Vec<String> = self.info.classes[ci]
                 .fields
                 .iter()
