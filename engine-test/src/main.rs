@@ -196,6 +196,11 @@ fn main() {
         writeln!(out, "Farmer's {} is {} {}", f.get::<String>(2).unwrap(), f.get::<String>(3).unwrap(), f.get::<String>(4).unwrap()).unwrap();
     }
     let farmer: Table = api3.get::<Function>("new").unwrap().call(("Farmer", "0000000000004")).unwrap();
+    // Before it's filled, reading it stops, naming the field, on its line.
+    let early: Function = farmer.get("update").unwrap();
+    if let Err(err) = early.call::<()>((farmer.clone(), 0.5)) {
+        writeln!(out, "{}", hop.locate(&err.to_string())).unwrap();
+    }
     let values = lua.create_table().unwrap();
     values.set("id", 12).unwrap();
     let anim: Table = api3.get::<Function>("make").unwrap().call(("FarmerAnimator", values)).unwrap();

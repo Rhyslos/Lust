@@ -1995,7 +1995,10 @@ impl<'a> W<'a> {
                     Some(NameRes::Field) => {
                         let c = self.class.unwrap();
                         let f = self.field_of(c, n);
-                        format!("{{ let v = this.borrow().{f}.clone(); v }}")
+                        match self.info.filled_reads.get(&e.id) {
+                            Some(name) => format!("{{ let v = this.borrow().{f}.clone(); rt::filled(v, {name:?}) }}"),
+                            None => format!("{{ let v = this.borrow().{f}.clone(); v }}"),
+                        }
                     }
                     Some(NameRes::Object) => {
                         let ci = self.info.class_index[n];

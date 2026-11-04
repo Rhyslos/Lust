@@ -2,7 +2,7 @@
 
 This file is for programs that use Lust as a library: Solis first. When an engine updates its pinned Lust, it reads the section for each version it skips over, newest at the bottom, and does what **The engine does** says. The full rules are in [LUST.md](LUST.md), section 21.
 
-An engine moving from alpha 48 to alpha 57 or later reads everything below.
+An engine moving from alpha 48 to alpha 58 or later reads everything below.
 
 ## alpha 49: states in native methods
 
@@ -35,7 +35,7 @@ An engine moving from alpha 48 to alpha 57 or later reads everything below.
 - A component may list a field of an engine class with no starting value: `FarmerAnimator anim;`. That's a class declared in the host folders; a game's own class still needs a starting value.
 - **Lua:** the schema entry is `{ key, name, "object", "FarmerAnimator" }`. `api.make(name, values)` makes one, and `api.classes` lists them.
 - **Rust:** `Farmer::FILLED` lists the field and class pairs, and `set_<field>` fills one.
-- Using the field before it's filled stops with the line.
+- Using the field before it's filled stops with the line and, from alpha 58, the field's name.
 - **The engine does:** fills every such field before the component's first `update`.
 
 ## alpha 53 and 55: data files
@@ -66,3 +66,8 @@ An engine moving from alpha 48 to alpha 57 or later reads everything below.
   - `this` outside a component says only that it's a component's.
   - A repeated entity method says which line it's repeated from.
 - **The engine does:** nothing, unless one of its files declares `entity:text()`.
+
+## alpha 58: an unfilled engine field is named
+
+- Reading a component's field the engine fills in (alpha 52) before it's filled stops on its line, saying which field: "anim is filled in by the engine before the component's first update, and hasn't been yet." Before, it said only "this is nothing".
+- **The engine does:** nothing; it still fills every such field before the first `update`.

@@ -106,6 +106,9 @@ pub struct Info {
     /// What the files pass, by name inside Lust: an engine ticks and saves the objects among them.
     pub shared: std::collections::HashSet<String>,
     pub types: HashMap<usize, Ty>,
+    /// Reads of a component's fields the engine fills in, by expression id, with the field's
+    /// name: read before the engine has filled it, the program stops saying which field.
+    pub filled_reads: HashMap<usize, String>,
     pub names: HashMap<usize, NameRes>,
     pub calls: HashMap<usize, CallRes>,
     /// Expressions that name a state option: the state and the option's path.
@@ -3054,6 +3057,10 @@ impl<'a> Checker<'a> {
         if let Some(c) = ctx.class {
             if let Some(f) = self.info.field(c, n) {
                 let ty = f.ty.clone();
+                // A field the engine fills in: read before it's filled, it stops by its name.
+                if f.filled {
+                    self.info.filled_reads.insert(e.id, n.to_string());
+                }
                 self.info.names.insert(e.id, NameRes::Field);
                 return ty;
             }
