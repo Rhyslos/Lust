@@ -50,6 +50,18 @@ object Clock {
     }
 }
 
+-- Not passed, so it's only this file's: the engine neither ticks nor saves it.
+object Weather {
+    has {
+        int rain = 0;
+    }
+
+    method update(float dt) {
+        rain += 1;
+    }
+}
+
 method log(string words) native;
 
+pass Clock;
 end

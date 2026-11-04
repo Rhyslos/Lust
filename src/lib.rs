@@ -298,6 +298,7 @@ pub fn to_lua_with(engine: &Engine, entry: &str, files: &[(String, String)]) -> 
 
 fn lua_chunk(entry: &str, files: &[(String, String)], engine: &Engine) -> Result<LuaChunk, Vec<Problem>> {
     let c = front_from(entry, files, engine)?;
+    engine_objects(&c)?;
     let out = lua::write_for_engine(&c.prog, &c.info, !c.is_script);
     Ok(LuaChunk {
         code: out.code,
@@ -327,7 +328,41 @@ fn rust_library(entry: &str, files: &[(String, String)], engine: &Engine) -> Res
             "LustScript turns into Lua. Only .lst files can be built as Rust libraries.".into(),
         ));
     }
+    engine_objects(&c)?;
     Ok(rust::write(&c.prog, &c.info, &c.files, true))
+}
+
+/// For a program an engine runs: an object it passes, with an `update` the engine can't call,
+/// is a mistake, as it is for a component (the engine would never tick it, and say nothing).
+fn engine_objects(c: &Checked) -> Result<(), Vec<Problem>> {
+    let mut problems = Vec::new();
+    for item in &c.prog.items {
+        let ast::Item::Class(d) = item else { continue };
+        if !d.is_object || d.is_node || !c.info.shared.contains(&d.name) {
+            continue;
+        }
+        let Some(m) = d.methods.iter().find(|m| m.name == "update") else {
+            continue;
+        };
+        let Some(&ci) = c.info.class_index.get(&d.name) else { continue };
+        let sig = &c.info.classes[ci].methods["update"];
+        if sig.ret != types::Ty::Void || sig.params.len() != 1 || sig.params[0].1 != types::Ty::Float {
+            problems.push(Problem {
+                file: c.files.get(m.pos.file()).cloned().unwrap_or_default(),
+                line: m.pos.row(),
+                column: m.pos.col,
+                message: format!(
+                    "{} is passed, so the engine runs its update once a tick, with how many seconds a tick is: method update(float dt) {{ … }}",
+                    ast::shown(&d.name)
+                ),
+            });
+        }
+    }
+    if problems.is_empty() {
+        Ok(())
+    } else {
+        Err(problems)
+    }
 }
 
 /// Lua code an engine loads, and what it needs to say where a failure came from.
@@ -481,6 +516,37 @@ mod deep_code {
         assert!(problems[0].message.contains("no method called position"), "{}", problems[0]);
         let problems = crate::check("solis/entity.lst", &files).unwrap_err();
         assert!(problems[0].message.contains("only the engine's own files"), "{}", problems[0]);
+    }
+
+    #[test]
+    fn an_engine_ticks_and_saves_only_the_objects_files_pass() {
+        let game = "object Clock {\n    has { float hour = 0; }\n    method update(float dt) { hour += dt; }\n}\n\
+            object Notes {\n    has { int seen = 0; }\n    method update(float dt) { seen += 1; }\n}\npass Clock;\nend\n";
+        let files = vec![("main.lst".to_string(), game.to_string())];
+        let chunk = crate::to_lua("main.lst", &files).unwrap();
+        assert!(chunk.code.contains("[\"Clock\"] = true"), "{}", chunk.code);
+        assert!(!chunk.code.contains("[\"Notes\"]"), "{}", chunk.code);
+        let rust = crate::to_rust_library("main.lst", &files).unwrap();
+        assert!(rust.contains("Clock::get().update(dt)"));
+        assert!(!rust.contains("Notes::get().update(dt)"));
+        // A passed object's update the engine can't call is a mistake, as for a component.
+        for wrong in [
+            "method update(int dt) { }",
+            "method int update(float dt) { return 1; }",
+            "method update() { }",
+        ] {
+            let text = format!("object Clock {{\n    has {{ float hour = 0; }}\n    {wrong}\n}}\npass Clock;\nend\n");
+            let files = vec![("main.lst".to_string(), text)];
+            for problems in [
+                crate::to_lua("main.lst", &files).unwrap_err(),
+                crate::to_rust_library("main.lst", &files).unwrap_err(),
+            ] {
+                assert_eq!(problems[0].line, 3, "{wrong}");
+                assert!(problems[0].message.contains("method update(float dt)"), "{}", problems[0]);
+            }
+            // A program that isn't an engine's may have an update of its own.
+            crate::check("main.lst", &files).unwrap();
+        }
     }
 
     #[test]

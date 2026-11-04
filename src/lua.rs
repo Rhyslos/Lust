@@ -283,11 +283,14 @@ impl<'a> W<'a> {
         let mut objects = Vec::new();
         let mut ticked = Vec::new();
         for c in self.info.classes.iter() {
-            if c.is_object && !c.is_node {
+            if c.is_object && !c.is_node && self.info.shared.contains(&c.name) {
                 let shown = lua_string(crate::ast::shown(&c.name));
                 objects.push(format!("[{shown}] = {}", lname(&c.name)));
                 // Ticked: an update(float dt) that gives nothing back.
-                if c.methods.get("update").is_some_and(|m| m.ret == Ty::Void && m.params.len() == 1 && m.params[0].1 == Ty::Float) {
+                if c.methods
+                    .get("update")
+                    .is_some_and(|m| m.ret == Ty::Void && m.params.len() == 1 && m.params[0].1 == Ty::Float)
+                {
                     ticked.push(format!("[{shown}] = true"));
                 }
             }
@@ -582,7 +585,7 @@ impl<'a> W<'a> {
         self.class = None;
         // A component's or an object's fields and their kinds: what a swap to new code keeps, and
         // what an engine saves.
-        if c.is_component || (c.is_object && !c.is_node) {
+        if c.is_component || (c.is_object && !c.is_node && self.info.shared.contains(&c.name)) {
             let fields: Vec<String> = self.info.classes[ci]
                 .fields
                 .iter()

@@ -144,6 +144,9 @@ pub struct Program {
     /// The expressions written `this` (the entity a component is on), by id: inside Lust they're
     /// `me`, which is on its way out.
     pub this_ids: std::collections::HashSet<usize>,
+    /// Everything a file passes, from every file, by its name inside Lust: what's shared. An
+    /// engine ticks and saves only the objects that are.
+    pub shared: std::collections::HashSet<String>,
 }
 
 pub enum Item {

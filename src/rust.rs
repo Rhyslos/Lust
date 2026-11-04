@@ -1004,7 +1004,7 @@ impl<'a> W<'a> {
             // sees all of them. Otherwise, what the first file passes.
             let owned = class_decls.iter().any(|d| d.name == c.name && d.methods.iter().any(|m| m.native))
                 || c.is_component
-                || (c.is_object && !c.is_node);
+                || (c.is_object && !c.is_node && info.shared.contains(&c.name));
             if !exported(&c.name) && !owned {
                 continue;
             }
@@ -1079,7 +1079,7 @@ impl<'a> W<'a> {
             if c.is_component {
                 items.push_str(&self.component_api(ci, &shown, &w));
             }
-            if c.is_object && !c.is_node {
+            if c.is_object && !c.is_node && info.shared.contains(&c.name) {
                 items.push_str(&self.object_api(ci, &shown));
             }
             out.push_str(&format!("impl {w} {{\n{items}}}\n"));
@@ -1090,11 +1090,12 @@ impl<'a> W<'a> {
         let mut objs: Vec<(String, String, bool)> = info
             .classes
             .iter()
-            .filter(|c| c.is_object && !c.is_node)
+            .filter(|c| c.is_object && !c.is_node && info.shared.contains(&c.name))
             .map(|c| {
-                let ticked = c.methods.get("update").is_some_and(|m| {
-                    m.ret == Ty::Void && m.params.len() == 1 && m.params[0].1 == Ty::Float
-                });
+                let ticked = c
+                    .methods
+                    .get("update")
+                    .is_some_and(|m| m.ret == Ty::Void && m.params.len() == 1 && m.params[0].1 == Ty::Float);
                 (crate::ast::shown(&c.name).to_string(), ident(&c.name), ticked)
             })
             .collect();
@@ -1351,7 +1352,11 @@ impl<'a> W<'a> {
 
     /// An object's name, schema, and its fields as values, both ways: what an engine saves.
     fn object_api(&mut self, ci: usize, shown: &str) -> String {
-        let fields: Vec<(String, Ty)> = self.info.classes[ci].fields.iter().map(|f| (f.name.clone(), f.ty.clone())).collect();
+        let fields: Vec<(String, Ty)> = self.info.classes[ci]
+            .fields
+            .iter()
+            .map(|f| (f.name.clone(), f.ty.clone()))
+            .collect();
         let mut kinds = Vec::new();
         let mut out_vals = Vec::new();
         let mut in_vals = Vec::new();
@@ -1359,7 +1364,9 @@ impl<'a> W<'a> {
             let f = self.field_of(ci, n);
             let Some((kind, from)) = self.value_kind(t) else { continue };
             let to = self.value_of(&format!("o.{f}"), t);
-            kinds.push(format!("FieldInfo {{ name: {n:?}.into(), kind: {kind}, default: d[{n:?}].clone() }}"));
+            kinds.push(format!(
+                "FieldInfo {{ name: {n:?}.into(), kind: {kind}, default: d[{n:?}].clone() }}"
+            ));
             out_vals.push(format!("        d.insert({n:?}.into(), {to});\n"));
             in_vals.push(format!(
                 "        if let Some(x) = data.get({n:?}).and_then(|v| {from}) {{\n            self.0.borrow_mut().{f} = x;\n        }}\n"

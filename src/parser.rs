@@ -459,6 +459,7 @@ impl<'a> Parser<'a> {
             compound: std::mem::take(&mut self.compound),
             host_files: Default::default(),
             this_ids: std::mem::take(&mut self.this_ids),
+            shared: Default::default(),
         }
     }
 

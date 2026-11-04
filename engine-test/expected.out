@@ -51,3 +51,5 @@ animator 12 plays Walk
 objects: ["Clock"]
 saved: day 2 hour 0.5
 loaded: day 2 hour 0.5
+wrong kinds kept: day 2 hour 7
+Weather: there's no object called Weather for the engine: an object is ticked and saved when its file passes it.
