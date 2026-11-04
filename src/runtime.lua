@@ -597,9 +597,18 @@ end
 
 -- What an engine's chunk gives back: its components, the events, and how to make, run and swap
 -- them. components: name -> class. events: name -> { { key, name, kind }, … }.
-function L.engine(version, components, events)
+function L.engine(version, components, events, classes)
   -- vectors: "luau" when a vec3 is a Luau vector, "table" in plain Lua.
-  local api = { version = version, components = components, events = events, vectors = L.vectors }
+  local api = { version = version, components = components, events = events, vectors = L.vectors, classes = classes }
+  -- A thing of one of the engine's own classes, with these values for its fields (by name), to
+  -- fill a component's field the engine fills in: o.anim = api.make("FarmerAnimator", { id = 3 }).
+  function api.make(name, values)
+    local c = classes[name]
+    if c == nil then error("the engine's files have no class called " .. tostring(name) .. ".", 2) end
+    local o = L.new(c)
+    for k, v in pairs(values or {}) do o[k] = v end
+    return o
+  end
   -- A new component with its fields' starting values, on an entity.
   function api.new(name, me)
     local c = components[name]

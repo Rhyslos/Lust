@@ -1,0 +1,17 @@
+-- A component holding something the engine's editor made for it: the engine fills it in before
+-- the first update, and using it before then stops on its line.
+fetch "solis/animators":FarmerAnimator;
+
+component Farmer {
+    has {
+        FarmerAnimator anim;
+        float speed = 3;
+    }
+
+    method update(float dt) {
+        anim:play("Walk");
+    }
+}
+
+pass Farmer;
+end

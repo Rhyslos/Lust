@@ -1,0 +1,11 @@
+-- Made by the engine's editor for the Farmer: an animator, its body in the engine.
+class FarmerAnimator {
+    has {
+        int id = 0;
+    }
+
+    method play(string clip) native;
+}
+
+pass FarmerAnimator;
+end

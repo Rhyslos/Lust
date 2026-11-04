@@ -1,0 +1,6 @@
+fields.lsc:13:13  a component holds a class only from the engine's own files, which the engine fills in. Bag is the game's own, so keep its things in a class or an object instead.
+fields.lsc:14:24  the engine fills in anim before the component's first update, so leave out its starting value: FarmerAnimator anim;
+solis/entity.lsc:3:21  entity:position is already given on line 2 of the engine's files.
+solis/entity.lsc:5:23  a native method gives back an int, a float, text, a bool, a vec3, a rotation, a state's option, a thing made from a class, or an array of those, but hits gives back an int map.
+
+4 mistakes. Nothing was run.

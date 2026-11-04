@@ -1,4 +1,6 @@
 -- Inside a component, the entity's own abilities are called bare, and this is the entity.
+fetch "solis/animators":FarmerAnimator;
+
 component Hopper {
     has {
         float speed = 1;
@@ -18,6 +20,17 @@ component Hopper {
     -- The component's own jump wins over the engine's; this:jump() still reaches the engine's.
     method jump() {
         log("the hopper's own jump");
+    }
+}
+
+-- Something the engine's editor made for it, filled in by the engine.
+component Farmer {
+    has {
+        FarmerAnimator anim;
+    }
+
+    method update(float dt) {
+        anim:play("Walk");
     }
 }
 

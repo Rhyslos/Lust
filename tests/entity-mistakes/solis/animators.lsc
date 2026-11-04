@@ -1,0 +1,9 @@
+-- Made by the engine's editor.
+class FarmerAnimator {
+    has {
+        int id = 0;
+    }
+}
+
+pass FarmerAnimator;
+end

@@ -1,0 +1,4 @@
+filled: [("anim", "FarmerAnimator")]
+kept and shown: ["speed"]
+game.lst:12  this is nothing, so it has no fields or methods. Check first: is it !== nothing?
+animator 12 plays Walk

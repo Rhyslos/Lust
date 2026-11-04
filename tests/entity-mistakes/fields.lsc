@@ -1,0 +1,19 @@
+-- A component holds a class only from the engine's own files, which the engine fills in, so it
+-- has no starting value.
+fetch "solis/animators":FarmerAnimator;
+
+class Bag {
+    has {
+        int size = 3;
+    }
+}
+
+component Farmer {
+    has {
+        Bag bag;
+        FarmerAnimator anim = new FarmerAnimator { id = 2 };
+        FarmerAnimator spare;
+    }
+}
+
+end

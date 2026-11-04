@@ -251,6 +251,8 @@ impl<'a> W<'a> {
             Ty::Vec3 => "vec3",
             Ty::Rot => "rotation",
             Ty::Entity => "entity",
+            // A thing of one of the engine's classes, which it fills in: its class's name follows.
+            Ty::Class(_) => "object",
             _ => "other",
         };
         let opts = match t {
@@ -258,6 +260,7 @@ impl<'a> W<'a> {
                 let o: Vec<String> = self.info.states[*s].options.iter().map(|o| lua_string(o)).collect();
                 format!(", {{ {} }}", o.join(", "))
             }
+            Ty::Class(c) => format!(", {}", lua_string(crate::ast::shown(&self.info.classes[*c].name))),
             _ => String::new(),
         };
         format!(
@@ -276,6 +279,13 @@ impl<'a> W<'a> {
                 comps.push(format!("[{}] = {}", lua_string(crate::ast::shown(&c.name)), self.class_table(ci)));
             }
         }
+        // The engine's own classes, so it can make things of them to fill components' fields.
+        let mut classes = Vec::new();
+        for (ci, c) in self.info.classes.iter().enumerate() {
+            if c.host && !c.is_component && !c.is_object {
+                classes.push(format!("[{}] = {}", lua_string(crate::ast::shown(&c.name)), self.class_table(ci)));
+            }
+        }
         let mut events = Vec::new();
         for (name, params) in &self.info.events {
             let ps: Vec<String> = params.iter().map(|(n, t)| self.field_entry(n, t)).collect();
@@ -284,10 +294,11 @@ impl<'a> W<'a> {
         self.line(
             0,
             &format!(
-                "return _L.engine({}, {{ {} }}, {{ {} }})",
+                "return _L.engine({}, {{ {} }}, {{ {} }}, {{ {} }})",
                 lua_string(env!("CARGO_PKG_VERSION")),
                 comps.join(", "),
-                events.join(", ")
+                events.join(", "),
+                classes.join(", ")
             ),
         );
     }
