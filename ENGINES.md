@@ -2,7 +2,7 @@
 
 This file is for programs that use Lust as a library: Solis first. When an engine updates its pinned Lust, it reads the section for each version it skips over, newest at the bottom, and does what **The engine does** says. The full rules are in [LUST.md](LUST.md), section 21.
 
-An engine moving from alpha 48 to alpha 58 or later reads everything below.
+An engine moving from alpha 48 to alpha 59 or later reads everything below.
 
 ## alpha 49: states in native methods
 
@@ -71,3 +71,9 @@ An engine moving from alpha 48 to alpha 58 or later reads everything below.
 
 - Reading a component's field the engine fills in (alpha 52) before it's filled stops on its line, saying which field: "anim is filled in by the engine before the component's first update, and hasn't been yet." Before, it said only "this is nothing".
 - **The engine does:** nothing; it still fills every such field before the first `update`.
+
+## alpha 59: the engine's components join only when fetched
+
+- Files in the host folders still come with every program, for their `entity` methods. But a component or object in one (a ready-made component in `solis/kit/`, say) is part of the game only once the game fetches its file, directly or through another file.
+- Before, every one of them joined every game: they showed among its components, and a game's own component of the same name clashed with them.
+- **The engine does:** nothing. A game that used a ready-made component without fetching it now has to fetch it, as the manual already says.
