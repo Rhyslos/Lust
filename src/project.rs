@@ -142,14 +142,7 @@ fn host_paths(root: &Path, host: &[String], ext: &str, mem: Option<&Memory>) -> 
     out
 }
 
-pub fn load(
-    entry: &Path,
-    src: String,
-    is_script: bool,
-    diags: &mut Diags,
-    mem: Option<&Memory>,
-    host: &[String],
-) -> Project {
+pub fn load(entry: &Path, src: String, is_script: bool, diags: &mut Diags, mem: Option<&Memory>, host: &[String]) -> Project {
     let ext = if is_script { "lsc" } else { "lst" };
     // The search for the project's folder starts from the file's full path, so a short one like
     // entities/player.lst still finds main.lst in the folder above.
@@ -163,7 +156,12 @@ pub fn load(
     let mut host = host.to_vec();
     if mem.is_none() {
         if let Ok(text) = std::fs::read_to_string(root.join("lust.host")) {
-            host.extend(text.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with("--")).map(String::from));
+            host.extend(
+                text.lines()
+                    .map(str::trim)
+                    .filter(|l| !l.is_empty() && !l.starts_with("--"))
+                    .map(String::from),
+            );
         }
     }
     let host = host.as_slice();

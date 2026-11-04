@@ -234,6 +234,15 @@ pub fn lex(src: &str, file: usize, diags: &mut Diags) -> Vec<Token> {
             let mut parts: Vec<TextPart> = Vec::new();
             let mut closed = false;
             while i < chars.len() && at(i) != '\n' {
+                // Plain letters go straight in: a data file's big map is millions of them.
+                while i < chars.len() && !matches!(chars[i], '"' | '\\' | '{' | '\n') {
+                    s.push(chars[i]);
+                    i += 1;
+                    col += 1;
+                }
+                if i >= chars.len() || chars[i] == '\n' {
+                    break;
+                }
                 let ch = at(i);
                 if ch == '"' {
                     closed = true;
@@ -355,9 +364,9 @@ pub fn lex(src: &str, file: usize, diags: &mut Diags) -> Vec<Token> {
             continue;
         }
         let mut matched = None;
+        // Symbols are plain ASCII, so they're matched in place, without making anything.
         for s in SYMBOLS {
-            let sc: Vec<char> = s.chars().collect();
-            if chars[i..].starts_with(&sc) {
+            if s.bytes().enumerate().all(|(k, b)| chars.get(i + k) == Some(&(b as char))) {
                 matched = Some(*s);
                 break;
             }

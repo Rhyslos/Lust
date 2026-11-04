@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (alpha 54):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (alpha 55):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -1469,7 +1469,7 @@ An engine can use Lust's compiler itself, as a Rust library: to check a game's L
 
 ```
 [dependencies]
-lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.54", default-features = false }
+lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.55", default-features = false }
 ```
 
 Without its default features it needs nothing but Rust's own library (the default ones are the `lust` command). Lust doesn't open any files: the engine reads them, and hands over each one's path and text, with `/` between folders.
@@ -1529,9 +1529,11 @@ end
 ```
 
 - **Fixed values** are numbers (negative ones too), text without `{ }`, bools, `nothing`, a state's option (`Tileset.Farm`), plain lists of fixed values (`[40, 36]`, a vec3 too), and things made with `new` from fixed values. Anything that would need running (a call, a sum, a variable, a class or a method) is a mistake, with its line.
-- **`lust::read_values(path, text)`** gives back a `Values`: each one's name, its type as written, its line and its value as a `Fixed` (`Int`, `Float`, `Text`, `Bool`, `Nothing`, `Option("Tileset.Farm")`, `List`, or `Thing { class, fields }`, with `field`, `as_int` and friends to read them). It parses the file and nothing else: no other file is read, and nothing runs.
+- **`lust::read_values(entry, files)`** gives back a `Values`: each one's name, its type as written, its line and its value as a `Fixed` (`Int`, `Float`, `Text`, `Bool`, `Nothing`, `Option("Tileset.Farm")`, `List`, or `Thing { class, fields }`, with `field`, `as_int` and friends to read them). The files are handed over as for `lust::check`: the data file, and the files it fetches. `lust::read_values_with(engine, …)` adds an engine's own folders, as `check_with` does.
+- **Checked like any file:** a value of the wrong type, a class or field that doesn't exist, or an option a state doesn't have is a mistake with its line. A dotted name must be a state's option: `Tileset.Farm` is fixed, but `farm.scale` reads from something, so it's a mistake. Nothing runs.
+- A field left out of a `new` isn't in its `Fixed`: the engine uses the class's starting value.
 - **A version** for the engine's own upgrades is just a value: `lock int version = 2;`.
-- **Big files are quick:** a 1,000 × 1,000 map, written as a million one-character codes in 1,024 chunks of 32 rows, reads in well under a second (the test reads it in about a twentieth).
+- **Big files are quick:** a 1,000 × 1,000 map, written as a million one-character codes in 1,024 chunks of 32 rows (about 1 MB), reads in about a twentieth of a second, and a 4,096 × 4,096 one (about 19 MB) in about 0.7 seconds.
 - Game code shouldn't fetch a big data file: the engine reads it, and game code fetches only the names it uses, from a small file of their own.
 
 ### Components

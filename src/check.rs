@@ -555,11 +555,21 @@ impl<'a> Checker<'a> {
                     if !prog.host_files.contains(&m.pos.file()) {
                         self.err(
                             m.pos,
-                            format!("only the engine's own files give entity methods, so entity:{} can't be declared here.", m.name),
+                            format!(
+                                "only the engine's own files give entity methods, so entity:{} can't be declared here.",
+                                m.name
+                            ),
                         );
                     } else if let Some(was) = self.info.entity_methods.get(&m.name) {
-                        let line = crate::ast::Pos { line: was.line, col: was.col }.row();
-                        self.err(m.pos, format!("entity:{} is already given on line {line} of the engine's files.", m.name));
+                        let line = crate::ast::Pos {
+                            line: was.line,
+                            col: was.col,
+                        }
+                        .row();
+                        self.err(
+                            m.pos,
+                            format!("entity:{} is already given on line {line} of the engine's files.", m.name),
+                        );
                     } else {
                         self.info.entity_methods.insert(m.name.clone(), sig);
                     }
@@ -665,7 +675,10 @@ impl<'a> Checker<'a> {
                         } else if f.default.is_some() {
                             self.err(
                                 f.pos,
-                                format!("the engine fills in {} before the component's first update, so leave out its starting value: {kn} {};", f.name, f.name),
+                                format!(
+                                    "the engine fills in {} before the component's first update, so leave out its starting value: {kn} {};",
+                                    f.name, f.name
+                                ),
                             );
                         } else {
                             filled = true;
@@ -2995,7 +3008,8 @@ impl<'a> Checker<'a> {
                     return Ty::Error;
                 }
             } else if component {
-                self.diags.note(e.pos, "me is now this: write this instead. me keeps working for now.");
+                self.diags
+                    .note(e.pos, "me is now this: write this instead. me keeps working for now.");
             }
         }
         if let Some(l) = self.lookup(ctx, n) {
@@ -3729,8 +3743,7 @@ impl<'a> Checker<'a> {
                 return sig.ret.clone();
             }
             // vec3 velocity = velocity();: a variable can share its name with an ability.
-            let ability = ctx.class.is_some_and(|c| self.info.classes[c].is_component)
-                && self.info.entity_methods.contains_key(name);
+            let ability = ctx.class.is_some_and(|c| self.info.classes[c].is_component) && self.info.entity_methods.contains_key(name);
             if !ability {
                 if l.ty != Ty::Error {
                     self.err(e.pos, format!("{name} is {}, so it can't be called.", self.a(&l.ty)));
