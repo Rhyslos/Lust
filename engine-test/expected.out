@@ -41,8 +41,10 @@ swap shield: gone
   turret.label = Nil
   turret.aim = Vector([6.0, 0.15, -2.0])
 0000000000001 turret v2: heat 0.566666666666667, ammo 10.0, range 20.0, Single, aim [6.0, 0.15, -2.0]
-note: main.lst:14:16  me is now this: write this instead. me keeps working for now.
+note: main.lst:16:16  me is now this: write this instead. me keeps working for now.
 velocity 2.5
 the hopper's own jump
 the engine makes 0000000000009 jump
 [0.5, 0.0, 0.0]
+Farmer's anim is object FarmerAnimator
+animator 12 plays Walk

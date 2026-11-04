@@ -45,6 +45,9 @@ pub struct FieldInfo {
     pub ty: Ty,
     /// lock int maxHp = 20;: it keeps the value it starts with.
     pub locked: bool,
+    /// A component's field of a class from the engine's files, with no starting value: the
+    /// engine fills it in (FarmerAnimator anim;).
+    pub filled: bool,
 }
 
 #[derive(Clone)]
@@ -70,6 +73,9 @@ pub struct ClassInfo {
     pub parent: Option<usize>,
     pub fields: Vec<FieldInfo>,
     pub methods: HashMap<String, MethodSig>,
+    /// Declared in the engine's own files (its host folders): a component may hold one, filled
+    /// in by the engine.
+    pub host: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -381,6 +387,7 @@ impl<'a> Checker<'a> {
                         parent: None,
                         fields: vec![],
                         methods: HashMap::new(),
+                        host: prog.host_files.contains(&c.pos.file()),
                     });
                 }
                 Item::Assembly(a) => {
@@ -639,17 +646,35 @@ impl<'a> Checker<'a> {
                         format!("{} has a method called {}, so a field can't use that name.", c.name, f.name),
                     );
                 }
+                let mut filled = false;
                 if c.is_component {
                     let fits = event_kind(&ty);
                     if f.name == "me" {
                         self.err(f.pos, "me is the entity the component is on, and every component has it already.");
                         continue;
                     }
-                    if !fits {
+                    // FarmerAnimator anim;: something the engine made for this component (an
+                    // animator, a tile map), which the engine fills in before the first update.
+                    if let Ty::Class(k) = ty {
+                        let kn = crate::ast::shown(&self.info.classes[k].name).to_string();
+                        if !self.info.classes[k].host {
+                            self.err(
+                                f.pos,
+                                format!("a component holds a class only from the engine's own files, which the engine fills in. {kn} is the game's own, so keep its things in a class or an object instead."),
+                            );
+                        } else if f.default.is_some() {
+                            self.err(
+                                f.pos,
+                                format!("the engine fills in {} before the component's first update, so leave out its starting value: {kn} {};", f.name, f.name),
+                            );
+                        } else {
+                            filled = true;
+                        }
+                    } else if !fits {
                         self.err(
                             f.pos,
                             format!(
-                                "a component's fields are what the engine keeps and shows: bool, int, float, string, a state, vec3, rotation and entity. {} is {}.",
+                                "a component's fields are what the engine keeps and shows: bool, int, float, string, a state, vec3, rotation, entity, and things from the engine's own classes (which it fills in). {} is {}.",
                                 f.name,
                                 self.a(&ty)
                             ),
@@ -660,6 +685,7 @@ impl<'a> Checker<'a> {
                     name: f.name.clone(),
                     ty,
                     locked: f.locked,
+                    filled,
                 });
             }
             // A component knows the entity it's on: me.
@@ -668,6 +694,7 @@ impl<'a> Checker<'a> {
                     name: "me".into(),
                     locked: false,
                     ty: Ty::Entity,
+                    filled: false,
                 });
                 if let Some((_, p)) = &c.parent {
                     self.err(

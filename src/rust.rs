@@ -1223,6 +1223,15 @@ impl<'a> W<'a> {
             .filter(|f| f.name != "me")
             .map(|f| (f.name.clone(), f.ty.clone()))
             .collect();
+        let filled: Vec<String> = self.info.classes[ci]
+            .fields
+            .iter()
+            .filter(|f| f.filled)
+            .filter_map(|f| match f.ty {
+                Ty::Class(k) => Some(format!("({:?}, {:?})", f.name, crate::ast::shown(&self.info.classes[k].name))),
+                _ => None,
+            })
+            .collect();
         let mut kinds = Vec::new();
         let mut out_vals = Vec::new();
         let mut in_vals = Vec::new();
@@ -1297,7 +1306,8 @@ impl<'a> W<'a> {
             handles.join(", ")
         );
         format!(
-            "{handle}    /// The component's name, as the engine knows it.\n    pub const NAME: &'static str = {shown:?};\n\n    /// Its fields, their kinds and their starting values, in order.\n    pub fn schema() -> Schema {{\n        let d = {w}::new().map(|c| c.to_data()).unwrap_or_default();\n        Schema {{ name: {shown:?}.into(), fields: vec![{}] }}\n    }}\n\n    /// Its fields' values, by name.\n    pub fn to_data(&self) -> Data {{\n        let o = self.0.borrow();\n        let mut d = Data::new();\n{}        d\n    }}\n\n    /// Sets the fields `data` has. A missing value, or one of the wrong kind, is left as it is.\n    pub fn set_data(&self, data: &Data) {{\n{}    }}\n\n    /// A new one with these values, and the starting values for the rest.\n    pub fn from_data(data: &Data) -> Result<{w}, LustError> {{\n        let c = {w}::new()?;\n        c.set_data(data);\n        Ok(c)\n    }}\n",
+            "{handle}    /// The component's name, as the engine knows it.\n    pub const NAME: &'static str = {shown:?};\n\n    /// The fields the engine fills in before the first update (things of its own classes), with\n    /// each one's class: fill them with their setters.\n    pub const FILLED: &'static [(&'static str, &'static str)] = &[{}];\n\n    /// Its fields, their kinds and their starting values, in order.\n    pub fn schema() -> Schema {{\n        let d = {w}::new().map(|c| c.to_data()).unwrap_or_default();\n        Schema {{ name: {shown:?}.into(), fields: vec![{}] }}\n    }}\n\n    /// Its fields' values, by name.\n    pub fn to_data(&self) -> Data {{\n        let o = self.0.borrow();\n        let mut d = Data::new();\n{}        d\n    }}\n\n    /// Sets the fields `data` has. A missing value, or one of the wrong kind, is left as it is.\n    pub fn set_data(&self, data: &Data) {{\n{}    }}\n\n    /// A new one with these values, and the starting values for the rest.\n    pub fn from_data(data: &Data) -> Result<{w}, LustError> {{\n        let c = {w}::new()?;\n        c.set_data(data);\n        Ok(c)\n    }}\n",
+            filled.join(", "),
             kinds.join(", "),
             out_vals.concat(),
             in_vals.concat()

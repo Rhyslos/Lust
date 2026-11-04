@@ -176,6 +176,7 @@ fn main() {
         ("entity_moveTo", "return function(e, to) PLACES[e] = to end"),
         ("entity_jump", "return function(e) LUST_NATIVES.log('the engine makes ' .. e .. ' jump') end"),
         ("entity_velocity", "return function(e) return 2.5 end"),
+        ("FarmerAnimator_play", "return function(a, clip) LUST_NATIVES.log('animator ' .. a.id .. ' plays ' .. clip) end"),
     ] {
         let f: Function = lua.load(body).eval().unwrap();
         natives.set(name, f).unwrap();
@@ -184,6 +185,23 @@ fn main() {
     let hopper: Table = api3.get::<Function>("new").unwrap().call(("Hopper", "0000000000009")).unwrap();
     let update: Function = hopper.get("update").unwrap();
     update.call::<()>((hopper.clone(), 0.5)).unwrap();
+    out.push_str(&log.borrow_mut().split_off(0));
+
+    // 5. A field the engine fills in: its kind is "object", with its class; the engine makes one
+    // of its own classes with make, and fills the field before the first update.
+    let comps: Table = api3.get("components").unwrap();
+    let farmer_class: Table = comps.get("Farmer").unwrap();
+    for f in farmer_class.get::<Table>("__schema").unwrap().sequence_values::<Table>() {
+        let f = f.unwrap();
+        writeln!(out, "Farmer's {} is {} {}", f.get::<String>(2).unwrap(), f.get::<String>(3).unwrap(), f.get::<String>(4).unwrap()).unwrap();
+    }
+    let farmer: Table = api3.get::<Function>("new").unwrap().call(("Farmer", "0000000000004")).unwrap();
+    let values = lua.create_table().unwrap();
+    values.set("id", 12).unwrap();
+    let anim: Table = api3.get::<Function>("make").unwrap().call(("FarmerAnimator", values)).unwrap();
+    farmer.set("anim", anim).unwrap();
+    let update: Function = farmer.get("update").unwrap();
+    update.call::<()>((farmer.clone(), 0.5)).unwrap();
     out.push_str(&log.borrow_mut().split_off(0));
 
     let expected_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("expected.out");
