@@ -1,0 +1,7 @@
+-- What the engine gives every entity.
+method vec3 entity:position() native;
+method entity:moveTo(vec3 place) native;
+method entity:jump() native;
+method float entity:velocity() native;
+
+end

@@ -1,0 +1,5 @@
+this-outside.lsc:8:15  this is the entity a component is on, so only a component's methods have it. Inside a class's method, use a field's name on its own.
+this-outside.lsc:9:9  inside a method, use a field's name on its own: hp, not self.hp.
+this-outside.lsc:13:12  this is the entity a component is on, so only a component's methods have it. Inside a class's method, use a field's name on its own.
+
+3 mistakes. Nothing was run.

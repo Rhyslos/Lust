@@ -141,6 +141,9 @@ pub struct Program {
     /// The files in the engine's own folders (its host folders, like solis/), by number: only
     /// they may give `entity` methods.
     pub host_files: std::collections::HashSet<usize>,
+    /// The expressions written `this` (the entity a component is on), by id: inside Lust they're
+    /// `me`, which is on its way out.
+    pub this_ids: std::collections::HashSet<usize>,
 }
 
 pub enum Item {

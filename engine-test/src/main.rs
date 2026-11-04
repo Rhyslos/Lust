@@ -160,6 +160,32 @@ fn main() {
     update.call::<()>((turret.clone(), 0.5)).unwrap();
     out.push_str(&log.borrow_mut().split_off(0));
 
+    // 4. The engine's own folder gives entity abilities, called bare inside components.
+    let engine = lust::Engine {
+        folders: vec!["solis".into()],
+    };
+    let hop = lust::to_lua_with(&engine, "main.lst", &files("abilities")).unwrap();
+    for n in &hop.notes {
+        writeln!(out, "note: {n}").unwrap();
+    }
+    let places = lua.create_table().unwrap();
+    lua.globals().set("PLACES", places).unwrap();
+    let natives: Table = lua.globals().get("LUST_NATIVES").unwrap();
+    for (name, body) in [
+        ("entity_position", "return function(e) return PLACES[e] or vector.create(0, 0, 0) end"),
+        ("entity_moveTo", "return function(e, to) PLACES[e] = to end"),
+        ("entity_jump", "return function(e) LUST_NATIVES.log('the engine makes ' .. e .. ' jump') end"),
+        ("entity_velocity", "return function(e) return 2.5 end"),
+    ] {
+        let f: Function = lua.load(body).eval().unwrap();
+        natives.set(name, f).unwrap();
+    }
+    let api3 = load(&lua, &hop);
+    let hopper: Table = api3.get::<Function>("new").unwrap().call(("Hopper", "0000000000009")).unwrap();
+    let update: Function = hopper.get("update").unwrap();
+    update.call::<()>((hopper.clone(), 0.5)).unwrap();
+    out.push_str(&log.borrow_mut().split_off(0));
+
     let expected_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("expected.out");
     if std::env::args().any(|a| a == "--print") {
         print!("{out}");

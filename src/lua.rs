@@ -1299,6 +1299,11 @@ impl<'a> W<'a> {
                 }
                 let a: Vec<String> = args.iter().map(|x| self.expr(x)).collect();
                 match res {
+                    Some(CallRes::Ability) => {
+                        let mut all = vec!["self.me".to_string()];
+                        all.extend(a);
+                        format!("_E_{}({})", lname(name), all.join(", "))
+                    }
                     Some(CallRes::Own) => format!("self:{}({})", lname(name), a.join(", ")),
                     Some(CallRes::FieldHook) => format!("self.{}({})", lname(name), a.join(", ")),
                     _ => format!("{}({})", lname(name), a.join(", ")),

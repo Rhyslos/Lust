@@ -1,0 +1,28 @@
+-- Inside a component, the entity's own abilities are called bare, and this is the entity: built
+-- as a Rust library.
+component Hopper {
+    has {
+        float speed = 1;
+        entity seen = nothing;
+    }
+
+    method update(float dt) {
+        moveTo(position() + [speed * dt, 0, 0]);
+        float velocity = velocity();
+        log("velocity " + velocity.text());
+        jump();
+        this:jump();
+        seen = me;
+        log(this:position().text());
+    }
+
+    -- The component's own jump wins over the engine's; this:jump() still reaches the engine's.
+    method jump() {
+        log("the hopper's own jump");
+    }
+}
+
+method log(string words) native;
+
+pass Hopper;
+end

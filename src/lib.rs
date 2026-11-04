@@ -138,6 +138,8 @@ pub(crate) struct Checked {
     pub info: check::Info,
     pub files: Vec<String>,
     pub is_script: bool,
+    /// Notes: not mistakes (me, which is now this).
+    pub notes: Vec<Problem>,
 }
 
 /// Reads a .lst or .lsc file from the disk, and every file it brings in, and checks them.
@@ -221,11 +223,24 @@ fn checked(
             })
             .collect());
     }
+    let notes = {
+        let mut n = diags.notes.clone();
+        n.sort_by_key(|(p, _)| (p.line, p.col));
+        n.into_iter()
+            .map(|(pos, message)| Problem {
+                file: files.get(pos.file()).cloned().unwrap_or_default(),
+                line: pos.row(),
+                column: pos.col,
+                message,
+            })
+            .collect()
+    };
     Ok(Checked {
         prog,
         info,
         files,
         is_script,
+        notes,
     })
 }
 
@@ -292,6 +307,7 @@ fn lua_chunk(entry: &str, files: &[(String, String)], engine: &Engine) -> Result
         files: c.files,
         lines: out.lines,
         cols: out.cols,
+        notes: c.notes,
     })
 }
 
@@ -328,6 +344,9 @@ pub struct LuaChunk {
     lines: Vec<u32>,
     /// The column of the statement each line came from, or 0.
     cols: Vec<u32>,
+    /// Notes on the code: not mistakes, so it runs, but worth showing (`me`, which is now
+    /// `this`), each with its file, line and column.
+    pub notes: Vec<Problem>,
 }
 
 impl LuaChunk {
