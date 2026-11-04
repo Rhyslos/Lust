@@ -290,9 +290,16 @@ pub fn write(prog: &Program, info: &Info, files: &[String], library: bool) -> St
         // A method the engine's files give entity: a function taking the entity first, whose
         // body is the program's entity_name.
         if let Some(Item::Method(m)) = item.filter_entity() {
-            let Some(sig) = info.entity_methods.get(&m.name).cloned() else { continue };
+            let Some(sig) = info.entity_methods.get(&m.name).cloned() else {
+                continue;
+            };
             let mut params = vec!["v_this: u64".to_string()];
-            params.extend(m.params.iter().zip(&sig.params).map(|(p, (_, t))| format!("mut v_{}: {}", p.name, w.ty(t))));
+            params.extend(
+                m.params
+                    .iter()
+                    .zip(&sig.params)
+                    .map(|(p, (_, t))| format!("mut v_{}: {}", p.name, w.ty(t))),
+            );
             let mut b = String::from("    let _depth = rt::Depth::enter();\n");
             w.class = None;
             w.current_ret = Some(sig.ret.clone());
@@ -1143,7 +1150,6 @@ impl<'a> W<'a> {
             other => self.ty(other),
         }
     }
-
 
     /// What a native method's body gives back, in the program's types. A state's option comes
     /// back as its full name in a `String` (`"Farmer.Walk"`), checked as it arrives.

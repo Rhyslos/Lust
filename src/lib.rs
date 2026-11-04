@@ -200,13 +200,7 @@ fn kind_of(path: &Path, display: &str) -> Result<bool, Vec<Problem>> {
     Ok(ext == "lsc")
 }
 
-fn checked(
-    path: &Path,
-    src: String,
-    is_script: bool,
-    mem: Option<&project::Memory>,
-    host: &[String],
-) -> Result<Checked, Vec<Problem>> {
+fn checked(path: &Path, src: String, is_script: bool, mem: Option<&project::Memory>, host: &[String]) -> Result<Checked, Vec<Problem>> {
     let mut diags = diag::Diags::default();
     let project = project::load(path, src, is_script, &mut diags, mem, host);
     let prog = project.program;
@@ -268,7 +262,7 @@ fn on_own_stack<T: Send>(f: impl FnOnce() -> T + Send) -> T {
     }
 }
 
-pub use values::{read_values, Fixed, Named, Values};
+pub use values::{read_values, read_values_with, Fixed, Named, Values};
 
 /// What Lust knows of the engine it's inside.
 #[derive(Debug, Clone, Default)]
@@ -464,8 +458,14 @@ mod deep_code {
     #[test]
     fn an_engine_s_folders_give_entity_methods() {
         let files = vec![
-            ("main.lst".to_string(), "entity e = nothing;\nvec3 at = e:position();\nend\n".to_string()),
-            ("solis/entity.lst".to_string(), "method vec3 entity:position() native;\nend\n".to_string()),
+            (
+                "main.lst".to_string(),
+                "entity e = nothing;\nvec3 at = e:position();\nend\n".to_string(),
+            ),
+            (
+                "solis/entity.lst".to_string(),
+                "method vec3 entity:position() native;\nend\n".to_string(),
+            ),
         ];
         let engine = crate::Engine {
             folders: vec!["solis".into()],

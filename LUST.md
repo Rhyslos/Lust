@@ -1529,9 +1529,11 @@ end
 ```
 
 - **Fixed values** are numbers (negative ones too), text without `{ }`, bools, `nothing`, a state's option (`Tileset.Farm`), plain lists of fixed values (`[40, 36]`, a vec3 too), and things made with `new` from fixed values. Anything that would need running (a call, a sum, a variable, a class or a method) is a mistake, with its line.
-- **`lust::read_values(path, text)`** gives back a `Values`: each one's name, its type as written, its line and its value as a `Fixed` (`Int`, `Float`, `Text`, `Bool`, `Nothing`, `Option("Tileset.Farm")`, `List`, or `Thing { class, fields }`, with `field`, `as_int` and friends to read them). It parses the file and nothing else: no other file is read, and nothing runs.
+- **`lust::read_values(entry, files)`** gives back a `Values`: each one's name, its type as written, its line and its value as a `Fixed` (`Int`, `Float`, `Text`, `Bool`, `Nothing`, `Option("Tileset.Farm")`, `List`, or `Thing { class, fields }`, with `field`, `as_int` and friends to read them). The files are handed over as for `lust::check`: the data file, and the files it fetches. `lust::read_values_with(engine, …)` adds an engine's own folders, as `check_with` does.
+- **Checked like any file:** a value of the wrong type, a class or field that doesn't exist, or an option a state doesn't have is a mistake with its line. A dotted name must be a state's option: `Tileset.Farm` is fixed, but `farm.scale` reads from something, so it's a mistake. Nothing runs.
+- A field left out of a `new` isn't in its `Fixed`: the engine uses the class's starting value.
 - **A version** for the engine's own upgrades is just a value: `lock int version = 2;`.
-- **Big files are quick:** a 1,000 × 1,000 map, written as a million one-character codes in 1,024 chunks of 32 rows, reads in well under a second (the test reads it in about a twentieth).
+- **Big files are quick:** a 1,000 × 1,000 map, written as a million one-character codes in 1,024 chunks of 32 rows (about 1 MB), reads in about a twentieth of a second, and a 4,096 × 4,096 one (about 19 MB) in about 0.7 seconds.
 - Game code shouldn't fetch a big data file: the engine reads it, and game code fetches only the names it uses, from a small file of their own.
 
 ### Components
