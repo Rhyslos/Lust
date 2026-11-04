@@ -1,5 +1,5 @@
--- Objects are one of each for the whole game: the engine ticks their update in name order before
--- the components, and saves their fields.
+-- Objects are one of each for the whole game: the engine ticks the update of those a file passes,
+-- in name order before the components, and saves their fields.
 state Season = [Spring, Summer];
 
 object Clock {
@@ -24,6 +24,17 @@ object Money {
     }
 }
 
+-- Not passed: it's only this file's, so the engine neither ticks nor saves it.
+object Weather {
+    has {
+        int rain = 0;
+    }
+
+    method update(float dt) {
+        rain += 1;
+    }
+}
+
 component Farmer {
     method update(float dt) {
         is Clock.hour < 1? then {
@@ -32,5 +43,5 @@ component Farmer {
     }
 }
 
-pass Farmer;
+pass Farmer, Clock, Money;
 end

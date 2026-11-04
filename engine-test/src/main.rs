@@ -217,6 +217,19 @@ fn main() {
     load_back.call::<()>(("Clock", saved)).unwrap();
     let clock: Table = api3.get::<Table>("objects").unwrap().get("Clock").unwrap();
     writeln!(out, "loaded: day {} hour {}", clock.get::<i64>("day").unwrap(), clock.get::<f64>("hour").unwrap()).unwrap();
+    // A save of the wrong kinds (text for a number, a number with a fraction for an int) leaves
+    // those fields as they are, as Rust's set_data does.
+    let wrong = lua.create_table().unwrap();
+    wrong.set("day", "three").unwrap();
+    wrong.set("hour", 7.0).unwrap();
+    load_back.call::<()>(("Clock", wrong)).unwrap();
+    let odd = lua.create_table().unwrap();
+    odd.set("day", 2.5).unwrap();
+    load_back.call::<()>(("Clock", odd)).unwrap();
+    writeln!(out, "wrong kinds kept: day {} hour {}", clock.get::<i64>("day").unwrap(), clock.get::<f64>("hour").unwrap()).unwrap();
+    // An object the engine doesn't keep is a clear stop.
+    let err = save.call::<Table>("Weather").unwrap_err().to_string();
+    writeln!(out, "Weather: {}", err.lines().next().unwrap_or("").trim_start_matches("runtime error: ")).unwrap();
 
     let expected_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("expected.out");
     if std::env::args().any(|a| a == "--print") {

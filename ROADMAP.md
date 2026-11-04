@@ -54,8 +54,9 @@ The order Lust gets built in. Each step makes Lust more useful on its own, and n
 | ✅ | **14.3 Abilities and `this`** (for Solis): inside a component, the entity's abilities are called bare (`moveTo(place)`), the component's own methods first; `this` is the entity, and `me` gets a note | Done (alpha 51) |
 | ✅ | **14.4 Fields the engine fills in** (for Solis): a component holds a thing of the engine's own classes with no starting value (`FarmerAnimator anim;`), filled in before its first update | Done (alpha 52) |
 | ✅ | **14.5 Data files** (for Solis): a `.lst` of only `lock` values of fixed values, read by `lust::read_values` without running anything; a 1,000 × 1,000 map reads in well under a second | Done (alpha 53) |
-| ✅ | **14.6 Objects in an engine** (for Solis): one for the whole game, its `update` ticked by the engine before components, its fields saved and loaded | Done (alpha 54) |
+| ✅ | **14.6 Objects in an engine** (for Solis): one for the whole game; a passed object's `update` is ticked by the engine before components, and its fields saved and loaded | Done (alpha 54) |
 | ✅ | **14.7 Data files, as planned:** `read_values` checks a data file like any file, only state options count as dotted names, and 19 MB reads in under a second | Done (alpha 55) |
+| ✅ | **14.8 Engine objects, as planned:** only passed objects are ticked and saved, a wrong `update` is a mistake, Lua loads check kinds | Done (alpha 56) |
 | | 🏁 *Lust's first release that isn't a test version.* | |
 
 ## Decisions along the way

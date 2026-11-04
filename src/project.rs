@@ -331,6 +331,13 @@ pub fn load(entry: &Path, src: String, is_script: bool, diags: &mut Diags, mem: 
         value_names(&f.prog, &mut values);
     }
 
+    // Everything any file passes: an engine ticks and saves the objects among them.
+    let shared: HashSet<String> = files
+        .iter()
+        .enumerate()
+        .flat_map(|(f, file)| file.prog.passes.iter().map(move |(n, _)| (f, n.clone())))
+        .map(|(f, n)| inner(f, &n))
+        .collect();
     // What the first file passes: what a library made from it shows to the program using it.
     let exports: Vec<(String, Pos)> = files[0].prog.passes.iter().map(|(n, p)| (inner(0, n), *p)).collect();
     let mut items = Vec::new();
@@ -371,6 +378,7 @@ pub fn load(entry: &Path, src: String, is_script: bool, diags: &mut Diags, mem: 
             compound,
             host_files,
             this_ids,
+            shared,
         },
         files: shown,
     }

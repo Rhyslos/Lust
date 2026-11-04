@@ -103,6 +103,8 @@ pub enum CallRes {
 
 #[derive(Default)]
 pub struct Info {
+    /// What the files pass, by name inside Lust: an engine ticks and saves the objects among them.
+    pub shared: std::collections::HashSet<String>,
     pub types: HashMap<usize, Ty>,
     pub names: HashMap<usize, NameRes>,
     pub calls: HashMap<usize, CallRes>,
@@ -262,7 +264,10 @@ pub struct Checker<'a> {
 
 pub fn check(prog: &Program, diags: &mut Diags, is_script: bool) -> Info {
     let mut c = Checker {
-        info: Info::default(),
+        info: Info {
+            shared: prog.shared.clone(),
+            ..Info::default()
+        },
         diags,
         top_vars: HashMap::new(),
         class_names: vec![],

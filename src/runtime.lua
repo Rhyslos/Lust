@@ -612,22 +612,45 @@ function L.engine(version, components, events, classes, objects, ticked)
       if ticked[name] then objects[name]:update(dt) end
     end
   end
+  -- An object by its name, or a clear stop.
+  local function object(name)
+    local o = objects[name]
+    if o == nil then error("there's no object called " .. tostring(name) .. " for the engine: an object is ticked and saved when its file passes it.", 3) end
+    return o
+  end
+  -- Whether a saved value fits a field of this kind, as Rust's set_data checks.
+  local function fits(f, v)
+    local kind, t = f[3], type(v)
+    if kind == "bool" then return t == "boolean" end
+    if kind == "int" then return t == "number" and v == math.floor(v) end
+    if kind == "float" then return t == "number" end
+    if kind == "string" then return t == "string" end
+    if kind == "state" then
+      if t ~= "string" then return false end
+      for _, opt in ipairs(f[4]) do if opt == v then return true end end
+      return false
+    end
+    if kind == "vec3" then return t == "vector" or t == "table" or t == "userdata" end
+    if kind == "rotation" then return t == "table" end
+    if kind == "entity" then return t ~= "boolean" end
+    return false
+  end
   -- An object's fields the engine keeps (by its __schema): for a save, and back.
   function api.save(name)
-    local o = objects[name]
+    local o = object(name)
     local out = {}
     for _, f in ipairs(getmetatable(o).__schema or {}) do
       if f[3] ~= "other" and f[3] ~= "object" then out[f[2]] = o[f[1]] end
     end
     return out
   end
-  -- Gives an object saved values back: those its fields still have, of the same kind.
+  -- Gives an object saved values back: those its fields still have, of the same kind. A missing
+  -- value, or one of the wrong kind, is left as it is.
   function api.load(name, values)
-    local o = objects[name]
-    if o == nil then return end
+    local o = object(name)
     for _, f in ipairs(getmetatable(o).__schema or {}) do
       local v = values[f[2]]
-      if v ~= nil and f[3] ~= "other" and f[3] ~= "object" then o[f[1]] = v end
+      if v ~= nil and fits(f, v) then o[f[1]] = v end
     end
   end
   -- A thing of one of the engine's own classes, with these values for its fields (by name), to
