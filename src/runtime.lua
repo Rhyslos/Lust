@@ -1560,10 +1560,15 @@ function L.view_open(class)
   if not host or not host.ui_open then needs("A view") end
   local o = L.new(class)
   local st = {items = {}, seen = {}, turns = {}}
-  stores[#stores + 1] = st
+  -- The view's pieces of your own keep their memory in st. The store is put in place each time
+  -- the view runs, not only while ui_open does: an engine (Solis) keeps the view and runs it after
+  -- ui_open has given back.
   local e = host.ui_open(o:__settings(), function()
+    stores[#stores + 1] = st
     st.seen, st.turns = {}, {}
-    local v = o:__view()
+    local ok, v = pcall(o.__view, o)
+    stores[#stores] = nil
+    if not ok then error(v, 0) end
     for parent, made in pairs(st.items) do
       for k, p in pairs(made) do
         if not st.seen[p] then made[k] = nil end
@@ -1572,7 +1577,6 @@ function L.view_open(class)
     end
     return v
   end)
-  stores[#stores] = nil
   if e then error(e, 0) end
 end
 

@@ -1,0 +1,17 @@
+fetch "ui/row":Row;
+
+assembly Menu {
+    has {
+        int picked = 0;
+    }
+
+    view {
+        column [gap 4] {
+            Row { label = "Resume" };
+            Row { label = "Quit" };
+        }
+    }
+}
+
+Menu:open();
+end

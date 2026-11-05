@@ -2,7 +2,13 @@
 
 This file is for programs that use Lust as a library: Solis first. When an engine updates its pinned Lust, it reads the section for each version it skips over, newest at the bottom, and does what **The engine does** says. The full rules are in [LUST.md](LUST.md), section 21.
 
-An engine moving from alpha 48 to alpha 59 or later reads everything below.
+An engine moving from alpha 48 to alpha 60 or later reads everything below.
+
+## alpha 60: a view's pieces work when the engine runs it later
+
+- An engine whose `LUST_HOST.ui_open` keeps the view and gives back at once (Solis runs a game's screens after each tick) can now show pieces of your own in it (`Row { label = "Quit" };`). Before, their memory was kept only while `ui_open` ran, so a piece used later stopped with an error.
+- Each piece keeps its fields from one run of the view to the next, as in Lust's own windows.
+- **The engine does:** nothing.
 
 ## alpha 49: states in native methods
 
