@@ -1,0 +1,14 @@
+assembly Row {
+    has {
+        string label = "";
+        int shown = 0;
+    }
+
+    view {
+        shown = shown + 1;
+        text label + " " + shown.text();
+    }
+}
+
+pass Row;
+end

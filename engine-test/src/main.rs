@@ -236,6 +236,36 @@ fn main() {
     let err = save.call::<Table>("Weather").unwrap_err().to_string();
     writeln!(out, "Weather: {}", err.lines().next().unwrap_or("").trim_start_matches("runtime error: ")).unwrap();
 
+    // 7. Screens in an engine: ui_open gives back at once, and the engine runs the view later,
+    // as often as it likes. Pieces of your own keep their memory from one run to the next.
+    let lua = Lua::new();
+    let kept: Rc<RefCell<Option<Function>>> = Rc::default();
+    let host = lua.create_table().unwrap();
+    let keep = Rc::clone(&kept);
+    host.set(
+        "ui_open",
+        lua.create_function(move |_, (_settings, view): (Value, Function)| {
+            *keep.borrow_mut() = Some(view);
+            Ok(())
+        })
+        .unwrap(),
+    )
+    .unwrap();
+    lua.globals().set("LUST_HOST", host).unwrap();
+    let screens = lust::to_lua("main.lst", &files("screens")).unwrap();
+    lua.load(&screens.code).set_name(lust::LuaChunk::NAME).exec().unwrap();
+    let view = kept.borrow().clone().unwrap();
+    for _ in 0..3 {
+        let tree: Table = view.call(()).unwrap();
+        let column: Table = tree.get::<Table>("c").unwrap().get(1).unwrap();
+        let mut said = Vec::new();
+        for piece in column.get::<Table>("c").unwrap().sequence_values::<Table>() {
+            let text: Table = piece.unwrap().get::<Table>("c").unwrap().get(1).unwrap();
+            said.push(text.get::<String>("t").unwrap());
+        }
+        writeln!(out, "screen: {}", said.join(", ")).unwrap();
+    }
+
     let expected_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("expected.out");
     if std::env::args().any(|a| a == "--print") {
         print!("{out}");
