@@ -1550,14 +1550,12 @@ impl<'a> Checker<'a> {
             "thick",
             "columns",
             "cell",
-            "glow",
-            "outline",
         ];
         const FLAGS: &[&str] = &[
             "tiny", "small", "large", "huge", "bold", "muted", "strike", "nowrap", "shadow", "pill", "left", "center", "right", "top",
             "middle", "bottom", "spread", "subtle", "cover", "down", "open", "animate",
         ];
-        const COLOURED: &[&str] = &["color", "background", "glowColor", "outlineColor"];
+        const COLOURED: &[&str] = &["color", "background"];
         let window = kind == "view";
         for it in items {
             let n = it.name.as_str();
@@ -1586,16 +1584,6 @@ impl<'a> Checker<'a> {
                     }
                 }
                 ("minWidth" | "minHeight", StyleValue::Expr(_)) if window => {}
-                // The screen's look, for engines drawing a view over a game:
-                // a glow and an outline round everything, and a pixel size.
-                ("glow" | "outline" | "pixel", v) if window => {
-                    number(self, v, &format!("{n} {}", if n == "pixel" { "3" } else { "4" }))
-                }
-                ("glowColor" | "outlineColor", v) if window => match v {
-                    StyleValue::Word(w) if ok_word(w) => {}
-                    StyleValue::Expr(_) => {}
-                    _ => self.err(it.pos, format!("{n} takes a colour: {n} yellow, or {n} \"#2f9e44\".")),
-                },
                 ("dark", StyleValue::Flag) if window => {}
                 ("dark", StyleValue::Expr(e)) if window => {
                     let t = self.info.ty(e);
@@ -1641,7 +1629,7 @@ impl<'a> Checker<'a> {
                     _ => self.err(it.pos, format!("{n} takes a colour: {n} blue, or {n} \"#2f9e44\".")),
                 },
                 (n2, v) if NUMS.contains(&n2) && !window => match v {
-                    StyleValue::Flag if matches!(n2, "pad" | "gap" | "grow" | "glow" | "outline") => {}
+                    StyleValue::Flag if matches!(n2, "pad" | "gap" | "grow") => {}
                     other => number(self, other, &format!("{n2} {}", if n2 == "opacity" { "0.5" } else { "12" })),
                 },
                 ("round", StyleValue::Flag | StyleValue::Expr(_)) if !window => {}
@@ -1669,11 +1657,6 @@ impl<'a> Checker<'a> {
                             "background".into(),
                             "font".into(),
                             "dark".into(),
-                            "glow".into(),
-                            "glowColor".into(),
-                            "outline".into(),
-                            "outlineColor".into(),
-                            "pixel".into(),
                         ]
                     } else {
                         NUMS.iter()
@@ -1705,7 +1688,7 @@ impl<'a> Checker<'a> {
                     if window {
                         self.err(
                             it.pos,
-                            format!("a window's view has title, width, height, minWidth, minHeight, background, font, dark, and for engines glow, glowColor, outline, outlineColor and pixel.{s}"),
+                            format!("a window's view has title, width, height, minWidth, minHeight, background, font and dark.{s}"),
                         );
                     } else if FLAGS.contains(&n) || colour_word || named {
                         self.err(it.pos, format!("{n} is a word on its own, without a value."));
