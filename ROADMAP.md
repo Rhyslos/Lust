@@ -60,7 +60,6 @@ The order Lust gets built in. Each step makes Lust more useful on its own, and n
 | ✅ | **14.9 Tidy-ups from review:** `entity:text()` and `entity_…` clashes refused, the `me` note shown by `lust check`, clearer `this` messages, and [ENGINES.md](ENGINES.md) for engines moving to a newer Lust | Done (alpha 57) |
 | ✅ | **14.10 An unfilled engine field is named:** reading a component's field before the engine has filled it stops saying which field, not only "this is nothing" | Done (alpha 58) |
 | ✅ | **14.11 Engine components join when fetched:** a component or object in the engine's folders is part of a game only once the game fetches it, so ready-made ones never clash with a game's own | Done (alpha 59) |
-| ✅ | **14.13 Glow, outline and a screen's look:** `glow` and `outline` on pieces, and on a view's own `[ ]` with `pixel`, for engines drawing screens over a game | Done (alpha 61) |
 | | 🏁 *Lust's first release that isn't a test version.* | |
 
 ## Decisions along the way

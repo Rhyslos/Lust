@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (alpha 61):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (alpha 59):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -1146,7 +1146,6 @@ Short words in `[ ]`, in the spirit of Tailwind:
 | text | `size 24`, `tiny`, `small`, `large`, `huge`, `weight 600`, `bold`, `muted`, `strike`, `nowrap` |
 | colour | a colour word on its own colours text (or a whole button), `color …` and `background …`, and `subtle` for a button with no background until the mouse is over it |
 | shape | `round`, `round 12`, `pill`, `border`, `border red`, `borderWidth 2`, `shadow`, `opacity 0.5` |
-| glow and outline | `glow 6` (a soft light round it, in its own colour or `glowColor yellow`), `outline 2` (a line just outside its edge, in `outlineColor black`) |
 | placement | `left`, `center`, `right` side to side; `top`, `middle`, `bottom` up and down; `spread` |
 | under the mouse | `hover:[ … ]`, `tip "…"` |
 | in dark mode | `dark:[ … ]` |
@@ -1170,8 +1169,6 @@ A `stack` lays its children on top of each other, the later ones in front, place
 **Values can come from the data.** After a style word, a value can be any number, text or bool: `[grow done, background shade, size 12 + extra, disabled not ready]`, with fields and variables. Only colour words (`red`, `gray3`…) and `fill` are read as words.
 
 Name a style to reuse it: `style card = [pad 16, round, shadow];`, then `[card]`.
-
-**A screen's look, for engines.** An engine that draws a view over a game (Solis's screens) also reads `glow`, `glowColor`, `outline`, `outlineColor` and `pixel 3` in the view's own `[ ]`: a glow and an outline round everything on it, and the whole screen drawn in blocks of that many pixels, for a pixel-art look. Lust's own windows accept them and draw none of them.
 
 ### Underneath
 

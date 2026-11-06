@@ -2,7 +2,7 @@
 
 This file is for programs that use Lust as a library: Solis first. When an engine updates its pinned Lust, it reads the section for each version it skips over, newest at the bottom, and does what **The engine does** says. The full rules are in [LUST.md](LUST.md), section 21.
 
-An engine moving from alpha 48 to alpha 61 or later reads everything below.
+An engine moving from alpha 48 to alpha 59 or later reads everything below.
 
 ## alpha 49: states in native methods
 
@@ -77,9 +77,3 @@ An engine moving from alpha 48 to alpha 61 or later reads everything below.
 - Files in the host folders still come with every program, for their `entity` methods. But a component or object in one (a ready-made component in `solis/kit/`, say) is part of the game only once the game fetches its file, directly or through another file.
 - Before, every one of them joined every game: they showed among its components, and a game's own component of the same name clashed with them.
 - **The engine does:** nothing. A game that used a ready-made component without fetching it now has to fetch it, as the manual already says.
-
-## alpha 61: glow, outline and a screen's look
-
-- Pieces take `glow 6` and `outline 2`, with `glowColor` and `outlineColor` (a bare `glow` is 4, a bare `outline` 1). Lust's own windows draw them round a piece's box.
-- A view's own `[ ]` takes `glow`, `glowColor`, `outline`, `outlineColor` and `pixel` too: the screen's look. Lust's own windows check them and draw nothing for them.
-- **The engine does:** reads them from the view's styles by name, like any other, and draws them its own way. An engine that ignores them shows the screen as before.
