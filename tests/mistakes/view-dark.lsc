@@ -5,7 +5,7 @@ assembly App {
     }
 
     view [dark night] {
-        column [dark:[glow 2]] {
+        column [dark:[growl 2]] {
             text "Hi" [dark 5];
         }
     }

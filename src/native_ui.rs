@@ -548,6 +548,12 @@ struct Look {
     border: Option<u32>,
     border_w: f32,
     shadow: bool,
+    /// A glow round it this far out (0 for none), in its colour or `glowColor`.
+    glow: f32,
+    glow_color: Option<u32>,
+    /// An outline round it this thick (0 for none), in `outlineColor`.
+    outline: f32,
+    outline_color: u32,
     /// left, center, right: for children (and a text's lines) side to side.
     halign: Align,
     /// top, middle, bottom: for children up and down.
@@ -639,6 +645,10 @@ fn base_look(kind: &str) -> Look {
         border: None,
         border_w: 1.0,
         shadow: false,
+        glow: 0.0,
+        glow_color: None,
+        outline: 0.0,
+        outline_color: 0x000000,
         halign: Align::Start,
         valign: Align::Start,
         spread: false,
@@ -876,6 +886,14 @@ fn apply(l: &mut Look, kind: &str, style: &[(String, SV)]) {
                 l.border = Some(l.border.unwrap_or(nt(0xdee2e6)));
             }
             "shadow" => l.shadow = true,
+            "glow" => l.glow = num(v).unwrap_or(4.0).clamp(0.0, 64.0),
+            "glowColor" => l.glow_color = text_of(v).and_then(colour).or(l.glow_color),
+            "outline" => l.outline = num(v).unwrap_or(1.0).clamp(0.0, 64.0),
+            "outlineColor" => {
+                if let Some(c) = text_of(v).and_then(colour) {
+                    l.outline_color = c;
+                }
+            }
             "opacity" => l.opacity = num(v).unwrap_or(1.0).clamp(0.0, 1.0),
             "left" => l.halign = Align::Start,
             "center" => l.halign = Align::Center,
@@ -2362,6 +2380,22 @@ fn paint(c: &mut Canvas, n: &Laid, st: &PaintState, path: &mut Vec<usize>) {
             let e = i as f32;
             c.rect(n.x - e + 0.0, n.y - e + 3.0, n.w + 2.0 * e, n.h + 2.0 * e, l.radius + e, 0x000000, 0.012);
         }
+    }
+    // A glow: rings fading outward, in its colour (or its background's,
+    // or its text's).
+    if l.glow > 0.0 {
+        let colour = l.glow_color.or(l.background).unwrap_or(l.color);
+        let steps = (l.glow.ceil() as usize).clamp(1, 16);
+        for i in (1..=steps).rev() {
+            let e = l.glow * i as f32 / steps as f32;
+            let fade = 1.0 - i as f32 / (steps as f32 + 1.0);
+            c.rect(n.x - e, n.y - e, n.w + 2.0 * e, n.h + 2.0 * e, l.radius + e, colour, 0.18 * fade);
+        }
+    }
+    // An outline: a border just outside its edge.
+    if l.outline > 0.0 {
+        let o = l.outline;
+        c.shape(n.x - o, n.y - o, n.w + 2.0 * o, n.h + 2.0 * o, l.radius + o, Some(o), l.outline_color, 1.0);
     }
     match n.kind.as_str() {
         "checkbox" => paint_checkbox(c, n, l, focused && st.ring),

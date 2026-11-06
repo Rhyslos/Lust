@@ -1,0 +1,4 @@
+view-looks.lsc:4:29  glow takes a number, like glow 12. This is a string.
+view-looks.lsc:5:18  Lust has no style called pixel. Did you mean pill?
+
+2 mistakes. Nothing was run.
