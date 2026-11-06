@@ -6,7 +6,7 @@ assembly Board {
     }
 
     view [title "Board"] {
-        column [card, glow] {
+        column [card, growl] {
             text count;
             button "Add" [blue] {
                 count = count + 1;

@@ -1,0 +1,11 @@
+assembly Looks {
+    view [title "Looks", glow 6, glowColor yellow, outline 2, outlineColor black, pixel 3] {
+        column [glow 8, glowColor blue5, outline 1, outlineColor "#ff8800"] {
+            text "hi" [glow "big", outlineColor 3];
+            row [pixel 2] { }
+        }
+    }
+}
+
+Looks:open();
+end
