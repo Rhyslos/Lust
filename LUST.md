@@ -1279,7 +1279,7 @@ Each family has `In`, `Out` and `InOut`: `InCubic`, `OutCubic`, `InOutCubic`. Th
 - **In a plain program**, `wait seconds;` lets the clock run: tweens move on during it, in steps of 1/60 s, so `tween x to 10 over 1; wait 1;` leaves `x` at 10 with its done block run. Without a `wait`, nothing moves. When the program ends, tweens still running just stop. A `wait` inside a done block, or in a button while the window is open, only pauses.
 - **In a game engine**, the engine moves them once a tick (section 21).
 
-A tween takes the same steps in `lust run` and a built program, so both end with exactly the same numbers.
+A tween takes the same steps in `lust run` and a built program, so both end with exactly the same numbers. The curves that use sines and powers (Sine, Expo, Elastic) use the computer's own maths library, as `Maths:sin` does, so they can differ in the last digit between Windows and Linux; on one computer, both ways always agree.
 
 ### Styles
 
