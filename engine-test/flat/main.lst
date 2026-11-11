@@ -1,4 +1,5 @@
--- vec2s and colours in Luau: through native methods, a component's fields and an event.
+-- vec2s and colours in Luau: through native methods, a component's fields and an event. And an
+-- object whose vectors, rotation and colour the engine saves, and which writes them as JSON.
 method vec2 spotOf(entity e) native;
 method colour tintOf(entity e) native;
 method log(string words) native;
@@ -19,4 +20,28 @@ component Lamp {
         send Glow(light:fade(0.5), at) to this;
     }
 }
+
+object Camp {
+    has {
+        vec3 fire = [1, 2, 3];
+        vec2 cell = [4, 5];
+        rotation facing = [0, 0, 90];
+        colour glow = orange5;
+    }
+
+    method update(float dt) {
+        fire = fire / 7;
+        cell = cell * 0.1;
+        facing = facing * Rotation:around([1, 1, 0], 33);
+        glow = glow:lerp([0.1, 0.2, 0.3], 0.37);
+        vec3 fire2 = Json:read(Json:write(fire));
+        vec2 cell2 = Json:read(Json:write(cell));
+        rotation facing2 = Json:read(Json:write(facing));
+        colour glow2 = Json:read(Json:write(glow));
+        log("camp json " + Json:write(fire) + " " + Json:write(cell) + " " + Json:write(facing) + " " + Json:write(glow));
+        log("camp back " + (fire2 == fire).text() + " " + (cell2 == cell).text() + " " + (facing2 == facing).text() + " " + (glow2 == glow).text());
+    }
+}
+
+pass Camp;
 end

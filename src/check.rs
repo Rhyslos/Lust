@@ -834,11 +834,12 @@ impl<'a> Checker<'a> {
                 let t = self.resolve(ty);
                 let Ty::CMap(cols) = t else { continue };
                 for (cn, ct) in cols.iter() {
-                    if !matches!(ct, Ty::Int | Ty::Float | Ty::Str | Ty::Truth | Ty::State(_) | Ty::Error) {
+                    let vector = matches!(ct, Ty::Vec3 | Ty::Vec2 | Ty::Rot | Ty::Colour);
+                    if !vector && !matches!(ct, Ty::Int | Ty::Float | Ty::Str | Ty::Truth | Ty::State(_) | Ty::Error) {
                         self.err(
                             *pos,
                             format!(
-                                "a table's columns hold numbers, text, bools or state options, but {cn} is {}.",
+                                "a table's columns hold numbers, text, bools, state options, vectors, rotations or colours, but {cn} is {}.",
                                 self.a(ct)
                             ),
                         );
@@ -2325,7 +2326,7 @@ impl<'a> Checker<'a> {
                                 self.err(
                                     *p,
                                     format!(
-                                        "{p2} Saves hold numbers, text, bools, states, arrays, maps, cMaps and things made from classes."
+                                        "{p2} Saves hold numbers, text, bools, states, vectors, rotations, colours, arrays, maps, cMaps and things made from classes."
                                     ),
                                 );
                             } else {
@@ -3329,6 +3330,15 @@ impl<'a> Checker<'a> {
                     ExprKind::Name(c) if tt.cols.iter().any(|(x, _)| x == c) => {
                         self.info.columns.insert(args[0].id, c.clone());
                         let ct = tt.cols.iter().find(|(x, _)| x == c).unwrap().1.clone();
+                        if matches!(ct, Ty::Vec3 | Ty::Vec2 | Ty::Rot | Ty::Colour) {
+                            self.err(
+                                args[0].pos,
+                                format!(
+                                    "orderBy can't order by {c}: it's {}, which has no smallest or biggest.",
+                                    self.a(&ct)
+                                ),
+                            );
+                        }
                         self.info.types.insert(args[0].id, ct);
                     }
                     _ => {
@@ -3389,7 +3399,16 @@ impl<'a> Checker<'a> {
             ))
         };
         match &e.kind {
-            ExprKind::Name(_) => Ok(()),
+            ExprKind::Name(n) => match self.info.ty(e) {
+                t @ (Ty::Vec3 | Ty::Vec2 | Ty::Rot | Ty::Colour) => Err((
+                    e.pos,
+                    format!(
+                        "where can't use {n}: {} is kept as text in the database, so it can't be compared there. Loop through the rows and check each {n} instead.",
+                        self.a(&t)
+                    ),
+                )),
+                _ => Ok(()),
+            },
             ExprKind::Bin(op, ..) if op.is_bitwise() => bad(),
             ExprKind::Bin(_, l, r, _) => {
                 self.sql_ok(l)?;
@@ -3405,6 +3424,11 @@ impl<'a> Checker<'a> {
                     return bad();
                 }
                 Ok(())
+            }
+            // at.x or at:length() with a vec3 column says why that column can't be used.
+            ExprKind::Field(t, ..) | ExprKind::Method(t, ..) => {
+                self.sql_ok(t)?;
+                bad()
             }
             _ => bad(),
         }
@@ -3478,7 +3502,7 @@ impl<'a> Checker<'a> {
                     if let Some(p) = crate::stdlib::json_problem(&t, &|t| self.a(t)) {
                         self.err(
                             args[0].pos,
-                            format!("{p} JSON holds numbers, text, bools, states, arrays, maps, cMaps and things made from classes."),
+                            format!("{p} JSON holds numbers, text, bools, states, vectors, rotations, colours, arrays, maps, cMaps and things made from classes."),
                         );
                     } else if t == Ty::Void || t == Ty::Nothing {
                         self.err(args[0].pos, "there's nothing here to turn into JSON.");
@@ -3511,7 +3535,7 @@ impl<'a> Checker<'a> {
                     if let Some(p) = crate::stdlib::json_problem(&want, &|t| self.a(t)) {
                         self.err(
                             mpos,
-                            format!("{p} JSON holds numbers, text, bools, states, arrays, maps, cMaps and things made from classes."),
+                            format!("{p} JSON holds numbers, text, bools, states, vectors, rotations, colours, arrays, maps, cMaps and things made from classes."),
                         );
                         return Ty::Error;
                     }

@@ -2233,6 +2233,144 @@ pub fn jr_truth(v: &Json, at: &str) -> bool {
         _ => misfit(at, "a bool (true or false)", v),
     }
 }
+/// vec3s, vec2s, rotations and colours: numbers in [ ], as read, each to be rounded to f32.
+fn jr_list(v: &Json, at: &str, want: &str, counts: &[usize]) -> Vec<f64> {
+    let Json::Arr(a) = v else { misfit(at, want, v) };
+    if !counts.contains(&a.len()) {
+        fail(format!(
+            "{} should be {want}, but it has {} item{}.",
+            place(at),
+            a.len(),
+            if a.len() == 1 { "" } else { "s" }
+        ));
+    }
+    a.iter()
+        .enumerate()
+        .map(|(i, x)| {
+            let iat = format!("{at}[{i}]");
+            let Json::Num(n) = x else { misfit(&iat, "a number", x) };
+            if (*n as f32).is_infinite() {
+                fail(format!("the JSON at {iat} is too big to keep in 32 bits."));
+            }
+            *n
+        })
+        .collect()
+}
+pub fn jr_vec3(v: &Json, at: &str) -> Vec3 {
+    let n = jr_list(v, at, "a vec3, three numbers in [ ]", &[3]);
+    vec3(n[0], n[1], n[2])
+}
+pub fn jr_vec2(v: &Json, at: &str) -> Vec2 {
+    let n = jr_list(v, at, "a vec2, two numbers in [ ]", &[2]);
+    vec2(n[0], n[1])
+}
+/// Four numbers are a quaternion, as Json:write writes one; three are degrees around x, y and
+/// z, as Lust writes a rotation.
+pub fn jr_rotation(v: &Json, at: &str) -> Rotation {
+    let n = jr_list(v, at, "a rotation, four numbers in [ ] (or three degrees)", &[3, 4]);
+    if n.len() == 3 {
+        return rot(n[0], n[1], n[2]);
+    }
+    let q = qround((n[0], n[1], n[2], n[3]));
+    let (x, y, z, w) = q4(q);
+    let len = (x * x + y * y + z * z + w * w).sqrt();
+    if !((len - 1.0).abs() <= 0.001) {
+        fail(format!(
+            "{} is a rotation's four numbers, which should be 1 long together, but these are {} long.",
+            place(at),
+            ftext(len)
+        ));
+    }
+    q
+}
+/// Hex text, "#rrggbb" or "#rrggbbaa", or three or four numbers from 0 to 1.
+pub fn jr_colour(v: &Json, at: &str) -> Colour {
+    let want = "a colour, \"#rrggbb\", \"#rrggbbaa\" or numbers in [ ]";
+    if let Json::Str(s) = v {
+        let hex = s.strip_prefix('#').unwrap_or("");
+        if s.starts_with('#') && matches!(hex.len(), 6 | 8) && hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return colour_hex(s.clone());
+        }
+        fail(format!("{} should be {want}, but it's \"{s}\".", place(at)));
+    }
+    let n = jr_list(v, at, want, &[3, 4]);
+    for (i, p) in n.iter().enumerate() {
+        if !(*p >= 0.0 && *p <= 1.0) {
+            fail(format!("the JSON at {at}[{i}] is {}, but a colour's parts go from 0 to 1.", ftext(*p)));
+        }
+    }
+    colour(n[0], n[1], n[2], if n.len() == 4 { n[3] } else { 1.0 })
+}
+/// An f32 as the shortest text that reads back as exactly the same f32, written the same way as
+/// the Lua runtime: plain from 1e-7 to below 1e21 (with ".0" when it's whole), and 1e-45 or
+/// 3.4028235e38 beyond. Each try is correctly rounded, read back through an f64 and rounded to
+/// f32, as Json:read does.
+pub fn f32json(x: f32) -> String {
+    if !x.is_finite() {
+        fail(format!("JSON can't hold {}.", ftext(x as f64)));
+    }
+    if x == 0.0 {
+        return if x.is_sign_negative() { "-0.0".into() } else { "0.0".into() };
+    }
+    let mut s = String::new();
+    for p in 0..9 {
+        s = format!("{:.*e}", p, x as f64);
+        if s.parse::<f64>().map(|r| r as f32 == x).unwrap_or(false) {
+            break;
+        }
+    }
+    let (sign, s) = match s.strip_prefix('-') {
+        Some(r) => ("-", r.to_string()),
+        None => ("", s),
+    };
+    let (m, e) = s.split_once('e').unwrap_or((&s, "0"));
+    let e: i32 = e.parse().unwrap_or(0);
+    let digits = m.replace('.', "");
+    let digits = digits.trim_end_matches('0');
+    let digits = if digits.is_empty() { "0" } else { digits };
+    let n = digits.len() as i32;
+    if !(-7..21).contains(&e) {
+        let mut out = format!("{sign}{}", &digits[..1]);
+        if n > 1 {
+            out.push('.');
+            out.push_str(&digits[1..]);
+        }
+        return format!("{out}e{e}");
+    }
+    if e >= n - 1 {
+        return format!("{sign}{digits}{}.0", "0".repeat((e - n + 1) as usize));
+    }
+    if e >= 0 {
+        let (a, b) = digits.split_at((e + 1) as usize);
+        return format!("{sign}{a}.{b}");
+    }
+    format!("{sign}0.{}{digits}", "0".repeat((-e - 1) as usize))
+}
+fn jnums(d: Option<usize>, xs: &[f32]) -> String {
+    let parts: Vec<String> = xs.iter().map(|x| f32json(*x)).collect();
+    format!("[{}]", parts.join(if d.is_some() { ", " } else { "," }))
+}
+pub fn jw_vec3(v: &Vec3, d: Option<usize>) -> String {
+    jnums(d, &[v.x, v.y, v.z])
+}
+pub fn jw_vec2(v: &Vec2, d: Option<usize>) -> String {
+    jnums(d, &[v.x, v.y])
+}
+/// A rotation is its quaternion, x, y, z and w: its degrees can't always give back exactly the
+/// same turn.
+pub fn jw_rotation(q: &Rotation, d: Option<usize>) -> String {
+    jnums(d, &[q.x, q.y, q.z, q.w])
+}
+/// A colour is its hex text when that gives back exactly the same colour (every part a whole
+/// number of 255ths), and its four numbers when it doesn't.
+pub fn jw_colour(c: &Colour, d: Option<usize>) -> String {
+    let parts = c.to_array();
+    if parts.iter().all(|p| (byte(*p) as f64 / 255.0) as f32 == *p) {
+        jquote(&colhex(*c))
+    } else {
+        jnums(d, &parts)
+    }
+}
 /// A state's option a native method's body gave back, by its full name: one the state doesn't
 /// have stops the program, on the line that called it.
 pub fn host_state(v: &str, opts: &[&'static str], state: &str) -> &'static str {

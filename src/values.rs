@@ -13,7 +13,9 @@
 //! ```
 //!
 //! Fixed values are numbers, text, bools, `nothing`, a state's option (`Tileset.Farm`), lists of
-//! fixed values (`[40, 36]`, a vec3 too), and things made with `new` from fixed values. Anything
+//! fixed values (`[40, 36]`, a vec3, vec2, a rotation's degrees or a colour's numbers too),
+//! colours written as a colour word or `Colour:hex("#…")`, and things made with `new` from fixed
+//! values. Anything
 //! that would need running (a call, a sum, a variable) is a mistake with its line. The file is
 //! checked like any other too, with the files it fetches, so types, classes and fields are right.
 
@@ -30,8 +32,12 @@ pub enum Fixed {
     Nothing,
     /// A state's option, by its full name with the state's: `"Tileset.Farm"`.
     Option(String),
-    /// `[a, b, c]`: a list, or a vec3's three numbers.
+    /// `[a, b, c]`: a list, or the numbers of a vec3, a vec2, a rotation (its degrees) or a
+    /// colour written as numbers.
     List(Vec<Fixed>),
+    /// A colour written as a colour word (`orange5`) or `Colour:hex("#3a8f2a")`: its red, green,
+    /// blue and see-through, each an f32 from 0 to 1, exactly as the program would have it.
+    Colour([f32; 4]),
     /// `new TileMap { … }`: a thing, its class's name and its fields in the order written.
     Thing {
         class: String,
@@ -83,6 +89,43 @@ impl Fixed {
             _ => None,
         }
     }
+
+    /// `n` numbers, each rounded to f32 as the program keeps them.
+    fn floats<const N: usize>(&self) -> Option<[f32; N]> {
+        let l = self.as_list()?;
+        if l.len() != N {
+            return None;
+        }
+        let mut out = [0.0; N];
+        for (o, x) in out.iter_mut().zip(l) {
+            *o = x.as_float()? as f32;
+        }
+        Some(out)
+    }
+
+    /// A vec3's three numbers (or a rotation's degrees around x, y and z).
+    pub fn as_vec3(&self) -> Option<[f32; 3]> {
+        self.floats::<3>()
+    }
+
+    /// A vec2's two numbers.
+    pub fn as_vec2(&self) -> Option<[f32; 2]> {
+        self.floats::<2>()
+    }
+
+    /// A colour's red, green, blue and see-through, however it was written: a colour word,
+    /// `Colour:hex(…)`, or three or four numbers (see-through 1 when there are three).
+    pub fn as_colour(&self) -> Option<[f32; 4]> {
+        match self {
+            Fixed::Colour(c) => Some(*c),
+            _ => self.floats::<4>().or_else(|| self.floats::<3>().map(|[r, g, b]| [r, g, b, 1.0])),
+        }
+    }
+}
+
+/// A colour from its bytes, 0 to 255, as the program makes one from a colour word or hex text.
+fn from_bytes(b: [u8; 4]) -> Fixed {
+    Fixed::Colour(b.map(|x| (x as f64 / 255.0) as f32))
 }
 
 /// One `lock` value of a data file.
@@ -262,6 +305,26 @@ fn fixed(e: &Expr, info: Option<&crate::check::Info>) -> Result<Fixed, (crate::a
         ExprKind::Template(_) => {
             return Err((e.pos, "text in a data file is plain: it can't have values in { }.".into()))
         }
+        // A colour word where a colour is wanted: orange5. Without the check's findings (when it
+        // found mistakes), any colour word is taken as one.
+        ExprKind::Name(n)
+            if crate::words::rgb(n).is_some() && info.is_none_or(|i| i.colour_words.contains_key(&e.id)) =>
+        {
+            let rgb = crate::words::rgb(n).unwrap_or(0);
+            from_bytes([(rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8, 255])
+        }
+        // Colour:hex("#3a8f2a"), with the text written right there, is a fixed colour.
+        ExprKind::Method(target, m, args, _)
+            if m == "hex" && matches!(&target.kind, ExprKind::Name(o) if o == "Colour") && args.len() == 1 =>
+        {
+            match &args[0].kind {
+                ExprKind::Str(text) => match crate::stdlib::colour_hex(text) {
+                    Ok(b) => from_bytes(b),
+                    Err(why) => return Err((args[0].pos, why)),
+                },
+                _ => return Err((args[0].pos, "Colour:hex in a data file takes its text written right there: Colour:hex(\"#3a8f2a\").".into())),
+            }
+        }
         _ => {
             return Err((
                 e.pos,
@@ -395,6 +458,65 @@ mod tests {
         ];
         let v = read_values("c.lst", &files).unwrap();
         assert_eq!(v.get("c"), Some(&Fixed::Option("Clip.Farmer.Walk".into())));
+    }
+
+    #[test]
+    fn vectors_rotations_and_colours_come_through() {
+        let lamp = "class Lamp {\n    has {\n        vec3 at = [0, 0, 0];\n        vec2 cell = [0, 0];\n        rotation facing = [0, 0, 0];\n        colour glow = white;\n        colour array spare = [];\n    }\n}\npass Lamp;\nend\n";
+        let read_lamp = |text: &str| {
+            read_values(
+                "lamps.lst",
+                &[("lamps.lst".to_string(), text.to_string()), ("lamp.lst".into(), lamp.into())],
+            )
+        };
+        let text = "fetch \"lamp\":Lamp;\n\
+            lock Lamp a = new Lamp {\n\
+                at = [1, 2.5, -3],\n\
+                cell = [4, 5],\n\
+                facing = [0, 0, 90],\n\
+                glow = orange5,\n\
+                spare = [Colour:hex(\"#3a8f2a80\"), [0.4, 0.7, 1.0], teal],\n\
+            };\n\
+            lock colour plain = [0.5, 0.25, 0.125, 0.5];\n\
+            lock colour word = red;\n\
+            end\n";
+        let v = read_lamp(text).unwrap();
+        let a = v.get("a").unwrap();
+        assert_eq!(a.field("at").and_then(Fixed::as_vec3), Some([1.0, 2.5, -3.0]));
+        assert_eq!(a.field("cell").and_then(Fixed::as_vec2), Some([4.0, 5.0]));
+        // A rotation comes through as its degrees.
+        assert_eq!(a.field("facing").and_then(Fixed::as_vec3), Some([0.0, 0.0, 90.0]));
+        // orange5 is #ff922b, each part as the program keeps it: a byte over 255, rounded to f32.
+        let orange = [255.0 / 255.0, (0x92 as f64 / 255.0) as f32, (0x2b as f64 / 255.0) as f32, 1.0];
+        assert_eq!(a.field("glow"), Some(&Fixed::Colour(orange)));
+        let spare = a.field("spare").and_then(Fixed::as_list).unwrap();
+        let moss = [0x3a, 0x8f, 0x2a, 0x80].map(|b| (b as f64 / 255.0) as f32);
+        assert_eq!(spare[0], Fixed::Colour(moss));
+        assert_eq!(spare[1].as_colour(), Some([0.4, 0.7, 1.0, 1.0]));
+        assert!(matches!(spare[2], Fixed::Colour(_)));
+        assert_eq!(v.get("plain").and_then(Fixed::as_colour), Some([0.5, 0.25, 0.125, 0.5]));
+        // red is #e03131.
+        let red = [0xe0, 0x31, 0x31, 0xff].map(|b| (b as f64 / 255.0) as f32);
+        assert_eq!(v.get("word"), Some(&Fixed::Colour(red)));
+        // Not a colour: no colour.
+        assert_eq!(a.field("at").and_then(Fixed::as_colour), Some([1.0, 2.5, -3.0, 1.0]));
+        assert_eq!(Fixed::Int(3).as_colour(), None);
+
+        // A turn worked out while running isn't fixed, and neither is hex text from a variable.
+        let text = "fetch \"lamp\":Lamp;\nlock Lamp b = new Lamp { facing = Rotation:toward([1, 0, 0]) };\nend\n";
+        let problems = read_lamp(text).unwrap_err();
+        assert_eq!(problems.iter().map(|p| p.line).collect::<Vec<_>>(), [2], "{problems:?}");
+        assert!(problems[0].message.contains("fixed"), "{}", problems[0]);
+        let text = "fetch \"lamp\":Lamp;\nlock string h = \"#ffffff\";\nlock colour c = Colour:hex(h);\nend\n";
+        let problems = read_lamp(text).unwrap_err();
+        assert_eq!(problems.iter().map(|p| p.line).collect::<Vec<_>>(), [3], "{problems:?}");
+        // Hex text that isn't a colour is a mistake, as anywhere.
+        let text = "lock colour c = Colour:hex(\"#12\");\nend\n";
+        let problems = read_lamp(text).unwrap_err();
+        assert!(problems[0].message.contains("#rrggbb"), "{}", problems[0]);
+        // A colour word where something else is wanted isn't a colour.
+        let text = "lock int n = red;\nend\n";
+        assert!(read_lamp(text).is_err());
     }
 
     /// A map `side` cells wide and high, in chunks of 32 × 32 rows of one-character codes, as

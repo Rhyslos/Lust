@@ -1,0 +1,30 @@
+-- Database columns of vec3s, vec2s, rotations and colours keep exactly what went in.
+database Town in "town.db" {
+    cMap(string name, vec3 at, vec2 cell, rotation facing, colour paint, int floors) houses;
+}
+
+-- Start from an empty town each run.
+Town.houses:where(true):remove();
+
+vec3 odd = [1, 2, 3] / 7;
+rotation turned = Rotation:toward([1, 2, 0.5]);
+colour mixed = [0.3, 0.6, 0.9, 0.75];
+Town.houses:inject(["mill", odd, [-3.5, 0.1], turned, mixed, 2]);
+Town.houses:inject(["barn", [0, 0, 0], [0, 0], [0, 0, 90], red, 1]);
+print(#Town.houses);
+print(Town.houses["mill"].at == odd, Town.houses["mill"].facing == turned, Town.houses["mill"].paint == mixed);
+print(Town.houses["mill"].cell, Town.houses["barn"].paint, Town.houses["barn"].facing);
+
+-- Changing a column, and one part of it.
+Town.houses["barn"].at = [5, 6, 7];
+Town.houses["barn"].at.z = 0.1;
+Town.houses["barn"].paint = Colour:hex("#11223344");
+print(Town.houses["barn"].at, Town.houses["barn"].paint);
+
+-- Rows looped through and copied into a cMap.
+loop (string name, vec3 at, vec2 cell, rotation facing, colour paint, int floors in Town.houses:where(floors > 1)) {
+    print(name, at, cell, paint);
+}
+cMap(string name, vec3 at, vec2 cell, rotation facing, colour paint, int floors) copy = Town.houses:orderBy(floors);
+print(copy["mill"].at == odd, copy["barn"].facing == [0, 0, 90]);
+end

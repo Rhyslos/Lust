@@ -63,3 +63,12 @@ light r 0.9882352948188782 g 0.7686274647712708 b 0.09803921729326248 a 1
 lamp at [1.75, 1.875], turned [-1.875, 1.75], [0.5780445, 2.498798]
 engine tint #ff401a, mixed #fe6119
 Glow carries tint a 0.5 and at x 1.75 y 1.875
+objects: ["Camp"]
+camp json [0.14285715,0.2857143,0.42857143] [0.4,0.5] [0.0,0.28401533,0.67798793,0.67798793] [0.667,0.4347059,0.2172353,1.0]
+camp back true true true true
+camp saved fire, cell, facing, glow
+camp changed: true
+camp loaded exactly: true
+camp fire is f32s: true
+camp glow r 1 a 1
+camp wrong shapes kept: true

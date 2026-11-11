@@ -2,7 +2,7 @@
 
 This file is for programs that use Lust as a library: Solis first. When an engine updates its pinned Lust, it reads the section for each version it skips over, newest at the bottom, and does what **The engine does** says. The full rules are in [LUST.md](LUST.md), section 21.
 
-An engine moving from alpha 48 to alpha 65 or later reads everything below.
+An engine moving from alpha 48 to alpha 66 or later reads everything below.
 
 ## alpha 49: states in native methods
 
@@ -107,3 +107,13 @@ An engine moving from alpha 48 to alpha 65 or later reads everything below.
 - `Colour` becomes a built-in object, so a game can't use it as a name (the type `colour` is a new word too, but a variable may still be called `colour`).
 - They don't go into JSON, Lust's own saves or databases yet.
 - **The engine does:** adds `Vec2` and `Colour` to its adapter's kinds, if its inspector should show them.
+
+## alpha 66: vectors, rotations and colours in JSON, saves, databases and data files
+
+- `vec3`, `vec2`, `rotation` and `colour` go into `Json:write` and `Json:read`, Lust's own saves and database columns, exactly. Nothing changes in how they cross to an engine.
+  - **JSON:** a vec3 is `[x, y, z]`, a vec2 `[x, y]`, a rotation its quaternion `[x, y, z, w]` (three numbers are read as degrees), and a colour its hex text when that's exact, or `[r, g, b, a]`. Each number is the shortest text that reads back as the same f32. Runs the same in Luau.
+- **Data files:** a colour written as a colour word (`orange5`) or `Colour:hex("#3a8f2a")` comes through as a new `Fixed::Colour([r, g, b, a])`, four f32s from 0 to 1. Colours written as numbers, vec3s, vec2s and rotations (as degrees) still come as `Fixed::List`. `as_vec3()`, `as_vec2()` and `as_colour()` read either form. `Rotation:toward(…)` stays a mistake in a data file.
+  - **Rust:** a `match` on `Fixed` that lists every variant needs an arm for `Colour`.
+- **Engine saves, Lua (`load(name, values)`):** a vec3, vec2, rotation or colour is now taken only when it has numbers for its parts (`x`, `y`, `z`; `x`, `y`; `x`, `y`, `z`, `w`; `r`, `g`, `b`, with `a` optional), as Rust's `set_data` already checks; anything else leaves the field as it is. What's taken is made Lust's own: rounded to f32 (a Luau vector for a vec3), and a colour kept between 0 and 1. Before, any table was taken as it was.
+- **Rust (`to_data`, `set_data`):** unchanged; they already kept all four kinds, as `Value::List` of numbers.
+- **The engine does:** adds a `Fixed::Colour` arm where it matches on `Fixed`, and keeps vectors in its own saves as tables with named parts, as `save(name)` gives them.

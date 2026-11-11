@@ -2737,6 +2737,10 @@ impl<'a> W<'a> {
             Ty::Truth => "rt::jw_truth".into(),
             Ty::Str => "rt::jw_string".into(),
             Ty::State(_) => "rt::jw_state".into(),
+            Ty::Vec3 => "rt::jw_vec3".into(),
+            Ty::Vec2 => "rt::jw_vec2".into(),
+            Ty::Rot => "rt::jw_rotation".into(),
+            Ty::Colour => "rt::jw_colour".into(),
             Ty::Class(c) => format!("jw{}", self.root(*c)),
             Ty::Array(el) => {
                 let inner = self.jenc(el);
@@ -2778,6 +2782,10 @@ impl<'a> W<'a> {
             Ty::Float => "rt::jr_float".into(),
             Ty::Truth => "rt::jr_truth".into(),
             Ty::Str => "rt::jr_string".into(),
+            Ty::Vec3 => "rt::jr_vec3".into(),
+            Ty::Vec2 => "rt::jr_vec2".into(),
+            Ty::Rot => "rt::jr_rotation".into(),
+            Ty::Colour => "rt::jr_colour".into(),
             Ty::State(s) => {
                 let opts: Vec<String> = self.info.states[*s].options.iter().map(|o| format!("{o:?}")).collect();
                 format!(

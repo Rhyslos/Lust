@@ -27,8 +27,8 @@ vec2 t = a:spin(3);
 colour u = q + q;
 colour v = [0.5, "a", -0.5];
 color w = red;
-string x = Json:write(a);
-string x2 = Json:write(q);
+-- vec2s and colours go into JSON: Json:write(a) is fine.
+-- So is Json:write(q).
 vec2 y = b;
 vec3 zz = a;
 float w2 = q:fade();

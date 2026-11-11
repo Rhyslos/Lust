@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (alpha 65):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (alpha 66):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -313,7 +313,7 @@ is ahead:angle(toTarget) < 5? then { print("in sight"); }
 - **As an engine keeps them.** Each number is a 32-bit float, so a vec3 holds about 7 digits, and `.text()` shows them to 7. The degrees turn in the order z, then x, then y, the same as Solis and glam's `EulerRot::ZXY`: x tilts, y rolls, and z turns like a compass. Z is up.
 - **The same everywhere.** Every step is worked out the same way in a built program and through `lust run`, down to the last bit, so a game gives the same numbers in both.
 - **Compare with a little room.** 32-bit numbers can't hold every turn exactly: a quarter turn gives `facing * [1, 0, 0]` as `[3.4e-08, 0.9999999, 0.0]`, not `[0, 1, 0]`. So ask whether two vectors are close rather than equal: `is a:distance(b) < 0.0001? then { … }`.
-- Vectors and rotations can't go into JSON, saves or databases yet.
+- **JSON, saves and databases** keep vectors and rotations exactly: a vec3 as `[x, y, z]`, and a rotation as its quaternion `[x, y, z, w]` (section 19, Json).
 
 ### vec2: two numbers, for 2D
 
@@ -356,7 +356,7 @@ print(sky, dusk.r);                      -- #66b2ff 0.699999988079071
 - **Methods:** `c:fade(alpha)` (the same colour with this see-through), `a:lerp(b, t)` (blends all four parts, `t` of the way to b) and `c:hex()` (`"#rrggbb"`, or `"#rrggbbaa"` when it isn't solid).
 - `.text()` and `print` show its hex text, `==` compares exactly, and there's no arithmetic on colours. Each part is a 32-bit float, the same everywhere.
 - **In a view**, a colour value goes wherever a colour word does after `background`, `color` and `border`: `[background sky]`. It's drawn exactly as it is, in dark mode too, and a background shows its see-through.
-- vec2s and colours can't go into JSON, saves or databases yet either.
+- **JSON, saves and databases** keep them exactly: a vec2 as `[x, y]`, and a colour as its hex text when that's exact, or its four numbers when it isn't (section 19, Json).
 
 ---
 
@@ -683,6 +683,7 @@ save gameSession;
 - The file is `gameSession.save`, as readable JSON, in the folder the program runs from: the folder you're in when you start it (`lust run sub/game.lst` from the project's folder writes `./gameSession.save`), or the program's own folder when it's double-clicked. Database files (`in "shop.db"`) are found the same way.
 - Loading is strict: everything is read first, and if the save doesn't fit the program, nothing changes and the error says why, like `gameSession's save doesn't fit this program, so nothing was loaded: it has no currentDay.`
 - `saved gameSession` is true when there's a save to load.
+- Vectors, rotations and colours are saved as they're written in JSON (section 19, Json), so loading gives back exactly the same value, to the last bit.
 - Hooks aren't saved, and nodes can't be: save what's in them.
 - A save that holds variables can only be saved and loaded from the top of the file, where those variables are seen.
 
@@ -703,7 +704,8 @@ print(#Shop.items);
 ```
 
 - The first column is the key, as in a cMap. An `int` key counts up when a row leaves it out, from the biggest key the table has ever had, so a removed row's key isn't given to a new row. (Tables made before alpha 17 give one more than the biggest key they have now.) A `string` key has to be given.
-- Columns hold numbers, text, bools and state options.
+- Columns hold numbers, text, bools, state options, vec3s, vec2s, rotations and colours. The key is an int or a string.
+- **Vectors, rotations and colours** are kept as the same text `Json:write` gives (`[1.0,2.5,-0.1]`, or `#ff922b` for a colour), in a column SQLite sees as text, so they read back exactly. Since it's text, `:where` and `:orderBy` can't use them: `:where(pos == [0, 0, 0])` is a mistake. Loop through the rows and check each one instead.
 - `:inject`, `:has(key)`, `:remove(key)` and `[key]` work as they do on cMaps. A row found with `[key]` reads and changes the database itself.
 - If a table is already in the file with other columns, Lust says so instead of guessing.
 
@@ -1457,7 +1459,20 @@ string nice = Json:pretty(player);    -- the same, over several lines
 Player back = Json:read(text);
 ```
 
-- JSON holds numbers, text, bools, state options (as their names), arrays, maps (as JSON objects), cMaps (as arrays of objects) and things made from classes (as objects of their fields). Hooks stay out.
+- JSON holds numbers, text, bools, state options (as their names), vectors, rotations and colours (below), arrays, maps (as JSON objects), cMaps (as arrays of objects) and things made from classes (as objects of their fields). Hooks stay out.
+- **Vectors, rotations and colours** are written so that reading them back gives exactly the same value:
+
+  | | Written as | Also read |
+  | --- | --- | --- |
+  | `vec3` | `[x, y, z]`: `[1.0, 2.5, -0.1]` | |
+  | `vec2` | `[x, y]` | |
+  | `rotation` | its quaternion, `[x, y, z, w]`: `[0.0, 0.0, 0.70710677, 0.70710677]` for `[0, 0, 90]` | three numbers, as degrees around x, y and z: `[0, 0, 90]` |
+  | `colour` | its hex text, `"#ff922b"` or `"#3a8f2a80"`, when every part is a whole number of 255ths; otherwise its four numbers, `[0.4, 0.7, 1.0, 1.0]` | three numbers (solid), and hex in capitals |
+
+  - **Each number** is written as the shortest text that reads back as exactly the same 32-bit number: `0.1`, not `0.10000000149011612`. Very big and very small ones are written like `3.4028235e38` and `1e-45`. A number that grew past 32 bits is infinity, and JSON can't hold it: `Json:write` stops, saying so. `Json:write` leaves out the spaces after the commas: `[1.0,2.5,-0.1]`.
+  - **Why a rotation isn't its degrees:** 32-bit numbers can't hold every turn exactly, so a turn made from the degrees `facing:degrees()` gives is very close to `facing`, but often not the same to the last bit. The quaternion is exact. Degrees written by hand are read as a rotation written in Lust would be.
+  - **Why a colour isn't always hex:** hex holds 256 steps for each part, and a colour made from `[0.4, 0.7, 1.0]` or worked out with `lerp` falls between them. Colours from colour words and hex text are always hex.
+  - **Reading checks the shape:** the wrong number of numbers, something that isn't a number, a colour's part outside 0 to 1, hex text that isn't `"#rrggbb"` or `"#rrggbbaa"`, a number too big for 32 bits, or a quaternion that isn't 1 long stops with a plain message: `the JSON at home.at should be a vec3, three numbers in [ ], but it has 2 items.`
 - `Json:read` needs a place to go, so Lust knows what it's reading: `Player back = Json:read(text);`.
 - A class's fields that are missing from the JSON keep their starting values. Anything extra is left out.
 - If the JSON doesn't fit, the error says where: `the JSON at bag[0] is missing item.`
@@ -1591,7 +1606,7 @@ An engine can use Lust's compiler itself, as a Rust library: to check a game's L
 
 ```
 [dependencies]
-lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.65", default-features = false }
+lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.66", default-features = false }
 ```
 
 Without its default features it needs nothing but Rust's own library (the default ones are the `lust` command). Lust doesn't open any files: the engine reads them, and hands over each one's path and text, with `/` between folders.
@@ -1650,8 +1665,9 @@ lock TileMap farm = new TileMap {
 end
 ```
 
-- **Fixed values** are numbers (negative ones too), text without `{ }`, bools, `nothing`, a state's option (`Tileset.Farm`), plain lists of fixed values (`[40, 36]`, a vec3 too), and things made with `new` from fixed values. Anything that would need running (a call, a sum, a variable, a class or a method) is a mistake, with its line.
-- **`lust::read_values(entry, files)`** gives back a `Values`: each one's name, its type as written, its line and its value as a `Fixed` (`Int`, `Float`, `Text`, `Bool`, `Nothing`, `Option("Tileset.Farm")`, `List`, or `Thing { class, fields }`, with `field`, `as_int` and friends to read them). The files are handed over as for `lust::check`: the data file, and the files it fetches. `lust::read_values_with(engine, …)` adds an engine's own folders, as `check_with` does.
+- **Fixed values** are numbers (negative ones too), text without `{ }`, bools, `nothing`, a state's option (`Tileset.Farm`), plain lists of fixed values (`[40, 36]`, a vec3 too), colours written as a colour word (`orange5`) or `Colour:hex("#3a8f2a")` with the text right there, and things made with `new` from fixed values. Anything that would need running (a call, a sum, a variable, a class or a method, `Rotation:toward(…)` too) is a mistake, with its line.
+- **`lust::read_values(entry, files)`** gives back a `Values`: each one's name, its type as written, its line and its value as a `Fixed` (`Int`, `Float`, `Text`, `Bool`, `Nothing`, `Option("Tileset.Farm")`, `List`, `Colour([r, g, b, a])`, or `Thing { class, fields }`, with `field`, `as_int` and friends to read them). The files are handed over as for `lust::check`: the data file, and the files it fetches. `lust::read_values_with(engine, …)` adds an engine's own folders, as `check_with` does.
+- **Vectors, rotations and colours:** a vec3, vec2 or rotation comes as a `List` of its numbers, a rotation's as its degrees around x, y and z, as written. A colour written as numbers comes as a `List` too; one written as a colour word or with `Colour:hex` comes as `Colour`, its four parts as 32-bit numbers from 0 to 1, exactly as the program would have them. `as_vec3()`, `as_vec2()` and `as_colour()` read either way (`as_colour` gives see-through 1 for three numbers).
 - **Checked like any file:** a value of the wrong type, a class or field that doesn't exist, or an option a state doesn't have is a mistake with its line. A dotted name must be a state's option: `Tileset.Farm` is fixed, but `farm.scale` reads from something, so it's a mistake. Nothing runs.
 - A field left out of a `new` isn't in its `Fixed`: the engine uses the class's starting value.
 - **A version** for the engine's own upgrades is just a value: `lock int version = 2;`.

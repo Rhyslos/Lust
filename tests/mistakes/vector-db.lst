@@ -1,0 +1,17 @@
+-- Vector, rotation and colour columns can't be compared or ordered by inside the database.
+database Town in "town.db" {
+    cMap(string name, vec3 at, rotation facing, colour paint, vec2 cell, int floors) houses;
+    cMap(vec3 at, string name) wrongKey;
+    cMap(int id, int array floors) wrongColumn;
+}
+
+loop (string name, vec3 at, rotation facing, colour paint, vec2 cell, int floors in Town.houses:where(at == [0, 0, 0])) {
+    print(name);
+}
+print(Town.houses:where(paint == red && floors > 1));
+print(Town.houses:where(cell.x > 1.0));
+print(Town.houses:where(facing != [0, 0, 0]));
+print(Town.houses:orderBy(at));
+print(Town.houses:orderBy(paint));
+print(Town.houses:where(floors > 1):orderBy(floors));
+end

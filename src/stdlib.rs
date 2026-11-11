@@ -217,6 +217,7 @@ pub fn uses_json(info: &crate::check::Info) -> bool {
 pub fn json_problem(t: &Ty, show: &dyn Fn(&Ty) -> String) -> Option<String> {
     match t {
         Ty::Int | Ty::Float | Ty::Str | Ty::Truth | Ty::State(_) | Ty::Class(_) | Ty::Error => None,
+        Ty::Vec3 | Ty::Vec2 | Ty::Rot | Ty::Colour => None,
         Ty::Array(e) | Ty::Map(e) => json_problem(e, show),
         Ty::CMap(cols) => cols.iter().find_map(|(_, t)| json_problem(t, show)),
         other => Some(format!("{} can't be JSON.", show(other))),

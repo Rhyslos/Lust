@@ -1,0 +1,25 @@
+{
+  "Player": {
+    "pos": [0.14285715, 0.2857143, 0.42857143],
+    "cell": [-3.5, 0.1],
+    "facing": [0.057710726, -0.09337792, 0.522554, 0.8455101],
+    "shirt": [0.3, 0.6, 0.9, 0.75],
+    "trail": [
+      [0.0, 0.0, 0.0],
+      [1.0, 0.5, 0.25]
+    ]
+  },
+  "camera": [0.1, 0.2, 0.3],
+  "sun": [0.0, 0.36259887, 0.36259887, 0.8585127],
+  "sky": "#123456",
+  "paints": {
+    "wall": "#ffffff",
+    "door": [0.11, 0.22, 0.33, 1.0]
+  }
+}
+
+true true true true
+2 [1.0, 0.5, 0.25]
+true true #123456 true #ffffff
+world's save doesn't fit this program, so nothing was loaded: the JSON at Player.pos should be a vec3, three numbers in [ ], but it has 2 items.
+true true
