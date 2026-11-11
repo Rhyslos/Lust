@@ -1,0 +1,28 @@
+-- Mistakes with the number helpers, array maths and Random's tools.
+string array names = ["Ada", "Bo"];
+bool array flags = [true, false];
+int array scores = [1, 2, 3];
+int total = names:sum();
+float avg = flags:average();
+string low = names:smallest();
+int high = names:largest();
+int alsoWrong = scores:average();
+float a = Maths:lerp("one", 2, 0.5);
+int b = Maths:sign("x");
+int c = Maths:log(2.0);
+float d = Maths:noise(1, 2, 3, 4);
+float e = Maths:noise("a", 1);
+bool f = Maths:isFinite("big");
+float g = Maths:e;
+float h = Maths:smoothstep(0, 1);
+Random:seed(1.5);
+Random:seed("forty");
+bool i = Random:chance("often");
+vec3 j = Random:direction(1);
+float k = Random:direction();
+Random:roll();
+int l = names:pick();
+names:shuffle(2);
+float m = Maths:moveTowards(1, 2);
+int n = Maths:trunc("2.5");
+end

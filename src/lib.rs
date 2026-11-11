@@ -523,8 +523,14 @@ mod deep_code {
         let kit = "component Walker {\n    has { float speed = 4; }\n    method update(float dt) { }\n}\n\
             object Weather {\n    has { float rain = 0; }\n    method update(float dt) { }\n}\npass Walker, Weather;\nend\n";
         let mut files = vec![
-            ("main.lst".to_string(), "component Walker {\n    has { int steps = 0; }\n}\nend\n".to_string()),
-            ("solis/entity.lst".to_string(), "method vec3 entity:position() native;\nend\n".to_string()),
+            (
+                "main.lst".to_string(),
+                "component Walker {\n    has { int steps = 0; }\n}\nend\n".to_string(),
+            ),
+            (
+                "solis/entity.lst".to_string(),
+                "method vec3 entity:position() native;\nend\n".to_string(),
+            ),
             ("solis/kit/walker.lst".to_string(), kit.to_string()),
         ];
         let engine = crate::Engine {
@@ -642,5 +648,67 @@ mod no_unsafe {
         safe(&library(
             "event Hit(float d);\ncomponent Health {\n    has {\n        float hp = 1;\n    }\n    on Hit(float d) {\n        hp = hp - d;\n        send Hit(d) to me;\n    }\n}\nend\n",
         ));
+    }
+}
+
+#[cfg(all(test, feature = "cli"))]
+mod maths_helpers {
+    //! The runtime's number helpers and random tools, tried straight from Rust.
+    use crate::native_rt as rt;
+
+    #[test]
+    fn noise_matches_ken_perlins_own() {
+        // Ken Perlin's reference Java (ImprovedNoise) gives this for (3.14, 42, 7).
+        assert_eq!(rt::maths_noise3(3.14, 42.0, 7.0), 0.13691995878400012);
+        // Whole numbers sit where the noise is always 0.
+        assert_eq!(rt::maths_noise3(1.0, 2.0, 3.0), 0.0);
+        // The same everywhere it's asked, and inside -1 to 1, even far out and below zero.
+        for i in 0..5000 {
+            let (x, y, z) = (i as f64 * 0.731 - 1800.0, i as f64 * -0.377, i as f64 * 0.019);
+            let n = rt::maths_noise3(x, y, z);
+            assert!((-1.0..=1.0).contains(&n));
+            assert_eq!(n, rt::maths_noise3(x, y, z));
+        }
+        assert_eq!(rt::maths_noise(1.3, 4.7), rt::maths_noise3(1.3, 4.7, 0.0));
+    }
+
+    #[test]
+    fn numbers() {
+        assert_eq!(rt::maths_fraction(-2.75), -0.75);
+        assert!(rt::maths_fraction(-2.0).is_sign_positive());
+        assert_eq!(rt::maths_trunc(-2.75), -2);
+        assert_eq!(rt::maths_sign_int(-9), -1);
+        assert_eq!(rt::maths_sign_float(-0.0).to_bits(), 0.0f64.to_bits());
+        assert!(rt::maths_sign_float(f64::NAN).is_nan());
+        assert_eq!(rt::maths_moveTowards(0.0, 1.0, 5.0), 1.0);
+        assert_eq!(rt::maths_moveTowards(0.0, -1.0, 0.25), -0.25);
+        assert_eq!(rt::maths_smoothstep(0.0, 1.0, 0.5), 0.5);
+        assert!(!rt::maths_isFinite(f64::NAN) && !rt::maths_isFinite(f64::INFINITY) && rt::maths_isFinite(0.0));
+        assert_eq!(rt::maths_log(rt::maths_e()), 1.0);
+    }
+
+    #[test]
+    fn seeded_rolls_repeat() {
+        rt::random_seed(42);
+        let a: Vec<i64> = (0..20).map(|_| rt::random(1, 100)).collect();
+        let d = rt::random_direction();
+        rt::random_seed(42);
+        let b: Vec<i64> = (0..20).map(|_| rt::random(1, 100)).collect();
+        assert_eq!(a, b);
+        assert_eq!(rt::random_direction(), d);
+        let len = ((d.x as f64).powi(2) + (d.y as f64).powi(2) + (d.z as f64).powi(2)).sqrt();
+        assert!((len - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn shuffle_keeps_every_item() {
+        rt::random_seed(7);
+        for n in 0..40 {
+            let a = rt::arr((0..n).collect::<Vec<i64>>());
+            rt::array_shuffle(a.clone());
+            let mut v = a.borrow().clone();
+            v.sort();
+            assert_eq!(v, (0..n).collect::<Vec<i64>>());
+        }
     }
 }

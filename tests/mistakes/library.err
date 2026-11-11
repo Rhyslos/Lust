@@ -1,7 +1,7 @@
 library.lsc:2:12  join works on string arrays. Turn the items into text first.
-library.lsc:3:13  Maths has no method called squareRoot. It has abs, min, max, clamp, round, floor, ceil, sqrt, power, sin, cos, tan, asin, acos, atan, atan2, degrees and radians, and Maths.pi.
+library.lsc:3:13  Maths has no method called squareRoot. It has abs, min, max, clamp, round, floor, ceil, trunc, fraction, sign, sqrt, power, log, exp, sin, cos, tan, asin, acos, atan, atan2, degrees, radians, lerp, moveTowards, smoothstep, isFinite and noise, and Maths.pi and Maths.e.
 library.lsc:4:18  Maths:sqrt's number is a float, but this is a string. Use .float() to turn text into a number.
-library.lsc:5:13  Maths has no field called e. Its methods are called with : like Maths:abs(…).
+library.lsc:5:13  Maths has no field called tau. Its methods are called with : like Maths:abs(…).
 library.lsc:6:18  Files:read's file is a string, but this is an int. Use .text() to turn it into text.
 library.lsc:7:12  Json:read needs to know what it's reading, so give it a place to go: Player p = Json:read(text);
 library.lsc:9:18  a hook can't be JSON. JSON holds numbers, text, bools, states, arrays, maps, cMaps and things made from classes.

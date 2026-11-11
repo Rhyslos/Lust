@@ -1,0 +1,4 @@
+-- noise of infinity stops the program on that line.
+float far = 1.0 / 0.0;
+print(Maths:noise(far, 2.5));
+end

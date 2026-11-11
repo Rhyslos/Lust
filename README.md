@@ -43,12 +43,12 @@ Lust is written in Rust, and has one language with two outputs:
 | Rust, compiled to real programs | `.lst` | apps, tools and servers on Windows, macOS and Linux |
 | LustScript, turned into Lua | `.lsc` | scripting and modding inside other programs, like Garry's Mod, Aventail and Halberd |
 
-**What works today (alpha 59):** both outputs. Every file is checked before anything runs, with mistakes explained in plain words.
+**What works today (alpha 62):** both outputs. Every file is checked before anything runs, with mistakes explained in plain words.
 
 - `.lsc` files turn into plain Lua 5.1 that Garry's Mod (LuaJIT) and Luau can run.
 - `.lst` files turn into Rust, which builds into a real program (an `.exe` on Windows) that runs without Lust.
 - Programs can be split into many files that share with `pass`, `fetch` and `get`.
-- A standard library: text and array tools, plus `Maths`, `Files`, `Time` and `Json`.
+- A standard library: text and array tools (sums, averages, picking and shuffling too), plus `Maths` (with smooth noise), `Random`, `Files`, `Time` and `Json`.
 - Saves, and databases on SQLite whose tables work like cMaps.
 - Servers: `route` blocks answered by methods, with `schema`s for the data coming in, and `Web:get`/`Web:post` for asking other sites.
 - Windows: an assembly with a `view` opens a window drawn entirely by Lust, with text, buttons, layout, styles, pieces of your own made from other assemblies, and inputs, checkboxes and sliders that change fields as you use them, scrolling, pictures and timers.

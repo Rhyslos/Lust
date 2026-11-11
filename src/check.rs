@@ -2665,8 +2665,11 @@ impl<'a> Checker<'a> {
                 // Maths:pi, Maths:sqrt without ( ): the built-in objects aren't values.
                 if let ExprKind::Name(obj) = &target.kind {
                     if crate::stdlib::OBJECTS.contains(&obj.as_str()) && self.lookup(ctx, obj).is_none() {
-                        if obj == "Maths" && m == "pi" {
-                            self.err(*mpos, "pi is a number, not a method, so it's written with a dot: Maths.pi");
+                        if obj == "Maths" && (m == "pi" || m == "e") {
+                            self.err(
+                                *mpos,
+                                format!("{m} is a number, not a method, so it's written with a dot: Maths.{m}"),
+                            );
                         } else {
                             self.err(*mpos, format!("{obj}'s methods are called with ( ): {obj}:{m}(…)"));
                         }
@@ -3514,11 +3517,11 @@ impl<'a> Checker<'a> {
     fn field(&mut self, e: &Expr, target: &Expr, f: &str, fpos: Pos, ctx: &mut Ctx) -> Ty {
         if let ExprKind::Name(n) = &target.kind {
             if crate::stdlib::OBJECTS.contains(&n.as_str()) {
-                if n == "Maths" && f == "pi" {
+                if n == "Maths" && (f == "pi" || f == "e") {
                     self.info.libs.insert(
                         e.id,
                         crate::stdlib::Lib {
-                            func: "maths_pi".into(),
+                            func: format!("maths_{f}"),
                             params: vec![],
                             ret: Ty::Float,
                         },
@@ -4030,7 +4033,7 @@ impl<'a> Checker<'a> {
                     self.expr(a, ctx, None);
                 }
                 let what = match other {
-                    Ty::Array(_) => " Arrays have inject, remove, has, find, join, sort and reverse.",
+                    Ty::Array(_) => " Arrays have inject, remove, has, find, join, sort, reverse, shuffle, pick, sum, average, smallest and largest.",
                     Ty::Map(_) => " Maps have has and remove.",
                     Ty::CMap(_) => " cMaps have inject, remove and has.",
                     Ty::Str => {

@@ -2,7 +2,7 @@ int array nums = [1, 2];
 print(nums:join(", "));
 print(Maths:squareRoot(2.0));
 print(Maths:sqrt("two"));
-print(Maths.e);
+print(Maths.tau);
 print(Files:read(5));
 print(Json:read("[1]"));
 hook() h = nothing;

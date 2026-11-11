@@ -1,0 +1,35 @@
+-- Arrays of numbers: sum, average, smallest and largest.
+int array scores = [3, 9, -4, 12, 0];
+float array times = [2.5, 1.25, -0.5, 7.75];
+int sum = scores:sum();
+float avg = scores:average();
+print(sum, avg, scores:smallest(), scores:largest());
+print(times:sum(), times:average(), times:smallest(), times:largest());
+
+int array one = [7];
+print(one:sum(), one:average(), one:smallest(), one:largest());
+int array same = [-2, -2, -2];
+print(same:sum(), same:average(), same:smallest(), same:largest());
+float array tiny = [0.1, 0.2, 0.3];
+print(tiny:sum(), tiny:average());
+
+-- An empty array sums to 0, but has no average, smallest or largest.
+int array none = [];
+float array noFloats = [];
+print(none:sum(), noFloats:sum());
+try {
+    print(none:average());
+} error (string message) {
+    print(message);
+}
+try {
+    print(noFloats:smallest());
+} error (string message) {
+    print(message);
+}
+try {
+    print(none:largest());
+} error (string message) {
+    print(message);
+}
+end
