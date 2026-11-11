@@ -1369,7 +1369,375 @@ pub fn wait(s: f64) {
     if s.is_infinite() || s > 24.0 * 24.0 * 3600.0 {
         fail(format!("can't wait {} seconds; the longest wait is 24 days.", ftext(s)));
     }
-    std::thread::sleep(std::time::Duration::from_secs_f64(s));
+    let start = std::time::Instant::now();
+    let until = |secs: f64| {
+        let due = start + std::time::Duration::from_secs_f64(secs.max(0.0));
+        let now = std::time::Instant::now();
+        if due > now {
+            std::thread::sleep(due - now);
+        }
+    };
+    // Tweens move on during the wait, a 1/60 s step at a time, on the clock wait keeps.
+    let steps = TWEENS.with(|t| {
+        let mut t = t.borrow_mut();
+        if t.stepping || t.viewing > 0 {
+            return None;
+        }
+        let before = t.clock_now;
+        t.clock_now += s;
+        let last = ((t.clock_now + 1e-9) * 60.0).floor() as i64;
+        let first = t.clock_ticks + 1;
+        t.clock_ticks = t.clock_ticks.max(last);
+        Some((before, first, last))
+    });
+    if let Some((before, first, last)) = steps {
+        for k in first..=last {
+            if TWEENS.with(|t| t.borrow().live) == 0 {
+                break;
+            }
+            until(k as f64 / 60.0 - before);
+            tween_step(1.0 / 60.0);
+        }
+    }
+    until(s);
+}
+
+// ----- easing and tweens -----
+// The same steps, in the same order, are in runtime.lua, so both give exactly the same numbers.
+
+/// 2 to the power y, worked out by the C library's pow as Lua's `2 ^ y` is. black_box keeps the
+/// compiler from turning it into exp2, which can differ in the last bit.
+fn pow2(y: f64) -> f64 {
+    std::hint::black_box(2.0f64).powf(y)
+}
+
+fn out_bounce(x: f64) -> f64 {
+    let (n1, d1) = (7.5625, 2.75);
+    if x < 1.0 / d1 {
+        n1 * x * x
+    } else if x < 2.0 / d1 {
+        let x = x - 1.5 / d1;
+        n1 * x * x + 0.75
+    } else if x < 2.5 / d1 {
+        let x = x - 2.25 / d1;
+        n1 * x * x + 0.9375
+    } else {
+        let x = x - 2.625 / d1;
+        n1 * x * x + 0.984375
+    }
+}
+
+/// The easing curves: the standard formulas from https://easings.net, each taking x from 0 to 1.
+/// Whole powers are written as multiplications, and 2 ^ y as pow, the same way in Lua.
+pub fn ease(name: &str, x: f64) -> f64 {
+    use std::f64::consts::PI;
+    const C1: f64 = 1.70158;
+    const C2: f64 = C1 * 1.525;
+    const C3: f64 = C1 + 1.0;
+    let c4 = (2.0 * PI) / 3.0;
+    let c5 = (2.0 * PI) / 4.5;
+    match name {
+        "InSine" => 1.0 - ((x * PI) / 2.0).cos(),
+        "OutSine" => ((x * PI) / 2.0).sin(),
+        "InOutSine" => -((PI * x).cos() - 1.0) / 2.0,
+        "InQuad" => x * x,
+        "OutQuad" => {
+            let u = 1.0 - x;
+            1.0 - u * u
+        }
+        "InOutQuad" if x < 0.5 => 2.0 * x * x,
+        "InOutQuad" => {
+            let u = -2.0 * x + 2.0;
+            1.0 - u * u / 2.0
+        }
+        "InCubic" => x * x * x,
+        "OutCubic" => {
+            let u = 1.0 - x;
+            1.0 - u * u * u
+        }
+        "InOutCubic" if x < 0.5 => 4.0 * x * x * x,
+        "InOutCubic" => {
+            let u = -2.0 * x + 2.0;
+            1.0 - u * u * u / 2.0
+        }
+        "InQuart" => x * x * x * x,
+        "OutQuart" => {
+            let u = 1.0 - x;
+            1.0 - u * u * u * u
+        }
+        "InOutQuart" if x < 0.5 => 8.0 * x * x * x * x,
+        "InOutQuart" => {
+            let u = -2.0 * x + 2.0;
+            1.0 - u * u * u * u / 2.0
+        }
+        "InQuint" => x * x * x * x * x,
+        "OutQuint" => {
+            let u = 1.0 - x;
+            1.0 - u * u * u * u * u
+        }
+        "InOutQuint" if x < 0.5 => 16.0 * x * x * x * x * x,
+        "InOutQuint" => {
+            let u = -2.0 * x + 2.0;
+            1.0 - u * u * u * u * u / 2.0
+        }
+        "InExpo" if x == 0.0 => 0.0,
+        "InExpo" => pow2(10.0 * x - 10.0),
+        "OutExpo" if x == 1.0 => 1.0,
+        "OutExpo" => 1.0 - pow2(-10.0 * x),
+        "InOutExpo" if x == 0.0 => 0.0,
+        "InOutExpo" if x == 1.0 => 1.0,
+        "InOutExpo" if x < 0.5 => pow2(20.0 * x - 10.0) / 2.0,
+        "InOutExpo" => (2.0 - pow2(-20.0 * x + 10.0)) / 2.0,
+        "InCirc" => 1.0 - (1.0 - x * x).sqrt(),
+        "OutCirc" => {
+            let u = x - 1.0;
+            (1.0 - u * u).sqrt()
+        }
+        "InOutCirc" if x < 0.5 => {
+            let u = 2.0 * x;
+            (1.0 - (1.0 - u * u).sqrt()) / 2.0
+        }
+        "InOutCirc" => {
+            let u = -2.0 * x + 2.0;
+            ((1.0 - u * u).sqrt() + 1.0) / 2.0
+        }
+        "InBack" => C3 * x * x * x - C1 * x * x,
+        "OutBack" => {
+            let u = x - 1.0;
+            1.0 + C3 * u * u * u + C1 * u * u
+        }
+        "InOutBack" if x < 0.5 => {
+            let u = 2.0 * x;
+            (u * u * ((C2 + 1.0) * 2.0 * x - C2)) / 2.0
+        }
+        "InOutBack" => {
+            let u = 2.0 * x - 2.0;
+            (u * u * ((C2 + 1.0) * (x * 2.0 - 2.0) + C2) + 2.0) / 2.0
+        }
+        "InElastic" | "OutElastic" | "InOutElastic" if x == 0.0 => 0.0,
+        "InElastic" | "OutElastic" | "InOutElastic" if x == 1.0 => 1.0,
+        "InElastic" => -(pow2(10.0 * x - 10.0)) * ((x * 10.0 - 10.75) * c4).sin(),
+        "OutElastic" => pow2(-10.0 * x) * ((x * 10.0 - 0.75) * c4).sin() + 1.0,
+        "InOutElastic" if x < 0.5 => -(pow2(20.0 * x - 10.0) * ((20.0 * x - 11.125) * c5).sin()) / 2.0,
+        "InOutElastic" => (pow2(-20.0 * x + 10.0) * ((20.0 * x - 11.125) * c5).sin()) / 2.0 + 1.0,
+        "InBounce" => 1.0 - out_bounce(1.0 - x),
+        "OutBounce" => out_bounce(x),
+        "InOutBounce" if x < 0.5 => (1.0 - out_bounce(1.0 - 2.0 * x)) / 2.0,
+        "InOutBounce" => (1.0 + out_bounce(2.0 * x - 1.0)) / 2.0,
+        _ => x,
+    }
+}
+
+/// Ease:apply(Ease.OutBack, t): t is kept from 0 to 1.
+pub fn ease_apply(e: &str, t: f64) -> f64 {
+    let t = if t < 0.0 {
+        0.0
+    } else if t > 1.0 {
+        1.0
+    } else {
+        t
+    };
+    ease(e, t)
+}
+
+/// What a tween can move, and how each blends from where it started to where it's going.
+pub trait Tweenable: Clone + 'static {
+    fn blend(a: &Self, b: &Self, e: f64) -> Self;
+}
+impl Tweenable for f64 {
+    fn blend(a: &f64, b: &f64, e: f64) -> f64 {
+        a + (b - a) * e
+    }
+}
+impl Tweenable for i64 {
+    fn blend(a: &i64, b: &i64, e: f64) -> i64 {
+        let (a, b) = (*a as f64, *b as f64);
+        maths_round(a + (b - a) * e)
+    }
+}
+impl Tweenable for Vec3 {
+    fn blend(a: &Vec3, b: &Vec3, e: f64) -> Vec3 {
+        vlerp(*a, *b, e)
+    }
+}
+impl Tweenable for Vec2 {
+    fn blend(a: &Vec2, b: &Vec2, e: f64) -> Vec2 {
+        v2lerp(*a, *b, e)
+    }
+}
+impl Tweenable for Colour {
+    fn blend(a: &Colour, b: &Colour, e: f64) -> Colour {
+        collerp(*a, *b, e)
+    }
+}
+impl Tweenable for Rotation {
+    fn blend(a: &Rotation, b: &Rotation, e: f64) -> Rotation {
+        qlerp(*a, *b, e)
+    }
+}
+
+/// A variable at the top of the file that a tween changes: the tween shares it. Copying one (as
+/// a hook does) copies its value, as for any other variable.
+pub struct Tcell<T>(Rc<RefCell<T>>);
+impl<T: Clone> Clone for Tcell<T> {
+    fn clone(&self) -> Self {
+        Tcell::new(self.get())
+    }
+}
+impl<T: Clone> Tcell<T> {
+    pub fn new(v: T) -> Self {
+        Tcell(Rc::new(RefCell::new(v)))
+    }
+    pub fn get(&self) -> T {
+        self.0.borrow().clone()
+    }
+    pub fn set(&self, v: T) {
+        *self.0.borrow_mut() = v;
+    }
+    pub fn share(&self) -> Rc<RefCell<T>> {
+        self.0.clone()
+    }
+}
+
+/// Which place a tween changes: the thing (or a top-level variable's cell), and the field.
+pub type TweenKey = (usize, &'static str);
+pub fn tween_key<T>(owner: &Rc<T>, field: &'static str) -> TweenKey {
+    (Rc::as_ptr(owner) as *const () as usize, field)
+}
+
+struct Tween {
+    key: TweenKey,
+    secs: f64,
+    /// How long it has run: the 1/60 s steps of wait's clock and a test's, counted on their own so
+    /// 15 of them are exactly 0.25 s, and other steps (a window's frames) added up as they are.
+    ticks: u64,
+    extra: f64,
+    ease: &'static str,
+    /// Sets the place: Some(eased) on the way, None exactly where it's going.
+    apply: Box<dyn FnMut(Option<f64>)>,
+    done: Option<Rc<dyn Fn()>>,
+}
+
+#[derive(Default)]
+struct Tweens {
+    /// The running tweens, in the order they started. One that's replaced leaves None in its
+    /// slot until the end of the step.
+    list: Vec<Option<Tween>>,
+    places: HashMap<TweenKey, usize>,
+    live: usize,
+    /// A step is running (its done blocks can't step again).
+    stepping: bool,
+    /// A window is open, and its clock moves the tweens, not wait's.
+    viewing: i64,
+    /// The clock wait moves: the seconds waited, and the 1/60 s steps taken.
+    clock_now: f64,
+    clock_ticks: i64,
+}
+
+thread_local! {
+    static TWEENS: RefCell<Tweens> = RefCell::new(Tweens::default());
+}
+
+/// tween place to value over seconds: replaces a tween already moving the place (its done block
+/// doesn't run). Over 0 seconds, it sets the place and runs the done block straight away.
+pub fn tween<T: Tweenable>(key: TweenKey, from: T, to: T, secs: f64, ease: &'static str, mut set: Box<dyn FnMut(T)>, done: Option<Rc<dyn Fn()>>) {
+    if !(secs >= 0.0) {
+        fail(format!("a tween can't take {} seconds. It takes 0 seconds or more.", ftext(secs)));
+    }
+    TWEENS.with(|t| {
+        let mut t = t.borrow_mut();
+        if let Some(i) = t.places.remove(&key) {
+            if t.list[i].take().is_some() {
+                t.live -= 1;
+            }
+        }
+    });
+    if secs == 0.0 {
+        set(to);
+        if let Some(d) = done {
+            d();
+        }
+        return;
+    }
+    let apply = Box::new(move |e: Option<f64>| match e {
+        Some(e) => set(T::blend(&from, &to, e)),
+        None => set(to.clone()),
+    });
+    TWEENS.with(|t| {
+        let mut t = t.borrow_mut();
+        let i = t.list.len();
+        t.list.push(Some(Tween { key, secs, ticks: 0, extra: 0.0, ease, apply, done }));
+        t.places.insert(key, i);
+        t.live += 1;
+    });
+}
+
+/// Moves every tween on by dt seconds, in the order they started; one that reaches its time is
+/// set exactly to where it's going, then its done block runs. Tweens started during a step wait
+/// for the next. Gives back whether any are still running (dt 0 only asks).
+pub fn tween_step(dt: f64) -> bool {
+    let n = TWEENS.with(|t| {
+        let mut t = t.borrow_mut();
+        if !(dt > 0.0) || t.stepping || t.live == 0 {
+            return None;
+        }
+        t.stepping = true;
+        Some(t.list.len())
+    });
+    if let Some(n) = n {
+        // Closes the gaps, keeping the order, even if a done block fails.
+        struct Tidy;
+        impl Drop for Tidy {
+            fn drop(&mut self) {
+                TWEENS.with(|t| {
+                    let mut t = t.borrow_mut();
+                    let list: Vec<Option<Tween>> = std::mem::take(&mut t.list).into_iter().filter(Option::is_some).collect();
+                    t.places = list.iter().enumerate().filter_map(|(i, w)| w.as_ref().map(|w| (w.key, i))).collect();
+                    t.list = list;
+                    t.stepping = false;
+                });
+            }
+        }
+        let _tidy = Tidy;
+        for i in 0..n {
+            let Some(mut w) = TWEENS.with(|t| t.borrow_mut().list[i].take()) else { continue };
+            if dt == 1.0 / 60.0 {
+                w.ticks += 1;
+            } else {
+                w.extra += dt;
+            }
+            let t = w.ticks as f64 / 60.0 + w.extra;
+            if t + 1e-9 >= w.secs {
+                TWEENS.with(|t| {
+                    let mut t = t.borrow_mut();
+                    t.places.remove(&w.key);
+                    t.live -= 1;
+                });
+                (w.apply)(None);
+                if let Some(d) = w.done {
+                    d();
+                }
+            } else {
+                (w.apply)(Some(ease(w.ease, t / w.secs)));
+                TWEENS.with(|t| t.borrow_mut().list[i] = Some(w));
+            }
+        }
+    }
+    TWEENS.with(|t| t.borrow().live > 0)
+}
+
+/// The window's clock moving the tweens: a failure in a done block comes back as its message.
+pub fn tween_view(dt: f64) -> Result<bool, String> {
+    let mut busy = false;
+    match attempt(|| busy = tween_step(dt)) {
+        Some(e) => Err(e),
+        None => Ok(busy),
+    }
+}
+
+/// A window opens (1) or shuts (-1): while one is open, its clock moves the tweens.
+pub fn viewing(d: i64) {
+    TWEENS.with(|t| t.borrow_mut().viewing += d);
 }
 
 // ----- the standard library -----

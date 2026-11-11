@@ -398,6 +398,16 @@ pub enum Stmt {
         to: Expr,
         pos: Pos,
     },
+    /// tween hp to 0 over 0.5 [ease OutCubic] { … }: moves a field or a top-level variable to a
+    /// value over time. `done` is a `new hook` (no values, gives nothing back) run when it ends.
+    Tween {
+        place: Expr,
+        target: Expr,
+        secs: Expr,
+        ease: Option<Expr>,
+        done: Option<Expr>,
+        pos: Pos,
+    },
     /// keep sword in player.bag; or keep sword;
     Keep {
         value: Expr,
@@ -420,7 +430,8 @@ impl Stmt {
             | Stmt::Keep { pos, .. }
             | Stmt::SaveDecl { pos, .. }
             | Stmt::Element { pos, .. }
-            | Stmt::Send { pos, .. } => *pos,
+            | Stmt::Send { pos, .. }
+            | Stmt::Tween { pos, .. } => *pos,
             Stmt::Save(_, p) | Stmt::Load(_, p) => *p,
             Stmt::Stop(p) | Stmt::Skip(p) | Stmt::Return(_, p) => *p,
             Stmt::Expr(e) => e.pos,

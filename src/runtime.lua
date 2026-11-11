@@ -874,6 +874,11 @@ function L.engine(version, components, events, classes, objects, ticked)
       if ticked[name] then objects[name]:update(dt) end
     end
   end
+  -- Moves every running tween on by dt (and runs the done blocks of those that end): the engine
+  -- calls it once a tick, after the objects' tick and before the components' updates.
+  function api.tickTweens(dt)
+    L.tween_step(dt)
+  end
   -- An object by its name, or a clear stop.
   local function object(name)
     local o = objects[name]
@@ -1150,10 +1155,243 @@ function L.ask(q)
   io.flush()
   return io.read("*l") or ""
 end
+
+-- ----- easing and tweens -----
+-- The same steps, in the same order, are in native_rt.rs, so both give exactly the same numbers.
+
+-- The easing curves: the standard formulas from https://easings.net, each taking x from 0 to 1.
+-- Whole powers are written as multiplications, and 2 ^ y as pow, the same way in Rust.
+local PI, sin, cos = math.pi, math.sin, math.cos
+local C1 = 1.70158
+local C2 = C1 * 1.525
+local C3 = C1 + 1
+local C4 = (2 * PI) / 3
+local C5 = (2 * PI) / 4.5
+local function out_bounce(x)
+  local n1, d1 = 7.5625, 2.75
+  if x < 1 / d1 then
+    return n1 * x * x
+  elseif x < 2 / d1 then
+    x = x - 1.5 / d1
+    return n1 * x * x + 0.75
+  elseif x < 2.5 / d1 then
+    x = x - 2.25 / d1
+    return n1 * x * x + 0.9375
+  end
+  x = x - 2.625 / d1
+  return n1 * x * x + 0.984375
+end
+local EASES = {
+  Linear = function(x) return x end,
+  InSine = function(x) return 1 - cos((x * PI) / 2) end,
+  OutSine = function(x) return sin((x * PI) / 2) end,
+  InOutSine = function(x) return -(cos(PI * x) - 1) / 2 end,
+  InQuad = function(x) return x * x end,
+  OutQuad = function(x) local u = 1 - x return 1 - u * u end,
+  InOutQuad = function(x)
+    if x < 0.5 then return 2 * x * x end
+    local u = -2 * x + 2
+    return 1 - u * u / 2
+  end,
+  InCubic = function(x) return x * x * x end,
+  OutCubic = function(x) local u = 1 - x return 1 - u * u * u end,
+  InOutCubic = function(x)
+    if x < 0.5 then return 4 * x * x * x end
+    local u = -2 * x + 2
+    return 1 - u * u * u / 2
+  end,
+  InQuart = function(x) return x * x * x * x end,
+  OutQuart = function(x) local u = 1 - x return 1 - u * u * u * u end,
+  InOutQuart = function(x)
+    if x < 0.5 then return 8 * x * x * x * x end
+    local u = -2 * x + 2
+    return 1 - u * u * u * u / 2
+  end,
+  InQuint = function(x) return x * x * x * x * x end,
+  OutQuint = function(x) local u = 1 - x return 1 - u * u * u * u * u end,
+  InOutQuint = function(x)
+    if x < 0.5 then return 16 * x * x * x * x * x end
+    local u = -2 * x + 2
+    return 1 - u * u * u * u * u / 2
+  end,
+  InExpo = function(x)
+    if x == 0 then return 0 end
+    return 2 ^ (10 * x - 10)
+  end,
+  OutExpo = function(x)
+    if x == 1 then return 1 end
+    return 1 - 2 ^ (-10 * x)
+  end,
+  InOutExpo = function(x)
+    if x == 0 then return 0 end
+    if x == 1 then return 1 end
+    if x < 0.5 then return 2 ^ (20 * x - 10) / 2 end
+    return (2 - 2 ^ (-20 * x + 10)) / 2
+  end,
+  InCirc = function(x) return 1 - sqrt(1 - x * x) end,
+  OutCirc = function(x) local u = x - 1 return sqrt(1 - u * u) end,
+  InOutCirc = function(x)
+    if x < 0.5 then
+      local u = 2 * x
+      return (1 - sqrt(1 - u * u)) / 2
+    end
+    local u = -2 * x + 2
+    return (sqrt(1 - u * u) + 1) / 2
+  end,
+  InBack = function(x) return C3 * x * x * x - C1 * x * x end,
+  OutBack = function(x) local u = x - 1 return 1 + C3 * u * u * u + C1 * u * u end,
+  InOutBack = function(x)
+    if x < 0.5 then
+      local u = 2 * x
+      return (u * u * ((C2 + 1) * 2 * x - C2)) / 2
+    end
+    local u = 2 * x - 2
+    return (u * u * ((C2 + 1) * (x * 2 - 2) + C2) + 2) / 2
+  end,
+  InElastic = function(x)
+    if x == 0 then return 0 end
+    if x == 1 then return 1 end
+    return -(2 ^ (10 * x - 10)) * sin((x * 10 - 10.75) * C4)
+  end,
+  OutElastic = function(x)
+    if x == 0 then return 0 end
+    if x == 1 then return 1 end
+    return 2 ^ (-10 * x) * sin((x * 10 - 0.75) * C4) + 1
+  end,
+  InOutElastic = function(x)
+    if x == 0 then return 0 end
+    if x == 1 then return 1 end
+    if x < 0.5 then return -(2 ^ (20 * x - 10) * sin((20 * x - 11.125) * C5)) / 2 end
+    return (2 ^ (-20 * x + 10) * sin((20 * x - 11.125) * C5)) / 2 + 1
+  end,
+  InBounce = function(x) return 1 - out_bounce(1 - x) end,
+  OutBounce = out_bounce,
+  InOutBounce = function(x)
+    if x < 0.5 then return (1 - out_bounce(1 - 2 * x)) / 2 end
+    return (1 + out_bounce(2 * x - 1)) / 2
+  end,
+}
+-- Ease:apply(Ease.OutBack, t): t is kept from 0 to 1.
+function L.ease_apply(e, t)
+  if t < 0 then t = 0 elseif t > 1 then t = 1 end
+  return EASES[e](t)
+end
+
+-- How each kind of place blends from where it started to where it's going.
+local BLEND = {
+  f = function(a, b, e) return a + (b - a) * e end,
+  i = function(a, b, e) return L.maths_round(a + (b - a) * e) end,
+  v3 = function(a, b, e) return L.vlerp(a, b, e) end,
+  v2 = function(a, b, e) return L.v2lerp(a, b, e) end,
+  c = function(a, b, e) return L.collerp(a, b, e) end,
+  r = function(a, b, e) return L.qlerp(a, b, e) end,
+}
+
+-- The running tweens, in the order they started. One that's replaced leaves false in its slot
+-- until the end of the step. `places` finds a place's tween: owner (the thing, or L.tops for
+-- the variables at the top of the file), then the field's name.
+local tweens, places, live = {}, {}, 0
+L.tops = {}
+-- stepping: a step is running (its done blocks can't step again). viewing: a window is open,
+-- and its clock moves the tweens, not wait's.
+local stepping, viewing = false, 0
+-- The clock wait moves: the seconds waited, and the 1/60 s steps taken.
+local clock_now, clock_ticks = 0, 0
+
+function L.tween(owner, name, kind, from, to, secs, ease, set, done)
+  if not (secs >= 0) then error("a tween can't take " .. L.ftext(secs) .. " seconds. It takes 0 seconds or more.", 2) end
+  local here = places[owner]
+  local old = here and here[name]
+  if old then
+    tweens[old] = false
+    here[name] = nil
+    live = live - 1
+  end
+  if secs == 0 then
+    set(to)
+    if done then done() end
+    return
+  end
+  local i = #tweens + 1
+  tweens[i] = { owner = owner, name = name, kind = kind, from = from, to = to, secs = secs, ease = ease, set = set, done = done, ticks = 0, extra = 0 }
+  if not here then
+    here = {}
+    places[owner] = here
+  end
+  here[name] = i
+  live = live + 1
+end
+
+-- Moves every tween on by dt seconds, in the order they started; one that reaches its time is
+-- set exactly to where it's going, then its done block runs. Tweens started during a step wait
+-- for the next. Gives back whether any are still running (dt 0 only asks).
+-- How long each has run counts the 1/60 s steps of wait's clock and a test's on their own, so
+-- 15 of them are exactly 0.25 s; other steps (a window's frames) are added up as they are.
+local function step(dt)
+  local n = #tweens
+  for i = 1, n do
+    local tw = tweens[i]
+    if tw then
+      if dt == 1 / 60 then tw.ticks = tw.ticks + 1 else tw.extra = tw.extra + dt end
+      tw.t = tw.ticks / 60 + tw.extra
+      if tw.t + 1e-9 >= tw.secs then
+        tweens[i] = false
+        places[tw.owner][tw.name] = nil
+        live = live - 1
+        tw.set(tw.to)
+        if tw.done then tw.done() end
+      else
+        tw.set(BLEND[tw.kind](tw.from, tw.to, EASES[tw.ease](tw.t / tw.secs)))
+      end
+    end
+  end
+end
+function L.tween_step(dt)
+  if dt > 0 and not stepping and live > 0 then
+    stepping = true
+    local ok, e = pcall(step, dt)
+    -- Close the gaps, keeping the order.
+    local kept = {}
+    places = {}
+    for i = 1, #tweens do
+      local tw = tweens[i]
+      if tw then
+        kept[#kept + 1] = tw
+        local here = places[tw.owner]
+        if not here then
+          here = {}
+          places[tw.owner] = here
+        end
+        here[tw.name] = #kept
+      end
+    end
+    tweens = kept
+    stepping = false
+    if not ok then error(e, 0) end
+  end
+  return live > 0
+end
+function L.viewing(d) viewing = viewing + d end
+
 function L.wait(s)
   if s < 0 or s ~= s then error("can't wait " .. L.ftext(s) .. " seconds.", 2) end
   if not os or not os.clock then error("wait isn't available here. Use the host program's timers.", 2) end
-  local stop = os.clock() + s
+  local start = os.clock()
+  -- Tweens move on during the wait, a 1/60 s step at a time, on the clock wait keeps.
+  if not stepping and viewing == 0 then
+    local before = clock_now
+    clock_now = clock_now + s
+    local last = floor((clock_now + 1e-9) * 60)
+    local first = clock_ticks + 1
+    if last > clock_ticks then clock_ticks = last end
+    for k = first, last do
+      if live == 0 then break end
+      local due = start + (k / 60 - before)
+      while os.clock() < due do end
+      L.tween_step(1 / 60)
+    end
+  end
+  local stop = start + s
   while os.clock() < stop do end
 end
 
@@ -2079,6 +2317,8 @@ function L.view_open(class)
   local o = L.new(class)
   local st = {items = {}, seen = {}, turns = {}}
   stores[#stores + 1] = st
+  -- While the window is open, its clock moves the tweens (L.tween_step), a frame at a time.
+  L.viewing(1)
   local e = host.ui_open(o:__settings(), function()
     st.seen, st.turns = {}, {}
     local v = o:__view()
@@ -2089,7 +2329,8 @@ function L.view_open(class)
       if next(made) == nil then st.items[parent] = nil end
     end
     return v
-  end)
+  end, L.tween_step)
+  L.viewing(-1)
   stores[#stores] = nil
   if e then error(e, 0) end
 end

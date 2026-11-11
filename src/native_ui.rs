@@ -2607,7 +2607,7 @@ pub fn piece<T: 'static>(parent: usize, site: usize, key: Option<String>, make: 
 
 /// Opens a window showing the view, until it's closed. Each click runs its action, and then the
 /// view is drawn again from the data as it is now.
-pub fn show(style: &[(String, SV)], build: &mut Build) -> Result<(), String> {
+pub fn show(style: &[(String, SV)], build: &mut Build, step: Box<Step>) -> Result<(), String> {
     let s = settings(style);
     PIECES.with(|p| p.borrow_mut().push(Pieces::default()));
     let kept = KEPT.with(|k| std::mem::take(&mut *k.borrow_mut()));
@@ -2629,7 +2629,7 @@ pub fn show(style: &[(String, SV)], build: &mut Build) -> Result<(), String> {
         drop(gone);
         r
     };
-    let r = if std::env::var("LUST_VIEW_TEST").is_ok() { test(s, &mut framed) } else { windowed::run(s, &mut framed) };
+    let r = if std::env::var("LUST_VIEW_TEST").is_ok() { test(s, &mut framed, step) } else { windowed::run(s, &mut framed, step) };
     KEPT.with(|k| *k.borrow_mut() = kept);
     let gone = PIECES.with(|p| p.borrow_mut().pop());
     drop(gone);
@@ -2869,7 +2869,20 @@ struct Ui<'a, 'b> {
     drawn: bool,
     /// The window changed size, so nothing glides this time.
     snap: bool,
+    /// Moves the program's tweens on by so many seconds, and says whether any are still running
+    /// (0 only asks). The view redraws after each step.
+    step: Box<Step>,
+    tweening: bool,
+    /// Tests step tweens 1/60 s at a time from when they started; a window by its own clock,
+    /// from the last step.
+    tween_base: f64,
+    tween_steps: u64,
+    tween_last: f64,
 }
+
+/// The program's tweens, moved on by the window's clock: given seconds, it gives back whether
+/// any are still running (0 only asks), or what failed.
+pub type Step = dyn FnMut(f64) -> Result<bool, String>;
 
 /// A piece told to `animate`, gliding from where it was to where it is now (in seconds on the
 /// window's clock), or fading in where it's appeared.
@@ -2962,7 +2975,7 @@ fn modal_in(tree: &Laid) -> Option<usize> {
 }
 
 impl<'a, 'b> Ui<'a, 'b> {
-    fn new(s: Settings, build: &'a mut Build<'b>, windowed: bool) -> Result<Ui<'a, 'b>, String> {
+    fn new(s: Settings, build: &'a mut Build<'b>, windowed: bool, step: Box<Step>) -> Result<Ui<'a, 'b>, String> {
         let (w, h) = (s.width as f32, s.height as f32);
         let (node, actions) = build()?;
         let tree = lay(&Node::new("view"));
@@ -2997,9 +3010,15 @@ impl<'a, 'b> Ui<'a, 'b> {
             motions: HashMap::new(),
             drawn: false,
             snap: false,
+            step,
+            tweening: false,
+            tween_base: 0.0,
+            tween_steps: 0,
+            tween_last: 0.0,
         };
         ui.relayout();
         ui.set_timers();
+        ui.check_tweens()?;
         Ok(ui)
     }
 
@@ -3050,15 +3069,68 @@ impl<'a, 'b> Ui<'a, 'b> {
         self.timers.iter().map(|t| t.due).fold(None, |m: Option<f64>, d| Some(m.map_or(d, |m| m.min(d))))
     }
 
-    /// Moves the test's clock on, running timers as they come due.
+    /// Moves the test's clock on, running timers and stepping tweens as they come due, in the
+    /// order they come (a timer first, when both are due together).
     fn wait(&mut self, secs: f64) -> Result<(), String> {
         let end = self.now() + secs;
-        while let Some(d) = self.next_timer().filter(|&d| d <= end + 1e-9) {
-            self.test_clock = Some(d.max(self.now()));
-            self.fire_timers()?;
+        loop {
+            let timer = self.next_timer().filter(|&d| d <= end + 1e-9);
+            let step = self.next_step().filter(|&d| d <= end + 1e-9);
+            match (timer, step) {
+                (Some(d), s) if s.is_none_or(|s| d <= s) => {
+                    self.test_clock = Some(d.max(self.now()));
+                    self.fire_timers()?;
+                }
+                (_, Some(s)) => {
+                    self.test_clock = Some(s.max(self.now()));
+                    self.step_tweens()?;
+                }
+                _ => break,
+            }
         }
         self.test_clock = Some(end);
         Ok(())
+    }
+
+    /// Asks whether tweens are running; when they've just started, their clock starts now.
+    fn check_tweens(&mut self) -> Result<(), String> {
+        let busy = (self.step)(0.0)?;
+        if busy && !self.tweening {
+            let now = self.now();
+            self.tween_base = now;
+            self.tween_steps = 0;
+            self.tween_last = now;
+        }
+        self.tweening = busy;
+        Ok(())
+    }
+
+    /// When tweens next step: 1/60 s after the last step (on a test's clock, counted from when
+    /// they started, so the steps don't drift).
+    fn next_step(&self) -> Option<f64> {
+        if !self.tweening {
+            return None;
+        }
+        Some(match self.test_clock {
+            Some(_) => self.tween_base + (self.tween_steps + 1) as f64 / 60.0,
+            None => self.tween_last + 1.0 / 60.0,
+        })
+    }
+
+    /// Moves the tweens on: exactly 1/60 s in a test, and the time since the last step in a
+    /// window. Then the view is drawn again.
+    fn step_tweens(&mut self) -> Result<(), String> {
+        let dt = if self.test_clock.is_some() {
+            self.tween_steps += 1;
+            1.0 / 60.0
+        } else {
+            let now = self.now();
+            let dt = now - self.tween_last;
+            self.tween_last = now;
+            dt
+        };
+        (self.step)(dt)?;
+        self.rebuild()
     }
 
     /// Lays the last view out again, with each scroll where it was.
@@ -3237,7 +3309,7 @@ impl<'a, 'b> Ui<'a, 'b> {
             }
         }
         self.keep_caret_in_view();
-        Ok(())
+        self.check_tweens()
     }
 
     fn resize(&mut self, w: f32, h: f32) -> Result<(), String> {
@@ -4329,6 +4401,12 @@ mod windowed {
                 }
                 let r = self.ui.fire_timers().map(|_| ());
                 self.check(r, el);
+                // Tweens move on a frame at a time, and the view is drawn again after each step.
+                let now = self.ui.now();
+                if self.error.is_none() && self.ui.next_step().is_some_and(|d| d <= now + 0.001) {
+                    let r = self.ui.step_tweens();
+                    self.check(r, el);
+                }
             }
         }
 
@@ -4338,7 +4416,8 @@ mod windowed {
             }
             // Wake for the caret's next blink, the next timer, or a tip, whichever is soonest.
             let timer = self.ui.next_timer().map(|d| self.ui.started + std::time::Duration::from_secs_f64(d.max(0.0)));
-            let wake = [self.ui.next_blink(), timer, self.ui.tip_due()].into_iter().flatten().min();
+            let step = self.ui.next_step().map(|d| self.ui.started + std::time::Duration::from_secs_f64(d.max(0.0)));
+            let wake = [self.ui.next_blink(), timer, step, self.ui.tip_due()].into_iter().flatten().min();
             match wake {
                 Some(t) => el.set_control_flow(ControlFlow::WaitUntil(t)),
                 None => el.set_control_flow(ControlFlow::Wait),
@@ -4472,13 +4551,13 @@ mod windowed {
         })
     }
 
-    pub fn run(s: Settings, build: &mut Build) -> Result<(), String> {
+    pub fn run(s: Settings, build: &mut Build, step: Box<super::Step>) -> Result<(), String> {
         use winit::platform::run_on_demand::EventLoopExtRunOnDemand;
         let mut el = match LOOP.with(|l| l.borrow_mut().take()) {
             Some(el) => el,
             None => new_loop()?,
         };
-        let ui = Ui::new(s, build, true)?;
+        let ui = Ui::new(s, build, true, step)?;
         let mut app = App { ui, window: None, surface: None, mouse: None, mods: ModifiersState::default(), error: None };
         let ran = el.run_app_on_demand(&mut app);
         app.surface = None;
@@ -4823,9 +4902,9 @@ fn centre(ui: &Ui, path: &[usize]) -> (f32, f32) {
     node_at(&ui.tree, path).map(|n| (n.x + n.w / 2.0, n.y + n.h / 2.0)).unwrap_or((-1.0, -1.0))
 }
 
-fn test(s: Settings, build: &mut Build) -> Result<(), String> {
+fn test(s: Settings, build: &mut Build, step: Box<Step>) -> Result<(), String> {
     use std::io::BufRead;
-    let mut ui = Ui::new(s, build, false)?;
+    let mut ui = Ui::new(s, build, false, step)?;
     for line in std::io::stdin().lock().lines() {
         let line = line.unwrap_or_default();
         let line = line.trim();

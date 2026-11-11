@@ -379,7 +379,11 @@ impl<'a> W<'a> {
     // ----- the program -----
 
     fn program(&mut self, prog: &Program) {
-        // States: each is a table listing its options.
+        // States: each is a table listing its options. Ease is built in.
+        if self.info.uses_ease {
+            let opts: Vec<String> = crate::stdlib::EASES.iter().map(|o| lua_string(o)).collect();
+            self.line(0, &format!("local Ease = _L.state(\"Ease\", {{{}}})", opts.join(", ")));
+        }
         for item in &prog.items {
             if let Item::State(s) = item {
                 if let Some(&si) = self.info.state_index.get(&s.name) {
@@ -1007,6 +1011,65 @@ impl<'a> W<'a> {
                     ln,
                     &format!("_L.send({t}, {}, {{ {} }})", lua_string(crate::ast::shown(event)), parts.join(", ")),
                 );
+            }
+            Stmt::Tween {
+                place,
+                target,
+                secs,
+                ease,
+                done,
+                ..
+            } => {
+                let kind = match self.info.ty(place) {
+                    Ty::Int => "i",
+                    Ty::Float => "f",
+                    Ty::Vec3 => "v3",
+                    Ty::Vec2 => "v2",
+                    Ty::Colour => "c",
+                    _ => "r",
+                };
+                self.line(ln, "do");
+                self.indent += 1;
+                // The place's owner (the thing, or _L.tops for a top-level variable) is worked
+                // out once; the tween keeps it, and sets the place through the function.
+                let (owner, read, set) = match &place.kind {
+                    ExprKind::Field(t, f, _) => {
+                        let o = self.fresh("tw");
+                        let tc = self.expr(t);
+                        self.line(ln, &format!("local {o} = {tc}"));
+                        let f = lname(f);
+                        (o.clone(), format!("{o}.{f}"), format!("function(v) {o}.{f} = v end"))
+                    }
+                    ExprKind::Name(n) if self.info.names.get(&place.id) == Some(&NameRes::Field) => {
+                        let f = lname(n);
+                        ("self".to_string(), format!("self.{f}"), format!("function(v) self.{f} = v end"))
+                    }
+                    ExprKind::Name(n) => {
+                        let v = lname(n);
+                        ("_L.tops".to_string(), v.clone(), format!("function(v) {v} = v end"))
+                    }
+                    _ => ("nil".to_string(), "nil".to_string(), "nil".to_string()),
+                };
+                let name = match &place.kind {
+                    ExprKind::Field(_, f, _) | ExprKind::Name(f) => lua_string(&lname(f)),
+                    _ => "\"\"".to_string(),
+                };
+                let to = self.expr(target);
+                let secs = self.expr(secs);
+                let ease = match ease {
+                    Some(e) => self.expr(e),
+                    None => "\"Linear\"".to_string(),
+                };
+                let done = match done {
+                    Some(d) => self.expr(d),
+                    None => "nil".to_string(),
+                };
+                self.line(
+                    ln,
+                    &format!("_L.tween({owner}, {name}, \"{kind}\", {read}, {to}, {secs}, {ease}, {set}, {done})"),
+                );
+                self.indent -= 1;
+                self.line(ln, "end");
             }
             Stmt::Keep { value, into, .. } => {
                 let v = self.expr(value);

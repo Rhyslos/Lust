@@ -1,0 +1,5 @@
+-- Ease is built in: a state and an object at once, so nothing else can be called Ease.
+state Ease = [Fast, Slow];
+float t = Ease:apply(Ease.Bouncy, 0.5);
+float u = Ease:shape(Ease.Linear, 0.5);
+end

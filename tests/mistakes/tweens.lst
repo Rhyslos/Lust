@@ -1,0 +1,68 @@
+-- Mistakes with tweens, caught before anything runs.
+state Mood = [Calm, Angry];
+
+class Thing {
+    has {
+        int8 small = 0;
+        lock float fixed = 1;
+        float glow = 0;
+    }
+}
+
+object Lamp {
+    has {
+        float glow = 0;
+        string name = "lamp";
+        bool on = false;
+        int array marks = [];
+        Thing thing = nothing;
+        vec3 place = [0, 0, 0];
+        Mood mood = Mood.Calm;
+    }
+
+    method brighten() {
+        float local = 0;
+        tween local to 1 over 1;
+        tween glow to "bright" over 1;
+        tween name to "big lamp" over 1;
+        tween on to true over 1;
+        tween marks to [1, 2] over 1;
+        tween thing to new Thing over 1;
+        tween mood to Mood.Angry over 1;
+        tween place.x to 4 over 1;
+        tween marks[0] to 1 over 1;
+        tween glow to 1 over -1;
+        tween glow to 1 over "soon";
+        tween glow to 1 over 1 [ease Bouncy];
+        tween glow to 1 over 1 [ease OutBonce];
+        tween glow to 1 over 1 [ease 3];
+    }
+}
+
+Thing t = new Thing;
+tween t.small to 3 over 1;
+tween t.fixed to 3 over 1;
+int whole = 0;
+tween whole to 2.5 over 1;
+is true? then {
+    float inner = 0;
+    tween inner to 1 over 1;
+}
+tween t.glow to 1 over 1 {
+    tween whole to 3 over 1;
+}
+tween Lamp to 1 over 1;
+tween 3 to 4 over 1;
+tween t.glow 1 over 1;
+
+assembly Panel {
+    has {
+        float glow = 0;
+    }
+
+    view [title "Panel"] {
+        tween glow to 1 over 1;
+        text "glow";
+    }
+}
+end

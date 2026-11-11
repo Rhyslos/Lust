@@ -1,0 +1,16 @@
+-- Ease:apply gives each curve's value for t from 0 to 1 (outside that, t is kept to 0 or 1).
+loop (Ease e in Ease) {
+    print(e, Ease:apply(e, 0), Ease:apply(e, 0.25), Ease:apply(e, 0.5), Ease:apply(e, 0.75), Ease:apply(e, 1));
+}
+print(Ease:apply(Ease.OutBack, 0.3), Ease:apply(Ease.Linear, -1), Ease:apply(Ease.InQuad, 2));
+
+-- Ease is a state, so a check covers every curve.
+Ease e = Ease.InOutBounce;
+check e {
+    when Linear { print("straight"); }
+    when InSine, OutSine, InOutSine, InQuad, OutQuad, InOutQuad, InCubic, OutCubic, InOutCubic { print("smooth"); }
+    when InQuart, OutQuart, InOutQuart, InQuint, OutQuint, InOutQuint, InExpo, OutExpo, InOutExpo { print("steep"); }
+    when InCirc, OutCirc, InOutCirc, InBack, OutBack, InOutBack { print("round"); }
+    when InElastic, OutElastic, InOutElastic, InBounce, OutBounce, InOutBounce { print("springy"); }
+}
+end

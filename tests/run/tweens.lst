@@ -1,0 +1,147 @@
+-- Tweens in a plain program: wait lets the clock run, a 1/60 s step at a time.
+
+object Lamp {
+    has {
+        float glow = 0;
+        int steps = 0;
+        vec2 spot = [0, 0];
+        vec3 place = [0, 0, 0];
+        colour tint = [0, 0, 0];
+        rotation facing = [0, 0, 0];
+        string log = "";
+    }
+}
+
+class Player {
+    has {
+        int hp = 100;
+        float speed = 1;
+    }
+
+    -- A tween on the thing's own field.
+    method slow() {
+        tween speed to 0 over 0.25 [ease OutQuad] {
+            print("stopped, hp", hp);
+        }
+    }
+}
+
+-- Every kind of place, from where it is now to where it's going.
+tween Lamp.glow to 1 over 0.5;
+tween Lamp.steps to 7 over 0.5;
+tween Lamp.spot to [4, -2] over 0.5;
+tween Lamp.place to [10, 0, 5] over 0.5 [ease OutCubic];
+tween Lamp.tint to orange5 over 0.5 [ease InOutSine];
+tween Lamp.facing to [0, 0, 90] over 0.5;
+wait 0.25;
+print(Lamp.glow, Lamp.steps, Lamp.spot, Lamp.place);
+print(Lamp.tint, Lamp.facing:degrees());
+wait 0.25;
+print(Lamp.glow, Lamp.steps, Lamp.spot, Lamp.place);
+print(Lamp.tint, Lamp.facing:degrees(), Lamp.facing == [0, 0, 90]);
+
+-- Ints are rounded each step the way Maths:round rounds.
+tween Lamp.steps to 0 over 0.1;
+wait 0.05;
+print("steps halfway", Lamp.steps);
+wait 0.05;
+
+-- Variables at the top of the file can be tweened too.
+float x = 0;
+vec3 pos = [1, 1, 1];
+tween x to 10 over 0.1;
+tween pos to [2, 3, 4] over 0.1 [ease InQuad];
+wait 0.1;
+print(x, pos);
+
+-- A thing's field: the tween keeps the thing alive while it runs.
+Player p = new Player;
+p:slow();
+tween p.hp to 50 over 0.1 [ease Linear];
+p = nothing;
+wait 0.25;
+
+-- Starting a tween on a place that's tweening replaces it: the first done block never runs.
+tween Lamp.glow to 0 over 0.1 {
+    print("this never shows");
+}
+tween Lamp.glow to 0.5 over 0.1 {
+    print("replaced, glow", Lamp.glow);
+}
+wait 0.1;
+
+-- over 0 sets it at once and runs the done block straight away.
+tween Lamp.glow to 3 over 0 {
+    print("at once", Lamp.glow);
+}
+print("after", Lamp.glow);
+
+-- A done block can start another tween.
+tween Lamp.glow to 0 over 0.05 {
+    Lamp.log = Lamp.log + "first ";
+    tween Lamp.glow to 1 over 0.05 {
+        Lamp.log = Lamp.log + "second";
+    }
+}
+wait 0.05;
+print(Lamp.log, Lamp.glow);
+wait 0.05;
+print(Lamp.log, Lamp.glow);
+
+-- An ease held in a variable, chosen while running.
+Ease chosen = Ease.OutBack;
+tween Lamp.glow to 0 over 0.1 [ease chosen];
+wait 0.05;
+print(chosen, Lamp.glow);
+wait 0.05;
+
+-- Halfway, for a few eases.
+object Half {
+    has {
+        float a = 0;
+        float b = 0;
+        float c = 0;
+        float d = 0;
+        float e = 0;
+        float f = 0;
+    }
+}
+tween Half.a to 1 over 0.2 [ease InQuad];
+tween Half.b to 1 over 0.2 [ease OutQuad];
+tween Half.c to 1 over 0.2 [ease InOutCubic];
+tween Half.d to 1 over 0.2 [ease OutBack];
+tween Half.e to 1 over 0.2 [ease OutBounce];
+tween Half.f to 1 over 0.2 [ease InElastic];
+wait 0.1;
+print(Half.a, Half.b, Half.c, Half.d, Half.e, Half.f);
+
+-- A tweened top-level variable read by a hook (as it was), changed by hand (the next step
+-- moves it on again), saved and loaded.
+int n = 0;
+save s = [n];
+hook int() peek = new hook {
+    return n;
+};
+tween n to 10 over 0.1;
+n += 1;
+wait 0.05;
+print(n, peek());
+n = n * 2;
+save s;
+wait 0.05;
+print(n);
+n = 3;
+load s;
+print(n);
+rotation turn = [0, 0, 0];
+tween turn to [0, 0, 180] over 0.1 [ease InOutBack];
+wait 0.05;
+print(turn:degrees());
+wait 0.05;
+print(turn:degrees());
+
+-- Tweens still running when the program ends just stop.
+tween Half.a to 100 over 10 {
+    print("this never shows either");
+}
+end

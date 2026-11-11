@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (alpha 66):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (alpha 67):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -1231,6 +1231,56 @@ is running? then {
 
 A timer takes no room on the screen. If the program was busy and a timer is late, it runs once, not once for every time it missed.
 
+### Tweens: values that glide
+
+A `tween` moves a value from where it is now to a new one over some seconds, a little each moment, instead of jumping: a health bar draining, a door swinging open, the sky turning orange at sunset. Tweens work everywhere, not only in views:
+
+```
+tween hp to 0 over 0.5;
+tween pos to [10, 0, 0] over 2 [ease OutCubic];
+tween sky to orange5 over 1 [ease InOutSine] {
+    print("sunset done");      -- runs when it ends
+}
+
+float t = Ease:apply(Ease.OutBack, 0.3);   -- easing on its own
+```
+
+- **The shape:** `tween place to value over seconds;`, then, if you want them, `[ease Name]` and a `{ }` that runs when it ends (its **done block**). With a done block, there's no `;` after the `}`, the same as `every`.
+- **What it moves:** a field (`hp`, the thing's own; `Clock.hour`, an object's; `player.hp`, another thing's) or a variable at the top of the file, holding an `int`, `float`, `vec2`, `vec3`, `colour` or `rotation`. An int is rounded each step the way `Maths:round` rounds; a vec2's, vec3's and colour's parts move together, and a rotation turns the shortest smooth way, as `lerp` does on them.
+- **Not a method's own variable.** A tween keeps going after the method ends, so `tween local to 1 over 1;` is a mistake: keep it in a field. The same goes for a variable inside `{ }` at the top of the file. Text, bools, arrays, things and states can't be tweened, and neither can one part of a vector (`pos.x`): tween the whole `pos` instead.
+- **Where it's going is worked out once,** when the tween starts. A tween on another thing's field (`player.hp`) keeps that thing for as long as it runs, even when nothing else does.
+- **At the end** the place is exactly the value, then the done block runs. The done block is like a hook (section 11): it can read the variables around it as they were when the tween started, and change fields, but not those variables. It can start another tween.
+- **Changing the place yourself** (`hp = 5;`) while it's tweening doesn't stop the tween: its next step moves the place on again. Start a new tween to change where it's going.
+- **A new tween replaces the old.** Starting a tween on a place that's already tweening stops the old one where it is and starts from there; the old one's done block never runs.
+- **`over 0`** sets the place straight away and runs the done block. A time below zero stops the program with a message saying so; one written right there (`over -1`) is a mistake before anything runs.
+- **`tween`, `to` and `over`** are words only in a tween, so a variable can still be called `to` or `over`.
+
+**Easing** shapes how fast the value moves. With no `[ease …]` it moves at one speed, `Linear`. The others start slow (`In…`), end slow (`Out…`), or both (`InOut…`), in a family of curves, from the gentlest to the most lively:
+
+| Family | The eases |
+| --- | --- |
+| straight | `Linear` |
+| Sine | `InSine`, `OutSine`, `InOutSine`: the gentlest |
+| Quad, Cubic, Quart, Quint | `InQuad` … `InOutQuint`: each a little sharper than the one before |
+| Expo | `InExpo`, `OutExpo`, `InOutExpo`: very slow, then very fast |
+| Circ | `InCirc`, `OutCirc`, `InOutCirc`: like a quarter circle |
+| Back | `InBack`, `OutBack`, `InOutBack`: goes a little past the end (or back before the start) first |
+| Elastic | `InElastic`, `OutElastic`, `InOutElastic`: wobbles like a spring |
+| Bounce | `InBounce`, `OutBounce`, `InOutBounce`: bounces like a dropped ball |
+
+Each family has `In`, `Out` and `InOut`: `InCubic`, `OutCubic`, `InOutCubic`. They're the standard curves from [easings.net](https://easings.net), which draws each one. `Back` and `Elastic` go past where they're going on the way, so a colour's parts are kept between 0 and 1 then, and an int can go past its end before settling.
+
+- **`Ease` is a state** whose options are the curves, so `[ease OutCubic]` writes the option on its own, as `when` does, and a variable can hold one, chosen while running: `Ease chosen = Ease.OutBack; tween x to 1 over 0.3 [ease chosen];`. `check` and `loop (Ease e in Ease)` work as for any state. An ease Lust doesn't know is a mistake that suggests the nearest one.
+- **`Ease` is an object too:** `Ease:apply(Ease.OutBack, t)` gives the curve's value for `t` from 0 to 1 (a `t` outside that is kept to 0 or 1), for easing things yourself.
+
+**The clock.** A tween moves when the program's clock moves, in steps:
+
+- **In a window**, each frame, on the same clock as `every` timers and `animate`, and the view redraws after each step. In a view's tests, `wait 2.5` moves tweens and timers along together, a tween 1/60 s at a time.
+- **In a plain program**, `wait seconds;` lets the clock run: tweens move on during it, in steps of 1/60 s, so `tween x to 10 over 1; wait 1;` leaves `x` at 10 with its done block run. Without a `wait`, nothing moves. When the program ends, tweens still running just stop. A `wait` inside a done block, or in a button while the window is open, only pauses.
+- **In a game engine**, the engine moves them once a tick (section 21).
+
+A tween takes the same steps in `lust run` and a built program, so both end with exactly the same numbers.
+
 ### Styles
 
 Short words in `[ ]`, in the spirit of Tailwind:
@@ -1338,7 +1388,7 @@ string reply = Web:post("https://example.com/scores", Json:write(score));
 | --- | --- |
 | `print(x);` | shows `x` on its own line. Any type: numbers, text, bools, lists, vectors, colours, states and `nothing` |
 | `print(a, b, c);` | shows several values on one line, with a space between each: `print("Score:", score, "lives:", lives);` |
-| `wait seconds;` | pauses |
+| `wait seconds;` | pauses, while tweens move on (section 17, Tweens) |
 | `ask(question)` | shows a question and gives back what's typed |
 
 ### Random numbers
@@ -1402,7 +1452,7 @@ Patterns are regular expressions, the kind most languages use: `[0-9]` is a digi
 
 ### Built-in objects
 
-Lust comes with these objects. Their methods are called like any object's: `Maths:sqrt(2.0)`. `Web` is in section 18, `Random` under Random numbers above, and `Rotation` and `Colour` (`Colour:hex("#3a8f2a")`) with vectors and colours in section 6.
+Lust comes with these objects. Their methods are called like any object's: `Maths:sqrt(2.0)`. `Web` is in section 18, `Random` under Random numbers above, `Rotation` and `Colour` (`Colour:hex("#3a8f2a")`) with vectors and colours in section 6, and `Ease` (`Ease:apply(Ease.OutBack, t)`) with tweens in section 17.
 
 **Maths**
 
@@ -1606,7 +1656,7 @@ An engine can use Lust's compiler itself, as a Rust library: to check a game's L
 
 ```
 [dependencies]
-lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.66", default-features = false }
+lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.67", default-features = false }
 ```
 
 Without its default features it needs nothing but Rust's own library (the default ones are the `lust` command). Lust doesn't open any files: the engine reads them, and hands over each one's path and text, with `/` between folders.
@@ -1741,6 +1791,15 @@ pass Clock;
 - **In Lua:** the chunk's `objects` (by name) and `objectNames` (in order); `tick(dt)` runs the updates; `save(name)` gives an object's kept fields by name, and `load(name, values)` gives them back. A name that isn't a passed object stops with a message saying so.
 - **Built as a library:** each object has `NAME`, `schema()`, `to_data()` and `set_data(&data)`; `objects()` lists their schemas and `tick_objects(dt)` runs the updates.
 
+### Tweens in an engine
+
+Tweens (section 17) move when the engine says: once a tick, **after the objects' tick and before the components' updates**, it calls the chunk's **`tickTweens(dt)`** in Lua, or **`tick_tweens(dt)`** built as a library. So an `update` sees this tick's values, and a done block's changes are there for the same tick's updates. A tween started in an `update` first moves on the next tick.
+
+- A tween on a component's field belongs to that component: it moves it, and keeps it, until it ends.
+- **New code:** tweens run inside the chunk that started them, so when the engine moves to a new chunk (and calls its `tickTweens`), tweens the old code started stop where they are. Their done blocks don't run.
+- **Removing an entity** doesn't stop its tweens: Lust has no way to hear that a component has gone yet. They keep moving the component nobody ticks until they end, and their done blocks still run (a `send` from one goes to an entity the engine no longer has, which it should ignore).
+- `tickTweens` and `tick_tweens` with 0 move nothing. A failure in a done block comes back as from `update`.
+
 ### Events
 
 Components tell each other things with events. An event says what it carries; a component handles it with `on`, and anything sends it to an entity with `send`:
@@ -1808,7 +1867,9 @@ The built-ins can't be used as names either:
 print      wait       ask
 ```
 
-Neither can the built-in objects: `Maths`, `Files`, `Time`, `Json`, `Web`, `Random`, `Rotation` and `Colour`. (`Rotation` and `Colour` with a capital are the objects; `rotation` and `colour` are the types.)
+Neither can the built-in objects: `Maths`, `Files`, `Time`, `Json`, `Web`, `Random`, `Rotation`, `Colour` and `Ease` (which is a state of easing curves too). (`Rotation` and `Colour` with a capital are the objects; `rotation` and `colour` are the types.)
+
+`tween`, `to` and `over` are words only in a tween (and `to` after `send`), so they can still be names.
 
 ---
 
