@@ -61,6 +61,7 @@ The order Lust gets built in. Each step makes Lust more useful on its own, and n
 | ✅ | **14.10 An unfilled engine field is named:** reading a component's field before the engine has filled it stops saying which field, not only "this is nothing" | Done (alpha 58) |
 | ✅ | **14.11 Engine components join when fetched:** a component or object in the engine's folders is part of a game only once the game fetches it, so ready-made ones never clash with a game's own | Done (alpha 59) |
 | ✅ | **14.12 Number helpers, array maths and random tools:** `Maths:lerp`, `sign`, `log`, `exp`, `trunc`, `fraction`, `moveTowards`, `smoothstep`, `isFinite`, `noise` and `Maths.e`; `sum`, `average`, `smallest` and `largest` on number arrays; `pick` and `shuffle`; `Random:seed`, `chance` and `direction`, all the same in `lust run` and built programs | Done (alpha 62) |
+| ✅ | **14.13 Rotation and vector helpers:** `Rotation:toward(dir)` and `Rotation:around(axis, degrees)`, `a:lerp(b, t)` on rotations (the shortest smooth turn) and `a:angle(b)` on vec3s, in degrees, the same in `lust run` and built programs | Done (alpha 63) |
 | | 🏁 *Lust's first release that isn't a test version.* | |
 
 ## Decisions along the way

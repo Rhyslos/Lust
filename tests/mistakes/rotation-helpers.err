@@ -1,0 +1,15 @@
+rotation-helpers.lst:2:30  Rotation:toward's direction is a vec3, but this is an int.
+rotation-helpers.lst:3:14  Rotation:toward takes 1 value, but gets 2.
+rotation-helpers.lst:4:14  Rotation:around takes 2 values, but gets 1.
+rotation-helpers.lst:5:30  Rotation:around's axis is a vec3, but this is an int.
+rotation-helpers.lst:5:34  Rotation:around's degrees is a float, but this is an int array.
+rotation-helpers.lst:6:10  e is a vec3, but this is a rotation.
+rotation-helpers.lst:7:23  Rotation has no method called spin. It has toward and around.
+rotation-helpers.lst:10:16  lerp takes 2, but gets 1. It takes: rotation to, float amount.
+rotation-helpers.lst:12:9  j is an int, but this is a float. Use .int() to drop the part after the point.
+rotation-helpers.lst:13:19  other is a vec3, but this is a rotation.
+rotation-helpers.lst:14:13  a rotation has no method called angle. Its methods are inverse, degrees and lerp.
+rotation-helpers.lst:15:5  Rotation is one of Lust's built-in objects, so it can't be a name.
+rotation-helpers.lst:16:20  Rotation has no field called x. Its methods are called with : like Rotation:toward(…).
+
+13 mistakes. Nothing was run.

@@ -174,6 +174,58 @@ function L.qdegrees(q)
   local y = math.atan2(-(2 * (q.x * q.z - q.y * q.w)), 1 - 2 * (q.x * q.x + q.y * q.y))
   return vec(x / RAD, y / RAD, z / RAD)
 end
+-- Rotation:toward(dir): forward (+x) along dir, up kept as near +z as it can be: a turn up or
+-- down (around y), then around z like a compass. No roll. Straight up or down faces x (yaw 0).
+function L.rotation_toward(d)
+  local x, y, z = d.x, d.y, d.z
+  if x == 0 and y == 0 and z == 0 then
+    error("toward needs a direction, but [0.0, 0.0, 0.0] has no length.", 2)
+  end
+  local yaw = 0
+  if x ~= 0 or y ~= 0 then yaw = math.atan2(y, x) end
+  local pitch = math.atan2(z, sqrt(x * x + y * y))
+  local hz, hy = yaw / 2, -pitch / 2
+  local sz, cz, sy, cy = math.sin(hz), math.cos(hz), math.sin(hy), math.cos(hy)
+  return quat(-sz * sy, cz * sy, sz * cy, cz * cy)
+end
+-- Rotation:around(axis, degrees): that many degrees around the axis, turning the way a right
+-- hand's fingers curl when its thumb points along the axis.
+function L.rotation_around(a, deg)
+  local x, y, z = a.x, a.y, a.z
+  local l = sqrt(x * x + y * y + z * z)
+  if l == 0 then error("around needs an axis to turn around, but [0.0, 0.0, 0.0] has no length.", 2) end
+  local h = deg * RAD / 2
+  local s = math.sin(h)
+  return quat(x / l * s, y / l * s, z / l * s, math.cos(h))
+end
+-- a:lerp(b, t): the smooth turn from a to b, the shortest way round. glam's Quat::slerp's steps,
+-- worked out in doubles and rounded once, as the Rust runtime does.
+function L.qlerp(a, b, t)
+  local ax, ay, az, aw = a.x, a.y, a.z, a.w
+  local bx, by, bz, bw = b.x, b.y, b.z, b.w
+  local dot = ax * bx + ay * by + az * bz + aw * bw
+  if dot < 0 then
+    bx, by, bz, bw, dot = -bx, -by, -bz, -bw, -dot
+  end
+  if dot > 1 - 1.1920928955078125e-07 then
+    local x, y, z, w = ax + (bx - ax) * t, ay + (by - ay) * t, az + (bz - az) * t, aw + (bw - aw) * t
+    local l = sqrt(x * x + y * y + z * z + w * w)
+    return quat(x / l, y / l, z / l, w / l)
+  end
+  local theta = math.acos(dot)
+  local s1, s2 = math.sin(theta * (1 - t)), math.sin(theta * t)
+  local inv = 1 / math.sin(theta)
+  return quat((ax * s1 + bx * s2) * inv, (ay * s1 + by * s2) * inv, (az * s1 + bz * s2) * inv, (aw * s1 + bw * s2) * inv)
+end
+-- a:angle(b): the angle between two directions, in degrees, from 0 to 180.
+function L.vangle(a, b)
+  if (a.x == 0 and a.y == 0 and a.z == 0) or (b.x == 0 and b.y == 0 and b.z == 0) then
+    error("angle needs two directions, but one of them is [0.0, 0.0, 0.0], which has no length.", 2)
+  end
+  local cx, cy, cz = a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x
+  local dot = a.x * b.x + a.y * b.y + a.z * b.z
+  return math.atan2(sqrt(cx * cx + cy * cy + cz * cz), dot) / RAD
+end
 -- A vec3's numbers, to 7 digits, as an f32 holds.
 local function f32text(x) return L.ftext(tonumber(fmt("%.7g", x)) + 0) end
 -- What a host's Lua function gives back for a native method, made into Lust's own values: its

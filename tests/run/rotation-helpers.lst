@@ -1,0 +1,57 @@
+-- Rotation:toward, Rotation:around, a:lerp(b, t) on rotations and a:angle(b) on vec3s, the same in Lua and Rust.
+rotation east = Rotation:toward([1, 0, 0]);
+rotation north = Rotation:toward([0, 5, 0]);
+rotation up = Rotation:toward([0, 0, 2]);
+rotation down = Rotation:toward([0, 0, -1]);
+rotation slant = Rotation:toward([1, 1, 1]);
+rotation back = Rotation:toward([-3, 0, 0]);
+print(east, north, up, down);
+print(slant, back);
+print(east * [1, 0, 0], north * [1, 0, 0], up * [1, 0, 0], down * [1, 0, 0]);
+print(slant * [1, 0, 0], back * [1, 0, 0]);
+-- Up stays as near +z as it can: no roll.
+print(slant * [0, 0, 1], north * [0, 0, 1]);
+
+rotation quarter = Rotation:around([0, 0, 1], 90);
+print(quarter, quarter * [1, 0, 0]);
+rotation diag = Rotation:around([1, 1, 1], 120);
+print(diag, diag * [1, 0, 0], diag * [0, 1, 0]);
+print(Rotation:around([0, 0, 5], 45) == Rotation:around([0, 0, 1], 45));
+print(Rotation:around([0, 1, 0], -30), Rotation:around([1, 0, 0], 0), Rotation:around([0, 0, 1], 360));
+
+rotation a = [0, 0, 0];
+rotation b = [0, 0, 90];
+print(a:lerp(b, 0), a:lerp(b, 0.5), a:lerp(b, 1), a:lerp(b, 0.25));
+print(a:lerp(b, 0.5) * [1, 0, 0]);
+-- The shortest way round: from 170 to -170 goes through 180, not through 0.
+rotation c = [0, 0, 170];
+rotation d = [0, 0, -170];
+print(c:lerp(d, 0.5), (c:lerp(d, 0.5) * [1, 0, 0]));
+-- Half a turn apart, and the same turn written the other way round.
+rotation e = [0, 0, 180];
+print(a:lerp(e, 0.5), a:lerp(a, 0.5), diag:lerp(diag:inverse(), 0.5));
+print(slant:lerp(up, 0.3), east:lerp(down, 0.75));
+
+vec3 x = [1, 0, 0];
+vec3 y = [0, 3, 0];
+vec3 w = [1, 2, 3];
+print(x:angle(y), x:angle(x), x:angle(-x), x:angle([1, 1, 0]), w:angle([-2, 0.5, 4]));
+float tiny = x:angle([1, 0.0001, 0]);
+print(tiny > 0.0, tiny < 0.01);
+
+try {
+    print(Rotation:toward([0, 0, 0]));
+} error (string message) {
+    print(message);
+}
+try {
+    print(Rotation:around([0, 0, 0], 45));
+} error (string message) {
+    print(message);
+}
+try {
+    print(x:angle([0, 0, 0]));
+} error (string message) {
+    print(message);
+}
+end

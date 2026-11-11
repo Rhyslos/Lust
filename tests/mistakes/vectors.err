@@ -5,7 +5,7 @@ vectors.lst:6:12  * doesn't work on a vec3 and a vec3. A vec3 is multiplied by a
 vectors.lst:7:12  * doesn't work on a vec3 and a rotation. A rotation turns what's on its right: turn * direction.
 vectors.lst:8:13  a vec3 has x, y and z, but not w.
 vectors.lst:9:13  a rotation's four numbers are kept inside it. Use :degrees() for the degrees around x, y and z.
-vectors.lst:10:13  a vec3 has no method called size. Its methods are length, normalized, dot, cross, distance and lerp.
+vectors.lst:10:13  a vec3 has no method called size. Its methods are length, normalized, dot, cross, distance, lerp and angle.
 vectors.lst:11:10  i is a vec3, but this is a rotation.
 vectors.lst:12:10  < compares numbers, but this is a vec3.
 vectors.lst:12:14  < compares numbers, but this is a vec3.
