@@ -1,0 +1,32 @@
+-- vec2s and colours crossing to an engine: native methods, component fields and events.
+get "solis/world":[spotOf, slide, tintOf, paint, path, log];
+
+event Flash(colour glow, vec2 at);
+
+component Sprite {
+    has {
+        vec2 speed = [2, -1];
+        colour tint = blue1;
+        colour shadow = [0, 0, 0, 0.5];
+    }
+
+    method update(float dt) {
+        vec2 at = spotOf(me) + speed * dt;
+        slide(me, at);
+        colour now = tintOf(me);
+        log("tint from the engine: " + now.text() + ", a " + now.a.text());
+        paint(me, now:lerp(tint, 0.5));
+        loop (vec2 p in path()) {
+            log("path " + p.text());
+        }
+        send Flash(shadow, at) to me;
+    }
+
+    on Flash(colour glow, vec2 at) {
+        log(me.text() + " flashes " + glow.text() + " at " + at.text());
+    }
+}
+
+
+pass Sprite;
+end

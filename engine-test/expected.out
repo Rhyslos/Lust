@@ -55,3 +55,11 @@ saved: day 2 hour 0.5
 loaded: day 2 hour 0.5
 wrong kinds kept: day 2 hour 7
 Weather: there's no object called Weather for the engine: an object is ticked and saved when its file passes it.
+Lamp's drift is vec2
+Lamp's light is colour
+Glow carries tint colour
+Glow carries at vec2
+light r 0.9882352948188782 g 0.7686274647712708 b 0.09803921729326248 a 1
+lamp at [1.75, 1.875], turned [-1.875, 1.75], [0.5780445, 2.498798]
+engine tint #ff401a, mixed #fe6119
+Glow carries tint a 0.5 and at x 1.75 y 1.875

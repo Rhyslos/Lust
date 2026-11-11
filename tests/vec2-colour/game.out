@@ -1,0 +1,16 @@
+Sprite:
+  speed Vec2 = List([Float(2.0), Float(-1.0)])
+  tint Colour = List([Float(0.8156862854957581), Float(0.9215686321258545), Float(1.0), Float(1.0)])
+  shadow Colour = List([Float(0.0), Float(0.0), Float(0.0), Float(0.5)])
+event Flash [("glow", Colour), ("at", Vec2)]
+Some(3) slides to Vec2 { x: 2.0, y: 0.5 }
+tint from the engine: #ff8000, a 1.0
+Some(3) painted [0.9078431, 0.7107843, 0.5, 1.0]
+path [0.0, 0.5]
+path [-1.0, 2.0]
+queued Flash to Some(3): [List([Float(0.0), Float(0.0), Float(0.0), Float(0.5)]), List([Float(2.0), Float(0.5)])]
+0000000000003 flashes #00000080 at [2.0, 0.5]
+handled: Ok(true)
+{"shadow": List([Float(0.0), Float(0.0), Float(0.0), Float(0.5)]), "speed": List([Float(0.25), Float(4.0)]), "tint": List([Float(1.0), Float(0.5), Float(0.0), Float(0.5)])}
+Err(LustError { file: "game.lst", line: Some(25), column: Some(8), message: "Flash's glow should be four numbers from 0 to 1." })
+Colour { r: 0.5, g: 1.0, b: 0.0, a: 1.0 }

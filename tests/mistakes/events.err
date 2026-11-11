@@ -1,6 +1,6 @@
 events.lst:9:7  there's already an event called Hit. Two things can't share a name.
-events.lst:10:17  an event carries what the engine can keep and show: bool, int, float, string, a state, vec3, rotation and entity. bag is a Bag.
-events.lst:10:32  an event carries what the engine can keep and show: bool, int, float, string, a state, vec3, rotation and entity. numbers is an int array.
+events.lst:10:17  an event carries what the engine can keep and show: bool, int, float, string, a state, vec3, vec2, rotation, colour and entity. bag is a Bag.
+events.lst:10:32  an event carries what the engine can keep and show: bool, int, float, string, a state, vec3, vec2, rotation, colour and entity. numbers is an int array.
 events.lst:17:8  a handler takes what its event carries, in the same order: on Hit(entity by, float damage) { … }
 events.lst:21:8  Health already handles Hit.
 events.lst:24:8  there's no event called Missing. Say what it carries first: event Missing(entity by);

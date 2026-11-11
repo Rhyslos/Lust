@@ -4,7 +4,7 @@ game.lsc:11:12  this is the entity a component is on, so only a component's meth
 game.lsc:15:8  force is a vec3, but this is an int.
 game.lsc:16:3  e is an entity, which has no method called jump.
 solis/entity.lsc:3:21  entity:position is already given on line 2 of the engine's files.
-solis/entity.lsc:5:23  a native method gives back an int, a float, text, a bool, a vec3, a rotation, a state's option, a thing made from a class, or an array of those, but hits gives back an int map.
+solis/entity.lsc:5:23  a native method gives back an int, a float, text, a bool, a vec3, a vec2, a rotation, a colour, a state's option, a thing made from a class, or an array of those, but hits gives back an int map.
 solis/entity.lsc:7:22  entity already has text(), Lust's own: it gives the entity's name as the engine writes it. Give this one another name.
 
 8 mistakes. Nothing was run.

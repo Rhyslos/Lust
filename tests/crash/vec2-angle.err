@@ -1,0 +1,1 @@
+vec2-angle.lst:5  angle needs two directions, but one of them is [0.0, 0.0], which has no length.

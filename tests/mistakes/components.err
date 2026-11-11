@@ -1,4 +1,4 @@
-components.lst:10:19  a component's fields are what the engine keeps and shows: bool, int, float, string, a state, vec3, rotation, entity, and things from the engine's own classes (which it fills in). numbers is an int array.
+components.lst:10:19  a component's fields are what the engine keeps and shows: bool, int, float, string, a state, vec3, vec2, rotation, colour, entity, and things from the engine's own classes (which it fills in). numbers is an int array.
 components.lst:11:13  a component holds a class only from the engine's own files, which the engine fills in. Bag is the game's own, so keep its things in a class or an object instead.
 components.lst:12:16  me is the entity the component is on, and every component has it already.
 components.lst:16:12  update runs once a tick with how many seconds a tick is: method update(float dt) { … }

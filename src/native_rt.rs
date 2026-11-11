@@ -576,6 +576,207 @@ pub fn vangle(a: Vec3, b: Vec3) -> f64 {
     let dot = ax * bx + ay * by + az * bz;
     (cx * cx + cy * cy + cz * cz).sqrt().atan2(dot) / RAD
 }
+// ----- vec2s -----
+// Two f32s, for 2D. Worked out in f64 and rounded to f32, as the Lua runtime does.
+
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
+pub struct Vec2 {
+    pub x: f32,
+    pub y: f32,
+}
+
+pub fn vec2(x: f64, y: f64) -> Vec2 {
+    Vec2 { x: x as f32, y: y as f32 }
+}
+fn w64(v: Vec2) -> (f64, f64) {
+    (v.x as f64, v.y as f64)
+}
+pub fn v2with(v: Vec2, f: usize, n: f64) -> Vec2 {
+    let mut w = v;
+    if f == 0 {
+        w.x = n as f32;
+    } else {
+        w.y = n as f32;
+    }
+    w
+}
+pub fn v2add(a: Vec2, b: Vec2) -> Vec2 {
+    let ((ax, ay), (bx, by)) = (w64(a), w64(b));
+    vec2(ax + bx, ay + by)
+}
+pub fn v2sub(a: Vec2, b: Vec2) -> Vec2 {
+    let ((ax, ay), (bx, by)) = (w64(a), w64(b));
+    vec2(ax - bx, ay - by)
+}
+pub fn v2mul(a: Vec2, n: f64) -> Vec2 {
+    let (x, y) = w64(a);
+    vec2(x * n, y * n)
+}
+pub fn v2div(a: Vec2, n: f64) -> Vec2 {
+    let (x, y) = w64(a);
+    vec2(x / n, y / n)
+}
+pub fn v2neg(a: Vec2) -> Vec2 {
+    Vec2 { x: -a.x, y: -a.y }
+}
+pub fn v2length(a: Vec2) -> f64 {
+    let (x, y) = w64(a);
+    (x * x + y * y).sqrt()
+}
+pub fn v2normalized(a: Vec2) -> Vec2 {
+    let (x, y) = w64(a);
+    let l = (x * x + y * y).sqrt();
+    if l == 0.0 {
+        return a;
+    }
+    vec2(x / l, y / l)
+}
+pub fn v2dot(a: Vec2, b: Vec2) -> f64 {
+    let ((ax, ay), (bx, by)) = (w64(a), w64(b));
+    ax * bx + ay * by
+}
+/// a:cross(b): which way b turns from a, above 0 to the left (counter-clockwise).
+pub fn v2cross(a: Vec2, b: Vec2) -> f64 {
+    let ((ax, ay), (bx, by)) = (w64(a), w64(b));
+    ax * by - ay * bx
+}
+pub fn v2distance(a: Vec2, b: Vec2) -> f64 {
+    let ((ax, ay), (bx, by)) = (w64(a), w64(b));
+    let (dx, dy) = (ax - bx, ay - by);
+    (dx * dx + dy * dy).sqrt()
+}
+pub fn v2lerp(a: Vec2, b: Vec2, t: f64) -> Vec2 {
+    let ((ax, ay), (bx, by)) = (w64(a), w64(b));
+    vec2(ax + (bx - ax) * t, ay + (by - ay) * t)
+}
+/// a:angle(b): the angle between two directions, in degrees, from 0 to 180.
+pub fn v2angle(a: Vec2, b: Vec2) -> f64 {
+    let ((ax, ay), (bx, by)) = (w64(a), w64(b));
+    if (ax == 0.0 && ay == 0.0) || (bx == 0.0 && by == 0.0) {
+        fail("angle needs two directions, but one of them is [0.0, 0.0], which has no length.".into());
+    }
+    (ax * by - ay * bx).abs().atan2(ax * bx + ay * by) / RAD
+}
+/// The sine and cosine of a number of degrees, exactly 0 and 1 on a quarter turn: d % 360 worked
+/// out as Lua does (d - floor(d / 360) * 360).
+fn sincos(d: f64) -> (f64, f64) {
+    let r = d - (d / 360.0).floor() * 360.0;
+    if r == 0.0 {
+        (0.0, 1.0)
+    } else if r == 90.0 {
+        (1.0, 0.0)
+    } else if r == 180.0 {
+        (0.0, -1.0)
+    } else if r == 270.0 {
+        (-1.0, 0.0)
+    } else {
+        ((d * RAD).sin(), (d * RAD).cos())
+    }
+}
+/// v:rotated(degrees): turned around its origin, counter-clockwise for more than 0.
+pub fn v2rotated(v: Vec2, d: f64) -> Vec2 {
+    let (x, y) = w64(v);
+    let (s, c) = sincos(d);
+    vec2(x * c - y * s, x * s + y * c)
+}
+pub fn v2withZ(v: Vec2, z: f64) -> Vec3 {
+    Vec3 { x: v.x, y: v.y, z: z as f32 }
+}
+/// pos.xy: a vec3's x and y.
+pub fn vxy(v: Vec3) -> Vec2 {
+    Vec2 { x: v.x, y: v.y }
+}
+pub fn v2text(v: Vec2) -> String {
+    let (x, y) = w64(v);
+    format!("[{}, {}]", ftext(g7(x) + 0.0), ftext(g7(y) + 0.0))
+}
+
+// ----- colours -----
+// Red, green, blue and see-through, each an f32 from 0 to 1. Made from numbers worked out while
+// running, each part is kept between 0 and 1 (and not a number becomes 0), as in the Lua runtime.
+
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
+pub struct Colour {
+    pub r: f32,
+    pub g: f32,
+    pub b: f32,
+    pub a: f32,
+}
+
+impl Colour {
+    /// Its parts as [r, g, b, a].
+    pub fn to_array(self) -> [f32; 4] {
+        [self.r, self.g, self.b, self.a]
+    }
+}
+
+impl From<[f32; 4]> for Colour {
+    /// From [r, g, b, a], each kept between 0 and 1.
+    fn from(c: [f32; 4]) -> Colour {
+        colour(c[0] as f64, c[1] as f64, c[2] as f64, c[3] as f64)
+    }
+}
+
+fn c01(x: f64) -> f32 {
+    if !(x > 0.0) {
+        0.0
+    } else if x > 1.0 {
+        1.0
+    } else {
+        x as f32
+    }
+}
+pub fn colour(r: f64, g: f64, b: f64, a: f64) -> Colour {
+    Colour { r: c01(r), g: c01(g), b: c01(b), a: c01(a) }
+}
+/// A colour the program using a library made: each part kept between 0 and 1.
+pub fn cfix(c: Colour) -> Colour {
+    colour(c.r as f64, c.g as f64, c.b as f64, c.a as f64)
+}
+/// From bytes 0 to 255: a colour word's, or hex text's.
+pub fn rgb(r: f64, g: f64, b: f64, a: f64) -> Colour {
+    colour(r / 255.0, g / 255.0, b / 255.0, a / 255.0)
+}
+pub fn colwith(c: Colour, f: usize, n: f64) -> Colour {
+    let mut w = c;
+    let v = c01(n);
+    match f {
+        0 => w.r = v,
+        1 => w.g = v,
+        2 => w.b = v,
+        _ => w.a = v,
+    }
+    w
+}
+pub fn colfade(c: Colour, a: f64) -> Colour {
+    colour(c.r as f64, c.g as f64, c.b as f64, a)
+}
+pub fn collerp(a: Colour, b: Colour, t: f64) -> Colour {
+    let p = |x: f32, y: f32| x as f64 + (y as f64 - x as f64) * t;
+    colour(p(a.r, b.r), p(a.g, b.g), p(a.b, b.b), p(a.a, b.a))
+}
+fn byte(x: f32) -> u32 {
+    (x as f64 * 255.0 + 0.5).floor() as u32
+}
+pub fn colhex(c: Colour) -> String {
+    let mut s = format!("#{:02x}{:02x}{:02x}", byte(c.r), byte(c.g), byte(c.b));
+    if c.a != 1.0 {
+        s.push_str(&format!("{:02x}", byte(c.a)));
+    }
+    s
+}
+/// Colour:hex("#3a8f2a") and Colour:hex("#3a8f2a80").
+pub fn colour_hex(text: String) -> Colour {
+    let hex = text.strip_prefix('#').unwrap_or("");
+    if !text.starts_with('#') || !matches!(hex.len(), 6 | 8) || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+        fail(format!(
+            "hex needs a colour written as \"#rrggbb\" or \"#rrggbbaa\", like \"#3a8f2a\", but this is \"{text}\"."
+        ));
+    }
+    let part = |i: usize| u8::from_str_radix(&hex[i..i + 2], 16).unwrap_or(0) as f64;
+    rgb(part(0), part(2), part(4), if hex.len() == 8 { part(6) } else { 255.0 })
+}
+
 /// C's %.7g: an f32's number to the 7 digits it holds.
 fn g7(v: f64) -> f64 {
     format!("{:.6e}", v).parse().unwrap_or(v)

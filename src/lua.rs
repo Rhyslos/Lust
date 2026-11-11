@@ -177,6 +177,22 @@ fn plus_zero(e: &Expr) -> bool {
     num(e).is_some_and(|x| x == 0.0 && x.is_sign_positive())
 }
 
+/// A vec2 written with numbers only, made from them already rounded to f32.
+fn const_vec2(items: &[Expr]) -> Option<String> {
+    if items.len() != 2 {
+        return None;
+    }
+    let mut parts = Vec::new();
+    for e in items {
+        let v = num(e)? as f32 as f64;
+        if !v.is_finite() {
+            return None;
+        }
+        parts.push(format!("{v:?}"));
+    }
+    Some(format!("_L.vec2({})", parts.join(", ")))
+}
+
 /// A vec3 written with numbers only, made from them already rounded to f32.
 fn const_vec(items: &[Expr]) -> Option<String> {
     if items.len() != 3 {
@@ -249,7 +265,9 @@ impl<'a> W<'a> {
             Ty::Str => "string",
             Ty::State(_) => "state",
             Ty::Vec3 => "vec3",
+            Ty::Vec2 => "vec2",
             Ty::Rot => "rotation",
+            Ty::Colour => "colour",
             Ty::Entity => "entity",
             // A thing of one of the engine's classes, which it fills in: its class's name follows.
             Ty::Class(_) => "object",
@@ -700,6 +718,8 @@ impl<'a> W<'a> {
             let v = match &it.value {
                 StyleValue::Flag => "true".to_string(),
                 StyleValue::Word(w) => lua_string(w),
+                // A colour value goes to the view as its hex text, as "#2f9e44" would.
+                StyleValue::Expr(e) if self.info.ty(e) == Ty::Colour => format!("_L.colhex({})", self.expr(e)),
                 StyleValue::Expr(e) => self.expr(e),
                 StyleValue::Nested(n) => self.styles(n),
             };
@@ -1035,10 +1055,16 @@ impl<'a> W<'a> {
         }
         if let ExprKind::Field(t, f, _) = &target.kind {
             // pos.x = 3: a vec3 isn't changed in place; it's given a new one with the new x.
-            if self.info.ty(t) == Ty::Vec3 {
+            let with = match self.info.ty(t) {
+                Ty::Vec3 => Some("vwith"),
+                Ty::Vec2 => Some("v2with"),
+                Ty::Colour => Some("colwith"),
+                _ => None,
+            };
+            if let Some(with) = with {
                 let tc = self.expr(t);
                 let t = t.clone();
-                self.assign(ln, &t, format!("_L.vwith({tc}, {}, {value})", lua_string(f)));
+                self.assign(ln, &t, format!("_L.{with}({tc}, {}, {value})", lua_string(f)));
                 return;
             }
             if let Ty::TableRow(_) = self.info.ty(t) {
@@ -1267,6 +1293,11 @@ impl<'a> W<'a> {
             ExprKind::Bool(b) => b.to_string(),
             ExprKind::Nothing => "nil".into(),
             ExprKind::Name(n) => {
+                // A colour word as a colour value: made once.
+                if let Some(rgb) = self.info.colour_words.get(&e.id) {
+                    let made = format!("_L.rgb({}, {}, {}, 255)", rgb >> 16, (rgb >> 8) & 255, rgb & 255);
+                    return self.konst(made);
+                }
                 if let Some((_, path)) = self.info.options.get(&e.id) {
                     if !path.is_empty() {
                         return lua_string(path);
@@ -1293,6 +1324,9 @@ impl<'a> W<'a> {
                     return format!("_L.r_get({r}, {})", lua_string(f));
                 }
                 let tc = self.expr(t);
+                if f == "xy" && self.info.ty(t) == Ty::Vec3 {
+                    return format!("_L.vxy({tc})");
+                }
                 format!("{tc}.{}", lname(f))
             }
             ExprKind::MethodRef(t, m, _) => {
@@ -1309,7 +1343,9 @@ impl<'a> W<'a> {
                             Ty::Array(_) => "a",
                             Ty::Map(_) => "m",
                             Ty::Vec3 => "v",
+                            Ty::Vec2 => "v2",
                             Ty::Rot => "q",
+                            Ty::Colour => "col",
                             _ => "c",
                         };
                         let mut all = vec![tc];
@@ -1371,8 +1407,10 @@ impl<'a> W<'a> {
             }
             ExprKind::Neg(inner) => {
                 let c = self.expr(inner);
-                if self.info.ty(inner) == Ty::Vec3 {
-                    return format!("_L.vneg({c})");
+                match self.info.ty(inner) {
+                    Ty::Vec3 => return format!("_L.vneg({c})"),
+                    Ty::Vec2 => return format!("_L.v2neg({c})"),
+                    _ => {}
                 }
                 format!("(-({c}))")
             }
@@ -1411,6 +1449,18 @@ impl<'a> W<'a> {
                 t @ (Ty::Vec3 | Ty::Rot) => {
                     let vs: Vec<String> = items.iter().map(|v| self.expr(v)).collect();
                     format!("_L.{}({})", if t == Ty::Vec3 { "vec" } else { "rot" }, vs.join(", "))
+                }
+                Ty::Vec2 if const_vec2(items).is_some() => const_vec2(items).unwrap(),
+                Ty::Vec2 => {
+                    let vs: Vec<String> = items.iter().map(|v| self.expr(v)).collect();
+                    format!("_L.vec2({})", vs.join(", "))
+                }
+                Ty::Colour => {
+                    let mut vs: Vec<String> = items.iter().map(|v| self.expr(v)).collect();
+                    if vs.len() == 3 {
+                        vs.push("1".into());
+                    }
+                    format!("_L.colour({})", vs.join(", "))
                 }
                 Ty::Map(_) => {
                     let ks: Vec<String> = keys.as_deref().unwrap_or(&[]).iter().map(|k| self.expr(k)).collect();
@@ -1768,7 +1818,9 @@ impl<'a> W<'a> {
             Ty::Int | Ty::Sized(_) => "_L.itext".into(),
             Ty::Float => "_L.ftext".into(),
             Ty::Vec3 => "_L.vtext".into(),
+            Ty::Vec2 => "_L.v2text".into(),
             Ty::Rot => "_L.rtext".into(),
+            Ty::Colour => "_L.colhex".into(),
             Ty::Entity => "_L.etext".into(),
             Ty::Truth => "_L.btext".into(),
             Ty::Str => "_L.qtext".into(),
@@ -1798,28 +1850,32 @@ impl<'a> W<'a> {
         if let ExprKind::List { items, .. } = &e.kind {
             let made = match self.info.ty(e) {
                 Ty::Vec3 => const_vec(items),
-                Ty::Rot if items.iter().all(|i| num(i).is_some()) => Some(self.expr(e)),
+                Ty::Vec2 => const_vec2(items),
+                Ty::Rot | Ty::Colour if items.iter().all(|i| num(i).is_some()) => Some(self.expr(e)),
                 _ => None,
             };
-            {
-                if let Some(v) = made {
-                    let i = match self.consts.iter().position(|c| *c == v) {
-                        Some(i) => i,
-                        None => {
-                            self.consts.push(v);
-                            self.consts.len() - 1
-                        }
-                    };
-                    return format!("_K[{}]", i + 1);
-                }
+            if let Some(v) = made {
+                return self.konst(v);
             }
         }
         self.expr(e)
     }
 
+    /// A value made once, before the program runs, and shared: _K[1], _K[2], …
+    fn konst(&mut self, v: String) -> String {
+        let i = match self.consts.iter().position(|c| *c == v) {
+            Some(i) => i,
+            None => {
+                self.consts.push(v);
+                self.consts.len() - 1
+            }
+        };
+        format!("_K[{}]", i + 1)
+    }
+
     fn binary(&mut self, op: BinOp, l: &Expr, r: &Expr) -> String {
         let lt = self.info.ty(l);
-        let vecs = matches!(lt, Ty::Vec3 | Ty::Rot) || matches!(self.info.ty(r), Ty::Vec3 | Ty::Rot);
+        let vecs = lt.is_vector() || self.info.ty(r).is_vector();
         let lc = if vecs { self.operand(l) } else { self.expr(l) };
         let rc = if vecs { self.operand(r) } else { self.expr(r) };
         let rt = self.info.ty(r);
@@ -1835,6 +1891,15 @@ impl<'a> W<'a> {
             (BinOp::Div, Ty::Vec3, _) => Some(format!("_L.vdiv({lc}, {rc})")),
             (BinOp::Eq | BinOp::Same, Ty::Vec3, _) => Some(format!("_L.veq({lc}, {rc})")),
             (BinOp::Ne | BinOp::NotSame, Ty::Vec3, _) => Some(format!("(not _L.veq({lc}, {rc}))")),
+            (BinOp::Add, Ty::Vec2, _) => Some(format!("_L.v2add({lc}, {rc})")),
+            (BinOp::Sub, Ty::Vec2, _) => Some(format!("_L.v2sub({lc}, {rc})")),
+            (BinOp::Mul, Ty::Vec2, _) => Some(format!("_L.v2mul({lc}, {rc})")),
+            (BinOp::Mul, _, Ty::Vec2) => Some(format!("_L.v2mul({rc}, {lc})")),
+            (BinOp::Div, Ty::Vec2, _) => Some(format!("_L.v2div({lc}, {rc})")),
+            (BinOp::Eq | BinOp::Same, Ty::Vec2, _) => Some(format!("_L.v2eq({lc}, {rc})")),
+            (BinOp::Ne | BinOp::NotSame, Ty::Vec2, _) => Some(format!("(not _L.v2eq({lc}, {rc}))")),
+            (BinOp::Eq | BinOp::Same, Ty::Colour, _) => Some(format!("_L.coleq({lc}, {rc})")),
+            (BinOp::Ne | BinOp::NotSame, Ty::Colour, _) => Some(format!("(not _L.coleq({lc}, {rc}))")),
             (BinOp::Eq | BinOp::Same, Ty::Rot, _) => Some(format!("_L.qeq({lc}, {rc})")),
             (BinOp::Ne | BinOp::NotSame, Ty::Rot, _) => Some(format!("(not _L.qeq({lc}, {rc}))")),
             _ => None,
@@ -1935,7 +2000,9 @@ fn host_in(info: &Info, t: &Ty, call: String) -> String {
     fn conv(info: &Info, t: &Ty, depth: usize) -> Option<String> {
         match t {
             Ty::Vec3 => Some("_L.hvec".into()),
+            Ty::Vec2 => Some("_L.hvec2".into()),
             Ty::Rot => Some("_L.hrot".into()),
+            Ty::Colour => Some("_L.hcol".into()),
             Ty::State(s) => {
                 let st = &info.states[*s];
                 let opts: Vec<String> = st.options.iter().map(|o| lua_string(o)).collect();

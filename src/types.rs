@@ -68,6 +68,10 @@ pub enum Ty {
     Truth,
     /// Three numbers (f32), copied like a number: a position, a direction, a speed.
     Vec3,
+    /// Two numbers (f32), copied like a number: a place or a direction in 2D.
+    Vec2,
+    /// Red, green, blue and see-through (f32s from 0 to 1), copied like a number.
+    Colour,
     /// A turn in 3D space, kept as a quaternion of four f32 numbers, written as degrees.
     Rot,
     /// An entity in an engine (Solis), or nothing: its 64-bit ID.
@@ -117,6 +121,10 @@ impl Ty {
     pub fn is_number(&self) -> bool {
         matches!(self, Ty::Int | Ty::Float | Ty::Sized(_))
     }
+    /// Vectors, rotations and colours: several f32s, copied like a number.
+    pub fn is_vector(&self) -> bool {
+        matches!(self, Ty::Vec3 | Ty::Vec2 | Ty::Rot | Ty::Colour)
+    }
     /// Values that can be `nothing`.
     pub fn can_be_nothing(&self) -> bool {
         matches!(self, Ty::Class(_) | Ty::Hook(_) | Ty::Entity | Ty::Nothing | Ty::Error)
@@ -137,6 +145,8 @@ impl<'a> Names<'a> {
             Ty::Str => "string".into(),
             Ty::Truth => "bool".into(),
             Ty::Vec3 => "vec3".into(),
+            Ty::Vec2 => "vec2".into(),
+            Ty::Colour => "colour".into(),
             Ty::Rot => "rotation".into(),
             Ty::Entity => "entity".into(),
             Ty::Nothing => "nothing".into(),

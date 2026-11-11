@@ -2,7 +2,7 @@
 
 This file is for programs that use Lust as a library: Solis first. When an engine updates its pinned Lust, it reads the section for each version it skips over, newest at the bottom, and does what **The engine does** says. The full rules are in [LUST.md](LUST.md), section 21.
 
-An engine moving from alpha 48 to alpha 63 or later reads everything below.
+An engine moving from alpha 48 to alpha 65 or later reads everything below.
 
 ## alpha 49: states in native methods
 
@@ -91,3 +91,19 @@ An engine moving from alpha 48 to alpha 63 or later reads everything below.
 - New calls on values that already cross to engines: `Rotation:toward(dir)`, `Rotation:around(axis, degrees)`, `a:lerp(b, t)` on rotations and `a:angle(b)` on vec3s. Rotations and vec3s are kept and passed exactly as before.
 - `Rotation` becomes a built-in object, so a game can't use it as a name (the type `rotation` is unchanged).
 - **The engine does:** nothing.
+
+## alpha 65: vec2 and colour
+
+- Two new value types cross to engines, in native methods (taking and giving back, and in arrays), components' fields, objects' kept fields and events.
+- **`vec2`:** two f32s, x and y.
+  - **Rust:** the library's `Vec2 { x: f32, y: f32 }`. `FieldKind::Vec2`, and its `Value` is `List` of two numbers.
+  - **Lua:** a table `{ x = …, y = … }`, in Luau too (Luau's `vector` has three numbers, and a table keeps a vec2 apart from a vec3). Its schema kind is `"vec2"`. A native may give back any table with `x` and `y`, or a Luau vector (its z is dropped).
+- **`colour`:** red, green, blue and see-through, four f32s from 0 to 1.
+  - **Rust:** the library's `Colour { r: f32, g: f32, b: f32, a: f32 }`, with `to_array()` for `[f32; 4]` and `Colour::from([r, g, b, a])`. `FieldKind::Colour`, and its `Value` is `List` of four numbers. Solis's own `Color` is three sRGB numbers, so the adapter adds or drops the see-through.
+  - **Lua:** a table `{ r = …, g = …, b = …, a = … }`. Its schema kind is `"colour"`. A native may leave out `a`, which is then 1.
+  - Every way in (a native's answer, `set_data`, `from_data`, an event's values, `Colour::from`) keeps each part between 0 and 1; not a number becomes 0.
+- Lust never changes a vec2 or colour table in place, so it shares them; an engine never changes one it got from Lust.
+- The library now also exports `Vec2` and `Colour` next to `Vec3` and `Rotation`.
+- `Colour` becomes a built-in object, so a game can't use it as a name (the type `colour` is a new word too, but a variable may still be called `colour`).
+- They don't go into JSON, Lust's own saves or databases yet.
+- **The engine does:** adds `Vec2` and `Colour` to its adapter's kinds, if its inspector should show them.

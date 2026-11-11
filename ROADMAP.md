@@ -63,6 +63,7 @@ The order Lust gets built in. Each step makes Lust more useful on its own, and n
 | ✅ | **14.12 Number helpers, array maths and random tools:** `Maths:lerp`, `sign`, `log`, `exp`, `trunc`, `fraction`, `moveTowards`, `smoothstep`, `isFinite`, `noise` and `Maths.e`; `sum`, `average`, `smallest` and `largest` on number arrays; `pick` and `shuffle`; `Random:seed`, `chance` and `direction`, all the same in `lust run` and built programs | Done (alpha 62) |
 | ✅ | **14.13 Rotation and vector helpers:** `Rotation:toward(dir)` and `Rotation:around(axis, degrees)`, `a:lerp(b, t)` on rotations (the shortest smooth turn) and `a:angle(b)` on vec3s, in degrees, the same in `lust run` and built programs | Done (alpha 63) |
 | ✅ | **14.14 Bitwise operators:** `&`, `\|`, `^`, `~`, `<<` and `>>` (and `&=` `\|=` `^=` `<<=` `>>=`) on whole numbers, in Rust's order, 64-bit two's complement; worked out in plain arithmetic under `lust run` and Luau, giving the same answers as built programs | Done (alpha 64) |
+| ✅ | **14.15 vec2 and colour:** `vec2` for 2D (`[3, 4.5]`, maths, `rotated`, `cross`, `.xy` and `withZ`) and `colour` (`[0.4, 0.7, 1.0]`, colour words like `orange5`, `Colour:hex`, `fade`, `lerp` and `hex`), bit for bit the same in `lust run`, Luau and built programs, and across to engines in native methods, components' fields and events | Done (alpha 65) |
 | | 🏁 *Lust's first release that isn't a test version.* | |
 
 ## Decisions along the way

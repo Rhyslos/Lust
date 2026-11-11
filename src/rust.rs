@@ -547,7 +547,8 @@ pub enum Value {
     Int(i64),
     Float(f64),
     Text(String),
-    /// A vec3 is three numbers, a rotation four (x, y, z, w).
+    /// A vec3 is three numbers, a vec2 two, a rotation four (x, y, z, w) and a colour four
+    /// (r, g, b, a, each from 0 to 1).
     List(Vec<Value>),
     /// An entity's 64-bit ID, or none.
     Entity(Option<u64>),
@@ -563,7 +564,11 @@ pub enum FieldKind {
     /// One of a state's options, by name.
     Choice(Vec<String>),
     Vec3,
+    /// Two numbers, x and y.
+    Vec2,
     Rotation,
+    /// Red, green, blue and see-through, each from 0 to 1.
+    Colour,
     Entity,
 }
 
@@ -631,6 +636,12 @@ fn as_floats(v: &Value, n: usize) -> Option<Vec<f64>> {
 }
 fn as_vec3(v: &Value) -> Option<Vec3> {
     as_floats(v, 3).map(|f| rt::vec3(f[0], f[1], f[2]))
+}
+fn as_vec2(v: &Value) -> Option<Vec2> {
+    as_floats(v, 2).map(|f| rt::vec2(f[0], f[1]))
+}
+fn as_colour(v: &Value) -> Option<Colour> {
+    as_floats(v, 4).map(|f| rt::colour(f[0], f[1], f[2], f[3]))
 }
 fn as_rotation(v: &Value) -> Option<Rotation> {
     as_floats(v, 4).map(|f| Rotation { x: f[0] as f32, y: f[1] as f32, z: f[2] as f32, w: f[3] as f32 })
@@ -950,7 +961,9 @@ impl<'a> W<'a> {
             Ty::Str => "String".into(),
             Ty::Truth => "bool".into(),
             Ty::Vec3 => "rt::Vec3".into(),
+            Ty::Vec2 => "rt::Vec2".into(),
             Ty::Rot => "rt::Rotation".into(),
+            Ty::Colour => "rt::Colour".into(),
             // An entity's 64-bit ID; nothing is 0, which Solis never uses.
             Ty::Entity => "u64".into(),
             Ty::State(_) | Ty::StateList(_) => "&'static str".into(),
@@ -991,12 +1004,12 @@ impl<'a> W<'a> {
                 Ty::Array(e) => plain(e) && !matches!(**e, Ty::Array(_)),
                 _ => matches!(
                     t,
-                    Ty::Int | Ty::Float | Ty::Str | Ty::Truth | Ty::Vec3 | Ty::Rot | Ty::Entity | Ty::Class(_)
+                    Ty::Int | Ty::Float | Ty::Str | Ty::Truth | Ty::Vec3 | Ty::Vec2 | Ty::Rot | Ty::Colour | Ty::Entity | Ty::Class(_)
                 ),
             }
         }
-        // Vectors and rotations are the runtime's own types, handed out as they are.
-        let mut out = format!("\npub use rt::{{LustError, Rotation, Vec3}};\n\n/// The version of Lust that wrote this library.\npub const LUST_VERSION: &str = {:?};\n", env!("CARGO_PKG_VERSION"));
+        // Vectors, rotations and colours are the runtime's own types, handed out as they are.
+        let mut out = format!("\npub use rt::{{Colour, LustError, Rotation, Vec2, Vec3}};\n\n/// The version of Lust that wrote this library.\npub const LUST_VERSION: &str = {:?};\n", env!("CARGO_PKG_VERSION"));
         for (ci, c) in info.classes.iter().enumerate() {
             let root = self.root(ci);
             let w = ident(&c.name);
@@ -1178,7 +1191,9 @@ impl<'a> W<'a> {
             Ty::Truth => "bool".into(),
             Ty::Class(c) => format!("Option<{}>", ident(&self.info.classes[*c].name)),
             Ty::Vec3 => "Vec3".into(),
+            Ty::Vec2 => "Vec2".into(),
             Ty::Rot => "Rotation".into(),
+            Ty::Colour => "Colour".into(),
             Ty::Entity => "Option<u64>".into(),
             Ty::Array(e) => format!("Vec<{}>", self.api_ty(e)),
             Ty::Void => "()".into(),
@@ -1235,7 +1250,9 @@ impl<'a> W<'a> {
                 )
             }
             Ty::Vec3 => ("FieldKind::Vec3".into(), "as_vec3(v)".into()),
+            Ty::Vec2 => ("FieldKind::Vec2".into(), "as_vec2(v)".into()),
             Ty::Rot => ("FieldKind::Rotation".into(), "as_rotation(v)".into()),
+            Ty::Colour => ("FieldKind::Colour".into(), "as_colour(v)".into()),
             Ty::Entity => ("FieldKind::Entity".into(), "as_entity(v)".into()),
             _ => return None,
         })
@@ -1251,6 +1268,8 @@ impl<'a> W<'a> {
             Ty::State(_) => format!("Value::Text({code}.to_string())"),
             Ty::Vec3 => format!("{{ let v = {code}; Value::List(vec![Value::Float(v.x as f64), Value::Float(v.y as f64), Value::Float(v.z as f64)]) }}"),
             Ty::Rot => format!("{{ let v = {code}; Value::List(vec![Value::Float(v.x as f64), Value::Float(v.y as f64), Value::Float(v.z as f64), Value::Float(v.w as f64)]) }}"),
+            Ty::Vec2 => format!("{{ let v = {code}; Value::List(vec![Value::Float(v.x as f64), Value::Float(v.y as f64)]) }}"),
+            Ty::Colour => format!("{{ let v = {code}; Value::List(vec![Value::Float(v.r as f64), Value::Float(v.g as f64), Value::Float(v.b as f64), Value::Float(v.a as f64)]) }}"),
             Ty::Entity => format!("Value::Entity(Some({code}).filter(|e| *e != 0))"),
             _ => "Value::Bool(false)".into(),
         }
@@ -1405,6 +1424,8 @@ impl<'a> W<'a> {
             Ty::Class(_) => format!("{code}.map(|w| w.0)"),
             Ty::Array(e) => format!("rt::arr({code}.into_iter().map(|x| {}).collect())", self.from_api("x", e)),
             Ty::Entity => format!("{code}.unwrap_or(0)"),
+            // Kept between 0 and 1, as every colour is.
+            Ty::Colour => format!("rt::cfix({code})"),
             _ => code.to_string(),
         }
     }
@@ -1827,16 +1848,22 @@ impl<'a> W<'a> {
                 }
                 _ => out.push_str(&format!("{pad}v_{n} = {v};\n")),
             },
-            // pos.x = 3: a vec3 is given a new one with the new x.
-            ExprKind::Field(t, f, _) if self.info.ty(t) == Ty::Vec3 => {
+            // pos.x = 3: a vec3 (or vec2, or colour) is given a new one with the new x.
+            ExprKind::Field(t, f, _) if matches!(self.info.ty(t), Ty::Vec3 | Ty::Vec2 | Ty::Colour) => {
                 let tc = self.expr(t);
                 let i = match f.as_str() {
-                    "x" => 0,
-                    "y" => 1,
-                    _ => 2,
+                    "x" | "r" => 0,
+                    "y" | "g" => 1,
+                    "z" | "b" => 2,
+                    _ => 3,
+                };
+                let with = match self.info.ty(t) {
+                    Ty::Vec3 => "vwith",
+                    Ty::Vec2 => "v2with",
+                    _ => "colwith",
                 };
                 let t = t.clone();
-                self.assign(&t, format!("rt::vwith({tc}, {i}, {v})"), out, pad);
+                self.assign(&t, format!("rt::{with}({tc}, {i}, {v})"), out, pad);
             }
             ExprKind::Field(t, f, _) => {
                 let tc = self.expr(t);
@@ -1991,6 +2018,10 @@ impl<'a> W<'a> {
             ExprKind::Nothing if self.info.ty(e) == Ty::Entity => "0u64".into(),
             ExprKind::Nothing => "None".into(),
             ExprKind::Name(n) => {
+                // A colour word as a colour value.
+                if let Some(rgb) = self.info.colour_words.get(&e.id) {
+                    return format!("rt::rgb({}.0, {}.0, {}.0, 255.0)", rgb >> 16, (rgb >> 8) & 255, rgb & 255);
+                }
                 if let Some((_, path)) = self.info.options.get(&e.id) {
                     if !path.is_empty() {
                         return format!("{path:?}");
@@ -2030,7 +2061,10 @@ impl<'a> W<'a> {
                     _ => format!("v_{n}.clone()"),
                 }
             }
-            ExprKind::Field(t, f, _) if self.info.ty(t) == Ty::Vec3 => format!("({}.{f} as f64)", self.expr(t)),
+            ExprKind::Field(t, f, _) if self.info.ty(t) == Ty::Vec3 && f == "xy" => format!("rt::vxy({})", self.expr(t)),
+            ExprKind::Field(t, f, _) if matches!(self.info.ty(t), Ty::Vec3 | Ty::Vec2 | Ty::Colour) => {
+                format!("({}.{f} as f64)", self.expr(t))
+            }
             ExprKind::Field(t, f, _) => {
                 if let Some((_, path)) = self.info.options.get(&e.id) {
                     return format!("{path:?}");
@@ -2080,8 +2114,13 @@ impl<'a> W<'a> {
                 let tc = self.expr(t);
                 match self.info.calls.get(&e.id) {
                     Some(CallRes::Builtin) => match (&tt, m.as_str()) {
-                        (Ty::Vec3 | Ty::Rot, _) => {
-                            let p = if tt == Ty::Vec3 { "v" } else { "q" };
+                        (Ty::Vec3 | Ty::Vec2 | Ty::Rot | Ty::Colour, _) => {
+                            let p = match tt {
+                                Ty::Vec3 => "v",
+                                Ty::Vec2 => "v2",
+                                Ty::Colour => "col",
+                                _ => "q",
+                            };
                             let mut a = vec![tc];
                             for x in args {
                                 let want = if self.info.ty(x).is_number() { Ty::Float } else { self.info.ty(x) };
@@ -2204,6 +2243,7 @@ impl<'a> W<'a> {
                 }
             }
             ExprKind::Neg(inner) if self.info.ty(inner) == Ty::Vec3 => format!("rt::vneg({})", self.expr(inner)),
+            ExprKind::Neg(inner) if self.info.ty(inner) == Ty::Vec2 => format!("rt::v2neg({})", self.expr(inner)),
             ExprKind::Neg(inner) => format!("(-{})", self.expr(inner)),
             ExprKind::Not(inner) => format!("(!{})", self.expr(inner)),
             ExprKind::BitNot(inner) => {
@@ -2226,6 +2266,17 @@ impl<'a> W<'a> {
                 t @ (Ty::Vec3 | Ty::Rot) => {
                     let vs: Vec<String> = items.iter().map(|i| self.coerced(i, &Ty::Float)).collect();
                     format!("rt::{}({})", if t == Ty::Vec3 { "vec3" } else { "rot" }, vs.join(", "))
+                }
+                Ty::Vec2 => {
+                    let vs: Vec<String> = items.iter().map(|i| self.coerced(i, &Ty::Float)).collect();
+                    format!("rt::vec2({})", vs.join(", "))
+                }
+                Ty::Colour => {
+                    let mut vs: Vec<String> = items.iter().map(|i| self.coerced(i, &Ty::Float)).collect();
+                    if vs.len() == 3 {
+                        vs.push("1.0".into());
+                    }
+                    format!("rt::colour({})", vs.join(", "))
                 }
                 Ty::Array(el) => {
                     let et = self.ty(&el);
@@ -2621,6 +2672,8 @@ impl<'a> W<'a> {
                     Ty::Int | Ty::Float => format!("rt::ui::SV::Num({})", self.coerced(e, &Ty::Float)),
                     // A style that's on only when this is true: [disabled not ready]
                     Ty::Truth => format!("if {} {{ rt::ui::SV::Flag }} else {{ rt::ui::SV::Truth(false) }}", self.expr(e)),
+                    // A colour value goes to the view as its hex text, as "#2f9e44" would.
+                    Ty::Colour => format!("rt::ui::SV::Text(rt::colhex({}))", self.expr(e)),
                     _ => format!("rt::ui::SV::Text({})", self.expr(e)),
                 },
                 StyleValue::Nested(n) => format!("rt::ui::SV::Nested({})", self.styles(n)),
@@ -2821,7 +2874,9 @@ impl<'a> W<'a> {
             Ty::Sized(_) => format!("|v: &{tt}| rt::itext(*v as i64)"),
             Ty::Float => format!("|v: &{tt}| rt::ftext(*v)"),
             Ty::Vec3 => format!("|v: &{tt}| rt::vtext(*v)"),
+            Ty::Vec2 => format!("|v: &{tt}| rt::v2text(*v)"),
             Ty::Rot => format!("|v: &{tt}| rt::rtext(*v)"),
+            Ty::Colour => format!("|v: &{tt}| rt::colhex(*v)"),
             Ty::Entity => format!("|v: &{tt}| rt::etext(*v)"),
             Ty::Truth => format!("|v: &{tt}| rt::btext(*v)"),
             Ty::Str if quoted => format!("|v: &{tt}| rt::qtext(v)"),
@@ -2869,7 +2924,7 @@ impl<'a> W<'a> {
         let lt = self.info.ty(l);
         let rt = self.info.ty(r);
         // Vectors and rotations, with any number as a float.
-        if matches!(lt, Ty::Vec3 | Ty::Rot) || matches!(rt, Ty::Vec3 | Ty::Rot) {
+        if lt.is_vector() || rt.is_vector() {
             let side = |w: &mut Self, x: &Expr| {
                 let t = w.info.ty(x);
                 if t.is_number() {
@@ -2880,6 +2935,13 @@ impl<'a> W<'a> {
             };
             let (lc, rc) = (side(self, l), side(self, r));
             return match (op, &lt, &rt) {
+                (BinOp::Ne | BinOp::NotSame, ..) => format!("({lc} != {rc})"),
+                (BinOp::Eq | BinOp::Same, ..) => format!("({lc} == {rc})"),
+                (BinOp::Add, Ty::Vec2, _) => format!("rt::v2add({lc}, {rc})"),
+                (BinOp::Sub, Ty::Vec2, _) => format!("rt::v2sub({lc}, {rc})"),
+                (BinOp::Mul, Ty::Vec2, _) => format!("rt::v2mul({lc}, {rc})"),
+                (BinOp::Mul, _, Ty::Vec2) => format!("rt::v2mul({rc}, {lc})"),
+                (BinOp::Div, Ty::Vec2, _) => format!("rt::v2div({lc}, {rc})"),
                 (BinOp::Add, ..) => format!("rt::vadd({lc}, {rc})"),
                 (BinOp::Sub, ..) => format!("rt::vsub({lc}, {rc})"),
                 (BinOp::Mul, Ty::Vec3, _) => format!("rt::vmul({lc}, {rc})"),
@@ -2887,7 +2949,7 @@ impl<'a> W<'a> {
                 (BinOp::Mul, Ty::Rot, _) => format!("rt::qmul({lc}, {rc})"),
                 (BinOp::Mul, _, _) => format!("rt::vmul({rc}, {lc})"),
                 (BinOp::Div, ..) => format!("rt::vdiv({lc}, {rc})"),
-                (BinOp::Ne | BinOp::NotSame, ..) => format!("({lc} != {rc})"),
+                // Never: the checker allows nothing else on vectors.
                 _ => format!("({lc} == {rc})"),
             };
         }
@@ -2948,7 +3010,9 @@ fn text(code: &str, t: &Ty) -> String {
         Ty::Int => format!("rt::itext({code})"),
         Ty::Float => format!("rt::ftext({code})"),
         Ty::Vec3 => format!("rt::vtext({code})"),
+        Ty::Vec2 => format!("rt::v2text({code})"),
         Ty::Rot => format!("rt::rtext({code})"),
+        Ty::Colour => format!("rt::colhex({code})"),
         Ty::Entity => format!("rt::etext({code})"),
         Ty::Truth => format!("rt::btext({code})"),
         Ty::State(_) => format!("{code}.to_string()"),
@@ -2966,7 +3030,9 @@ fn a_kind(t: &Ty) -> &'static str {
         Ty::Str => "text",
         Ty::State(_) => "one of its state's options",
         Ty::Vec3 => "three numbers",
+        Ty::Vec2 => "two numbers",
         Ty::Rot => "four numbers",
+        Ty::Colour => "four numbers from 0 to 1",
         Ty::Entity => "an entity",
         _ => "something else",
     }

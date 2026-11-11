@@ -1,0 +1,7 @@
+-- Hex text worked out while running, and not a colour: the program stops, saying why.
+string typed = "#3a8f2a";
+print(Colour:hex(typed));
+typed = typed:replace("#", "");
+print(Colour:hex(typed));
+print("never");
+end

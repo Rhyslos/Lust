@@ -158,6 +158,8 @@ pub struct Info {
     pub narrowing: HashMap<usize, Width>,
     /// Where `send` is: like a native method, it needs the program using this as a library.
     pub sends: Vec<Pos>,
+    /// Colour words used as colour values (`colour warn = orange5;`), by expression: 0xrrggbb.
+    pub colour_words: HashMap<usize, u32>,
 }
 
 impl Info {
@@ -546,7 +548,7 @@ impl<'a> Checker<'a> {
                     self.err(
                         p.pos,
                         format!(
-                            "an event carries what the engine can keep and show: bool, int, float, string, a state, vec3, rotation and entity. {} is {}.",
+                            "an event carries what the engine can keep and show: bool, int, float, string, a state, vec3, vec2, rotation, colour and entity. {} is {}.",
                             p.name,
                             self.a(&ty)
                         ),
@@ -719,7 +721,7 @@ impl<'a> Checker<'a> {
                         self.err(
                             f.pos,
                             format!(
-                                "a component's fields are what the engine keeps and shows: bool, int, float, string, a state, vec3, rotation, entity, and things from the engine's own classes (which it fills in). {} is {}.",
+                                "a component's fields are what the engine keeps and shows: bool, int, float, string, a state, vec3, vec2, rotation, colour, entity, and things from the engine's own classes (which it fills in). {} is {}.",
                                 f.name,
                                 self.a(&ty)
                             ),
@@ -1110,7 +1112,9 @@ impl<'a> Checker<'a> {
                 "string" => Ty::Str,
                 "bool" => Ty::Truth,
                 "vec3" => Ty::Vec3,
+                "vec2" => Ty::Vec2,
                 "rotation" => Ty::Rot,
+                "colour" => Ty::Colour,
                 "entity" => Ty::Entity,
                 _ => {
                     if let Some(&c) = self.info.class_index.get(n) {
@@ -1125,7 +1129,7 @@ impl<'a> Checker<'a> {
                         .chain(self.state_names.iter())
                         .cloned()
                         .chain(
-                            ["int", "float", "string", "bool", "vec3", "rotation", "entity"]
+                            ["int", "float", "string", "bool", "vec3", "vec2", "rotation", "colour", "entity"]
                                 .iter()
                                 .map(|s| s.to_string()),
                         )
@@ -1142,7 +1146,7 @@ impl<'a> Checker<'a> {
                         return Ty::Error;
                     }
                     let s = suggest(n, known);
-                    self.err(*pos, format!("Lust doesn't have a type called {n}.{s} The types are int (and int8, int16, int32, uint8, uint16 and uint32), float, string, bool, vec3, rotation, entity, arrays, maps, cMaps, hooks, classes and states."));
+                    self.err(*pos, format!("Lust doesn't have a type called {n}.{s} The types are int (and int8, int16, int32, uint8, uint16 and uint32), float, string, bool, vec3, vec2, rotation, colour, entity, arrays, maps, cMaps, hooks, classes and states."));
                     Ty::Error
                 }
             },
@@ -1181,6 +1185,8 @@ impl<'a> Checker<'a> {
             Ty::Int => "0".into(),
             Ty::Float => "1.5".into(),
             Ty::Vec3 | Ty::Rot => "[0, 0, 0]".into(),
+            Ty::Vec2 => "[0, 0]".into(),
+            Ty::Colour => "[1, 1, 1]".into(),
             Ty::Entity => "nothing".into(),
             Ty::Str => "\"text\"".into(),
             Ty::Truth => "true".into(),
@@ -1248,7 +1254,7 @@ impl<'a> Checker<'a> {
                         format!("{} doesn't give anything back, so there's nothing for {kind} to show.", describe(a)),
                     );
                 } else if t != Ty::Str && t != Ty::Error {
-                    let fix = if matches!(t, Ty::Int | Ty::Float | Ty::Truth | Ty::State(_) | Ty::Vec3 | Ty::Rot) {
+                    let fix = if matches!(t, Ty::Int | Ty::Float | Ty::Truth | Ty::State(_)) || t.is_vector() {
                         format!(" Put it in text: {kind} \"{{{}}}\";", describe(a))
                     } else {
                         String::new()
@@ -1722,7 +1728,9 @@ impl<'a> Checker<'a> {
                             | Ty::Str
                             | Ty::Truth
                             | Ty::Vec3
+                            | Ty::Vec2
                             | Ty::Rot
+                            | Ty::Colour
                             | Ty::Entity
                             | Ty::Class(_)
                             | Ty::State(_)
@@ -1736,7 +1744,7 @@ impl<'a> Checker<'a> {
                     self.err(
                         p.pos,
                         format!(
-                            "a native method takes ints, floats, text, bools, vec3s, rotations, states' options, things made from classes, and arrays of those, but {} is {}.",
+                            "a native method takes ints, floats, text, bools, vec3s, vec2s, rotations, colours, states' options, things made from classes, and arrays of those, but {} is {}.",
                             p.name,
                             self.a(ty)
                         ),
@@ -1747,7 +1755,7 @@ impl<'a> Checker<'a> {
                 self.err(
                     m.pos,
                     format!(
-                        "a native method gives back an int, a float, text, a bool, a vec3, a rotation, a state's option, a thing made from a class, or an array of those, but {} gives back {}.",
+                        "a native method gives back an int, a float, text, a bool, a vec3, a vec2, a rotation, a colour, a state's option, a thing made from a class, or an array of those, but {} gives back {}.",
                         m.name,
                         self.a(&sig.ret)
                     ),
@@ -2483,6 +2491,16 @@ impl<'a> Checker<'a> {
                 }
             }
             ExprKind::Field(t, f, fp) => {
+                if self.info.ty(t) == Ty::Vec3 && f == "xy" {
+                    self.err(
+                        *fp,
+                        format!(
+                            "xy is read from a vec3, but it can't be set. Set {}.x and {}.y instead.",
+                            describe(t),
+                            describe(t)
+                        ),
+                    );
+                }
                 if let Ty::Class(c) = self.info.ty(t) {
                     if self.info.field(c, f).is_some_and(|x| x.locked) {
                         self.err(
@@ -2594,6 +2612,21 @@ impl<'a> Checker<'a> {
                 if *w == Ty::Int { "int" } else { "float" }
             ),
             (Ty::Nothing, _) => " Only things made from classes, and hooks, can be nothing.".into(),
+            (_, Ty::Colour) if matches!(&e.kind, ExprKind::Name(n) if crate::words::rgb(n).is_some()) => {
+                format!(" {} is a name here, which comes before the colour word.", describe(e))
+            }
+            (Ty::Str, Ty::Colour) => match &e.kind {
+                ExprKind::Str(w) if crate::words::rgb(w).is_some() => format!(" A colour word goes without quotes: {w}"),
+                _ => " For hex text, use Colour:hex(\"#3a8f2a\").".into(),
+            },
+            (Ty::Vec3, Ty::Vec2) => match describe(e) {
+                d if d == "this" => " A vec3's .xy is its x and y, as a vec2.".into(),
+                d => format!(" Use its x and y: {d}.xy"),
+            },
+            (Ty::Vec2, Ty::Vec3) => match describe(e) {
+                d if d == "this" => " A vec2's :withZ(z) gives it a z, making a vec3.".into(),
+                d => format!(" Give it a z: {d}:withZ(0)"),
+            },
             (Ty::Hook(_), Ty::Hook(_)) => " A method only fits where it takes and gives back exactly the same types.".into(),
             _ => String::new(),
         };
@@ -2659,7 +2692,22 @@ impl<'a> Checker<'a> {
                 Some(t) if t.can_be_nothing() => t.clone(),
                 _ => Ty::Nothing,
             },
-            ExprKind::Name(n) => self.name(e, n, ctx),
+            ExprKind::Name(n) => {
+                // A colour word where a colour is wanted is that colour: colour warn = orange5;.
+                // A variable or field of the same name comes first.
+                if let (Some(want @ (Ty::Colour | Ty::Error)), Some(rgb)) = (expected, crate::words::rgb(n)) {
+                    let field = ctx.class.is_some_and(|c| self.info.field(c, n).is_some());
+                    if self.lookup(ctx, n).is_none() && !field {
+                        // Where the type is already a mistake, it's most likely meant as a colour.
+                        if *want == Ty::Error {
+                            return Ty::Error;
+                        }
+                        self.info.colour_words.insert(e.id, rgb);
+                        return Ty::Colour;
+                    }
+                }
+                self.name(e, n, ctx)
+            }
             ExprKind::Field(target, f, fpos) => self.field(e, target, f, *fpos, ctx),
             ExprKind::Method(target, m, args, mpos) => self.method_call(e, target, m, args, *mpos, ctx, expected),
             ExprKind::MethodRef(target, m, mpos) => {
@@ -2791,7 +2839,7 @@ impl<'a> Checker<'a> {
             }
             ExprKind::Neg(inner) => {
                 let t = self.expr(inner, ctx, expected);
-                if t == Ty::Vec3 {
+                if matches!(t, Ty::Vec3 | Ty::Vec2) {
                     return t;
                 }
                 if !t.is_number() && t != Ty::Error {
@@ -2983,12 +3031,21 @@ impl<'a> Checker<'a> {
                     Conv::Text => {
                         if !matches!(
                             t,
-                            Ty::Int | Ty::Float | Ty::Truth | Ty::Str | Ty::State(_) | Ty::Vec3 | Ty::Rot | Ty::Entity
+                            Ty::Int
+                                | Ty::Float
+                                | Ty::Truth
+                                | Ty::Str
+                                | Ty::State(_)
+                                | Ty::Vec3
+                                | Ty::Vec2
+                                | Ty::Rot
+                                | Ty::Colour
+                                | Ty::Entity
                         ) {
                             self.err(
                                 *cpos,
                                 format!(
-                                    ".text() works on numbers, bools, text, state options, vectors, rotations and entities, but this is {}.",
+                                    ".text() works on numbers, bools, text, state options, vectors, rotations, colours and entities, but this is {}.",
                                     self.a(&t)
                                 ),
                             );
@@ -3144,6 +3201,13 @@ impl<'a> Checker<'a> {
         let mut known: Vec<String> = ctx.scopes.iter().flat_map(|s| s.keys().cloned()).collect();
         if let Some(c) = ctx.class {
             known.extend(self.all_fields(c));
+        }
+        if crate::words::rgb(n).is_some() {
+            self.err(
+                e.pos,
+                format!("{n} is a colour word, which is a colour only where a colour is wanted, like colour shade = {n};"),
+            );
+            return Ty::Error;
         }
         let s = suggest(n, known);
         if s.is_empty() {
@@ -3486,7 +3550,7 @@ impl<'a> Checker<'a> {
                     if empty(a) {
                         Ty::Error
                     } else {
-                        let want = hint.get(i).filter(|t| matches!(t, Ty::Vec3 | Ty::Rot));
+                        let want = hint.get(i).filter(|t| t.is_vector());
                         self.expr(a, ctx, want)
                     }
                 })
@@ -3500,6 +3564,14 @@ impl<'a> Checker<'a> {
                             }
                         }
                         self.info.calls.insert(e.id, CallRes::Builtin);
+                        // Colour:hex("#3a8f2a"): hex text written right there is read now.
+                        if lib.func == "colour_hex" {
+                            if let Some(ExprKind::Str(text)) = args.first().map(|a| &a.kind) {
+                                if let Err(msg) = crate::stdlib::colour_hex(text) {
+                                    self.err(args[0].pos, msg);
+                                }
+                            }
+                        }
                         if args.len() != lib.params.len() {
                             self.err(
                                 e.pos,
@@ -3622,8 +3694,37 @@ impl<'a> Checker<'a> {
         match t {
             Ty::Vec3 => match f {
                 "x" | "y" | "z" => Ty::Float,
+                // Its x and y as a vec2: for 2D.
+                "xy" => Ty::Vec2,
                 _ => {
-                    self.err(fpos, format!("a vec3 has x, y and z, but not {f}."));
+                    self.err(fpos, format!("a vec3 has x, y and z (and xy, its x and y as a vec2), but not {f}."));
+                    Ty::Error
+                }
+            },
+            Ty::Vec2 => match f {
+                "x" | "y" => Ty::Float,
+                "z" => {
+                    self.err(
+                        fpos,
+                        format!(
+                            "a vec2 has x and y, but not z. To make a vec3 from it, give it a z: {}:withZ(0)",
+                            describe(target)
+                        ),
+                    );
+                    Ty::Error
+                }
+                _ => {
+                    self.err(fpos, format!("a vec2 has x and y, but not {f}."));
+                    Ty::Error
+                }
+            },
+            Ty::Colour => match f {
+                "r" | "g" | "b" | "a" => Ty::Float,
+                _ => {
+                    self.err(
+                        fpos,
+                        format!("a colour has r, g, b and a (red, green, blue and see-through), but not {f}."),
+                    );
                     Ty::Error
                 }
             },
@@ -3696,7 +3797,22 @@ impl<'a> Checker<'a> {
     /// pos:length(), dir:normalized(), a:dot(b), turn:inverse(), turn:degrees() …
     fn vector_call(&mut self, e: &Expr, t: &Ty, m: &str, args: &[Expr], mpos: Pos, ctx: &mut Ctx) -> Ty {
         let v = |n: &str| (n.to_string(), Ty::Vec3);
+        let w = |n: &str| (n.to_string(), Ty::Vec2);
+        let c = |n: &str| (n.to_string(), Ty::Colour);
+        let num = |n: &str| (n.to_string(), Ty::Float);
         let (params, ret): (Vec<(String, Ty)>, Ty) = match (t, m) {
+            (Ty::Vec2, "length") => (vec![], Ty::Float),
+            (Ty::Vec2, "normalized") => (vec![], Ty::Vec2),
+            (Ty::Vec2, "dot") => (vec![w("other")], Ty::Float),
+            (Ty::Vec2, "cross") => (vec![w("other")], Ty::Float),
+            (Ty::Vec2, "distance") => (vec![w("other")], Ty::Float),
+            (Ty::Vec2, "lerp") => (vec![w("to"), num("amount")], Ty::Vec2),
+            (Ty::Vec2, "angle") => (vec![w("other")], Ty::Float),
+            (Ty::Vec2, "rotated") => (vec![num("degrees")], Ty::Vec2),
+            (Ty::Vec2, "withZ") => (vec![num("z")], Ty::Vec3),
+            (Ty::Colour, "fade") => (vec![num("alpha")], Ty::Colour),
+            (Ty::Colour, "lerp") => (vec![c("to"), num("amount")], Ty::Colour),
+            (Ty::Colour, "hex") => (vec![], Ty::Str),
             (Ty::Vec3, "length") => (vec![], Ty::Float),
             (Ty::Vec3, "normalized") => (vec![], Ty::Vec3),
             (Ty::Vec3, "dot") => (vec![v("other")], Ty::Float),
@@ -3708,10 +3824,11 @@ impl<'a> Checker<'a> {
             (Ty::Rot, "lerp") => (vec![("to".into(), Ty::Rot), ("amount".into(), Ty::Float)], Ty::Rot),
             (Ty::Rot, "degrees") => (vec![], Ty::Vec3),
             _ => {
-                let list = if *t == Ty::Vec3 {
-                    "length, normalized, dot, cross, distance, lerp and angle"
-                } else {
-                    "inverse, degrees and lerp"
+                let list = match t {
+                    Ty::Vec3 => "length, normalized, dot, cross, distance, lerp and angle",
+                    Ty::Vec2 => "length, normalized, dot, cross, distance, lerp, angle, rotated and withZ",
+                    Ty::Colour => "fade, lerp and hex",
+                    _ => "inverse, degrees and lerp",
                 };
                 self.err(mpos, format!("{} has no method called {m}. Its methods are {list}.", self.a(t)));
                 for a in args {
@@ -3934,7 +4051,7 @@ impl<'a> Checker<'a> {
             let tt = tt.clone();
             return self.table_call(e, &t, &tt, m, args, mpos, ctx);
         }
-        if matches!(t, Ty::Vec3 | Ty::Rot) {
+        if t.is_vector() {
             return self.vector_call(e, &t, m, args, mpos, ctx);
         }
         // bag:sortBy(amount) and players:sortBy(score): a column's or a field's name, in order.
@@ -4162,6 +4279,65 @@ impl<'a> Checker<'a> {
             }
             return want.clone();
         }
+        // [3, 4.5] where a vec2 is wanted: two numbers.
+        if let (Some(Ty::Vec2), None) = (expected, keys) {
+            if items.len() != 2 {
+                let fix = if items.len() == 3 { " For three, the type is vec3." } else { "" };
+                self.err(
+                    e.pos,
+                    format!("a vec2 is two numbers: x and y, like [3, 4.5], but this has {}.{fix}", items.len()),
+                );
+            }
+            for i in items {
+                let got = self.expr(i, ctx, Some(&Ty::Float));
+                if !got.is_number() && got != Ty::Error {
+                    self.err(
+                        i.pos,
+                        format!("a vec2 is two numbers: x and y, like [3, 4.5], but this is {}.", self.a(&got)),
+                    );
+                }
+            }
+            return Ty::Vec2;
+        }
+        // [0.4, 0.7, 1.0] or [0.4, 0.7, 1.0, 0.5] where a colour is wanted: red, green, blue and
+        // see-through, each from 0 to 1. Written as numbers, a part outside that is a mistake; worked
+        // out while running, it's kept between 0 and 1.
+        if let (Some(Ty::Colour), None) = (expected, keys) {
+            const WHAT: &str = "a colour is three or four numbers from 0 to 1: red, green, blue and see-through, like [0.4, 0.7, 1.0] or [0.4, 0.7, 1.0, 0.5]";
+            if !matches!(items.len(), 3 | 4) {
+                self.err(e.pos, format!("{WHAT}, but this has {}.", items.len()));
+            }
+            for (i, part) in items
+                .iter()
+                .zip(["red", "green", "blue", "see-through"].iter().chain(std::iter::repeat(&"part")))
+            {
+                let got = self.expr(i, ctx, Some(&Ty::Float));
+                if !got.is_number() && got != Ty::Error {
+                    self.err(i.pos, format!("{WHAT}, but this is {}.", self.a(&got)));
+                } else if let Some(x) = written_number(i) {
+                    if !(0.0..=1.0).contains(&x) {
+                        let mut inner = i;
+                        while let ExprKind::Neg(x) = &inner.kind {
+                            inner = x;
+                        }
+                        let shown = match &inner.kind {
+                            ExprKind::Int(_) => format!("{x}"),
+                            _ => format!("{x:?}"),
+                        };
+                        let fix = if x > 1.0 && x <= 255.0 && x.fract() == 0.0 {
+                            format!(" For a part from 0 to 255, divide it by 255: {shown} / 255.0")
+                        } else {
+                            String::new()
+                        };
+                        self.err(
+                            i.pos,
+                            format!("a colour's parts go from 0 to 1, but its {part} here is {shown}.{fix}"),
+                        );
+                    }
+                }
+            }
+            return Ty::Colour;
+        }
         match expected {
             Some(Ty::Array(el)) if keys.is_none() => {
                 for i in items {
@@ -4330,7 +4506,7 @@ impl<'a> Checker<'a> {
         }
         let lt = self.expr(l, ctx, None);
         let hint = match (&lt, op) {
-            (Ty::Vec3, BinOp::Add | BinOp::Sub) | (Ty::Rot, BinOp::Mul) => Some(lt.clone()),
+            (Ty::Vec3 | Ty::Vec2, BinOp::Add | BinOp::Sub) | (Ty::Rot, BinOp::Mul) => Some(lt.clone()),
             _ => None,
         };
         let rt = self.expr(r, ctx, hint.as_ref());
@@ -4341,6 +4517,8 @@ impl<'a> Checker<'a> {
             (BinOp::Add, Ty::Str, Ty::Str) => Some(Ty::Str),
             (BinOp::Add | BinOp::Sub, Ty::Vec3, Ty::Vec3) => Some(Ty::Vec3),
             (BinOp::Mul | BinOp::Div, Ty::Vec3, n) if n.is_number() => Some(Ty::Vec3),
+            (BinOp::Add | BinOp::Sub, Ty::Vec2, Ty::Vec2) => Some(Ty::Vec2),
+            (BinOp::Mul | BinOp::Div, Ty::Vec2, n) if n.is_number() => Some(Ty::Vec2),
             (BinOp::Mul, Ty::Rot, Ty::Rot) => Some(Ty::Rot),
             (_, Ty::Int, Ty::Int) => Some(Ty::Int),
             (_, a, b) if a.is_number() && b.is_number() => Some(Ty::Float),
@@ -4359,7 +4537,8 @@ impl<'a> Checker<'a> {
             (Ty::Int | Ty::Float, _) => Some("a number"),
             (Ty::Str, BinOp::Add) => Some("text"),
             (Ty::Vec3, BinOp::Add | BinOp::Sub) => Some("a vec3"),
-            (Ty::Vec3, _) => Some("a number"),
+            (Ty::Vec2, BinOp::Add | BinOp::Sub) => Some("a vec2"),
+            (Ty::Vec3 | Ty::Vec2, _) => Some("a number"),
             (Ty::Rot, BinOp::Mul) => Some("a rotation"),
             _ => None,
         };
@@ -4370,10 +4549,15 @@ impl<'a> Checker<'a> {
                 } else {
                     String::new()
                 };
+                let fix = match (&lt, &rt) {
+                    (Ty::Vec2, Ty::Vec3) => format!(" Use its x and y: {left} {sym} {}.xy", describe(r)),
+                    (Ty::Vec3, Ty::Vec2) => format!(" Give it a z: {left} {sym} {}:withZ(0)", describe(r)),
+                    _ => fix,
+                };
                 format!("{left} is {}, so {sym} needs {n}, but this is {}.{fix}", self.a(&lt), self.a(&rt))
             }
             None => format!(
-                "{left} is {}, and {sym} doesn't work on that. It works on numbers{} and vec3s.",
+                "{left} is {}, and {sym} doesn't work on that. It works on numbers{} and vectors.",
                 self.a(&lt),
                 if sym == "+=" { ", text" } else { "" }
             ),
@@ -4382,15 +4566,28 @@ impl<'a> Checker<'a> {
         Ty::Error
     }
 
+    /// v2 + v3: a vec2 and a vec3 together, and how to make them the same kind.
+    fn mixed_vectors(&self, sym: &str, l: &Expr, r: &Expr, lt: &Ty) -> String {
+        let (a, b) = (self.name_or(l, "a"), self.name_or(r, "b"));
+        let (two, three, first) = if *lt == Ty::Vec2 { (&a, &b, true) } else { (&b, &a, false) };
+        let (with_xy, with_z) = if first {
+            (format!("{a} {sym} {b}.xy"), format!("{a}:withZ(0) {sym} {b}"))
+        } else {
+            (format!("{a}.xy {sym} {b}"), format!("{a} {sym} {b}:withZ(0)"))
+        };
+        format!(
+            "{sym} works on two vectors of the same kind, but {two} is a vec2 and {three} is a vec3. Use the vec3's x and y ({with_xy}), or give the vec2 a z ({with_z})."
+        )
+    }
+
     fn binary(&mut self, op: BinOp, l: &Expr, r: &Expr, opos: Pos, ctx: &mut Ctx, expected: Option<&Ty>) -> Ty {
         if let Some(sym) = self.compound_now.take() {
             return self.compound(sym, op, l, r, opos, ctx);
         }
-        // Where a vec3 is wanted, a list on the left is one: [1, 0, 0] * speed.
-        let vec_hint = if expected == Some(&Ty::Vec3) && matches!(l.kind, ExprKind::List { .. }) {
-            Some(&Ty::Vec3)
-        } else {
-            None
+        // Where a vector is wanted, a list on the left is one: [1, 0, 0] * speed.
+        let vec_hint = match expected {
+            Some(t @ (Ty::Vec3 | Ty::Vec2)) if matches!(l.kind, ExprKind::List { .. }) => Some(t),
+            _ => None,
         };
         match op {
             BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor | BinOp::Shl | BinOp::Shr => self.bitwise(op.symbol(), op, l, r, opos, ctx),
@@ -4438,9 +4635,10 @@ impl<'a> Checker<'a> {
             }
             BinOp::Add => {
                 let lt = self.expr(l, ctx, vec_hint);
-                let rt = self.expr(r, ctx, if lt == Ty::Vec3 { Some(&Ty::Vec3) } else { None });
+                let rt = self.expr(r, ctx, if matches!(lt, Ty::Vec3 | Ty::Vec2) { Some(&lt) } else { None });
                 match (&lt, &rt) {
                     (Ty::Vec3, Ty::Vec3) => Ty::Vec3,
+                    (Ty::Vec2, Ty::Vec2) => Ty::Vec2,
                     (Ty::Str, Ty::Str) => Ty::Str,
                     (Ty::Int, Ty::Int) => Ty::Int,
                     (a, b) if a.is_number() && b.is_number() => Ty::Float,
@@ -4455,10 +4653,15 @@ impl<'a> Checker<'a> {
                         self.err(opos, format!("can't add {} to a string.{fix}", self.a(other)));
                         Ty::Error
                     }
-                    (Ty::Vec3, _) | (_, Ty::Vec3) => {
+                    (Ty::Vec3, Ty::Vec2) | (Ty::Vec2, Ty::Vec3) => {
+                        self.err(opos, self.mixed_vectors("+", l, r, &lt));
+                        Ty::Error
+                    }
+                    (Ty::Vec3 | Ty::Vec2, _) | (_, Ty::Vec3 | Ty::Vec2) => {
+                        let v = if lt == Ty::Vec2 || rt == Ty::Vec2 { "vec2" } else { "vec3" };
                         self.err(
                             opos,
-                            format!("+ adds a vec3 to a vec3, but these are {} and {}.", self.a(&lt), self.a(&rt)),
+                            format!("+ adds a {v} to a {v}, but these are {} and {}.", self.a(&lt), self.a(&rt)),
                         );
                         Ty::Error
                     }
@@ -4473,12 +4676,12 @@ impl<'a> Checker<'a> {
             }
             BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Mod => {
                 let lt = self.expr(l, ctx, vec_hint);
-                let hint = if (lt == Ty::Vec3 && op == BinOp::Sub) || (lt == Ty::Rot && op == BinOp::Mul) {
-                    Some(&Ty::Vec3)
-                } else {
-                    None
+                let hint = match (&lt, op) {
+                    (Ty::Vec3 | Ty::Vec2, BinOp::Sub) => Some(lt.clone()),
+                    (Ty::Rot, BinOp::Mul) => Some(Ty::Vec3),
+                    _ => None,
                 };
-                let rt = self.expr(r, ctx, hint);
+                let rt = self.expr(r, ctx, hint.as_ref());
                 if lt == Ty::Error || rt == Ty::Error {
                     return Ty::Error;
                 }
@@ -4487,12 +4690,33 @@ impl<'a> Checker<'a> {
                     (BinOp::Sub, Ty::Vec3, Ty::Vec3) => Some(Ty::Vec3),
                     (BinOp::Mul, Ty::Vec3, n) | (BinOp::Mul, n, Ty::Vec3) if n.is_number() => Some(Ty::Vec3),
                     (BinOp::Div, Ty::Vec3, n) if n.is_number() => Some(Ty::Vec3),
+                    (BinOp::Sub, Ty::Vec2, Ty::Vec2) => Some(Ty::Vec2),
+                    (BinOp::Mul, Ty::Vec2, n) | (BinOp::Mul, n, Ty::Vec2) if n.is_number() => Some(Ty::Vec2),
+                    (BinOp::Div, Ty::Vec2, n) if n.is_number() => Some(Ty::Vec2),
                     (BinOp::Mul, Ty::Rot, Ty::Vec3) => Some(Ty::Vec3),
                     (BinOp::Mul, Ty::Rot, Ty::Rot) => Some(Ty::Rot),
                     _ => None,
                 };
                 if let Some(v) = vector {
                     return v;
+                }
+                if op == BinOp::Sub && matches!((&lt, &rt), (Ty::Vec3, Ty::Vec2) | (Ty::Vec2, Ty::Vec3)) {
+                    self.err(opos, self.mixed_vectors("-", l, r, &lt));
+                    return Ty::Error;
+                }
+                if lt == Ty::Vec2 || rt == Ty::Vec2 {
+                    let how = match op {
+                        BinOp::Mul if rt == Ty::Rot || lt == Ty::Rot => " A rotation turns a vec3. To turn a vec2, use :rotated(degrees).",
+                        BinOp::Mul => " A vec2 is multiplied by a number.",
+                        BinOp::Div => " A vec2 is divided by a number.",
+                        BinOp::Mod => " % works on numbers only.",
+                        _ => " Vectors are taken away from vectors.",
+                    };
+                    self.err(
+                        opos,
+                        format!("{} doesn't work on {} and {}.{how}", op.symbol(), self.a(&lt), self.a(&rt)),
+                    );
+                    return Ty::Error;
                 }
                 if matches!(lt, Ty::Vec3 | Ty::Rot) || matches!(rt, Ty::Vec3 | Ty::Rot) {
                     let how = match op {
@@ -4535,15 +4759,25 @@ impl<'a> Checker<'a> {
     }
 }
 
-/// Does this block always reach a return?
+/// A number written as one: 3, 0.5 or -2.
+fn written_number(e: &Expr) -> Option<f64> {
+    match &e.kind {
+        ExprKind::Int(n) => Some(*n as f64),
+        ExprKind::Float(x) => Some(*x),
+        ExprKind::Neg(inner) => written_number(inner).map(|x| -x),
+        _ => None,
+    }
+}
+
 /// What a component's fields hold and an event carries: what the engine can keep and show.
 fn event_kind(t: &Ty) -> bool {
     matches!(
         t,
-        Ty::Truth | Ty::Int | Ty::Float | Ty::Str | Ty::State(_) | Ty::Vec3 | Ty::Rot | Ty::Entity | Ty::Error
+        Ty::Truth | Ty::Int | Ty::Float | Ty::Str | Ty::State(_) | Ty::Vec3 | Ty::Vec2 | Ty::Rot | Ty::Colour | Ty::Entity | Ty::Error
     )
 }
 
+/// Does this block always reach a return?
 pub fn returns(stmts: &[Stmt]) -> bool {
     stmts.iter().any(|s| match s {
         Stmt::Return(..) => true,

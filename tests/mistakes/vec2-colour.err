@@ -1,0 +1,38 @@
+vec2-colour.lst:3:12  + works on two vectors of the same kind, but a is a vec2 and b is a vec3. Use the vec3's x and y (a + b.xy), or give the vec2 a z (a:withZ(0) + b).
+vec2-colour.lst:4:12  - works on two vectors of the same kind, but a is a vec2 and b is a vec3. Use the vec3's x and y (b.xy - a), or give the vec2 a z (b - a:withZ(0)).
+vec2-colour.lst:5:10  a vec2 is two numbers: x and y, like [3, 4.5], but this has 3. For three, the type is vec3.
+vec2-colour.lst:6:13  a vec2 has x and y, but not z. To make a vec3 from it, give it a z: a:withZ(0)
+vec2-colour.lst:7:18  a colour's parts go from 0 to 1, but its green here is 1.5.
+vec2-colour.lst:8:23  hex needs a colour written as "#rrggbb" or "#rrggbbaa", like "#3a8f2a", but this is "3a8f2a".
+vec2-colour.lst:9:23  hex needs a colour written as "#rrggbb" or "#rrggbbaa", like "#3a8f2a", but this is "#3a8f2".
+vec2-colour.lst:10:3  a is a vec2, so += needs a vec2, but this is a vec3. Use its x and y: a += b.xy
+vec2-colour.lst:11:3  b is a vec3, so -= needs a vec3, but this is a vec2. Give it a z: b -= a:withZ(0)
+vec2-colour.lst:12:13  a colour's parts go from 0 to 1, but its red here is 255. For a part from 0 to 255, divide it by 255: 255 / 255.0
+vec2-colour.lst:13:12  a colour is three or four numbers from 0 to 1: red, green, blue and see-through, like [0.4, 0.7, 1.0] or [0.4, 0.7, 1.0, 0.5], but this has 2.
+vec2-colour.lst:14:12  * doesn't work on a vec2 and a vec3. A vec2 is multiplied by a number.
+vec2-colour.lst:16:15  * doesn't work on a rotation and a vec2. A rotation turns a vec3. To turn a vec2, use :rotated(degrees).
+vec2-colour.lst:17:9  orange5 is a colour word, which is a colour only where a colour is wanted, like colour shade = orange5;
+vec2-colour.lst:18:7  gray1 is a colour word, which is a colour only where a colour is wanted, like colour shade = gray1;
+vec2-colour.lst:19:12  == compares two things of the same type, but these are a vec2 and a vec3.
+vec2-colour.lst:20:13  a vec2 has x and y, but not w.
+vec2-colour.lst:21:12  a colour is three or four numbers from 0 to 1: red, green, blue and see-through, like [0.4, 0.7, 1.0] or [0.4, 0.7, 1.0, 0.5], but this has 5.
+vec2-colour.lst:22:13  a colour has r, g, b and a (red, green, blue and see-through), but not x.
+vec2-colour.lst:23:3  xy is read from a vec3, but it can't be set. Set b.x and b.y instead.
+vec2-colour.lst:24:12  s is a colour, but this is a string. A colour word goes without quotes: red
+vec2-colour.lst:25:13  s2 is a colour, but this is a string. For hex text, use Colour:hex("#3a8f2a").
+vec2-colour.lst:26:12  a vec2 has no method called spin. Its methods are length, normalized, dot, cross, distance, lerp, angle, rotated and withZ.
+vec2-colour.lst:27:14  + works on numbers and text, but these are a colour and a colour.
+vec2-colour.lst:28:18  a colour is three or four numbers from 0 to 1: red, green, blue and see-through, like [0.4, 0.7, 1.0] or [0.4, 0.7, 1.0, 0.5], but this is a string.
+vec2-colour.lst:28:23  a colour's parts go from 0 to 1, but its blue here is -0.5.
+vec2-colour.lst:29:1  Lust doesn't have a type called color. Did you mean colour? The types are int (and int8, int16, int32, uint8, uint16 and uint32), float, string, bool, vec3, vec2, rotation, colour, entity, arrays, maps, cMaps, hooks, classes and states.
+vec2-colour.lst:30:23  a vec2 can't be JSON. JSON holds numbers, text, bools, states, arrays, maps, cMaps and things made from classes.
+vec2-colour.lst:31:24  a colour can't be JSON. JSON holds numbers, text, bools, states, arrays, maps, cMaps and things made from classes.
+vec2-colour.lst:32:10  y is a vec2, but this is a vec3. Use its x and y: b.xy
+vec2-colour.lst:33:11  zz is a vec3, but this is a vec2. Give it a z: a:withZ(0)
+vec2-colour.lst:34:12  w2 is a float, but this is a colour.
+vec2-colour.lst:34:14  fade takes 1, but gets 0. It takes: float alpha.
+vec2-colour.lst:35:17  % doesn't work on a vec2 and an int. % works on numbers only.
+vec2-colour.lst:37:16  shade is a colour, but this is an int. teal is a name here, which comes before the colour word.
+vec2-colour.lst:38:5  Colour is one of Lust's built-in objects, so it can't be a name.
+
+36 mistakes. Nothing was run.

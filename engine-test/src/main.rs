@@ -239,6 +239,59 @@ fn main() {
     let err = save.call::<Table>("Weather").unwrap_err().to_string();
     writeln!(out, "Weather: {}", err.lines().next().unwrap_or("").trim_start_matches("runtime error: ")).unwrap();
 
+    // 7. vec2s and colours: a vec2 is a table { x, y } and a colour { r, g, b, a } in Luau too. A
+    // native gives them back as tables (a colour's a may be left out), and a part above 1 is kept at 1.
+    for (name, body) in [
+        ("spotOf", "return function(e) return { x = 1.5, y = 2 } end"),
+        ("tintOf", "return function(e) return { r = 2, g = 0.25, b = 0.1 } end"),
+    ] {
+        let f: Function = lua.load(body).eval().unwrap();
+        natives.set(name, f).unwrap();
+    }
+    let flat = lust::to_lua("main.lst", &files("flat")).unwrap();
+    let api4 = load(&lua, &flat);
+    let lamp_class: Table = api4.get::<Table>("components").unwrap().get("Lamp").unwrap();
+    for f in lamp_class.get::<Table>("__schema").unwrap().sequence_values::<Table>() {
+        let f = f.unwrap();
+        writeln!(out, "Lamp's {} is {}", f.get::<String>(2).unwrap(), f.get::<String>(3).unwrap()).unwrap();
+    }
+    let glow: Table = api4.get::<Table>("events").unwrap().get("Glow").unwrap();
+    for f in glow.sequence_values::<Table>() {
+        let f = f.unwrap();
+        writeln!(out, "Glow carries {} {}", f.get::<String>(2).unwrap(), f.get::<String>(3).unwrap()).unwrap();
+    }
+    let lamp: Table = api4.get::<Function>("new").unwrap().call(("Lamp", "0000000000005")).unwrap();
+    let light: Table = lamp.get("light").unwrap();
+    writeln!(
+        out,
+        "light r {} g {} b {} a {}",
+        light.get::<f64>("r").unwrap(),
+        light.get::<f64>("g").unwrap(),
+        light.get::<f64>("b").unwrap(),
+        light.get::<f64>("a").unwrap()
+    )
+    .unwrap();
+    let update: Function = lamp.get("update").unwrap();
+    update.call::<()>((lamp.clone(), 0.5)).unwrap();
+    out.push_str(&log.borrow_mut().split_off(0));
+    let mut i = 1;
+    while let Ok(Value::Table(e)) = queue.get::<Value>(i) {
+        let values: Table = e.get("values").unwrap();
+        let tint: Table = values.get(1).unwrap();
+        let at: Table = values.get(2).unwrap();
+        writeln!(
+            out,
+            "{} carries tint a {} and at x {} y {}",
+            e.get::<String>("name").unwrap(),
+            tint.get::<f64>("a").unwrap(),
+            at.get::<f64>("x").unwrap(),
+            at.get::<f64>("y").unwrap()
+        )
+        .unwrap();
+        queue.set(i, Value::Nil).unwrap();
+        i += 1;
+    }
+
     let expected_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("expected.out");
     if std::env::args().any(|a| a == "--print") {
         print!("{out}");

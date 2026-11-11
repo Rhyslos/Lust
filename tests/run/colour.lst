@@ -1,0 +1,68 @@
+-- colour: red, green, blue and see-through, each an f32 from 0 to 1.
+colour sky = [0.4, 0.7, 1.0];
+colour glass = [1, 1, 1, 0.5];
+print(sky, glass);
+print(sky.r, sky.g, sky.b, sky.a);
+
+-- Colour words: the same red, green and blue the views draw them with.
+colour warn = orange5;
+colour array words = [white, black, gray1, red, blue1, pink9, teal];
+print(warn, words);
+print(warn == orange5, warn != red);
+
+-- Outside a colour, the words aren't names, so a variable can have one.
+int teal = 3;
+print(teal + 1);
+-- Hex text.
+colour moss = Colour:hex("#3a8f2a");
+colour faint = Colour:hex("#3A8F2A80");
+print(moss, faint, faint.a, Colour:hex("#00000000"));
+string typed = "#ffffff";
+print(Colour:hex(typed) == white);
+
+-- Methods.
+print(sky:fade(0.25), sky:fade(1), sky:fade(2), sky:fade(-1));
+print(sky:lerp(warn, 0), sky:lerp(warn, 0.5), sky:lerp(warn, 1), sky:lerp(warn, 3));
+print(sky:hex(), glass:hex(), "{warn}", warn.text());
+
+-- Worked out while running: kept between 0 and 1.
+float big = 3.0;
+colour c = [big, 0 - big, big / 6];
+print(c);
+c.r = 0.25;
+c.g += 2;
+c.b -= 1;
+c.a *= 0.5;
+print(c, c.r, c.g, c.b, c.a);
+float inf = 1e308 * 10;
+float nan = inf - inf;
+colour odd = [nan, inf, 0 - inf];
+print(odd);
+
+-- Equality is exact.
+print(sky == [0.4, 0.7, 1.0], sky == [0.4, 0.7, 1.0, 1.0], sky == sky:fade(0.999));
+
+-- Passed to and from methods.
+method colour darker(colour x) {
+    return x:lerp(black, 0.5);
+}
+print(darker(sky), darker(white));
+
+-- In fields, hooks and either.
+class Lamp {
+    has {
+        colour light = yellow5;
+        vec2 at = [1, 2];
+    }
+
+    method colour dimmed(float by) {
+        return light:fade(1 - by);
+    }
+}
+Lamp lamp = new Lamp { at = [3, 4] };
+lamp.light.b = 1;
+hook colour(bool warm) pick = new hook {
+    return either warm? red or [0, 0, 1];
+};
+print(lamp.light, lamp.at, lamp:dimmed(0.25), pick(true), pick(false));
+end

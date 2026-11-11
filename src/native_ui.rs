@@ -439,12 +439,22 @@ pub fn colour(v: &str) -> Option<u32> {
         let full = match hex.len() {
             3 => hex.chars().flat_map(|c| [c, c]).collect::<String>(),
             6 => hex.to_string(),
+            // #rrggbbaa, from a colour value: its see-through shows on a background (hex_alpha).
+            8 if hex.is_ascii() => hex[..6].to_string(),
             _ => return None,
         };
         return u32::from_str_radix(&full, 16).ok();
     }
     // In dark mode the greys turn round.
     named(v).map(nt)
+}
+
+/// How solid #rrggbbaa is, from 0 to 1; 1 for any other colour.
+fn hex_alpha(v: &str) -> f32 {
+    match v.strip_prefix('#') {
+        Some(hex) if hex.len() == 8 && hex.is_ascii() => u8::from_str_radix(&hex[6..], 16).map_or(1.0, |a| a as f32 / 255.0),
+        _ => 1.0,
+    }
 }
 
 /// A colour for a background. In dark mode the palest shades of a colour (1 to 3) become deep
@@ -861,7 +871,10 @@ fn apply(l: &mut Look, kind: &str, style: &[(String, SV)]) {
                     l.color = c
                 }
             }
-            "background" => l.background = text_of(v).and_then(bg_colour),
+            "background" => {
+                l.background = text_of(v).and_then(bg_colour);
+                l.bg_alpha = text_of(v).map_or(1.0, hex_alpha);
+            }
             "round" => l.radius = num(v).unwrap_or(8.0),
             "pill" => l.radius = f32::INFINITY,
             "border" => match v {

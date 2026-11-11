@@ -779,6 +779,183 @@ mod rotation_helpers {
 }
 
 #[cfg(all(test, feature = "cli"))]
+mod vec2_colour {
+    //! vec2 and colour maths in runtime.lua (plain Lua's f32 rounding) against the Rust runtime,
+    //! bit for bit, over many numbers; and hex text read the same by the checker and both runtimes.
+    use crate::native_rt as rt;
+    use mlua::{Function, Lua, Table};
+
+    fn runtime(lua: &Lua) -> Table {
+        lua.load(crate::lua::RUNTIME).eval().unwrap()
+    }
+
+    /// Numbers to try: edges, then a repeatable spread of others, big and small.
+    fn numbers() -> Vec<f64> {
+        let mut v = vec![
+            0.0,
+            -0.0,
+            1.0,
+            -1.0,
+            0.5,
+            0.1,
+            1.0 / 3.0,
+            90.0,
+            180.0,
+            -270.0,
+            720.0,
+            1e-40,
+            3e38,
+            -3e38,
+            255.0,
+        ];
+        let mut x: u64 = 0x9e37_79b9_7f4a_7c15;
+        for _ in 0..300 {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            let m = (x >> 11) as f64 / (1u64 << 53) as f64;
+            let e = (x % 13) as i32 - 6;
+            v.push((m - 0.5) * 10f64.powi(e));
+        }
+        v
+    }
+
+    fn v2(t: &Table) -> (f64, f64) {
+        (t.get("x").unwrap(), t.get("y").unwrap())
+    }
+    fn same(a: f64, b: f64) -> bool {
+        a.to_bits() == b.to_bits() || (a.is_nan() && b.is_nan())
+    }
+
+    #[test]
+    fn vec2_maths_matches_rust() {
+        let lua = Lua::new();
+        let l = runtime(&lua);
+        let make: Function = l.get("vec2").unwrap();
+        let f = |n: &str| -> Function { l.get(n).unwrap() };
+        let (rotated, lerp, cross, length, normalized) = (f("v2rotated"), f("v2lerp"), f("v2cross"), f("v2length"), f("v2normalized"));
+        let ns = numbers();
+        for (i, &a) in ns.iter().enumerate() {
+            let b = ns[(i * 7 + 3) % ns.len()];
+            let c = ns[(i * 13 + 5) % ns.len()];
+            let lv: Table = make.call((a, b)).unwrap();
+            let lw: Table = make.call((c, a)).unwrap();
+            let (rv, rw) = (rt::vec2(a, b), rt::vec2(c, a));
+            assert_eq!(v2(&lv), (rv.x as f64, rv.y as f64), "vec2({a}, {b})");
+            let (x, y) = v2(&rotated.call::<Table>((lv.clone(), c)).unwrap());
+            let r = rt::v2rotated(rv, c);
+            assert!(same(x, r.x as f64) && same(y, r.y as f64), "[{a}, {b}]:rotated({c})");
+            let (x, y) = v2(&lerp.call::<Table>((lv.clone(), lw.clone(), b)).unwrap());
+            let r = rt::v2lerp(rv, rw, b);
+            assert!(same(x, r.x as f64) && same(y, r.y as f64), "lerp {a} {b} {c}");
+            assert!(
+                same(cross.call::<f64>((lv.clone(), lw.clone())).unwrap(), rt::v2cross(rv, rw)),
+                "cross"
+            );
+            assert!(same(length.call::<f64>(lv.clone()).unwrap(), rt::v2length(rv)), "length");
+            let (x, y) = v2(&normalized.call::<Table>(lv.clone()).unwrap());
+            let r = rt::v2normalized(rv);
+            assert!(same(x, r.x as f64) && same(y, r.y as f64), "normalized [{a}, {b}]");
+        }
+    }
+
+    #[test]
+    fn quarter_turns_are_exact() {
+        let east = rt::vec2(1.0, 0.0);
+        for (d, want) in [
+            (90.0, (0.0, 1.0)),
+            (180.0, (-1.0, 0.0)),
+            (270.0, (0.0, -1.0)),
+            (-90.0, (0.0, -1.0)),
+            (720.0, (1.0, 0.0)),
+        ] {
+            assert_eq!(rt::v2rotated(east, d), rt::vec2(want.0, want.1), "{d}");
+        }
+        assert_eq!(rt::v2cross(east, rt::vec2(0.0, 1.0)), 1.0);
+        assert_eq!(rt::v2angle(east, rt::vec2(0.0, -3.0)), 90.0);
+    }
+
+    #[test]
+    fn colours_match_rust() {
+        let lua = Lua::new();
+        let l = runtime(&lua);
+        let (make, lerp, hex): (Function, Function, Function) =
+            (l.get("colour").unwrap(), l.get("collerp").unwrap(), l.get("colhex").unwrap());
+        let parts = |t: &Table| -> [f64; 4] { ["r", "g", "b", "a"].map(|k| t.get::<f64>(k).unwrap()) };
+        let ns = numbers();
+        for (i, &a) in ns.iter().enumerate() {
+            let (b, c, d) = (
+                ns[(i * 3 + 1) % ns.len()],
+                ns[(i * 5 + 2) % ns.len()].abs() * 1e3,
+                ns[(i * 11 + 4) % ns.len()],
+            );
+            let lc: Table = make.call((a, b, c, d)).unwrap();
+            let rc = rt::colour(a, b, c, d);
+            assert_eq!(parts(&lc), rc.to_array().map(|x| x as f64), "colour({a}, {b}, {c}, {d})");
+            assert!(rc.to_array().iter().all(|x| (0.0..=1.0).contains(x)));
+            assert_eq!(hex.call::<String>(lc.clone()).unwrap(), rt::colhex(rc));
+            let lo: Table = make.call((d, c, b, 0.5)).unwrap();
+            let ro = rt::colour(d, c, b, 0.5);
+            assert_eq!(
+                parts(&lerp.call::<Table>((lc, lo, a)).unwrap()),
+                rt::collerp(rc, ro, a).to_array().map(|x| x as f64)
+            );
+        }
+        // Not a number becomes 0, and infinity 1.
+        assert_eq!(
+            rt::colour(f64::NAN, f64::INFINITY, f64::NEG_INFINITY, 1.0).to_array(),
+            [0.0, 1.0, 0.0, 1.0]
+        );
+    }
+
+    #[test]
+    fn hex_text_read_alike() {
+        let lua = Lua::new();
+        let l = runtime(&lua);
+        let read: Function = l.get("colour_hex").unwrap();
+        for text in [
+            "#3a8f2a",
+            "#3A8F2A80",
+            "#00000000",
+            "#ffffff",
+            "3a8f2a",
+            "#3a8f2",
+            "#3a8f2a8",
+            "#3a8f2g",
+            "",
+            "#",
+            "#é3a8f2",
+        ] {
+            let checked = crate::stdlib::colour_hex(text);
+            let lua_says = read.call::<Table>(text);
+            match checked {
+                Ok(bytes) => {
+                    let c = rt::rgb(bytes[0] as f64, bytes[1] as f64, bytes[2] as f64, bytes[3] as f64);
+                    let t = lua_says.unwrap();
+                    assert_eq!(
+                        ["r", "g", "b", "a"].map(|k| t.get::<f64>(k).unwrap()),
+                        c.to_array().map(|x| x as f64),
+                        "{text}"
+                    );
+                    assert_eq!(rt::colour_hex(text.to_string()), c, "{text}");
+                    // And back to the same text: bytes survive the trip through 0 to 1.
+                    assert_eq!(rt::colhex(c), text.to_lowercase(), "{text}");
+                }
+                Err(msg) => {
+                    let e = lua_says.unwrap_err().to_string();
+                    assert!(e.contains(&msg), "{text}: {e} / {msg}");
+                }
+            }
+        }
+        // Every colour word is exactly its palette bytes.
+        for (word, rgb) in crate::words::PALETTE {
+            let c = rt::rgb((rgb >> 16) as f64, ((rgb >> 8) & 255) as f64, (rgb & 255) as f64, 255.0);
+            assert_eq!(rt::colhex(c), format!("#{rgb:06x}"), "{word}");
+        }
+    }
+}
+
+#[cfg(all(test, feature = "cli"))]
 mod bitwise {
     //! lust run's bitwise operators, made from plain arithmetic in runtime.lua, against Rust's own
     //! 64-bit ones, for numbers all over the range lust run holds exactly.
