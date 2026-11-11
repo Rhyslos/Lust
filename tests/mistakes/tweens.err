@@ -1,0 +1,25 @@
+tweens.lst:25:15  local is a variable inside this method, and a tween keeps going after the method ends, so it changes a field, or a variable at the top of the file. Keep local in a field: has { float local = …; }
+tweens.lst:26:23  glow is a float, but this is a string. Use .float() to turn text into a number.
+tweens.lst:27:15  a tween moves numbers (int and float), vec2s, vec3s, colours and rotations, but name is a string.
+tweens.lst:28:15  a tween moves numbers (int and float), vec2s, vec3s, colours and rotations, but on is a bool.
+tweens.lst:29:15  a tween moves numbers (int and float), vec2s, vec3s, colours and rotations, but marks is an int array.
+tweens.lst:30:15  a tween moves numbers (int and float), vec2s, vec3s, colours and rotations, but thing is a Thing.
+tweens.lst:31:15  a tween moves numbers (int and float), vec2s, vec3s, colours and rotations, but mood is a Mood option.
+tweens.lst:32:15  a tween moves a whole value, so it can't move x on its own. Tween place to a new value instead: tween place to … over 1;
+tweens.lst:33:15  a tween changes a field, or a variable at the top of the file, not an item in a list or map.
+tweens.lst:34:30  a tween can't take less than no time. Give it how many seconds it takes, or 0 to set it at once.
+tweens.lst:35:30  a tween's time is a number of seconds, but this is a string. Use .float() to turn text into a number.
+tweens.lst:36:38  Lust doesn't know the ease Bouncy. The eases are Linear, InSine, OutSine, InOutSine, InQuad, OutQuad, InOutQuad, InCubic, OutCubic, InOutCubic, InQuart, OutQuart, InOutQuart, InQuint, OutQuint, InOutQuint, InExpo, OutExpo, InOutExpo, InCirc, OutCirc, InOutCirc, InBack, OutBack, InOutBack, InElastic, OutElastic, InOutElastic, InBounce, OutBounce, InOutBounce.
+tweens.lst:37:38  Lust doesn't know the ease OutBonce. Did you mean OutBounce? The eases are Linear, InSine, OutSine, InOutSine, InQuad, OutQuad, InOutQuad, InCubic, OutCubic, InOutCubic, InQuart, OutQuart, InOutQuart, InQuint, OutQuint, InOutQuint, InExpo, OutExpo, InOutExpo, InCirc, OutCirc, InOutCirc, InBack, OutBack, InOutBack, InElastic, OutElastic, InOutElastic, InBounce, OutBounce, InOutBounce.
+tweens.lst:38:38  an ease is one of Ease's options, like OutCubic, but this is an int.
+tweens.lst:43:7  a tween moves an int, but t.small is an int8. Make it an int to tween it.
+tweens.lst:44:9  fixed is a locked field, so it keeps the value it started with. To change it, leave out lock in has { }.
+tweens.lst:46:16  whole is an int, but this is a float. Use .int() to drop the part after the point.
+tweens.lst:49:11  inner is declared inside { }, and a tween keeps going after the { } ends, so it changes a field, or a variable at the top of the file (outside any { }).
+tweens.lst:52:11  a done block or a hook can read the variables around it, but not change them, so it can't tween whole. Keep whole in an object's field to tween it from here.
+tweens.lst:54:7  Lamp is an object, so it can't be tweened itself. Tween one of its fields: tween Lamp.something to … over 1;
+tweens.lst:55:7  a tween changes a field, or a variable at the top of the file, and this isn't one.
+tweens.lst:56:14  a tween says what value to move to, after to: tween hp to 0 over 0.5;
+tweens.lst:64:9  a tween goes in a button's { } or a method, not in the view itself, which is drawn again each time anything changes.
+
+23 mistakes. Nothing was run.

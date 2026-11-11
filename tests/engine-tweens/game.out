@@ -1,0 +1,18 @@
+tick 0: open Float(0.0) and Float(0.0), opened Int(0) and Int(0)
+  tint List([Float(0.0), Float(0.0), Float(0.0), Float(1.0)])
+tick 1: open Float(0.3599999999999999) and Float(0.3599999999999999), opened Int(0) and Int(0)
+  tint List([Float(0.1464466154575348), Float(0.08384786546230316), Float(0.02469491958618164), Float(1.0)])
+tick 2: open Float(0.64) and Float(0.64), opened Int(0) and Int(0)
+  tint List([Float(0.5), Float(0.2862745225429535), Float(0.08431372791528702), Float(1.0)])
+tick 3: open Float(0.32) and Float(0.8400000000000001), opened Int(0) and Int(0)
+  tint List([Float(0.8535534143447876), Float(0.4887011647224426), Float(0.1439325362443924), Float(1.0)])
+  door shut
+tick 4: open Float(0.0) and Float(0.96), opened Int(0) and Int(0)
+  tint List([Float(1.0), Float(0.572549045085907), Float(0.16862745583057404), Float(1.0)])
+  door open: 1.0, curves 0.0078125 0.875 1.078833484
+tick 5: open Float(0.0) and Float(1.0), opened Int(0) and Int(1)
+  tint List([Float(1.0), Float(0.572549045085907), Float(0.16862745583057404), Float(1.0)])
+tick 6: open Float(0.0) and Float(1.0), opened Int(0) and Int(1)
+  tint List([Float(1.0), Float(0.572549045085907), Float(0.16862745583057404), Float(1.0)])
+tick 7: open Float(0.0) and Float(1.0), opened Int(0) and Int(1)
+  tint List([Float(1.0), Float(0.572549045085907), Float(0.16862745583057404), Float(1.0)])

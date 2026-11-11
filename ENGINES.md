@@ -2,7 +2,7 @@
 
 This file is for programs that use Lust as a library: Solis first. When an engine updates its pinned Lust, it reads the section for each version it skips over, newest at the bottom, and does what **The engine does** says. The full rules are in [LUST.md](LUST.md), section 21.
 
-An engine moving from alpha 48 to alpha 66 or later reads everything below.
+An engine moving from alpha 48 to alpha 67 or later reads everything below.
 
 ## alpha 49: states in native methods
 
@@ -117,3 +117,16 @@ An engine moving from alpha 48 to alpha 66 or later reads everything below.
 - **Engine saves, Lua (`load(name, values)`):** a vec3, vec2, rotation or colour is now taken only when it has numbers for its parts (`x`, `y`, `z`; `x`, `y`; `x`, `y`, `z`, `w`; `r`, `g`, `b`, with `a` optional), as Rust's `set_data` already checks; anything else leaves the field as it is. What's taken is made Lust's own: rounded to f32 (a Luau vector for a vec3), and a colour kept between 0 and 1. Before, any table was taken as it was.
 - **Rust (`to_data`, `set_data`):** unchanged; they already kept all four kinds, as `Value::List` of numbers.
 - **The engine does:** adds a `Fixed::Colour` arm where it matches on `Fixed`, and keeps vectors in its own saves as tables with named parts, as `save(name)` gives them.
+
+## alpha 67: tweens
+
+- Game code can glide a field to a new value over time: `tween hp to 0 over 0.5 [ease OutCubic] { … }`. In an engine, the engine moves tweens on, once a tick.
+- **Lua:** the chunk's table has `tickTweens(dt)`.
+- **Rust:** the library has `tick_tweens(dt) -> Result<(), LustError>` (in every library, so it's always there to call).
+- **When:** once a tick, **after** `tick` / `tick_objects` and **before** the components' updates. An `update` then sees this tick's values, and a done block's changes (which can start more tweens, or `send` events) are in place for the same tick's updates. A tween started during an `update` first moves on the next tick. 0 moves nothing.
+- **Same numbers both ways:** the steps and easing curves are worked out the same in Luau and Rust, so a game gives the same values either way.
+- **What a tween keeps:** a tween on a component's (or object's, or thing's) field holds that component until the tween ends.
+- **Hot reload (`swap`):** tweens live in the chunk that started them. Once the engine calls the new chunk's `tickTweens` instead of the old one's, tweens the old code started stop where they are, without their done blocks.
+- **Removing an entity:** Lust has no hook to hear that an entity or component is gone, so its tweens keep running until they end: they move a component nobody ticks any more, and their done blocks still run. A `send` from one of those done blocks names an entity the engine has removed; the engine should ignore it. A way to stop a component's tweens can come later if Solis needs it.
+- `Ease` becomes a built-in object and state, so a game can't use it as a name. A component's field can hold an `Ease` like any state (its schema kind is `state`, with the curves as options).
+- **The engine does:** calls `tickTweens(dt)` (Lua) or `tick_tweens(dt)` (Rust) once a tick between the objects and the components, and ignores events sent to entities it has removed.

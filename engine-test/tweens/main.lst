@@ -1,0 +1,42 @@
+-- Tweens in Luau: the engine moves them on with tickTweens, once a tick, after the objects'
+-- tick and before the components' updates.
+method log(string words) native;
+
+object Sky {
+    has {
+        float light = 0;
+        colour tint = [0, 0, 0];
+    }
+}
+
+component Door {
+    has {
+        float open = 0;
+        int opened = 0;
+        bool started = false;
+        Ease how = Ease.OutQuad;
+    }
+
+    method update(float dt) {
+        is not started? then {
+            started = true;
+            tween open to 1 over 0.5 [ease how] {
+                opened += 1;
+                log("door open: " + open.text() + ", curves " + Ease:apply(Ease.InExpo, 0.3).text() + " " + Ease:apply(Ease.OutElastic, 0.3).text() + " " + Ease:apply(Ease.InOutBack, 0.7).text());
+            }
+            tween Sky.tint to orange5 over 0.4 [ease InOutSine];
+        }
+    }
+
+    on Shut() {
+        -- Starting again replaces the running tween; the old done block doesn't run.
+        tween open to 0 over 0.2 {
+            log("door shut");
+        }
+    }
+}
+
+event Shut();
+
+pass Door, Sky;
+end

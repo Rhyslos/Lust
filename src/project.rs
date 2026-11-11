@@ -722,6 +722,21 @@ impl<'a> Renamer<'a> {
                     self.expr(i);
                 }
             }
+            Stmt::Tween {
+                place,
+                target,
+                secs,
+                ease,
+                done,
+                ..
+            } => {
+                for e in [place, target, secs] {
+                    self.expr(e);
+                }
+                for e in [ease, done].into_iter().flatten() {
+                    self.expr(e);
+                }
+            }
             Stmt::Send { event, epos, args, to, .. } => {
                 self.name(event, *epos, false);
                 for a in args {

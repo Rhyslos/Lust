@@ -1493,6 +1493,58 @@ impl<'a> Parser<'a> {
         Some(self.fail(at, msg))
     }
 
+    /// tween place to value over seconds [ease Name] { done }
+    fn tween(&mut self) -> R<Stmt> {
+        let pos = self.next().pos; // tween
+        const SHAPE: &str = "tween hp to 0 over 0.5;";
+        let place = self.expr()?;
+        if !self.at_word("to") {
+            let p = self.cur().pos;
+            return self.fail(p, format!("a tween says what value to move to, after to: {SHAPE}"));
+        }
+        self.next();
+        let target = self.expr()?;
+        if !self.at_word("over") {
+            let p = self.cur().pos;
+            return self.fail(p, format!("a tween says how many seconds it takes, after over: {SHAPE}"));
+        }
+        self.next();
+        let secs = self.expr()?;
+        let ease = if self.at_sym("[") {
+            self.next();
+            if !self.at_word("ease") {
+                let p = self.cur().pos;
+                return self.fail(p, "a tween's [ ] says how it eases: [ease OutCubic]");
+            }
+            self.next();
+            let e = self.expr()?;
+            self.expect_sym("]", "expected ] after the ease: [ease OutCubic]")?;
+            Some(e)
+        } else {
+            None
+        };
+        let done = if self.at_sym("{") {
+            let bpos = self.cur().pos;
+            // The done block is a hook of its own: stop and skip inside it can't reach a loop
+            // around the tween.
+            let loops = std::mem::replace(&mut self.loop_depth, 0);
+            let body = self.block("what happens when the tween ends");
+            self.loop_depth = loops;
+            Some(self.mk(bpos, ExprKind::NewHook(body?)))
+        } else {
+            self.semi()?;
+            None
+        };
+        Ok(Stmt::Tween {
+            place,
+            target,
+            secs,
+            ease,
+            done,
+            pos,
+        })
+    }
+
     fn statement(&mut self) -> R<Stmt> {
         let t = self.cur().clone();
         if let Some(r) = self.bad_name() {
@@ -1528,6 +1580,14 @@ impl<'a> Parser<'a> {
                 to,
                 pos: t.pos,
             });
+        }
+        // tween hp to 0 over 0.5 [ease OutCubic] { … }. tween, to and over are words only here, so
+        // a variable can still be called over or to.
+        if t.kind == Tk::Ident("tween".into())
+            && (matches!(&self.peek(1).kind, Tk::Ident(w) if !RESERVED.contains(&w.as_str()))
+                || matches!(self.peek(1).kind, Tk::Int(_) | Tk::Float(..) | Tk::Str(_)))
+        {
+            return self.tween();
         }
         if let Tk::Ident(w) = &t.kind {
             // A piece's name, unless it's used as a variable: key = "x"; or line.text()

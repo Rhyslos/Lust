@@ -1191,4 +1191,62 @@ mod vector_json {
         // Three numbers are degrees.
         assert_eq!(rt::jr_rotation(&rt::json_parse("[0, 0, 90]"), ""), rt::rot(0.0, 0.0, 90.0));
     }
+
+    #[test]
+    fn every_ease_has_its_own_curve_in_both_runtimes() {
+        let lua = include_str!("runtime.lua");
+        for &e in crate::stdlib::EASES {
+            // Each starts near 0 and ends at 1 (OutBack's formula gives 2e-16 at 0).
+            assert!(rt::ease_apply(e, 0.0).abs() < 1e-12, "{e} at 0");
+            assert!((rt::ease_apply(e, 1.0) - 1.0).abs() < 1e-12, "{e} at 1");
+            // A name the Rust doesn't know would fall through to Linear's straight line.
+            if e != "Linear" {
+                assert_ne!(rt::ease(e, 0.3), 0.3, "{e} isn't in native_rt.rs's ease");
+            }
+            let named = format!("\n  {e} = ");
+            assert!(
+                lua.contains(&named) || e == "OutBounce" && lua.contains("OutBounce = out_bounce"),
+                "{e} isn't in runtime.lua"
+            );
+        }
+        // Outside 0 to 1, t is kept to 0 or 1.
+        assert_eq!(rt::ease_apply("InQuad", -2.0), 0.0);
+        assert_eq!(rt::ease_apply("InQuad", 3.0), 1.0);
+        // The standard values from easings.net.
+        assert_eq!(rt::ease("OutCubic", 0.5), 0.875);
+        assert_eq!(rt::ease("InOutQuad", 0.25), 0.125);
+        assert_eq!(rt::ease("OutBounce", 0.5), 0.765625);
+    }
+
+    #[test]
+    fn tweens_step_and_replace_in_order() {
+        let place = std::rc::Rc::new(std::cell::RefCell::new(0.0f64));
+        let done = std::rc::Rc::new(std::cell::Cell::new(0));
+        let (p, d) = (place.clone(), done.clone());
+        let key = rt::tween_key(&place, "x");
+        let finished: std::rc::Rc<dyn Fn()> = std::rc::Rc::new(move || d.set(d.get() + 1));
+        rt::tween(
+            key,
+            0.0,
+            10.0,
+            0.5,
+            "Linear",
+            Box::new(move |v| *p.borrow_mut() = v),
+            Some(finished.clone()),
+        );
+        for _ in 0..15 {
+            assert!(rt::tween_step(1.0 / 60.0));
+        }
+        // 15 steps of 1/60 s are exactly a quarter second.
+        assert_eq!(*place.borrow(), 5.0);
+        // Replacing it: the first one's done never runs.
+        let p = place.clone();
+        rt::tween(key, 5.0, 1.0, 0.1, "Linear", Box::new(move |v| *p.borrow_mut() = v), Some(finished));
+        assert!(rt::tween_step(0.05));
+        assert!(!rt::tween_step(0.05));
+        assert_eq!(*place.borrow(), 1.0);
+        assert_eq!(done.get(), 1);
+        // Asking with 0 moves nothing.
+        assert!(!rt::tween_step(0.0));
+    }
 }

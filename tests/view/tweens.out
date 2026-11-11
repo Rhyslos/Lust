@@ -1,0 +1,21 @@
+window "Meter" 300x200
+  column 0,0 300x165
+    text "Score: 58" 12,12 69x19
+    text "Fill: 0.5" 12,39 52x19
+    text "Ticks: 1" 12,66 53x19
+    text 12,93 0x19
+    button "Win" 12,120 56x33
+window "Meter" 300x200
+  column 0,0 300x165
+    text "Score: 88" 12,12 69x19
+    text "Fill: 1.0" 12,39 49x19
+    text "Ticks: 2" 12,66 56x19
+    text 12,93 0x19
+    button "Win" 12,120 56x33
+window "Meter" 300x200
+  column 0,0 300x165
+    text "Score: 100" 12,12 76x19
+    text "Fill: 1.0" 12,39 49x19
+    text "Ticks: 4" 12,66 57x19
+    text "done" 12,93 36x19
+    button "Win" 12,120 56x33

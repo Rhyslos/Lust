@@ -1,0 +1,22 @@
+-- Ease:apply gives each curve's value for t from 0 to 1 (outside that, t is kept to 0 or 1).
+-- Sines can differ in the last bit between computers (both outputs on one computer agree), so
+-- they're shown to 12 places.
+method float near(float x) {
+    return Maths:round(x * 1000000000000.0) / 1000000000000.0;
+}
+
+loop (Ease e in Ease) {
+    print(e, near(Ease:apply(e, 0)), near(Ease:apply(e, 0.25)), near(Ease:apply(e, 0.5)), near(Ease:apply(e, 0.75)), near(Ease:apply(e, 1)));
+}
+print(Ease:apply(Ease.OutBack, 0.3), Ease:apply(Ease.Linear, -1), Ease:apply(Ease.InQuad, 2));
+
+-- Ease is a state, so a check covers every curve.
+Ease e = Ease.InOutBounce;
+check e {
+    when Linear { print("straight"); }
+    when InSine, OutSine, InOutSine, InQuad, OutQuad, InOutQuad, InCubic, OutCubic, InOutCubic { print("smooth"); }
+    when InQuart, OutQuart, InOutQuart, InQuint, OutQuint, InOutQuint, InExpo, OutExpo, InOutExpo { print("steep"); }
+    when InCirc, OutCirc, InOutCirc, InBack, OutBack, InOutBack { print("round"); }
+    when InElastic, OutElastic, InOutElastic, InBounce, OutBounce, InOutBounce { print("springy"); }
+}
+end

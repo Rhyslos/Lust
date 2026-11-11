@@ -72,3 +72,13 @@ camp loaded exactly: true
 camp fire is f32s: true
 camp glow r 1 a 1
 camp wrong shapes kept: true
+tick 0: open 0 and 0, opened 0 and 0, tint r 0 g 0
+tick 1: open 0.3599999999999999 and 0.3599999999999999, opened 0 and 0, tint r 0.1464466154575348 g 0.08384786546230316
+tick 2: open 0.64 and 0.64, opened 0 and 0, tint r 0.5 g 0.2862745225429535
+tick 3: open 0.32 and 0.8400000000000001, opened 0 and 0, tint r 0.8535534143447876 g 0.4887011647224426
+door shut
+tick 4: open 0 and 0.96, opened 0 and 0, tint r 1 g 0.572549045085907
+door open: 1.0, curves 0.0078125 0.875 1.078833484
+tick 5: open 0 and 1, opened 0 and 1, tint r 1 g 0.572549045085907
+tick 6: open 0 and 1, opened 0 and 1, tint r 1 g 0.572549045085907
+tick 7: open 0 and 1, opened 0 and 1, tint r 1 g 0.572549045085907

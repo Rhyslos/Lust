@@ -1,0 +1,30 @@
+-- A tween moves a field the view shows: the window's clock steps it, and the view redraws.
+assembly Meter {
+    has {
+        int score = 0;
+        float fill = 0;
+        int ticks = 0;
+        string said = "";
+    }
+
+    view [title "Meter", width 300, height 200] {
+        column [gap 8, pad 12] {
+            text "Score: " + score.text();
+            text "Fill: " + fill.text();
+            text "Ticks: " + ticks.text();
+            text said;
+            button "Win" {
+                tween score to 100 over 1 [ease OutCubic] {
+                    said = "done";
+                }
+                tween fill to 1 over 0.5;
+            }
+            every 0.25 {
+                ticks += 1;
+            }
+        }
+    }
+}
+
+Meter:open();
+end

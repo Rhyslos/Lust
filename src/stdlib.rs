@@ -1,6 +1,6 @@
 //! Lust's standard library, as the checker sees it: what each part takes and gives back.
 //!
-//! - Built-in objects: `Maths`, `Files`, `Time`, `Json`, `Web`, `Random`, `Rotation` and `Colour`, used
+//! - Built-in objects: `Maths`, `Files`, `Time`, `Json`, `Web`, `Random`, `Rotation`, `Colour` and `Ease`, used
 //!   like any object: `Maths:sqrt(2.0)`. `Random[1, 6]` is its own piece of syntax; `Random:seed(42)` is a
 //!   method. `Rotation` (a turn) is a different word from `rotation` (the type), and `Colour` from `colour`.
 //! - Methods on text and arrays: `name:contains("a")`, `words:join(", ")`.
@@ -11,7 +11,48 @@
 
 use crate::types::Ty;
 
-pub const OBJECTS: &[&str] = &["Maths", "Files", "Time", "Json", "Web", "Random", "Rotation", "Colour"];
+pub const OBJECTS: &[&str] = &["Maths", "Files", "Time", "Json", "Web", "Random", "Rotation", "Colour", "Ease"];
+
+/// `Ease` is a built-in object (`Ease:apply(Ease.OutBack, t)`) and a built-in state at the same
+/// time: its options are the easing curves, and the checker makes it the first state, so its
+/// number is always this.
+pub const EASE: usize = 0;
+
+/// The easing curves, in order: `Ease`'s options. Their formulas are in runtime.lua and
+/// native_rt.rs (`ease`), from easings.net.
+pub const EASES: &[&str] = &[
+    "Linear",
+    "InSine",
+    "OutSine",
+    "InOutSine",
+    "InQuad",
+    "OutQuad",
+    "InOutQuad",
+    "InCubic",
+    "OutCubic",
+    "InOutCubic",
+    "InQuart",
+    "OutQuart",
+    "InOutQuart",
+    "InQuint",
+    "OutQuint",
+    "InOutQuint",
+    "InExpo",
+    "OutExpo",
+    "InOutExpo",
+    "InCirc",
+    "OutCirc",
+    "InOutCirc",
+    "InBack",
+    "OutBack",
+    "InOutBack",
+    "InElastic",
+    "OutElastic",
+    "InOutElastic",
+    "InBounce",
+    "OutBounce",
+    "InOutBounce",
+];
 
 /// One library call: the runtime function, and what it takes and gives back.
 #[derive(Clone, Debug)]
@@ -46,6 +87,7 @@ pub fn listing(obj: &str) -> &'static str {
         "Random" => "seed, chance and direction, and Random[1, 6] for a number",
         "Rotation" => "toward and around",
         "Colour" => "hex",
+        "Ease" => "apply",
         "Files" => "read, write, append, exists, remove, list, makeFolder, chooseOpen, chooseSave and chooseFolder",
         "Time" => "now, clock, date, time, addDays, daysBetween, weekday and isDate",
         "Web" => "serve, request, fail, get and post",
@@ -96,6 +138,7 @@ pub fn object_method(obj: &str, m: &str, args: &[Ty]) -> Option<Result<Lib, Stri
         ("Rotation", "toward") => lib("rotation_toward", vec![("direction", Vec3)], Rot),
         ("Rotation", "around") => lib("rotation_around", vec![("axis", Vec3), ("degrees", f())], Rot),
         ("Colour", "hex") => lib("colour_hex", vec![("text", Str)], Colour),
+        ("Ease", "apply") => lib("ease_apply", vec![("ease", State(EASE)), ("t", f())], Float),
         ("Random", "seed") => lib("random_seed", vec![("seed", Int)], Void),
         ("Random", "chance") => lib("random_chance", vec![("chance", f())], Truth),
         ("Random", "direction") => lib("random_direction", vec![], Vec3),

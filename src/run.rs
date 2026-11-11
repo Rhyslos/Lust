@@ -46,16 +46,25 @@ fn host(lua: &Lua) -> mlua::Result<()> {
     h.set("seed", lua.create_function(|_, s: f64| Ok(rt::random_seed(s as i64)))?)?;
     h.set(
         "ui_open",
-        lua.create_function(|_, (settings, view): (mlua::Table, mlua::Function)| {
-            let s = ui_styles(&settings)?;
-            let mut build = || -> Result<(crate::native_ui::Node, Vec<crate::native_ui::Action>), String> {
-                let t: mlua::Table = view.call(()).map_err(|e| raw_error(&e))?;
-                let mut actions = Vec::new();
-                let n = ui_node(&t, &mut actions).map_err(|e| raw_error(&e))?;
-                Ok((n, actions))
-            };
-            Ok(crate::native_ui::show(&s, &mut build).err())
-        })?,
+        lua.create_function(
+            |_, (settings, view, tweens): (mlua::Table, mlua::Function, Option<mlua::Function>)| {
+                let s = ui_styles(&settings)?;
+                let mut build = || -> Result<(crate::native_ui::Node, Vec<crate::native_ui::Action>), String> {
+                    let t: mlua::Table = view.call(()).map_err(|e| raw_error(&e))?;
+                    let mut actions = Vec::new();
+                    let n = ui_node(&t, &mut actions).map_err(|e| raw_error(&e))?;
+                    Ok((n, actions))
+                };
+                // The window's clock moves the program's tweens (the runtime's L.tween_step).
+                let step = Box::new(move |dt: f64| -> Result<bool, String> {
+                    match &tweens {
+                        Some(f) => f.call::<bool>(dt).map_err(|e| raw_error(&e)),
+                        None => Ok(false),
+                    }
+                });
+                Ok(crate::native_ui::show(&s, &mut build, step).err())
+            },
+        )?,
     )?;
     h.set(
         "http",

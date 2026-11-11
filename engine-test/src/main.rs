@@ -172,11 +172,20 @@ fn main() {
     lua.globals().set("PLACES", places).unwrap();
     let natives: Table = lua.globals().get("LUST_NATIVES").unwrap();
     for (name, body) in [
-        ("entity_position", "return function(e) return PLACES[e] or vector.create(0, 0, 0) end"),
+        (
+            "entity_position",
+            "return function(e) return PLACES[e] or vector.create(0, 0, 0) end",
+        ),
         ("entity_moveTo", "return function(e, to) PLACES[e] = to end"),
-        ("entity_jump", "return function(e) LUST_NATIVES.log('the engine makes ' .. e .. ' jump') end"),
+        (
+            "entity_jump",
+            "return function(e) LUST_NATIVES.log('the engine makes ' .. e .. ' jump') end",
+        ),
         ("entity_velocity", "return function(e) return 2.5 end"),
-        ("FarmerAnimator_play", "return function(a, clip) LUST_NATIVES.log('animator ' .. a.id .. ' plays ' .. clip) end"),
+        (
+            "FarmerAnimator_play",
+            "return function(a, clip) LUST_NATIVES.log('animator ' .. a.id .. ' plays ' .. clip) end",
+        ),
     ] {
         let f: Function = lua.load(body).eval().unwrap();
         natives.set(name, f).unwrap();
@@ -196,7 +205,14 @@ fn main() {
     let farmer_class: Table = comps.get("Farmer").unwrap();
     for f in farmer_class.get::<Table>("__schema").unwrap().sequence_values::<Table>() {
         let f = f.unwrap();
-        writeln!(out, "Farmer's {} is {} {}", f.get::<String>(2).unwrap(), f.get::<String>(3).unwrap(), f.get::<String>(4).unwrap()).unwrap();
+        writeln!(
+            out,
+            "Farmer's {} is {} {}",
+            f.get::<String>(2).unwrap(),
+            f.get::<String>(3).unwrap(),
+            f.get::<String>(4).unwrap()
+        )
+        .unwrap();
     }
     let farmer: Table = api3.get::<Function>("new").unwrap().call(("Farmer", "0000000000004")).unwrap();
     // Before it's filled, reading it stops, naming the field, on its line.
@@ -213,18 +229,35 @@ fn main() {
     out.push_str(&log.borrow_mut().split_off(0));
 
     // 6. Objects: the engine ticks them (name order, before components) and saves their fields.
-    let names: Vec<String> = api3.get::<Table>("objectNames").unwrap().sequence_values().map(|n| n.unwrap()).collect();
+    let names: Vec<String> = api3
+        .get::<Table>("objectNames")
+        .unwrap()
+        .sequence_values()
+        .map(|n| n.unwrap())
+        .collect();
     writeln!(out, "objects: {names:?}").unwrap();
     let tick: Function = api3.get("tick").unwrap();
     let save: Function = api3.get("save").unwrap();
     let load_back: Function = api3.get("load").unwrap();
     tick.call::<()>(1.0).unwrap();
     let saved: Table = save.call("Clock").unwrap();
-    writeln!(out, "saved: day {} hour {}", saved.get::<i64>("day").unwrap(), saved.get::<f64>("hour").unwrap()).unwrap();
+    writeln!(
+        out,
+        "saved: day {} hour {}",
+        saved.get::<i64>("day").unwrap(),
+        saved.get::<f64>("hour").unwrap()
+    )
+    .unwrap();
     tick.call::<()>(10.0).unwrap();
     load_back.call::<()>(("Clock", saved)).unwrap();
     let clock: Table = api3.get::<Table>("objects").unwrap().get("Clock").unwrap();
-    writeln!(out, "loaded: day {} hour {}", clock.get::<i64>("day").unwrap(), clock.get::<f64>("hour").unwrap()).unwrap();
+    writeln!(
+        out,
+        "loaded: day {} hour {}",
+        clock.get::<i64>("day").unwrap(),
+        clock.get::<f64>("hour").unwrap()
+    )
+    .unwrap();
     // A save of the wrong kinds (text for a number, a number with a fraction for an int) leaves
     // those fields as they are, as Rust's set_data does.
     let wrong = lua.create_table().unwrap();
@@ -234,10 +267,21 @@ fn main() {
     let odd = lua.create_table().unwrap();
     odd.set("day", 2.5).unwrap();
     load_back.call::<()>(("Clock", odd)).unwrap();
-    writeln!(out, "wrong kinds kept: day {} hour {}", clock.get::<i64>("day").unwrap(), clock.get::<f64>("hour").unwrap()).unwrap();
+    writeln!(
+        out,
+        "wrong kinds kept: day {} hour {}",
+        clock.get::<i64>("day").unwrap(),
+        clock.get::<f64>("hour").unwrap()
+    )
+    .unwrap();
     // An object the engine doesn't keep is a clear stop.
     let err = save.call::<Table>("Weather").unwrap_err().to_string();
-    writeln!(out, "Weather: {}", err.lines().next().unwrap_or("").trim_start_matches("runtime error: ")).unwrap();
+    writeln!(
+        out,
+        "Weather: {}",
+        err.lines().next().unwrap_or("").trim_start_matches("runtime error: ")
+    )
+    .unwrap();
 
     // 7. vec2s and colours: a vec2 is a table { x, y } and a colour { r, g, b, a } in Luau too. A
     // native gives them back as tables (a colour's a may be left out), and a part above 1 is kept at 1.
@@ -294,7 +338,12 @@ fn main() {
 
     // 8. An object's vec3, vec2, rotation and colour, saved by the engine and loaded back exactly;
     // in Luau they go through JSON too. Values of the wrong shape are left as they are.
-    let camp_names: Vec<String> = api4.get::<Table>("objectNames").unwrap().sequence_values().map(|n| n.unwrap()).collect();
+    let camp_names: Vec<String> = api4
+        .get::<Table>("objectNames")
+        .unwrap()
+        .sequence_values()
+        .map(|n| n.unwrap())
+        .collect();
     writeln!(out, "objects: {camp_names:?}").unwrap();
     let tick: Function = api4.get("tick").unwrap();
     let save: Function = api4.get("save").unwrap();
@@ -325,7 +374,17 @@ fn main() {
     let now = |camp: &Table| -> Vec<Vec<u32>> { fields.iter().map(|(f, k)| parts(&camp.get::<Value>(*f).unwrap(), k)).collect() };
     let saved: Table = save.call("Camp").unwrap();
     let before = now(&camp);
-    writeln!(out, "camp saved {}", fields.iter().map(|(f, _)| *f).filter(|f| saved.contains_key(*f).unwrap()).collect::<Vec<_>>().join(", ")).unwrap();
+    writeln!(
+        out,
+        "camp saved {}",
+        fields
+            .iter()
+            .map(|(f, _)| *f)
+            .filter(|f| saved.contains_key(*f).unwrap())
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
+    .unwrap();
     tick.call::<()>(1.0).unwrap();
     log.borrow_mut().clear();
     writeln!(out, "camp changed: {}", now(&camp) != before).unwrap();
@@ -367,6 +426,43 @@ fn main() {
     let kept = now(&camp);
     load_back.call::<()>(("Camp", wrong)).unwrap();
     writeln!(out, "camp wrong shapes kept: {}", now(&camp) == kept).unwrap();
+
+    // 9. Tweens: the engine moves them on with tickTweens once a tick, after the objects' tick
+    // and before the components' updates. A tween on a component's field belongs to it.
+    let tw = lust::to_lua("main.lst", &files("tweens")).unwrap();
+    let api5 = load(&lua, &tw);
+    let new: Function = api5.get("new").unwrap();
+    let doors: Vec<Table> = ["0000000000011", "0000000000012"]
+        .iter()
+        .map(|e| new.call(("Door", *e)).unwrap())
+        .collect();
+    let tick: Function = api5.get("tick").unwrap();
+    let tick_tweens: Function = api5.get("tickTweens").unwrap();
+    let sky: Table = api5.get::<Table>("objects").unwrap().get("Sky").unwrap();
+    for n in 0..8 {
+        tick.call::<()>(0.1).unwrap();
+        tick_tweens.call::<()>(0.1).unwrap();
+        for d in &doors {
+            d.get::<Function>("update").unwrap().call::<()>((d.clone(), 0.1)).unwrap();
+        }
+        if n == 2 {
+            let shut: Function = doors[0].get("handle").unwrap();
+            shut.call::<bool>((doors[0].clone(), "Shut", lua.create_table().unwrap())).unwrap();
+        }
+        out.push_str(&log.borrow_mut().split_off(0));
+        let tint: Table = sky.get("tint").unwrap();
+        writeln!(
+            out,
+            "tick {n}: open {} and {}, opened {} and {}, tint r {} g {}",
+            doors[0].get::<f64>("open").unwrap(),
+            doors[1].get::<f64>("open").unwrap(),
+            doors[0].get::<i64>("opened").unwrap(),
+            doors[1].get::<i64>("opened").unwrap(),
+            tint.get::<f64>("r").unwrap(),
+            tint.get::<f64>("g").unwrap()
+        )
+        .unwrap();
+    }
 
     let expected_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("expected.out");
     if std::env::args().any(|a| a == "--print") {

@@ -488,7 +488,7 @@ pub fn write(prog: &Program, info: &Info, files: &[String], library: bool) -> St
     let ending = if library {
         let api = w.library_api(prog, &class_decls);
         format!(
-            "{host}{api}\nconst FILES: &[&str] = &[{files_list}];\n\n/// Runs the Lust code's own start: makes its objects, then runs the code written outside\n/// classes and methods. Call it once, before anything else.\npub fn start() -> Result<(), LustError> {{\n    rt::catch(FILES, || {{ rt::started(); program() }})\n}}\n\nfn program() {{\n{body}}}\n"
+            "{host}{api}\nconst FILES: &[&str] = &[{files_list}];\n\n/// Runs the Lust code's own start: makes its objects, then runs the code written outside\n/// classes and methods. Call it once, before anything else.\npub fn start() -> Result<(), LustError> {{\n    rt::catch(FILES, || {{ rt::started(); program() }})\n}}\n\n/// Moves every running tween on by dt seconds, and runs the done blocks of those that end. An\n/// engine calls it once a tick, after tick_objects and before the components' updates.\npub fn tick_tweens(dt: f64) -> Result<(), LustError> {{\n    rt::catch(FILES, || {{ rt::tween_step(dt); }})\n}}\n\nfn program() {{\n{body}}}\n"
         )
     } else {
         format!("{host}\nfn program() {{\n{body}}}\n\nfn main() {{\n    rt::main(program, &[{files_list}]);\n}}\n")
@@ -753,6 +753,21 @@ fn walk_stmts(stmts: &[Stmt], f: &mut dyn FnMut(&Expr)) {
                 }
                 walk_expr(to, f);
             }
+            Stmt::Tween {
+                place,
+                target,
+                secs,
+                ease,
+                done,
+                ..
+            } => {
+                for e in [place, target, secs] {
+                    walk_expr(e, f);
+                }
+                for e in [ease, done].into_iter().flatten() {
+                    walk_expr(e, f);
+                }
+            }
             Stmt::Keep { value, into, .. } => {
                 walk_expr(value, f);
                 if let Some(i) = into {
@@ -938,6 +953,11 @@ impl<'a> W<'a> {
 
     fn fname(&self, decl: usize, name: &str) -> String {
         format!("f{decl}_{name}")
+    }
+
+    /// Is this name a variable at the top of the file that a tween changes, kept in a cell?
+    fn cell(&self, e: &Expr) -> bool {
+        self.info.top_names.get(&e.id).is_some_and(|p| self.info.tween_tops.contains(p))
     }
 
     fn field_of(&self, c: usize, name: &str) -> String {
@@ -1464,11 +1484,16 @@ impl<'a> W<'a> {
             out.push_str(&format!("{pad}rt::at({ln}, {});\n", s.pos().col));
         }
         match s {
-            Stmt::Var { ty, name, value, .. } => {
+            Stmt::Var { ty, name, value, pos, .. } => {
                 let want = self.var_type(s);
                 let v = self.made(ty, value, &want);
                 let rt = self.ty(&want);
-                out.push_str(&format!("{pad}let mut v_{name}: {rt} = {v};\n"));
+                if self.info.tween_tops.contains(pos) {
+                    // A tween changes it, so the tween and the program share it.
+                    out.push_str(&format!("{pad}let v_{name}: rt::Tcell<{rt}> = rt::Tcell::new({v});\n"));
+                } else {
+                    out.push_str(&format!("{pad}let mut v_{name}: {rt} = {v};\n"));
+                }
             }
             Stmt::Assign { target, value, .. } | Stmt::SetState { target, option: value, .. } => {
                 let want = self.info.ty(target);
@@ -1718,6 +1743,7 @@ impl<'a> W<'a> {
                 let mut parts = Vec::new();
                 for (n, item) in &list {
                     let (t, v) = match item {
+                        crate::check::SaveItem::Var(t) if self.info.tween_top_names.contains(n) => (t.clone(), format!("v_{n}.get()")),
                         crate::check::SaveItem::Var(t) => (t.clone(), format!("v_{n}")),
                         crate::check::SaveItem::Object(c) => (Ty::Class(*c), format!("Some(obj{c}())")),
                     };
@@ -1746,6 +1772,9 @@ impl<'a> W<'a> {
                 }
                 for (i, (n, item)) in list.iter().enumerate() {
                     match item {
+                        crate::check::SaveItem::Var(_) if self.info.tween_top_names.contains(n) => {
+                            out.push_str(&format!("{pad}    v_{n}.set(t{i});\n"))
+                        }
                         crate::check::SaveItem::Var(_) => out.push_str(&format!("{pad}    v_{n} = t{i};\n")),
                         crate::check::SaveItem::Object(c) => {
                             let mut copy = String::new();
@@ -1778,6 +1807,50 @@ impl<'a> W<'a> {
                 out.push_str(&format!(
                     "{pad}    let to = {t};\n{pad}    host().send_event(Some(to).filter(|e| *e != 0), {shown:?}, vec![{}]);\n{pad}}}\n",
                     values.join(", ")
+                ));
+            }
+            Stmt::Tween {
+                place,
+                target,
+                secs,
+                ease,
+                done,
+                ..
+            } => {
+                let want = self.info.ty(place);
+                let t = self.ty(&want);
+                // The place's owner is worked out once, and the tween keeps it: the thing, or the
+                // cell a top-level variable is kept in.
+                let (owner, field) = match &place.kind {
+                    ExprKind::Field(o, f, _) => {
+                        let Ty::Class(c) = self.info.ty(o) else { return };
+                        let oc = self.expr(o);
+                        (format!("rt::obj(&{oc})"), self.field_of(c, f))
+                    }
+                    ExprKind::Name(n) if self.info.names.get(&place.id) == Some(&NameRes::Field) => {
+                        let c = self.class.unwrap();
+                        ("this.clone()".to_string(), self.field_of(c, n))
+                    }
+                    ExprKind::Name(n) => (format!("v_{n}.share()"), String::new()),
+                    _ => return,
+                };
+                let (read, write) = if field.is_empty() {
+                    ("o.borrow().clone()".to_string(), "*o2.borrow_mut() = v;".to_string())
+                } else {
+                    (format!("o.borrow().{field}.clone()"), format!("o2.borrow_mut().{field} = v;"))
+                };
+                let to = self.coerced(target, &want);
+                let secs = self.coerced(secs, &Ty::Float);
+                let ease = match ease {
+                    Some(e) => self.coerced(e, &Ty::State(crate::stdlib::EASE)),
+                    None => "\"Linear\"".to_string(),
+                };
+                let done = match done {
+                    Some(d) => self.expr(d),
+                    None => "None".to_string(),
+                };
+                out.push_str(&format!(
+                    "{pad}{{\n{pad}    let o = {owner};\n{pad}    let from: {t} = {read};\n{pad}    let to: {t} = {to};\n{pad}    let secs: f64 = {secs};\n{pad}    let ease: &'static str = {ease};\n{pad}    let done: Option<Rc<dyn Fn()>> = {done};\n{pad}    let o2 = o.clone();\n{pad}    rt::tween(rt::tween_key(&o, {field:?}), from, to, secs, ease, Box::new(move |v: {t}| {{ {write} }}), done);\n{pad}}}\n"
                 ));
             }
             Stmt::Keep { value, into, .. } => {
@@ -1846,6 +1919,7 @@ impl<'a> W<'a> {
                     let f = self.field_of(c, n);
                     out.push_str(&format!("{pad}{{ let v = {v}; this.borrow_mut().{f} = v; }}\n"));
                 }
+                _ if self.cell(target) => out.push_str(&format!("{pad}v_{n}.set({v});\n")),
                 _ => out.push_str(&format!("{pad}v_{n} = {v};\n")),
             },
             // pos.x = 3: a vec3 (or vec2, or colour) is given a new one with the new x.
@@ -1978,7 +2052,7 @@ impl<'a> W<'a> {
         }
         if let Some(c) = self.info.view_opens.get(&e.id) {
             return format!(
-                "{{ let o = new{c}(); let s = settings{c}(&o); let mut build = || -> Result<(rt::ui::Node, Vec<rt::ui::Action>), String> {{ let mut actions: Vec<rt::ui::Action> = Vec::new(); let mut out = None; if let Some(e) = rt::attempt(|| out = Some(view{c}(&o, &mut actions))) {{ return Err(e); }} Ok((out.unwrap(), actions)) }}; if let Err(e) = rt::ui::show(&s, &mut build) {{ rt::fail(e); }} }}"
+                "{{ let o = new{c}(); let s = settings{c}(&o); let mut build = || -> Result<(rt::ui::Node, Vec<rt::ui::Action>), String> {{ let mut actions: Vec<rt::ui::Action> = Vec::new(); let mut out = None; if let Some(e) = rt::attempt(|| out = Some(view{c}(&o, &mut actions))) {{ return Err(e); }} Ok((out.unwrap(), actions)) }}; rt::viewing(1); let r = rt::ui::show(&s, &mut build, Box::new(rt::tween_view)); rt::viewing(-1); if let Err(e) = r {{ rt::fail(e); }} }}"
             );
         }
         if let Some(op) = self.info.node_ops.get(&e.id) {
@@ -2058,6 +2132,7 @@ impl<'a> W<'a> {
                         let a = if args.is_empty() { "&t".to_string() } else { format!("&t, {args}") };
                         format!("{{ let t = this.clone(); let f: Rc<dyn Fn({types}) -> {r}> = Rc::new(move |{params}| d{root}_{n}({a})); Some(f) }}")
                     }
+                    _ if self.cell(e) => format!("v_{n}.get()"),
                     _ => format!("v_{n}.clone()"),
                 }
             }

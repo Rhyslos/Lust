@@ -160,6 +160,16 @@ pub struct Info {
     pub sends: Vec<Pos>,
     /// Colour words used as colour values (`colour warn = orange5;`), by expression: 0xrrggbb.
     pub colour_words: HashMap<usize, u32>,
+    /// Names that read or change a variable at the top of the file (outside any { }), by
+    /// expression, with where that variable is declared.
+    pub top_names: HashMap<usize, Pos>,
+    /// Where the top-level variables a tween changes are declared. A built program keeps them
+    /// in a cell the tween shares (Lua's functions share them already).
+    pub tween_tops: std::collections::HashSet<Pos>,
+    /// Their names, for saves.
+    pub tween_top_names: std::collections::HashSet<String>,
+    /// The program names `Ease` (its options or the object), so Lua makes its table.
+    pub uses_ease: bool,
 }
 
 impl Info {
@@ -245,6 +255,8 @@ struct Ctx {
     made: std::collections::HashSet<String>,
     /// Inside a view, where pieces of the screen may go.
     in_view: bool,
+    /// In the top level of the file (and hooks made there), where scopes[0] holds its variables.
+    top: bool,
 }
 
 pub struct Checker<'a> {
@@ -353,6 +365,13 @@ impl<'a> Checker<'a> {
     // ----- declarations -----
 
     fn run(&mut self, prog: &Program, _is_script: bool) {
+        // 0. Ease, the built-in state of easing curves, is always the first.
+        self.info.state_index.insert("Ease".into(), crate::stdlib::EASE);
+        self.state_names.push("Ease".into());
+        self.info.states.push(StateInfo {
+            name: "Ease".into(),
+            options: crate::stdlib::EASES.iter().map(|e| e.to_string()).collect(),
+        });
         // 1. Names of states, classes and methods, so everything can refer to everything.
         for item in &prog.items {
             match item {
@@ -652,6 +671,7 @@ impl<'a> Checker<'a> {
                             hook_base: 0,
                             made: Default::default(),
                             in_view: false,
+                            top: false,
                         };
                         let d = f.default.as_ref().unwrap();
                         match self.expr(d, &mut ctx, None) {
@@ -870,6 +890,7 @@ impl<'a> Checker<'a> {
                     hook_base: 0,
                     made: Default::default(),
                     in_view: false,
+                    top: false,
                 };
                 if let Ty::Class(c) = self.expr(e, &mut ctx, None) {
                     if made.iter().any(|(x, _)| *x == c) {
@@ -903,6 +924,7 @@ impl<'a> Checker<'a> {
                             hook_base: 0,
                             made: Default::default(),
                             in_view: false,
+                            top: false,
                         };
                         let got = self.expr(d, &mut ctx, Some(&want));
                         self.expect_fits(d, &got, &want, &format!("{} is {}", f.name, self.a(&want)));
@@ -993,6 +1015,7 @@ impl<'a> Checker<'a> {
             hook_base: 0,
             made: Default::default(),
             in_view: false,
+            top: true,
         };
         self.block_in(&prog.body, &mut top, true);
         for (k, v) in &top.scopes[0] {
@@ -1020,6 +1043,7 @@ impl<'a> Checker<'a> {
                         hook_base: 0,
                         made: Default::default(),
                         in_view: false,
+                        top: false,
                     };
                     self.eval_styles(&st.items, &mut ctx);
                     self.check_styles(&st.items, "style");
@@ -1208,6 +1232,7 @@ impl<'a> Checker<'a> {
             hook_base: 0,
             made: Default::default(),
             in_view: true,
+            top: false,
         };
         self.eval_styles(&v.settings, &mut ctx);
         self.check_styles(&v.settings, "view");
@@ -1774,6 +1799,7 @@ impl<'a> Checker<'a> {
             hook_base: 0,
             made: Default::default(),
             in_view: false,
+            top: false,
         };
         for (p, (_, ty)) in m.params.iter().zip(&sig.params) {
             if let Some(c) = class {
@@ -2010,6 +2036,177 @@ impl<'a> Checker<'a> {
         );
     }
 
+    /// tween place to value over seconds [ease Name] { done }: the place is a field or a variable
+    /// at the top of the file, holding a number, vector, colour or rotation.
+    #[allow(clippy::too_many_arguments)]
+    fn tween(&mut self, place: &Expr, target: &Expr, secs: &Expr, ease: Option<&Expr>, done: Option<&Expr>, pos: Pos, ctx: &mut Ctx) {
+        if ctx.in_view {
+            self.err(
+                pos,
+                "a tween goes in a button's { } or a method, not in the view itself, which is drawn again each time anything changes.",
+            );
+        }
+        let shown = describe(place);
+        let want = self.expr(place, ctx, None);
+        const PLACES: &str = "a field, or a variable at the top of the file";
+        let mut place_ok = want != Ty::Error;
+        match &place.kind {
+            ExprKind::Name(n) => {
+                match self.info.names.get(&place.id) {
+                    Some(NameRes::Local) => {
+                        let outer = ctx.in_hook && ctx.scopes.iter().position(|s| s.contains_key(n)).is_some_and(|i| i < ctx.hook_base);
+                        if outer {
+                            self.err(place.pos, format!("a done block or a hook can read the variables around it, but not change them, so it can't tween {n}. Keep {n} in an object's field to tween it from here."));
+                            place_ok = false;
+                        } else if let (Some(&decl), false) = (self.info.top_names.get(&place.id), ctx.in_hook) {
+                            self.info.tween_tops.insert(decl);
+                            self.info.tween_top_names.insert(n.clone());
+                        } else if ctx.top && !ctx.in_hook {
+                            self.err(place.pos, format!("{n} is declared inside {{ }}, and a tween keeps going after the {{ }} ends, so it changes {PLACES} (outside any {{ }})."));
+                            place_ok = false;
+                        } else {
+                            self.err(place.pos, format!("{n} is a variable inside this method, and a tween keeps going after the method ends, so it changes {PLACES}. Keep {n} in a field: has {{ {} {n} = …; }}", self.show(&want)));
+                            place_ok = false;
+                        }
+                    }
+                    Some(NameRes::Field) => {}
+                    Some(NameRes::Object) => {
+                        self.err(
+                        place.pos,
+                        format!("{n} is an object, so it can't be tweened itself. Tween one of its fields: tween {n}.something to … over 1;"),
+                    );
+                        place_ok = false;
+                    }
+                    _ => {}
+                }
+            }
+            ExprKind::Field(t, f, _) => match self.info.ty(t) {
+                Ty::Class(_) | Ty::Error => {}
+                Ty::Vec3 | Ty::Vec2 | Ty::Colour | Ty::Rot => {
+                    let whole = describe(t);
+                    self.err(
+                        place.pos,
+                        format!("a tween moves a whole value, so it can't move {f} on its own. Tween {whole} to a new value instead: tween {whole} to … over 1;"),
+                    );
+                    place_ok = false;
+                }
+                _ => {
+                    self.err(place.pos, format!("a tween changes {PLACES}, and {shown} isn't one."));
+                    place_ok = false;
+                }
+            },
+            ExprKind::Index(..) => {
+                self.err(place.pos, format!("a tween changes {PLACES}, not an item in a list or map."));
+                place_ok = false;
+            }
+            _ => {
+                if place_ok {
+                    self.err(place.pos, format!("a tween changes {PLACES}, and {shown} isn't one."));
+                }
+                place_ok = false;
+            }
+        }
+        if let Some(w) = self.info.narrow_reads.get(&place.id).copied() {
+            if place_ok {
+                self.err(
+                    place.pos,
+                    format!(
+                        "a tween moves an int, but {shown} is {}. Make it an int to tween it.",
+                        self.a(&Ty::Sized(w))
+                    ),
+                );
+            }
+            place_ok = false;
+        }
+        if place_ok && !matches!(want, Ty::Int | Ty::Float | Ty::Vec2 | Ty::Vec3 | Ty::Colour | Ty::Rot) {
+            self.err(
+                place.pos,
+                format!(
+                    "a tween moves numbers (int and float), vec2s, vec3s, colours and rotations, but {shown} is {}.",
+                    self.a(&want)
+                ),
+            );
+            place_ok = false;
+        }
+        if place_ok {
+            self.writable(place, ctx, place.pos);
+        }
+        let to = if place_ok { want.clone() } else { Ty::Error };
+        let got = self.expr(target, ctx, if place_ok { Some(&to) } else { None });
+        if place_ok {
+            self.expect_fits(target, &got, &to, &format!("{shown} is {}", self.a(&to)));
+        }
+        let st = self.expr(secs, ctx, Some(&Ty::Float));
+        self.expect_fits(secs, &st, &Ty::Float, "a tween's time is a number of seconds");
+        let written = match &secs.kind {
+            ExprKind::Neg(x) => match x.kind {
+                ExprKind::Int(i) => Some(-(i as f64)),
+                ExprKind::Float(f) => Some(-f),
+                _ => None,
+            },
+            ExprKind::Int(i) => Some(*i as f64),
+            ExprKind::Float(f) => Some(*f),
+            _ => None,
+        };
+        if written.is_some_and(|v| v < 0.0) {
+            self.err(
+                secs.pos,
+                "a tween can't take less than no time. Give it how many seconds it takes, or 0 to set it at once.",
+            );
+        }
+        if let Some(e) = ease {
+            let ease_ty = Ty::State(crate::stdlib::EASE);
+            let bare = match &e.kind {
+                ExprKind::Name(n)
+                    if self.lookup(ctx, n).is_none()
+                        && !ctx.class.is_some_and(|c| self.info.field(c, n).is_some())
+                        && !self.info.class_index.contains_key(n)
+                        && !self.info.state_index.contains_key(n) =>
+                {
+                    Some(n.clone())
+                }
+                _ => None,
+            };
+            match bare {
+                // [ease OutCubic]: the option on its own, as in a check's when.
+                Some(n) if crate::stdlib::EASES.contains(&n.as_str()) => {
+                    self.info.options.insert(e.id, (crate::stdlib::EASE, n));
+                    self.info.types.insert(e.id, ease_ty);
+                }
+                Some(n) => {
+                    let s = suggest(&n, crate::stdlib::EASES.iter().map(|x| x.to_string()));
+                    self.err(
+                        e.pos,
+                        format!(
+                            "Lust doesn't know the ease {n}.{s} The eases are {}.",
+                            crate::stdlib::EASES.join(", ")
+                        ),
+                    );
+                }
+                None => {
+                    let got = self.expr(e, ctx, Some(&ease_ty));
+                    if got != ease_ty && got != Ty::Error {
+                        self.err(
+                            e.pos,
+                            format!(
+                                "an ease is one of Ease's options, like OutCubic, but {} is {}.",
+                                describe(e),
+                                self.a(&got)
+                            ),
+                        );
+                    }
+                }
+            }
+        }
+        if let Some(d) = done {
+            let sig = Ty::Hook(Rc::new(HookSig {
+                ret: Ty::Void,
+                params: vec![],
+            }));
+            self.expr(d, ctx, Some(&sig));
+        }
+    }
+
     fn taken_by(&self, name: &str) -> Option<String> {
         if self.info.methods.contains_key(name) {
             return Some(format!("there's already a method called {name}"));
@@ -2062,6 +2259,14 @@ impl<'a> Checker<'a> {
                 let got = self.expr(to, ctx, Some(&Ty::Entity));
                 self.expect_fits(to, &got, &Ty::Entity, "an event goes to an entity");
             }
+            Stmt::Tween {
+                place,
+                target,
+                secs,
+                ease,
+                done,
+                pos,
+            } => self.tween(place, target, secs, ease.as_ref(), done.as_ref(), *pos, ctx),
             Stmt::Var {
                 ty,
                 name,
@@ -3131,6 +3336,9 @@ impl<'a> Checker<'a> {
         }
         if let Some(l) = self.lookup(ctx, n) {
             self.info.names.insert(e.id, NameRes::Local);
+            if ctx.top && ctx.scopes[0].get(n).is_some_and(|t| t.pos == l.pos) {
+                self.info.top_names.insert(e.id, l.pos);
+            }
             return l.ty;
         }
         if let Some(c) = ctx.class {
@@ -3156,6 +3364,9 @@ impl<'a> Checker<'a> {
             return Ty::Error;
         }
         if let Some(&s) = self.info.state_index.get(n) {
+            if s == crate::stdlib::EASE {
+                self.info.uses_ease = true;
+            }
             self.info.names.insert(e.id, NameRes::StateList);
             self.info.options.insert(e.id, (s, String::new()));
             return Ty::StateList(s);
@@ -3644,7 +3855,8 @@ impl<'a> Checker<'a> {
 
     fn field(&mut self, e: &Expr, target: &Expr, f: &str, fpos: Pos, ctx: &mut Ctx) -> Ty {
         if let ExprKind::Name(n) = &target.kind {
-            if crate::stdlib::OBJECTS.contains(&n.as_str()) {
+            // Ease.OutBack: Ease is a state too, so its options are reached like any state's.
+            if crate::stdlib::OBJECTS.contains(&n.as_str()) && n != "Ease" {
                 if n == "Maths" && (f == "pi" || f == "e") {
                     self.info.libs.insert(
                         e.id,

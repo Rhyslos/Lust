@@ -1,0 +1,5 @@
+ease-name.lst:2:7  Ease is one of Lust's built-in objects, so it can't be a name.
+ease-name.lst:3:27  Bouncy isn't an option of Ease. The options are Linear, InSine, OutSine, InOutSine, InQuad, OutQuad, InOutQuad, InCubic, OutCubic, InOutCubic, InQuart, OutQuart, InOutQuart, InQuint, OutQuint, InOutQuint, InExpo, OutExpo, InOutExpo, InCirc, OutCirc, InOutCirc, InBack, OutBack, InOutBack, InElastic, OutElastic, InOutElastic, InBounce, OutBounce, InOutBounce.
+ease-name.lst:4:16  Ease has no method called shape. It has apply.
+
+3 mistakes. Nothing was run.
