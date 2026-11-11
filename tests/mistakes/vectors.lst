@@ -11,7 +11,7 @@ float h = a:size();
 vec3 i = r:inverse();
 bool j = a < b;
 vec3 k = a % 2;
-string s = Json:write(a);
+-- vec3s go into JSON: Json:write(a) is fine.
 float l = a:lerp(b);
 vector m = [1, 2, 3];
 end

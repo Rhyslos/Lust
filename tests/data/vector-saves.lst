@@ -1,0 +1,62 @@
+-- Saves keep vec3s, vec2s, rotations and colours exactly: in variables, objects' fields and arrays.
+object Player {
+    has {
+        vec3 pos = [0, 0, 0];
+        vec2 cell = [0, 0];
+        rotation facing = [0, 0, 0];
+        colour shirt = white;
+        vec3 array trail = [];
+    }
+}
+
+vec3 camera = [1, 2, 3];
+rotation sun = [0, 0, 0];
+colour sky = blue5;
+colour map paints = ["wall" white];
+save world = [Player, camera, sun, sky, paints];
+
+Player.pos = [1, 2, 3] / 7;
+Player.cell = [-3.5, 0.1];
+Player.facing = Rotation:toward([1, 2, 0.5]);
+Player.shirt = [0.3, 0.6, 0.9, 0.75];
+Player.trail = [[0, 0, 0], [1, 0.5, 0.25]];
+camera = [0.1, 0.2, 0.3];
+sun = Rotation:around([0, 1, 1], 61.7);
+sky = Colour:hex("#123456");
+paints["door"] = [0.11, 0.22, 0.33];
+save world;
+print(Files:read("world.save"));
+
+-- Remember them, then change everything.
+vec3 pos = Player.pos;
+vec2 cell = Player.cell;
+rotation facing = Player.facing;
+colour shirt = Player.shirt;
+vec3 cam = camera;
+rotation sunWas = sun;
+colour door = paints["door"];
+Player.pos = [9, 9, 9];
+Player.cell = [9, 9];
+Player.facing = [9, 9, 9];
+Player.shirt = black;
+Player.trail = [];
+camera = [9, 9, 9];
+sun = [9, 9, 9];
+sky = black;
+paints = ["none" black];
+
+load world;
+print(Player.pos == pos, Player.cell == cell, Player.facing == facing, Player.shirt == shirt);
+print(#Player.trail, Player.trail[1]);
+print(camera == cam, sun == sunWas, sky, paints["door"] == door, paints["wall"]);
+
+-- A save with the wrong shape changes nothing.
+Files:write("world.save", "{\"Player\": {\"pos\": [1, 2]}, \"camera\": [0, 0, 0], \"sun\": [0, 0, 0, 1], \"sky\": \"#000000\", \"paints\": {}}");
+try {
+    load world;
+} error (string e) {
+    print(e);
+}
+print(camera == cam, Player.pos == pos);
+Files:remove("world.save");
+end

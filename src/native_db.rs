@@ -35,6 +35,12 @@ fn sql_type(kind: &str, key: bool) -> String {
     let t = match kind {
         "int" | "truth" => "INTEGER",
         "float" => "REAL",
+        // Kept as the same text Json:write gives, which reads back exactly. The type's name
+        // keeps a table made with a string column from being taken for one with a vec3.
+        "vec3" => "VEC3_TEXT",
+        "vec2" => "VEC2_TEXT",
+        "rotation" => "ROTATION_TEXT",
+        "colour" => "COLOUR_TEXT",
         _ => "TEXT",
     };
     if key && t == "INTEGER" && kind == "int" {
@@ -314,6 +320,34 @@ pub fn sv_truth(v: bool) -> SqlVal {
 }
 pub fn sv_state(v: &'static str) -> SqlVal {
     SqlVal::Text(v.to_string())
+}
+pub fn sv_vec3(v: Vec3) -> SqlVal {
+    SqlVal::Text(jw_vec3(&v, None))
+}
+pub fn sv_vec2(v: Vec2) -> SqlVal {
+    SqlVal::Text(jw_vec2(&v, None))
+}
+pub fn sv_rotation(v: Rotation) -> SqlVal {
+    SqlVal::Text(jw_rotation(&v, None))
+}
+pub fn sv_colour(v: Colour) -> SqlVal {
+    SqlVal::Text(jw_colour(&v, None))
+}
+/// A vec3, vec2, rotation or colour, read back from its JSON text.
+fn v_json<T>(v: &SqlVal, f: &dyn Fn(&Json, &str) -> T) -> T {
+    f(&json_parse(&v_string(v)), "")
+}
+pub fn v_vec3(v: &SqlVal) -> Vec3 {
+    v_json(v, &jr_vec3)
+}
+pub fn v_vec2(v: &SqlVal) -> Vec2 {
+    v_json(v, &jr_vec2)
+}
+pub fn v_rotation(v: &SqlVal) -> Rotation {
+    v_json(v, &jr_rotation)
+}
+pub fn v_colour(v: &SqlVal) -> Colour {
+    v_json(v, &jr_colour)
 }
 pub fn v_int(v: &SqlVal) -> i64 {
     match v {

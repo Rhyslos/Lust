@@ -1,0 +1,8 @@
+-- JSON that isn't a vec3 stops the program on the line that reads it, saying why.
+string text = "[1, 2, 3]";
+vec3 a = Json:read(text);
+print(a);
+text = "[1, 2, \"three\"]";
+vec3 b = Json:read(text);
+print("never");
+end

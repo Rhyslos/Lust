@@ -881,6 +881,14 @@ function L.engine(version, components, events, classes, objects, ticked)
     return o
   end
   -- Whether a saved value fits a field of this kind, as Rust's set_data checks.
+  -- Whether a table (or a Luau vector) has numbers for all these fields.
+  local function nums(v, ...)
+    for _, k in ipairs({ ... }) do
+      local ok, x = pcall(function() return v[k] end)
+      if not ok or type(x) ~= "number" then return false end
+    end
+    return true
+  end
   local function fits(f, v)
     local kind, t = f[3], type(v)
     if kind == "bool" then return t == "boolean" end
@@ -892,12 +900,16 @@ function L.engine(version, components, events, classes, objects, ticked)
       for _, opt in ipairs(f[4]) do if opt == v then return true end end
       return false
     end
-    if kind == "vec3" then return t == "vector" or t == "table" or t == "userdata" end
-    if kind == "vec2" or kind == "colour" then return t == "table" end
-    if kind == "rotation" then return t == "table" end
+    if kind == "vec3" then return (t == "vector" or t == "table" or t == "userdata") and nums(v, "x", "y", "z") end
+    if kind == "vec2" then return t == "table" and nums(v, "x", "y") end
+    if kind == "rotation" then return t == "table" and nums(v, "x", "y", "z", "w") end
+    if kind == "colour" then return t == "table" and nums(v, "r", "g", "b") and (v.a == nil or type(v.a) == "number") end
     if kind == "entity" then return t ~= "boolean" end
     return false
   end
+  -- A saved vector, rotation or colour, made Lust's own: each number rounded to f32 (and a
+  -- colour's kept from 0 to 1), as Rust's set_data does.
+  local own = { vec3 = L.hvec, vec2 = L.hvec2, rotation = L.hrot, colour = L.hcol }
   -- An object's fields the engine keeps (by its __schema): for a save, and back.
   function api.save(name)
     local o = object(name)
@@ -913,7 +925,10 @@ function L.engine(version, components, events, classes, objects, ticked)
     local o = object(name)
     for _, f in ipairs(getmetatable(o).__schema or {}) do
       local v = values[f[2]]
-      if v ~= nil and fits(f, v) then o[f[1]] = v end
+      if v ~= nil and fits(f, v) then
+        if own[f[3]] then v = own[f[3]](v) end
+        o[f[1]] = v
+      end
     end
   end
   -- A thing of one of the engine's own classes, with these values for its fields (by name), to
@@ -1713,6 +1728,68 @@ function L.jr.truth(v, at)
   if type(v) ~= "boolean" then misfit(at, "a bool (true or false)", v) end
   return v
 end
+-- vec3s, vec2s, rotations and colours: numbers in [ ], each rounded to f32 as it's kept.
+local function jlist(v, at, want, counts)
+  if type(v) ~= "table" or not v.__arr then misfit(at, want, v) end
+  local fits = false
+  for _, c in ipairs(counts) do if v.n == c then fits = true end end
+  if not fits then
+    local where = at == "" and "the JSON" or ("the JSON at " .. at)
+    error(where .. " should be " .. want .. ", but it has " .. v.n .. (v.n == 1 and " item." or " items."), 0)
+  end
+  local out = {}
+  for i = 1, v.n do
+    local x = v[i]
+    local iat = fmt("%s[%d]", at, i - 1)
+    if type(x) ~= "number" then misfit(iat, "a number", x) end
+    local r = f32(x)
+    if r == math.huge or r == -math.huge then
+      error("the JSON at " .. iat .. " is too big to keep in 32 bits.", 0)
+    end
+    out[i] = x
+  end
+  return out
+end
+function L.jr.vec3(v, at)
+  local n = jlist(v, at, "a vec3, three numbers in [ ]", { 3 })
+  return vec(n[1], n[2], n[3])
+end
+function L.jr.vec2(v, at)
+  local n = jlist(v, at, "a vec2, two numbers in [ ]", { 2 })
+  return L.vec2(n[1], n[2])
+end
+-- Four numbers are a quaternion, as Json:write writes one; three are degrees around x, y and z,
+-- as Lust writes a rotation.
+function L.jr.rotation(v, at)
+  local n = jlist(v, at, "a rotation, four numbers in [ ] (or three degrees)", { 3, 4 })
+  if v.n == 3 then return L.rot(n[1], n[2], n[3]) end
+  local q = quat(n[1], n[2], n[3], n[4])
+  local len = sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w)
+  if not (math.abs(len - 1) <= 0.001) then
+    local where = at == "" and "the JSON" or ("the JSON at " .. at)
+    error(where .. " is a rotation's four numbers, which should be 1 long together, but these are " .. L.ftext(len) .. " long.", 0)
+  end
+  return q
+end
+-- Hex text, "#rrggbb" or "#rrggbbaa", or three or four numbers from 0 to 1.
+function L.jr.colour(v, at)
+  local want = "a colour, \"#rrggbb\", \"#rrggbbaa\" or numbers in [ ]"
+  if type(v) == "string" then
+    local hex = v:match("^#(%x+)$")
+    if hex == nil or (#hex ~= 6 and #hex ~= 8) then
+      local where = at == "" and "the JSON" or ("the JSON at " .. at)
+      error(where .. " should be " .. want .. ", but it's \"" .. v .. "\".", 0)
+    end
+    return L.colour_hex(v)
+  end
+  local n = jlist(v, at, want, { 3, 4 })
+  for i = 1, v.n do
+    if not (n[i] >= 0 and n[i] <= 1) then
+      error(fmt("the JSON at %s[%d] is %s, but a colour's parts go from 0 to 1.", at, i - 1, L.ftext(n[i] + 0.0)), 0)
+    end
+  end
+  return colour(n[1], n[2], n[3], v.n == 4 and n[4] or 1)
+end
 function L.jr_state(opts)
   return function(v, at)
     for _, o in ipairs(opts) do if v == o then return v end end
@@ -1812,6 +1889,55 @@ function L.jw.float(v)
 end
 function L.jw.string(v) return jquote(v) end
 function L.jw.truth(v) return L.btext(v) end
+-- An f32 as the shortest text that reads back as exactly the same f32, written the same way as
+-- the Rust runtime: plain from 1e-7 to below 1e21 (with ".0" when it's whole), and 1e-45 or
+-- 3.4028235e38 beyond. Each try is C's correctly rounded %.Ne, read back through a double and
+-- rounded to f32, as Json:read does.
+function L.f32json(x)
+  if x ~= x or x == math.huge or x == -math.huge then error("JSON can't hold " .. L.ftext(x) .. ".", 0) end
+  if x == 0 then
+    if 1 / x < 0 then return "-0.0" end
+    return "0.0"
+  end
+  local s
+  for p = 0, 8 do
+    s = fmt("%." .. p .. "e", x)
+    if f32(tonumber(s)) == x then break end
+  end
+  local sign, first, rest, e = s:match("^(-?)(%d)%.?(%d*)e([-+]%d+)$")
+  local digits = (first .. rest):gsub("0+$", "")
+  if digits == "" then digits = "0" end
+  e = tonumber(e)
+  local n = #digits
+  if e < -7 or e >= 21 then
+    local m = digits:sub(1, 1)
+    if n > 1 then m = m .. "." .. digits:sub(2) end
+    return sign .. m .. "e" .. e
+  end
+  if e >= n - 1 then return sign .. digits .. string.rep("0", e - n + 1) .. ".0" end
+  if e >= 0 then return sign .. digits:sub(1, e + 1) .. "." .. digits:sub(e + 2) end
+  return sign .. "0." .. string.rep("0", -e - 1) .. digits
+end
+local function jnums(d, ...)
+  local parts = { ... }
+  for i = 1, #parts do parts[i] = L.f32json(parts[i]) end
+  return "[" .. table.concat(parts, d and ", " or ",") .. "]"
+end
+function L.jw.vec3(v, d) return jnums(d, v.x, v.y, v.z) end
+function L.jw.vec2(v, d) return jnums(d, v.x, v.y) end
+-- A rotation is its quaternion, x, y, z and w: its degrees can't always give back exactly the
+-- same turn.
+function L.jw.rotation(q, d) return jnums(d, q.x, q.y, q.z, q.w) end
+-- A colour is its hex text when that gives back exactly the same colour (every part a whole
+-- number of 255ths), and its four numbers when it doesn't.
+function L.jw.colour(c, d)
+  local hex = true
+  for _, p in ipairs({ c.r, c.g, c.b, c.a }) do
+    if f32(byte(p) / 255) ~= p then hex = false end
+  end
+  if hex then return jquote(L.colhex(c)) end
+  return jnums(d, c.r, c.g, c.b, c.a)
+end
 function L.jw_array(f)
   return function(a, d)
     local parts = {}
@@ -2036,8 +2162,22 @@ local function dbcall(what, ...)
   if r == nil and e then error(e, 3) end
   return r
 end
-local function sqlv(v)
+-- vec3s, vec2s, rotations and colours are kept as the text Json:write gives them, which reads
+-- back exactly.
+local dbtext = { vec3 = true, vec2 = true, rotation = true, colour = true }
+local function sqlv(v, kind)
   if v == true then return 1 elseif v == false then return 0 end
+  if kind and dbtext[kind] then return L.jw[kind](v) end
+  return v
+end
+local function fromsql(v, kind)
+  if kind == "truth" then return v ~= 0 end
+  if kind == "float" then return v + 0.0 end
+  if dbtext[kind] then
+    local ok, r = pcall(function() return L.jr[kind](parse(v), "") end)
+    if not ok then error(r, 0) end
+    return r
+  end
   return v
 end
 function L.db_open(path, tables)
@@ -2079,10 +2219,7 @@ local function qselect(q, what)
   return s
 end
 local function convert(q, r)
-  for i, kind in ipairs(q.kinds) do
-    if kind == "truth" then r[i] = r[i] ~= 0
-    elseif kind == "float" then r[i] = r[i] + 0.0 end
-  end
+  for i, kind in ipairs(q.kinds) do r[i] = fromsql(r[i], kind) end
   return r
 end
 function L.q_where(q, sql, params)
@@ -2130,7 +2267,7 @@ function L.t_inject(q, values)
   for i = first, #q.cols do
     cols[#cols + 1] = '"' .. q.cols[i] .. '"'
     marks[#marks + 1] = "?"
-    params[#params + 1] = sqlv(values[i - first + 1])
+    params[#params + 1] = sqlv(values[i - first + 1], q.kinds[i])
   end
   dbcall("db_exec", q.id, 'INSERT INTO "' .. q.table .. '" (' .. table.concat(cols, ", ") .. ") VALUES (" .. table.concat(marks, ", ") .. ")", params)
 end
@@ -2150,15 +2287,14 @@ function L.r_get(r, col)
   if #rows == 0 then rowgone(r) end
   for i, c in ipairs(r.q.cols) do
     if c == col then
-      local v = rows[1][1]
-      if r.q.kinds[i] == "truth" then return v ~= 0 end
-      if r.q.kinds[i] == "float" then return v + 0.0 end
-      return v
+      return fromsql(rows[1][1], r.q.kinds[i])
     end
   end
 end
 function L.r_set(r, col, v)
-  local n = dbcall("db_exec", r.q.id, 'UPDATE "' .. r.q.table .. '" SET "' .. col .. '" = ? WHERE "' .. keyof(r.q) .. '" = ?', { sqlv(v), r.k })
+  local kind
+  for i, c in ipairs(r.q.cols) do if c == col then kind = r.q.kinds[i] end end
+  local n = dbcall("db_exec", r.q.id, 'UPDATE "' .. r.q.table .. '" SET "' .. col .. '" = ? WHERE "' .. keyof(r.q) .. '" = ?', { sqlv(v, kind), r.k })
   if n == 0 then rowgone(r) end
 end
 

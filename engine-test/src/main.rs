@@ -292,6 +292,82 @@ fn main() {
         i += 1;
     }
 
+    // 8. An object's vec3, vec2, rotation and colour, saved by the engine and loaded back exactly;
+    // in Luau they go through JSON too. Values of the wrong shape are left as they are.
+    let camp_names: Vec<String> = api4.get::<Table>("objectNames").unwrap().sequence_values().map(|n| n.unwrap()).collect();
+    writeln!(out, "objects: {camp_names:?}").unwrap();
+    let tick: Function = api4.get("tick").unwrap();
+    let save: Function = api4.get("save").unwrap();
+    let load_back: Function = api4.get("load").unwrap();
+    tick.call::<()>(1.0).unwrap();
+    out.push_str(&log.borrow_mut().split_off(0));
+    let camp: Table = api4.get::<Table>("objects").unwrap().get("Camp").unwrap();
+    let parts = |v: &Value, keys: &[&str]| -> Vec<u32> {
+        keys.iter()
+            .map(|k| match v {
+                Value::Vector(x) => match *k {
+                    "x" => x.x(),
+                    "y" => x.y(),
+                    _ => x.z(),
+                }
+                .to_bits(),
+                Value::Table(t) => (t.get::<f64>(*k).unwrap() as f32).to_bits(),
+                _ => 0,
+            })
+            .collect()
+    };
+    let fields: [(&str, &[&str]); 4] = [
+        ("fire", &["x", "y", "z"]),
+        ("cell", &["x", "y"]),
+        ("facing", &["x", "y", "z", "w"]),
+        ("glow", &["r", "g", "b", "a"]),
+    ];
+    let now = |camp: &Table| -> Vec<Vec<u32>> { fields.iter().map(|(f, k)| parts(&camp.get::<Value>(*f).unwrap(), k)).collect() };
+    let saved: Table = save.call("Camp").unwrap();
+    let before = now(&camp);
+    writeln!(out, "camp saved {}", fields.iter().map(|(f, _)| *f).filter(|f| saved.contains_key(*f).unwrap()).collect::<Vec<_>>().join(", ")).unwrap();
+    tick.call::<()>(1.0).unwrap();
+    log.borrow_mut().clear();
+    writeln!(out, "camp changed: {}", now(&camp) != before).unwrap();
+    load_back.call::<()>(("Camp", saved)).unwrap();
+    writeln!(out, "camp loaded exactly: {}", now(&camp) == before).unwrap();
+    // A save the engine kept as plain tables of numbers, the way it writes them to disk.
+    let plain = lua.create_table().unwrap();
+    let fire = lua.create_table().unwrap();
+    fire.set("x", 0.1).unwrap();
+    fire.set("y", 0.2).unwrap();
+    fire.set("z", 0.3).unwrap();
+    plain.set("fire", fire).unwrap();
+    let glow = lua.create_table().unwrap();
+    glow.set("r", 2.0).unwrap();
+    glow.set("g", 0.5).unwrap();
+    glow.set("b", 0.25).unwrap();
+    plain.set("glow", glow).unwrap();
+    load_back.call::<()>(("Camp", plain)).unwrap();
+    let f = parts(&camp.get::<Value>("fire").unwrap(), &["x", "y", "z"]);
+    writeln!(out, "camp fire is f32s: {}", f == [0.1f32, 0.2, 0.3].map(f32::to_bits)).unwrap();
+    let g: Table = camp.get("glow").unwrap();
+    writeln!(out, "camp glow r {} a {}", g.get::<f64>("r").unwrap(), g.get::<f64>("a").unwrap()).unwrap();
+    // Wrong shapes: too few numbers, text, a table without w, a colour without b.
+    let wrong = lua.create_table().unwrap();
+    let short = lua.create_table().unwrap();
+    short.set("x", 1.0).unwrap();
+    short.set("y", 2.0).unwrap();
+    wrong.set("fire", short.clone()).unwrap();
+    wrong.set("cell", "4, 5").unwrap();
+    let nw = lua.create_table().unwrap();
+    nw.set("x", 0.0).unwrap();
+    nw.set("y", 0.0).unwrap();
+    nw.set("z", 0.0).unwrap();
+    wrong.set("facing", nw).unwrap();
+    let rg = lua.create_table().unwrap();
+    rg.set("r", 0.0).unwrap();
+    rg.set("g", 0.0).unwrap();
+    wrong.set("glow", rg).unwrap();
+    let kept = now(&camp);
+    load_back.call::<()>(("Camp", wrong)).unwrap();
+    writeln!(out, "camp wrong shapes kept: {}", now(&camp) == kept).unwrap();
+
     let expected_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("expected.out");
     if std::env::args().any(|a| a == "--print") {
         print!("{out}");

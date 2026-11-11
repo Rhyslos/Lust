@@ -1,0 +1,7 @@
+-- A vec3 that grew past 32 bits is infinity, which JSON can't hold.
+vec3 big = [3e38, 0, 0];
+print(Json:write(big));
+big = big * 10;
+print(Json:write(big));
+print("never");
+end

@@ -1,0 +1,162 @@
+-- vec3s, vec2s, rotations and colours in JSON: written so they read back exactly.
+state Team = [Red, Blue];
+
+class Spot {
+    has {
+        string name = "";
+        vec3 at = [0, 0, 0];
+        vec2 onMap = [0, 0];
+        rotation facing = [0, 0, 0];
+        colour tint = white;
+    }
+}
+
+-- Each on its own.
+vec3 pos = [1, 2.5, -0.1];
+vec2 flat = [0.1, 3];
+rotation turn = [10, 20, 30];
+colour solid = orange5;
+colour glass = Colour:hex("#3a8f2a80");
+colour soft = [0.4, 0.7, 1.0];
+print(Json:write(pos));
+print(Json:write(flat));
+print(Json:write(turn));
+print(Json:write(solid), Json:write(glass), Json:write(soft));
+
+vec3 pos2 = Json:read(Json:write(pos));
+vec2 flat2 = Json:read(Json:write(flat));
+rotation turn2 = Json:read(Json:write(turn));
+colour solid2 = Json:read(Json:write(solid));
+colour glass2 = Json:read(Json:write(glass));
+colour soft2 = Json:read(Json:write(soft));
+print(pos2 == pos, flat2 == flat, turn2 == turn, solid2 == solid, glass2 == glass, soft2 == soft);
+
+-- Numbers at the edges of what 32 bits hold, and below zero.
+vec3 zero = [0, 0, 0];
+vec3 edges = [3.4028235e38, 1e-45, 0];
+edges.z = (-zero).z;
+vec3 odd = [16777217, 0.000001, 123456789];
+vec2 tiny = [1.17549435e-38, -1e-7];
+print(Json:write(edges), Json:write(odd), Json:write(tiny));
+vec3 edges2 = Json:read(Json:write(edges));
+vec3 odd2 = Json:read(Json:write(odd));
+vec2 tiny2 = Json:read(Json:write(tiny));
+print(edges2 == edges, odd2 == odd, tiny2 == tiny);
+
+-- Worked-out values, which aren't round: the same 32 bits come back.
+vec3 worked = [1, 2, 3] / 7;
+rotation spun = Rotation:around([1, 2, 3], 33.3) * Rotation:toward([1, -4, 0.5]);
+colour mixed = soft:lerp(solid, 0.37);
+print(Json:write(worked), Json:write(spun), Json:write(mixed));
+vec3 worked2 = Json:read(Json:write(worked));
+rotation spun2 = Json:read(Json:write(spun));
+colour mixed2 = Json:read(Json:write(mixed));
+print(worked2 == worked, spun2 == spun, mixed2 == mixed);
+print(spun2 * [1, 0, 0] == spun * [1, 0, 0]);
+
+-- Many turns: every one comes back as exactly the same rotation.
+int same = 0;
+int i = 0;
+loop (i < 200) {
+    rotation r = [i * 7.3, i * 1.9 - 90, i * 13.1];
+    rotation back = Json:read(Json:write(r));
+    is back == r? then { same += 1; }
+    i += 1;
+}
+print(same);
+
+-- Arrays, maps and fields.
+vec3 array path = [[0, 0, 0], [1, 0, 0], [1, 1, 0.5]];
+vec2 array empty = [];
+colour map paints = ["wall" [0.2, 0.3, 0.4, 0.5], "door" red];
+rotation array turns = [[0, 0, 90], [45, 0, 0]];
+print(Json:write(path), Json:write(empty));
+print(Json:write(paints));
+vec3 array path2 = Json:read(Json:write(path));
+vec2 array empty2 = Json:read(Json:write(empty));
+colour map paints2 = Json:read(Json:write(paints));
+rotation array turns2 = Json:read(Json:write(turns));
+print(path2[2] == path[2], #empty2, paints2["wall"] == paints["wall"], paints2["door"] == red, turns2[1] == turns[1]);
+
+Spot home = new Spot { name = "home", at = [4, 5, 6], onMap = [4, 5], facing = [0, 0, 45], tint = [0.5, 0.25, 0.125, 1] };
+string text = Json:write(home);
+print(text);
+print(Json:pretty(home));
+Spot back = Json:read(text);
+print(back.at == home.at, back.onMap == home.onMap, back.facing == home.facing, back.tint == home.tint);
+
+cMap(string name, vec3 at, colour tint) marks = [["a", [1, 2, 3], blue], ["b", [-1, 0, 0.25], [0.1, 0.2, 0.3]]];
+string marked = Json:write(marks);
+print(marked);
+cMap(string name, vec3 at, colour tint) marks2 = Json:read(marked);
+print(marks2["b"].at, marks2["b"].tint == marks["b"].tint);
+
+-- Written by hand: a rotation as three degrees, a colour as numbers, hex in capitals.
+Spot hand = Json:read("{\"facing\": [0, 0, 90], \"tint\": [1, 0.5, 0], \"at\": [1, 2, 3]}");
+print(hand.facing == [0, 0, 90], hand.tint, hand.at);
+colour caps = Json:read("\"#FF8000\"");
+print(caps, caps == Colour:hex("#ff8000"));
+
+-- JSON that doesn't fit stops with a plain message.
+string array wrong = [
+    "[1, 2]",
+    "[1, 2, 3, 4]",
+    "[1, \"two\", 3]",
+    "{\"x\": 1}",
+    "\"1, 2, 3\"",
+    "[1e39, 0, 0]",
+    "[]",
+];
+loop (string w in wrong) {
+    try {
+        vec3 v = Json:read(w);
+        print(v);
+    } error (string e) {
+        print(e);
+    }
+}
+try {
+    vec2 v = Json:read("[1]");
+    print(v);
+} error (string e) {
+    print(e);
+}
+string array badTurns = ["[0, 0]", "[0, 0, 0, 2]", "[0, 0, 0, 0]", "[true, 0, 0, 1]"];
+loop (string w in badTurns) {
+    try {
+        rotation r = Json:read(w);
+        print(r);
+    } error (string e) {
+        print(e);
+    }
+}
+string array badColours = ["\"#12345\"", "\"red\"", "[1.5, 0, 0]", "[0, -0.5, 0]", "[0, 0]", "7"];
+loop (string w in badColours) {
+    try {
+        colour c = Json:read(w);
+        print(c);
+    } error (string e) {
+        print(e);
+    }
+}
+try {
+    Spot s = Json:read("{\"at\": [1, 2]}");
+    print(s.at);
+} error (string e) {
+    print(e);
+}
+try {
+    vec3 array ps = Json:read("[[1, 2, 3], [4, 5, \"6\"]]");
+    print(ps);
+} error (string e) {
+    print(e);
+}
+
+-- A number too big for 32 bits became infinity, which JSON can't hold.
+vec3 huge = [3e38, 0, 0] * 10;
+try {
+    print(Json:write(huge));
+} error (string e) {
+    print(e);
+}
+end

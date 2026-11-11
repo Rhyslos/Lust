@@ -1,0 +1,48 @@
+[1.0,2.5,-0.1]
+[0.1,3.0]
+[0.038134575,0.18930785,0.26853582,0.9437144]
+"#ff922b" "#3a8f2a80" [0.4,0.7,1.0,1.0]
+true true true true true true
+[3.4028235e38,1e-45,-0.0] [16777216.0,0.000001,123456790.0] [1.1754944e-38,-0.0000001]
+true true true
+[0.14285715,0.2857143,0.42857143] [-0.05846845,0.11347399,-0.40574738,0.90502715] [0.622,0.6528431,0.6923922,1.0]
+true true true
+true
+200
+[[0.0,0.0,0.0],[1.0,0.0,0.0],[1.0,1.0,0.5]] []
+{"wall":[0.2,0.3,0.4,0.5],"door":"#e03131"}
+true 0 true true true
+{"name":"home","at":[4.0,5.0,6.0],"onMap":[4.0,5.0],"facing":[0.0,0.0,0.38268343,0.9238795],"tint":[0.5,0.25,0.125,1.0]}
+{
+  "name": "home",
+  "at": [4.0, 5.0, 6.0],
+  "onMap": [4.0, 5.0],
+  "facing": [0.0, 0.0, 0.38268343, 0.9238795],
+  "tint": [0.5, 0.25, 0.125, 1.0]
+}
+true true true true
+[{"name":"a","at":[1.0,2.0,3.0],"tint":"#1c7ed6"},{"name":"b","at":[-1.0,0.0,0.25],"tint":[0.1,0.2,0.3,1.0]}]
+[-1.0, 0.0, 0.25] true
+true #ff8000 [1.0, 2.0, 3.0]
+#ff8000 true
+the JSON should be a vec3, three numbers in [ ], but it has 2 items.
+the JSON should be a vec3, three numbers in [ ], but it has 4 items.
+the JSON at [1] should be a number, but it's text.
+the JSON should be a vec3, three numbers in [ ], but it's an object.
+the JSON should be a vec3, three numbers in [ ], but it's text.
+the JSON at [0] is too big to keep in 32 bits.
+the JSON should be a vec3, three numbers in [ ], but it has 0 items.
+the JSON should be a vec2, two numbers in [ ], but it has 1 item.
+the JSON should be a rotation, four numbers in [ ] (or three degrees), but it has 2 items.
+the JSON is a rotation's four numbers, which should be 1 long together, but these are 2.0 long.
+the JSON is a rotation's four numbers, which should be 1 long together, but these are 0.0 long.
+the JSON at [0] should be a number, but it's a bool.
+the JSON should be a colour, "#rrggbb", "#rrggbbaa" or numbers in [ ], but it's "#12345".
+the JSON should be a colour, "#rrggbb", "#rrggbbaa" or numbers in [ ], but it's "red".
+the JSON at [0] is 1.5, but a colour's parts go from 0 to 1.
+the JSON at [1] is -0.5, but a colour's parts go from 0 to 1.
+the JSON should be a colour, "#rrggbb", "#rrggbbaa" or numbers in [ ], but it has 2 items.
+the JSON should be a colour, "#rrggbb", "#rrggbbaa" or numbers in [ ], but it's a number.
+the JSON at at should be a vec3, three numbers in [ ], but it has 2 items.
+the JSON at [1][2] should be a number, but it's text.
+JSON can't hold infinity.

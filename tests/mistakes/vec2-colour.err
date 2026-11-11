@@ -25,8 +25,6 @@ vec2-colour.lst:27:14  + works on numbers and text, but these are a colour and a
 vec2-colour.lst:28:18  a colour is three or four numbers from 0 to 1: red, green, blue and see-through, like [0.4, 0.7, 1.0] or [0.4, 0.7, 1.0, 0.5], but this is a string.
 vec2-colour.lst:28:23  a colour's parts go from 0 to 1, but its blue here is -0.5.
 vec2-colour.lst:29:1  Lust doesn't have a type called color. Did you mean colour? The types are int (and int8, int16, int32, uint8, uint16 and uint32), float, string, bool, vec3, vec2, rotation, colour, entity, arrays, maps, cMaps, hooks, classes and states.
-vec2-colour.lst:30:23  a vec2 can't be JSON. JSON holds numbers, text, bools, states, arrays, maps, cMaps and things made from classes.
-vec2-colour.lst:31:24  a colour can't be JSON. JSON holds numbers, text, bools, states, arrays, maps, cMaps and things made from classes.
 vec2-colour.lst:32:10  y is a vec2, but this is a vec3. Use its x and y: b.xy
 vec2-colour.lst:33:11  zz is a vec3, but this is a vec2. Give it a z: a:withZ(0)
 vec2-colour.lst:34:12  w2 is a float, but this is a colour.
@@ -35,4 +33,4 @@ vec2-colour.lst:35:17  % doesn't work on a vec2 and an int. % works on numbers o
 vec2-colour.lst:37:16  shade is a colour, but this is an int. teal is a name here, which comes before the colour word.
 vec2-colour.lst:38:5  Colour is one of Lust's built-in objects, so it can't be a name.
 
-36 mistakes. Nothing was run.
+34 mistakes. Nothing was run.

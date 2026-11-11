@@ -1683,6 +1683,10 @@ impl<'a> W<'a> {
             Ty::Float => "_L.jw.float".into(),
             Ty::Truth => "_L.jw.truth".into(),
             Ty::Str | Ty::State(_) => "_L.jw.string".into(),
+            Ty::Vec3 => "_L.jw.vec3".into(),
+            Ty::Vec2 => "_L.jw.vec2".into(),
+            Ty::Rot => "_L.jw.rotation".into(),
+            Ty::Colour => "_L.jw.colour".into(),
             Ty::Array(el) => format!("_L.jw_array({})", self.jenc(el)),
             Ty::Map(v) => format!("_L.jw_map({})", self.jenc(v)),
             Ty::CMap(cols) => {
@@ -1704,6 +1708,10 @@ impl<'a> W<'a> {
             Ty::Float => "_L.jr.float".into(),
             Ty::Truth => "_L.jr.truth".into(),
             Ty::Str => "_L.jr.string".into(),
+            Ty::Vec3 => "_L.jr.vec3".into(),
+            Ty::Vec2 => "_L.jr.vec2".into(),
+            Ty::Rot => "_L.jr.rotation".into(),
+            Ty::Colour => "_L.jr.colour".into(),
             Ty::State(s) => {
                 let opts: Vec<String> = self.info.states[*s].options.iter().map(|o| lua_string(o)).collect();
                 format!("_L.jr_state({{{}}})", opts.join(", "))
@@ -2030,6 +2038,10 @@ pub fn kind(t: &Ty) -> &'static str {
         Ty::Float => "float",
         Ty::Truth => "truth",
         Ty::State(_) => "state",
+        Ty::Vec3 => "vec3",
+        Ty::Vec2 => "vec2",
+        Ty::Rot => "rotation",
+        Ty::Colour => "colour",
         _ => "string",
     }
 }

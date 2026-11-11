@@ -1,0 +1,10 @@
+vector-db.lst:4:15  a cMap's first column is its key, so it has to be an int or a string: cMap(int id, …) or cMap(string name, …). at is a vec3.
+vector-db.lst:5:36  a table's columns hold numbers, text, bools, state options, vectors, rotations or colours, but floors is an int array.
+vector-db.lst:8:103  where can't use at: a vec3 is kept as text in the database, so it can't be compared there. Loop through the rows and check each at instead.
+vector-db.lst:11:25  where can't use paint: a colour is kept as text in the database, so it can't be compared there. Loop through the rows and check each paint instead.
+vector-db.lst:12:25  where can't use cell: a vec2 is kept as text in the database, so it can't be compared there. Loop through the rows and check each cell instead.
+vector-db.lst:13:25  where can't use facing: a rotation is kept as text in the database, so it can't be compared there. Loop through the rows and check each facing instead.
+vector-db.lst:14:27  orderBy can't order by at: it's a vec3, which has no smallest or biggest.
+vector-db.lst:15:27  orderBy can't order by paint: it's a colour, which has no smallest or biggest.
+
+8 mistakes. Nothing was run.

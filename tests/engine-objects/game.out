@@ -1,5 +1,12 @@
+Camp: ["fire", "cell", "facing", "glow"]
 Clock: ["day", "hour", "season"]
 Money: ["coins"]
 day Int(2), hour Float(1.0), Text("Spring"), coins Int(51)
 day Int(2), hour Float(6.0), Text("Spring"), coins Int(51)
+camp changed: true
 day Int(2), hour Float(1.0), Text("Spring"), coins Int(51)
+camp loaded exactly: true
+fire List([Float(0.0029154520016163588), Float(0.0058309040032327175), Float(0.008746355772018433)])
+cell List([Float(0.003999999724328518), Float(0.004999999888241291)])
+facing List([Float(0.0), Float(0.7604060173034668), Float(0.45922914147377014), Float(0.45922914147377014)])
+glow List([Float(0.3250423073768616), Float(0.293154776096344), Float(0.2671507000923157), Float(1.0)])

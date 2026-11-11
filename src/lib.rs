@@ -1096,3 +1096,99 @@ mod bitwise {
         assert!(start.elapsed().as_secs_f64() < 5.0, "{:?}", start.elapsed());
     }
 }
+
+#[cfg(all(test, feature = "cli"))]
+mod vector_json {
+    //! vec3s, vec2s, rotations and colours as JSON: each 32-bit number written as the shortest
+    //! text that reads back as the same bits, the same in runtime.lua and the Rust runtime.
+    use crate::native_rt as rt;
+    use mlua::{Function, Lua, Table};
+
+    /// f32s to try: edges, then a repeatable spread over every bit pattern that's a number.
+    fn floats() -> Vec<f32> {
+        let mut v = vec![
+            1.0,
+            -1.0,
+            0.1,
+            1.0 / 3.0,
+            16777216.0,
+            16777217.0,
+            1e-45,
+            f32::MIN_POSITIVE,
+            f32::MAX,
+            -f32::MAX,
+            1e21,
+            9.999999e20,
+            1e-7,
+            9.99e-8,
+            0.5,
+            123456789.0,
+        ];
+        let mut x: u64 = 0x9e37_79b9_7f4a_7c15;
+        while v.len() < 20000 {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            let f = f32::from_bits(x as u32);
+            if f.is_finite() {
+                v.push(f);
+            }
+        }
+        v
+    }
+
+    #[test]
+    fn numbers_are_shortest_exact_and_alike() {
+        let lua = Lua::new();
+        let l: Table = lua.load(crate::lua::RUNTIME).eval().unwrap();
+        let text: Function = l.get("f32json").unwrap();
+        for f in floats() {
+            let r = rt::f32json(f);
+            assert_eq!(text.call::<String>(f as f64).unwrap(), r, "{f:e}");
+            // It reads back as the same bits, through an f64, as Json:read does.
+            let back = r.parse::<f64>().unwrap() as f32;
+            assert_eq!(back.to_bits(), f.to_bits(), "{r}");
+            // And no shorter text would: one digit fewer doesn't read back.
+            let digits = r.trim_start_matches('-').split('e').next().unwrap().replace('.', "");
+            let digits = digits.trim_start_matches('0').trim_end_matches('0').len();
+            if digits > 1 {
+                let fewer = format!("{:.*e}", digits - 2, f as f64);
+                assert_ne!((fewer.parse::<f64>().unwrap() as f32).to_bits(), f.to_bits(), "{r} {fewer}");
+            }
+        }
+        assert_eq!(rt::f32json(0.0), "0.0");
+        assert_eq!(rt::f32json(-0.0), "-0.0");
+        assert_eq!(rt::f32json(1e-45), "1e-45");
+        assert_eq!(rt::f32json(f32::MAX), "3.4028235e38");
+        assert_eq!(rt::f32json(0.1), "0.1");
+        assert_eq!(rt::f32json(2.0), "2.0");
+        assert_eq!(rt::f32json(1e-7), "0.0000001");
+        assert_eq!(rt::f32json(1e21), "1e21");
+    }
+
+    #[test]
+    fn colours_are_hex_only_when_that_is_exact() {
+        assert_eq!(rt::jw_colour(&rt::rgb(58.0, 143.0, 42.0, 255.0), None), "\"#3a8f2a\"");
+        assert_eq!(rt::jw_colour(&rt::rgb(58.0, 143.0, 42.0, 128.0), None), "\"#3a8f2a80\"");
+        assert_eq!(rt::jw_colour(&rt::colour(0.4, 0.7, 1.0, 1.0), None), "[0.4,0.7,1.0,1.0]");
+        assert_eq!(rt::jw_colour(&rt::colour(0.4, 0.7, 1.0, 1.0), Some(0)), "[0.4, 0.7, 1.0, 1.0]");
+        // Every byte reads back from its hex as itself.
+        for b in 0..=255u32 {
+            let c = rt::rgb(b as f64, 255.0 - b as f64, 0.0, b as f64);
+            let j = rt::json_parse(&rt::jw_colour(&c, None));
+            assert_eq!(rt::jr_colour(&j, ""), c, "{b}");
+        }
+    }
+
+    #[test]
+    fn rotations_are_written_as_their_quaternion() {
+        for i in 0..500 {
+            let f = i as f64;
+            let q = rt::rot(f * 7.3, f * 1.9 - 90.0, f * 13.1);
+            let back = rt::jr_rotation(&rt::json_parse(&rt::jw_rotation(&q, None)), "");
+            assert_eq!(back, q);
+        }
+        // Three numbers are degrees.
+        assert_eq!(rt::jr_rotation(&rt::json_parse("[0, 0, 90]"), ""), rt::rot(0.0, 0.0, 90.0));
+    }
+}

@@ -18,6 +18,23 @@ object Clock {
     }
 }
 
+-- Its vectors, rotation and colour are saved and loaded exactly.
+object Camp {
+    has {
+        vec3 fire = [1, 2, 3];
+        vec2 cell = [4, 5];
+        rotation facing = [0, 0, 90];
+        colour glow = orange5;
+    }
+
+    method update(float dt) {
+        fire = fire / 7;
+        cell = cell * 0.1;
+        facing = facing * Rotation:around([1, 1, 0], 33);
+        glow = glow:lerp([0.1, 0.2, 0.3], 0.37);
+    }
+}
+
 object Money {
     has {
         int coins = 50;
@@ -43,5 +60,5 @@ component Farmer {
     }
 }
 
-pass Farmer, Clock, Money;
+pass Farmer, Clock, Money, Camp;
 end
