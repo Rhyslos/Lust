@@ -1,6 +1,7 @@
 //! Lust's standard library, as the checker sees it: what each part takes and gives back.
 //!
-//! - Built-in objects: `Maths`, `Files`, `Time` and `Json`, used like any object: `Maths:sqrt(2.0)`.
+//! - Built-in objects: `Maths`, `Files`, `Time`, `Json`, `Web` and `Random`, used like any object:
+//!   `Maths:sqrt(2.0)`. `Random[1, 6]` is its own piece of syntax; `Random:seed(42)` is a method.
 //! - Methods on text and arrays: `name:contains("a")`, `words:join(", ")`.
 //! - `.upper()`, `.lower()` and `.trim()` are conversions, like `.text()`.
 //!
@@ -9,7 +10,7 @@
 
 use crate::types::Ty;
 
-pub const OBJECTS: &[&str] = &["Maths", "Files", "Time", "Json", "Web"];
+pub const OBJECTS: &[&str] = &["Maths", "Files", "Time", "Json", "Web", "Random"];
 
 /// One library call: the runtime function, and what it takes and gives back.
 #[derive(Clone, Debug)]
@@ -40,7 +41,8 @@ fn numeric(args: &[Ty]) -> Option<Ty> {
 /// What the methods of each built-in object are, for messages.
 pub fn listing(obj: &str) -> &'static str {
     match obj {
-        "Maths" => "abs, min, max, clamp, round, floor, ceil, sqrt, power, sin, cos, tan, asin, acos, atan, atan2, degrees and radians, and Maths.pi",
+        "Maths" => "abs, min, max, clamp, round, floor, ceil, trunc, fraction, sign, sqrt, power, log, exp, sin, cos, tan, asin, acos, atan, atan2, degrees, radians, lerp, moveTowards, smoothstep, isFinite and noise, and Maths.pi and Maths.e",
+        "Random" => "seed, chance and direction, and Random[1, 6] for a number",
         "Files" => "read, write, append, exists, remove, list, makeFolder, chooseOpen, chooseSave and chooseFolder",
         "Time" => "now, clock, date, time, addDays, daysBetween, weekday and isDate",
         "Web" => "serve, request, fail, get and post",
@@ -70,8 +72,27 @@ pub fn object_method(obj: &str, m: &str, args: &[Ty]) -> Option<Result<Lib, Stri
             ),
             None => Err("Maths:clamp works on numbers: Maths:clamp(hp, 0, 100).".into()),
         },
-        ("Maths", "round" | "floor" | "ceil") => lib(&format!("maths_{m}"), vec![("number", f())], Int),
+        ("Maths", "sign") => match numeric(args) {
+            Some(t) => lib(&format!("maths_sign_{}", tname(&t)), vec![("number", t.clone())], t),
+            None => Err("Maths:sign works on a number.".into()),
+        },
+        ("Maths", "round" | "floor" | "ceil" | "trunc") => lib(&format!("maths_{m}"), vec![("number", f())], Int),
         ("Maths", "sqrt" | "sin" | "cos" | "tan" | "asin" | "acos" | "atan") => lib(&format!("maths_{m}"), vec![("number", f())], Float),
+        ("Maths", "log" | "exp" | "fraction") => lib(&format!("maths_{m}"), vec![("number", f())], Float),
+        ("Maths", "isFinite") => lib("maths_isFinite", vec![("number", f())], Truth),
+        ("Maths", "lerp") => lib("maths_lerp", vec![("a", f()), ("b", f()), ("amount", f())], Float),
+        ("Maths", "moveTowards") => lib("maths_moveTowards", vec![("current", f()), ("target", f()), ("step", f())], Float),
+        ("Maths", "smoothstep") => lib("maths_smoothstep", vec![("low", f()), ("high", f()), ("x", f())], Float),
+        // Two or three numbers: noise across a flat map, or through a space.
+        ("Maths", "noise") if !(2..=3).contains(&args.len()) => Err(format!(
+            "Maths:noise takes two numbers (x, y) or three (x, y, z), but gets {}.",
+            args.len()
+        )),
+        ("Maths", "noise") if args.len() == 3 => lib("maths_noise3", vec![("x", f()), ("y", f()), ("z", f())], Float),
+        ("Maths", "noise") => lib("maths_noise", vec![("x", f()), ("y", f())], Float),
+        ("Random", "seed") => lib("random_seed", vec![("seed", Int)], Void),
+        ("Random", "chance") => lib("random_chance", vec![("chance", f())], Truth),
+        ("Random", "direction") => lib("random_direction", vec![], Vec3),
         ("Maths", "atan2") => lib("maths_atan2", vec![("y", f()), ("x", f())], Float),
         ("Maths", "degrees") => lib("maths_degrees", vec![("radians", f())], Float),
         ("Maths", "radians") => lib("maths_radians", vec![("degrees", f())], Float),
@@ -146,6 +167,15 @@ pub fn value_method(t: &Ty, m: &str) -> Option<Result<Lib, String>> {
             }
         }
         (Array(_), "reverse") => lib("array_reverse", vec![], Void),
+        (Array(_), "shuffle") => lib("array_shuffle", vec![], Void),
+        (Array(el), "pick") => lib("array_pick", vec![], (**el).clone()),
+        (Array(el), "sum" | "average" | "smallest" | "largest") => match **el {
+            Int | Float => {
+                let ret = if m == "average" { Float } else { (**el).clone() };
+                lib(&format!("array_{m}_{}", tname(el)), vec![], ret)
+            }
+            _ => Err(format!(":{m} works on arrays of numbers (ints or floats).")),
+        },
         _ => return None,
     })
 }

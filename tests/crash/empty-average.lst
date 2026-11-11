@@ -1,0 +1,6 @@
+-- An empty array has no average, so asking stops the program on that line.
+int array scores = [];
+print("before");
+print(scores:average());
+print("never");
+end

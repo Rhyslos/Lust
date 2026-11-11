@@ -1,0 +1,14 @@
+2 6 6 0.68206647630897
+Di Di Cy
+[3, 1, 9, 10, 2, 4, 5, 7, 6, 8]
+[5] [] 5
+true true
+false true false
+[0.3472505, 0.5940621, 0.7256082] true
+[0.3570091, 0.7789792, -0.5154958]
+[0.9322712, -0.3164477, -0.1753033]
+[0.2859771, -0.139041, -0.9480953]
+true 60
+the array has no items, so there's nothing to pick.
+chance takes a number from 0 to 1, but this is 1.5.
+chance takes a number from 0 to 1, but this is -0.1.

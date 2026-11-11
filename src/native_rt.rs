@@ -697,6 +697,29 @@ pub fn frandom(lo: f64, hi: f64) -> f64 {
     lo + n * (hi - lo)
 }
 
+/// Random:seed(42): from here on, the same numbers every run, as LUST_SEED gives.
+pub fn random_seed(s: i64) {
+    RNG.with(|c| c.set((s as u64).wrapping_mul(0x9E3779B97F4A7C15) | 1));
+}
+
+/// Random:chance(0.25): true about a quarter of the time. It always rolls, even for 0 and 1, so
+/// the numbers after it are the same whatever the chance was.
+pub fn random_chance(p: f64) -> bool {
+    if !(0.0..=1.0).contains(&p) {
+        fail(format!("chance takes a number from 0 to 1, but this is {}.", ftext(p)));
+    }
+    frandom(0.0, 1.0) < p
+}
+
+/// Random:direction(): a point on a ball of size 1, every way equally likely. The same steps as
+/// the Lua runtime's, so both give the same vec3.
+pub fn random_direction() -> Vec3 {
+    let z = frandom(-1.0, 1.0);
+    let a = frandom(0.0, 2.0 * std::f64::consts::PI);
+    let r = (1.0 - z * z).sqrt();
+    vec3(r * a.cos(), r * a.sin(), z)
+}
+
 // ----- states: options are their full names, like "ActiveGame.Combat" -----
 
 /// Is a the option b, or inside it?
@@ -1151,6 +1174,76 @@ pub fn array_sort<T: PartialOrd>(a: Arr<T>) {
 pub fn array_reverse<T>(a: Arr<T>) {
     a.borrow_mut().reverse();
 }
+/// Shuffled in place, each item swapped with one at or before it (Fisher and Yates), from the
+/// end down, the way the Lua runtime does it.
+pub fn array_shuffle<T>(a: Arr<T>) {
+    let mut v = a.borrow_mut();
+    for i in (1..v.len()).rev() {
+        let j = random(0, i as i64) as usize;
+        v.swap(i, j);
+    }
+}
+pub fn array_pick<T: Clone>(a: Arr<T>) -> T {
+    let n = a.borrow().len();
+    if n == 0 {
+        fail("the array has no items, so there's nothing to pick.".into());
+    }
+    let i = random(0, n as i64 - 1) as usize;
+    let v = a.borrow()[i].clone();
+    v
+}
+pub fn array_sum_int(a: Arr<i64>) -> i64 {
+    let mut s = 0i64;
+    for x in a.borrow().iter() {
+        s += *x;
+    }
+    s
+}
+pub fn array_sum_float(a: Arr<f64>) -> f64 {
+    let mut s = 0.0;
+    for x in a.borrow().iter() {
+        s += *x;
+    }
+    s
+}
+fn none<T>(a: &Arr<T>, what: &str) {
+    if a.borrow().is_empty() {
+        fail(format!("the array has no items, so it has no {what}."));
+    }
+}
+pub fn array_average_int(a: Arr<i64>) -> f64 {
+    none(&a, "average");
+    let n = a.borrow().len() as f64;
+    array_sum_int(a) as f64 / n
+}
+pub fn array_average_float(a: Arr<f64>) -> f64 {
+    none(&a, "average");
+    let n = a.borrow().len() as f64;
+    array_sum_float(a) / n
+}
+fn pick_by<T: PartialOrd + Copy>(a: Arr<T>, what: &str, better: fn(&T, &T) -> bool) -> T {
+    none(&a, what);
+    let v = a.borrow();
+    let mut m = v[0];
+    for x in v.iter().skip(1) {
+        if better(x, &m) {
+            m = *x;
+        }
+    }
+    m
+}
+pub fn array_smallest_int(a: Arr<i64>) -> i64 {
+    pick_by(a, "smallest item", |x, m| x < m)
+}
+pub fn array_largest_int(a: Arr<i64>) -> i64 {
+    pick_by(a, "largest item", |x, m| x > m)
+}
+pub fn array_smallest_float(a: Arr<f64>) -> f64 {
+    pick_by(a, "smallest item", |x, m| x < m)
+}
+pub fn array_largest_float(a: Arr<f64>) -> f64 {
+    pick_by(a, "largest item", |x, m| x > m)
+}
 
 // Maths.
 pub fn maths_abs_int(x: i64) -> i64 {
@@ -1256,6 +1349,156 @@ pub fn maths_radians(d: f64) -> f64 {
 }
 pub fn maths_pi() -> f64 {
     std::f64::consts::PI
+}
+pub fn maths_e() -> f64 {
+    std::f64::consts::E
+}
+pub fn maths_sign_int(x: i64) -> i64 {
+    x.signum()
+}
+pub fn maths_sign_float(x: f64) -> f64 {
+    if x > 0.0 {
+        1.0
+    } else if x < 0.0 {
+        -1.0
+    } else if x == 0.0 {
+        0.0
+    } else {
+        x
+    }
+}
+pub fn maths_trunc(x: f64) -> i64 {
+    toint(x)
+}
+/// What's after the point, with x's sign. + 0.0 turns -0.0 (from -2.0) into 0.0.
+pub fn maths_fraction(x: f64) -> f64 {
+    x % 1.0 + 0.0
+}
+pub fn maths_log(x: f64) -> f64 {
+    if x <= 0.0 {
+        fail(format!("there's no log of zero or a number below zero ({}).", ftext(x)));
+    }
+    x.ln()
+}
+pub fn maths_exp(x: f64) -> f64 {
+    x.exp()
+}
+pub fn maths_isFinite(x: f64) -> bool {
+    x.is_finite()
+}
+pub fn maths_lerp(a: f64, b: f64, t: f64) -> f64 {
+    a + (b - a) * t
+}
+pub fn maths_moveTowards(c: f64, t: f64, step: f64) -> f64 {
+    if step < 0.0 {
+        fail(format!("moveTowards's step can't be below zero, but this is {}.", ftext(step)));
+    }
+    if (t - c).abs() <= step {
+        t
+    } else if t > c {
+        c + step
+    } else {
+        c - step
+    }
+}
+pub fn maths_smoothstep(lo: f64, hi: f64, x: f64) -> f64 {
+    if lo == hi {
+        fail(format!("smoothstep needs low and high to be different, but both are {}.", ftext(lo)));
+    }
+    let mut t = (x - lo) / (hi - lo);
+    if t < 0.0 {
+        t = 0.0;
+    } else if t > 1.0 {
+        t = 1.0;
+    }
+    t * t * (3.0 - 2.0 * t)
+}
+/// Ken Perlin's own table of 0 to 255, for his improved noise (2002).
+const PERM: [u8; 256] = [
+    151, 160, 137, 91, 90, 15, 131, 13, 201, 95, 96, 53, 194, 233, 7, 225, 140, 36, 103, 30, 69, 142, 8, 99, 37, 240,
+    21, 10, 23, 190, 6, 148, 247, 120, 234, 75, 0, 26, 197, 62, 94, 252, 219, 203, 117, 35, 11, 32, 57, 177, 33, 88,
+    237, 149, 56, 87, 174, 20, 125, 136, 171, 168, 68, 175, 74, 165, 71, 134, 139, 48, 27, 166, 77, 146, 158, 231, 83,
+    111, 229, 122, 60, 211, 133, 230, 220, 105, 92, 41, 55, 46, 245, 40, 244, 102, 143, 54, 65, 25, 63, 161, 1, 216, 80,
+    73, 209, 76, 132, 187, 208, 89, 18, 169, 200, 196, 135, 130, 116, 188, 159, 86, 164, 100, 109, 198, 173, 186, 3, 64,
+    52, 217, 226, 250, 124, 123, 5, 202, 38, 147, 118, 126, 255, 82, 85, 212, 207, 206, 59, 227, 47, 16, 58, 17, 182,
+    189, 28, 42, 223, 183, 170, 213, 119, 248, 152, 2, 44, 154, 163, 70, 221, 153, 101, 155, 167, 43, 172, 9, 129, 22,
+    39, 253, 19, 98, 108, 110, 79, 113, 224, 232, 178, 185, 112, 104, 218, 246, 97, 228, 251, 34, 242, 193, 238, 210,
+    144, 12, 191, 179, 162, 241, 81, 51, 145, 235, 249, 14, 239, 107, 49, 192, 214, 31, 181, 199, 106, 157, 184, 84, 204,
+    176, 115, 121, 50, 45, 127, 4, 150, 254, 138, 236, 205, 93, 222, 114, 67, 29, 24, 72, 243, 141, 128, 195, 78, 66,
+    215, 61, 156, 180,
+];
+fn perm(i: usize) -> usize {
+    PERM[i & 255] as usize
+}
+fn fade(t: f64) -> f64 {
+    t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
+}
+fn nlerp(t: f64, a: f64, b: f64) -> f64 {
+    a + t * (b - a)
+}
+fn grad(h: usize, x: f64, y: f64, z: f64) -> f64 {
+    let h = h & 15;
+    let mut u = if h < 8 { x } else { y };
+    let mut v = if h < 4 {
+        y
+    } else if h == 12 || h == 14 {
+        x
+    } else {
+        z
+    };
+    if h & 1 == 1 {
+        u = -u;
+    }
+    if h & 2 == 2 {
+        v = -v;
+    }
+    u + v
+}
+fn ordinary(n: f64) {
+    if !n.is_finite() {
+        fail(format!("noise needs ordinary numbers, but this is {}.", ftext(n)));
+    }
+}
+/// Perlin noise: smooth hills and valleys from -1 to 1, the same for the same numbers on every
+/// run. The same steps as the Lua runtime's, so both give the same number.
+fn perlin(x: f64, y: f64, z: f64) -> f64 {
+    let (fx, fy, fz) = (x.floor(), y.floor(), z.floor());
+    let (xi, yi, zi) = (
+        (fx.rem_euclid(256.0)) as usize,
+        (fy.rem_euclid(256.0)) as usize,
+        (fz.rem_euclid(256.0)) as usize,
+    );
+    let (x, y, z) = (x - fx, y - fy, z - fz);
+    let (u, v, w) = (fade(x), fade(y), fade(z));
+    let a = perm(xi) + yi;
+    let (aa, ab) = (perm(a) + zi, perm(a + 1) + zi);
+    let b = perm(xi + 1) + yi;
+    let (ba, bb) = (perm(b) + zi, perm(b + 1) + zi);
+    let r = nlerp(
+        w,
+        nlerp(
+            v,
+            nlerp(u, grad(perm(aa), x, y, z), grad(perm(ba), x - 1.0, y, z)),
+            nlerp(u, grad(perm(ab), x, y - 1.0, z), grad(perm(bb), x - 1.0, y - 1.0, z)),
+        ),
+        nlerp(
+            v,
+            nlerp(u, grad(perm(aa + 1), x, y, z - 1.0), grad(perm(ba + 1), x - 1.0, y, z - 1.0)),
+            nlerp(u, grad(perm(ab + 1), x, y - 1.0, z - 1.0), grad(perm(bb + 1), x - 1.0, y - 1.0, z - 1.0)),
+        ),
+    );
+    r.clamp(-1.0, 1.0)
+}
+pub fn maths_noise(x: f64, y: f64) -> f64 {
+    ordinary(x);
+    ordinary(y);
+    perlin(x, y, 0.0)
+}
+pub fn maths_noise3(x: f64, y: f64, z: f64) -> f64 {
+    ordinary(x);
+    ordinary(y);
+    ordinary(z);
+    perlin(x, y, z)
 }
 
 // Files. The fs_ ones are also what `lust run` gives Lua, so both say the same things.

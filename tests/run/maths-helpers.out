@@ -1,0 +1,27 @@
+2.5 25.0 15.0 2.5
+1 -1 0 1.0 -1.0 0.0 0.0
+-1 -1.0
+0.0 1.0 2.30258509299405 -0.693147180559945
+1.0 2.71828182845905 0.135335283236613 36315.5026742466
+2.71828182845905 7.38905609893065
+2 -2 0 0 7
+0.75 -0.75 0.0 0.0 0.0
+0.3
+0.6
+0.9
+1.0
+4.0 2.0 3.0 -1.5
+0.0 0.0 0.15625 0.5 1.0
+0.15625 0.84375
+infinity -infinity not a number
+true false false false true
+0.0 0.0 -0.25 0.0186165604800002 0.565137572087
+0.351229248781107 0.178691583580111 -0.875 0.144636631011963
+true
+true true true true -79.5487746471601
+there's no log of zero or a number below zero (0.0).
+there's no log of zero or a number below zero (-2.0).
+moveTowards's step can't be below zero, but this is -0.5.
+smoothstep needs low and high to be different, but both are 2.0.
+infinity is too big to be an int.
+noise needs ordinary numbers, but this is infinity.

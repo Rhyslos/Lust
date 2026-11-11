@@ -1,0 +1,54 @@
+-- Random:seed, pick, shuffle, chance and direction roll the same numbers in lust run and built.
+Random:seed(42);
+print(Random[1, 6], Random[1, 6], Random[1, 6], Random[0.0, 1.0]);
+
+string array names = ["Ada", "Bo", "Cy", "Di"];
+print(names:pick(), names:pick(), names:pick());
+int array cards = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+cards:shuffle();
+print(cards);
+int array lone = [5];
+lone:shuffle();
+int array empty = [];
+empty:shuffle();
+print(lone, empty, lone:pick());
+
+int hits = 0;
+loop 1000 {
+    is Random:chance(0.25)? then {
+        hits += 1;
+    }
+}
+print(hits > 200, hits < 300);
+print(Random:chance(0), Random:chance(1), Random:chance(0.5));
+
+vec3 d = Random:direction();
+print(d, Maths:abs(d:length() - 1.0) < 0.000001);
+loop 3 {
+    print(Random:direction());
+}
+
+-- The same seed gives the same numbers again.
+Random:seed(42);
+int a = Random[1, 1000];
+Random:seed(42);
+int b = Random[1, 1000];
+Random:seed(-7);
+print(a == b, Random[1, 1000]);
+
+try {
+    print(empty:pick());
+} error (string message) {
+    print(message);
+}
+try {
+    print(Random:chance(1.5));
+} error (string message) {
+    print(message);
+}
+try {
+    print(Random:chance(-0.1));
+} error (string message) {
+    print(message);
+}
+end

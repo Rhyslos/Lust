@@ -1,0 +1,25 @@
+maths-helpers.lst:5:19  :sum works on arrays of numbers (ints or floats).
+maths-helpers.lst:6:19  :average works on arrays of numbers (ints or floats).
+maths-helpers.lst:7:20  :smallest works on arrays of numbers (ints or floats).
+maths-helpers.lst:8:18  :largest works on arrays of numbers (ints or floats).
+maths-helpers.lst:9:17  alsoWrong is an int, but this is a float. Use .int() to drop the part after the point.
+maths-helpers.lst:10:22  Maths:lerp's a is a float, but this is a string. Use .float() to turn text into a number.
+maths-helpers.lst:11:15  Maths:sign works on a number.
+maths-helpers.lst:12:9  c is an int, but this is a float. Use .int() to drop the part after the point.
+maths-helpers.lst:13:17  Maths:noise takes two numbers (x, y) or three (x, y, z), but gets 4.
+maths-helpers.lst:14:23  Maths:noise's x is a float, but this is a string. Use .float() to turn text into a number.
+maths-helpers.lst:15:25  Maths:isFinite's number is a float, but this is a string. Use .float() to turn text into a number.
+maths-helpers.lst:16:17  e is a number, not a method, so it's written with a dot: Maths.e
+maths-helpers.lst:17:11  Maths:smoothstep takes 3 values, but gets 2.
+maths-helpers.lst:18:13  Random:seed's seed is an int, but this is a float. Use .int() to drop the part after the point.
+maths-helpers.lst:19:13  Random:seed's seed is an int, but this is a string. Use .int() to turn text into a number.
+maths-helpers.lst:20:24  Random:chance's chance is a float, but this is a string. Use .float() to turn text into a number.
+maths-helpers.lst:21:10  Random:direction takes 0 values, but gets 1.
+maths-helpers.lst:22:11  k is a float, but this is a vec3.
+maths-helpers.lst:23:8  Random has no method called roll. It has seed, chance and direction, and Random[1, 6] for a number.
+maths-helpers.lst:24:9  l is an int, but this is a string. Use .int() to turn text into a number.
+maths-helpers.lst:25:7  shuffle takes 0, but gets 1. It takes: nothing.
+maths-helpers.lst:26:11  Maths:moveTowards takes 3 values, but gets 2.
+maths-helpers.lst:27:21  Maths:trunc's number is a float, but this is a string. Use .float() to turn text into a number.
+
+23 mistakes. Nothing was run.

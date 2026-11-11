@@ -1,0 +1,74 @@
+-- More Maths: lerp, sign, log, exp, trunc, fraction, e, moveTowards, smoothstep, isFinite and noise.
+print(Maths:lerp(0, 10, 0.25), Maths:lerp(10, 20, 1.5), Maths:lerp(5, -5, -1), Maths:lerp(2.5, 2.5, 0.3));
+print(Maths:sign(7), Maths:sign(-3), Maths:sign(0), Maths:sign(2.5), Maths:sign(-0.1), Maths:sign(0.0), Maths:sign(-0.0));
+int whole = Maths:sign(-12);
+float part = Maths:sign(-12.0);
+print(whole, part);
+print(Maths:log(1), Maths:log(Maths.e), Maths:log(10), Maths:log(0.5));
+print(Maths:exp(0), Maths:exp(1), Maths:exp(-2), Maths:exp(10.5));
+print(Maths.e, Maths:power(Maths.e, 2));
+print(Maths:trunc(2.75), Maths:trunc(-2.75), Maths:trunc(0.0), Maths:trunc(-0.5), Maths:trunc(7));
+print(Maths:fraction(2.75), Maths:fraction(-2.75), Maths:fraction(-2.0), Maths:fraction(0.0), Maths:fraction(3));
+
+-- moveTowards: a step at a time, never past the target.
+float x = 0.0;
+loop 4 {
+    x = Maths:moveTowards(x, 1.0, 0.3);
+    print(x);
+}
+print(Maths:moveTowards(5, 2, 1), Maths:moveTowards(5, 2, 10), Maths:moveTowards(3, 3, 0), Maths:moveTowards(-1, -2, 0.5));
+
+print(Maths:smoothstep(0, 1, -1), Maths:smoothstep(0, 1, 0), Maths:smoothstep(0, 1, 0.25), Maths:smoothstep(0, 1, 0.5), Maths:smoothstep(0, 1, 2));
+print(Maths:smoothstep(10, 20, 12.5), Maths:smoothstep(1, 0, 0.25));
+
+float big = 1.0 / 0.0;
+float notNumber = big - big;
+print(big, -big, notNumber);
+print(Maths:isFinite(1.5), Maths:isFinite(big), Maths:isFinite(-big), Maths:isFinite(notNumber), Maths:isFinite(0));
+
+-- Noise: the same numbers for the same place, between -1 and 1.
+print(Maths:noise(0, 0), Maths:noise(1, 2), Maths:noise(0.5, 0.5), Maths:noise(1.3, 4.7), Maths:noise(-3.21, 7.5));
+print(Maths:noise(0.1, 0.2, 0.3), Maths:noise(12.34, -5.67, 8.9), Maths:noise(-0.5, -0.5, -0.5), Maths:noise(300.25, 1000.75, 2.5));
+print(Maths:noise(1.3, 4.7) == Maths:noise(1.3, 4.7, 0));
+float lowest = 1.0;
+float highest = -1.0;
+float total = 0.0;
+loop (int i = 0; i < 2000; i += 1) {
+    float n = Maths:noise(i * 0.137, i * 0.071, i * 0.013);
+    lowest = Maths:min(lowest, n);
+    highest = Maths:max(highest, n);
+    total = total + n;
+}
+print(lowest >= -1.0, highest <= 1.0, lowest < -0.3, highest > 0.3, total);
+
+try {
+    print(Maths:log(0));
+} error (string message) {
+    print(message);
+}
+try {
+    print(Maths:log(-2));
+} error (string message) {
+    print(message);
+}
+try {
+    print(Maths:moveTowards(0, 1, -0.5));
+} error (string message) {
+    print(message);
+}
+try {
+    print(Maths:smoothstep(2, 2, 1));
+} error (string message) {
+    print(message);
+}
+try {
+    print(Maths:trunc(big));
+} error (string message) {
+    print(message);
+}
+try {
+    print(Maths:noise(big, 1));
+} error (string message) {
+    print(message);
+}
+end

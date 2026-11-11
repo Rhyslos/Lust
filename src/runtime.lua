@@ -374,6 +374,26 @@ function L.frandom(lo, hi)
   seed()
   return lo + math.random() * (hi - lo)
 end
+-- Random:seed(42): from here on, the same numbers every run, as LUST_SEED gives.
+function L.random_seed(s)
+  seeded = true
+  if RHOST and RHOST.seed then return RHOST.seed(s) end
+  math.randomseed(s)
+end
+-- Random:chance(0.25): true about a quarter of the time. It always rolls, even for 0 and 1, so
+-- the numbers after it are the same whatever the chance was.
+function L.random_chance(p)
+  if not (p >= 0 and p <= 1) then error("chance takes a number from 0 to 1, but this is " .. L.ftext(p) .. ".", 2) end
+  return L.frandom(0, 1) < p
+end
+-- Random:direction(): a point on a ball of size 1, every way equally likely. The same steps as
+-- the Rust runtime's, so both give the same vec3.
+function L.random_direction()
+  local z = L.frandom(-1, 1)
+  local a = L.frandom(0, 2 * math.pi)
+  local r = sqrt(1 - z * z)
+  return vec(r * math.cos(a), r * math.sin(a), z)
+end
 
 -- ----- arrays: { n = count, … }, counted from 0 in Lust -----
 
@@ -968,6 +988,52 @@ function L.array_reverse(a)
   local n = a.n
   for i = 1, floor(n / 2) do a[i], a[n - i + 1] = a[n - i + 1], a[i] end
 end
+-- Shuffled in place, each item swapped with one at or before it (Fisher and Yates), from the
+-- end down, the way the Rust runtime does it.
+function L.array_shuffle(a)
+  for i = a.n, 2, -1 do
+    local j = L.random(0, i - 1) + 1
+    a[i], a[j] = a[j], a[i]
+  end
+end
+function L.array_pick(a)
+  if a.n == 0 then error("the array has no items, so there's nothing to pick.", 2) end
+  return a[L.random(0, a.n - 1) + 1]
+end
+function L.array_sum_int(a)
+  local s = 0
+  for i = 1, a.n do s = s + a[i] end
+  return s
+end
+function L.array_sum_float(a)
+  local s = 0.0
+  for i = 1, a.n do s = s + a[i] end
+  return s
+end
+local function none(a, what)
+  if a.n == 0 then error("the array has no items, so it has no " .. what .. ".", 3) end
+end
+function L.array_average_int(a)
+  none(a, "average")
+  return L.array_sum_int(a) / a.n
+end
+function L.array_average_float(a)
+  none(a, "average")
+  return L.array_sum_float(a) / a.n
+end
+function L.array_smallest_int(a)
+  none(a, "smallest item")
+  local m = a[1]
+  for i = 2, a.n do if a[i] < m then m = a[i] end end
+  return m
+end
+function L.array_largest_int(a)
+  none(a, "largest item")
+  local m = a[1]
+  for i = 2, a.n do if a[i] > m then m = a[i] end end
+  return m
+end
+L.array_smallest_float, L.array_largest_float = L.array_smallest_int, L.array_largest_int
 
 -- Maths.
 function L.maths_abs_int(x) return math.abs(x) end
@@ -1010,6 +1076,95 @@ function L.maths_atan2(y, x) return math.atan2(y, x) end
 function L.maths_degrees(r) return r * 180 / math.pi end
 function L.maths_radians(d) return d * math.pi / 180 end
 function L.maths_pi() return math.pi end
+function L.maths_e() return 2.718281828459045 end
+function L.maths_sign_int(x)
+  if x > 0 then return 1 elseif x < 0 then return -1 end
+  return 0
+end
+function L.maths_sign_float(x)
+  if x > 0 then return 1.0 elseif x < 0 then return -1.0 elseif x == 0 then return 0.0 end
+  return x
+end
+L.maths_trunc = L.toint
+-- What's after the point, with x's sign. + 0.0 turns -0.0 (from -2.0) into 0.0.
+function L.maths_fraction(x) return math.fmod(x, 1) + 0.0 end
+function L.maths_log(x)
+  if x <= 0 then error("there's no log of zero or a number below zero (" .. L.ftext(x) .. ").", 2) end
+  return math.log(x)
+end
+function L.maths_exp(x) return math.exp(x) end
+function L.maths_isFinite(x) return x == x and x ~= math.huge and x ~= -math.huge end
+function L.maths_lerp(a, b, t) return a + (b - a) * t end
+function L.maths_moveTowards(c, t, step)
+  if step < 0 then error("moveTowards's step can't be below zero, but this is " .. L.ftext(step) .. ".", 2) end
+  if math.abs(t - c) <= step then return t end
+  if t > c then return c + step end
+  return c - step
+end
+function L.maths_smoothstep(lo, hi, x)
+  if lo == hi then error("smoothstep needs low and high to be different, but both are " .. L.ftext(lo) .. ".", 2) end
+  local t = (x - lo) / (hi - lo)
+  if t < 0 then t = 0 elseif t > 1 then t = 1 end
+  return t * t * (3 - 2 * t)
+end
+-- Perlin noise (his improved noise, 2002): smooth hills and valleys from -1 to 1, the same for
+-- the same numbers on every run. Ken Perlin's own table of 0 to 255, twice over.
+local PERM = {}
+do
+  local p = { 151, 160, 137, 91, 90, 15, 131, 13, 201, 95, 96, 53, 194, 233, 7, 225, 140, 36, 103, 30, 69, 142,
+    8, 99, 37, 240, 21, 10, 23, 190, 6, 148, 247, 120, 234, 75, 0, 26, 197, 62, 94, 252, 219, 203, 117, 35, 11, 32,
+    57, 177, 33, 88, 237, 149, 56, 87, 174, 20, 125, 136, 171, 168, 68, 175, 74, 165, 71, 134, 139, 48, 27, 166, 77,
+    146, 158, 231, 83, 111, 229, 122, 60, 211, 133, 230, 220, 105, 92, 41, 55, 46, 245, 40, 244, 102, 143, 54, 65,
+    25, 63, 161, 1, 216, 80, 73, 209, 76, 132, 187, 208, 89, 18, 169, 200, 196, 135, 130, 116, 188, 159, 86, 164, 100,
+    109, 198, 173, 186, 3, 64, 52, 217, 226, 250, 124, 123, 5, 202, 38, 147, 118, 126, 255, 82, 85, 212, 207, 206, 59,
+    227, 47, 16, 58, 17, 182, 189, 28, 42, 223, 183, 170, 213, 119, 248, 152, 2, 44, 154, 163, 70, 221, 153, 101, 155,
+    167, 43, 172, 9, 129, 22, 39, 253, 19, 98, 108, 110, 79, 113, 224, 232, 178, 185, 112, 104, 218, 246, 97, 228, 251,
+    34, 242, 193, 238, 210, 144, 12, 191, 179, 162, 241, 81, 51, 145, 235, 249, 14, 239, 107, 49, 192, 214, 31, 181,
+    199, 106, 157, 184, 84, 204, 176, 115, 121, 50, 45, 127, 4, 150, 254, 138, 236, 205, 93, 222, 114, 67, 29, 24, 72,
+    243, 141, 128, 195, 78, 66, 215, 61, 156, 180 }
+  for i = 0, 255 do PERM[i] = p[i + 1]; PERM[i + 256] = p[i + 1] end
+end
+local function fade(t) return t * t * t * (t * (t * 6 - 15) + 10) end
+local function nlerp(t, a, b) return a + t * (b - a) end
+local function grad(h, x, y, z)
+  h = h % 16
+  local u, v
+  if h < 8 then u = x else u = y end
+  if h < 4 then v = y elseif h == 12 or h == 14 then v = x else v = z end
+  if h % 2 == 1 then u = -u end
+  if floor(h / 2) % 2 == 1 then v = -v end
+  return u + v
+end
+local function ordinary(n)
+  if n ~= n or n == math.huge or n == -math.huge then
+    error("noise needs ordinary numbers, but this is " .. L.ftext(n) .. ".", 3)
+  end
+end
+local function perlin(x, y, z)
+  local fx, fy, fz = floor(x), floor(y), floor(z)
+  local X, Y, Z = fx % 256, fy % 256, fz % 256
+  x, y, z = x - fx, y - fy, z - fz
+  local u, v, w = fade(x), fade(y), fade(z)
+  local A = PERM[X] + Y
+  local AA, AB = PERM[A] + Z, PERM[A + 1] + Z
+  local B = PERM[X + 1] + Y
+  local BA, BB = PERM[B] + Z, PERM[B + 1] + Z
+  local r = nlerp(w,
+    nlerp(v, nlerp(u, grad(PERM[AA], x, y, z), grad(PERM[BA], x - 1, y, z)),
+      nlerp(u, grad(PERM[AB], x, y - 1, z), grad(PERM[BB], x - 1, y - 1, z))),
+    nlerp(v, nlerp(u, grad(PERM[AA + 1], x, y, z - 1), grad(PERM[BA + 1], x - 1, y, z - 1)),
+      nlerp(u, grad(PERM[AB + 1], x, y - 1, z - 1), grad(PERM[BB + 1], x - 1, y - 1, z - 1))))
+  if r > 1 then return 1.0 elseif r < -1 then return -1.0 end
+  return r
+end
+function L.maths_noise3(x, y, z)
+  ordinary(x); ordinary(y); ordinary(z)
+  return perlin(x, y, z)
+end
+function L.maths_noise(x, y)
+  ordinary(x); ordinary(y)
+  return perlin(x, y, 0)
+end
 
 -- Files.
 local function needs(what)

@@ -2,7 +2,7 @@
 
 This file is for programs that use Lust as a library: Solis first. When an engine updates its pinned Lust, it reads the section for each version it skips over, newest at the bottom, and does what **The engine does** says. The full rules are in [LUST.md](LUST.md), section 21.
 
-An engine moving from alpha 48 to alpha 59 or later reads everything below.
+An engine moving from alpha 48 to alpha 62 or later reads everything below.
 
 ## alpha 49: states in native methods
 
@@ -77,3 +77,11 @@ An engine moving from alpha 48 to alpha 59 or later reads everything below.
 - Files in the host folders still come with every program, for their `entity` methods. But a component or object in one (a ready-made component in `solis/kit/`, say) is part of the game only once the game fetches its file, directly or through another file.
 - Before, every one of them joined every game: they showed among its components, and a game's own component of the same name clashed with them.
 - **The engine does:** nothing. A game that used a ready-made component without fetching it now has to fetch it, as the manual already says.
+
+## alpha 62: number helpers, array maths and random tools
+
+- New calls that need nothing from the engine: `Maths:lerp`, `sign`, `log`, `exp`, `trunc`, `fraction`, `moveTowards`, `smoothstep`, `isFinite`, `noise` and `Maths.e`; `sum`, `average`, `smallest`, `largest`, `pick` and `shuffle` on arrays. They use only Lua's standard `math` library, which Luau has.
+- `Random:seed(n)`, `Random:chance(p)` and `Random:direction()` (a vec3) use the same rolls as `Random[a, b]`.
+- **Lua:** an engine that gives Lust its own rolls through `LUST_HOST.random` and `LUST_HOST.frandom` should also give `LUST_HOST.seed(n)`, so `Random:seed` restarts them. Without it, `Random:seed` seeds Lua's own `math.random`.
+- `Maths`, `Files`, `Time`, `Json`, `Web` and `Random` stay names a game can't use.
+- **The engine does:** nothing, unless it gives Lust its own random rolls (above).

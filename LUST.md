@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (alpha 59):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (alpha 62):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -210,6 +210,7 @@ string mood = either hp > 10? "happy" or "grumpy";
 - `+ - * / %` work on `int` and `float`. `( )` groups.
 - `int / int` gives an `int`: `7 / 2` is `3`. Use `7.float() / 2` for `3.5`.
 - **Below zero:** `int / int` drops what's after the point, towards zero: `-7 / 2` is `-3`. `%` takes the sign of the number on its left: `-7 % 3` is `-1` and `7 % -3` is `1` (`-7.5 % 2` is `-1.5`). `Maths:round` takes a half away from zero: `Maths:round(2.5)` is `3` and `Maths:round(-2.5)` is `-3`. Built programs and `lust run` agree on all of these.
+- **Dividing a float by zero** doesn't stop the program: `1.0 / 0.0` is `infinity`, `-1.0 / 0.0` is `-infinity`, and `0.0 / 0.0` is `not a number`. `Maths:isFinite(x)` asks whether a float is an ordinary number. (Dividing an *int* by zero does stop it.)
 - **Very big and very small numbers** can be written with `e`, a power of ten, as Lust prints them: `1e30`, `2.5e-7`, `1E+20`. They're always floats.
 - `+=`, `-=`, `*=` and `/=` change a value using itself: `hp -= damage;` is `hp = hp - damage;`. They work on variables, fields (`player.hp += 5;`) and items (`scores[2] += 1;`). `+=` adds to text too (`log += "done. ";`), `+=` and `-=` move a vec3 (`at += [0, 0, 1];`), `*=` and `/=` scale one, and `*=` turns a rotation (`facing *= turn;`).
 - `+` joins text: `"Hello, " + name`. It never turns other values into text by itself, so `hp + lives` always adds numbers.
@@ -1254,7 +1255,19 @@ float chance = Random[0.0, 1.0];  -- a decimal from 0 up to (not quite) 1
 
 - With two ints, and going into an int, it's a whole number, and both ends can come up.
 - With a float, or going into a float, it's a decimal from the lowest up to just below the highest.
-- Each run rolls different numbers, even two runs started at the same moment. To get the same numbers every time (for tests), set `LUST_SEED` to a number before running: `lust run` and the built program then roll exactly the same numbers. `lust test` sets it to 1.
+- Each run rolls different numbers, even two runs started at the same moment. To get the same numbers every time (for tests, or a world made from a seed), set `LUST_SEED` to a number before running, or write `Random:seed(42);` in the program: `lust run` and the built program then roll exactly the same numbers. `lust test` sets `LUST_SEED` to 1.
+
+`Random` has a few more tools:
+
+| | Gives |
+| --- | --- |
+| `Random:seed(42);` | starts the rolls again from that seed (an int), so what follows is the same every run |
+| `Random:chance(0.25)` | `true` about a quarter of the time. It takes 0 (never) to 1 (always); anything else stops the program |
+| `Random:direction()` | a random vec3 1 long, any way equally likely: for sparks, wandering, aiming a little off |
+| `names:pick()` | a random item of an array. An empty array stops the program |
+| `cards:shuffle();` | puts the array in a random order, in place, like `sort();` |
+
+All of them use the same rolls as `Random[1, 6]`, so a seed makes them repeat too.
 
 ### Text
 
@@ -1285,6 +1298,12 @@ Patterns are regular expressions, the kind most languages use: `[0-9]` is a digi
 | `scores:sort();` | puts numbers or text in order, smallest first |
 | `scores:reverse();` | turns the array around |
 | `team:sortBy(score);` | puts an array of things in order by one of their fields. Things with the same value keep their order |
+| `scores:sum()` | all the items added up: an int for an int array, a float for a float array. An empty array sums to 0 |
+| `scores:average()` | the sum divided by how many there are, always a float |
+| `scores:smallest()`, `scores:largest()` | the smallest and largest item, the same kind as the items |
+| `names:pick()`, `cards:shuffle();` | a random item, and a random order (see Random numbers above) |
+
+`sum`, `average`, `smallest` and `largest` work on arrays of ints or floats; on anything else they're a mistake before running. An empty array has no average, smallest or largest, so asking stops the program: "the array has no items, so it has no average."
 
 ### Built-in objects
 
@@ -1296,11 +1315,20 @@ Lust comes with five objects. Their methods are called like any object's: `Maths
 | --- | --- |
 | `Maths:abs(x)`, `Maths:min(a, b)`, `Maths:max(a, b)`, `Maths:clamp(x, low, high)` | an int for ints, a float when there's a float |
 | `Maths:round(x)`, `Maths:floor(x)`, `Maths:ceil(x)` | the nearest whole number, the one below, the one above (an int) |
+| `Maths:trunc(x)` | the whole part, dropping what's after the point (towards zero): `Maths:trunc(-2.75)` is `-2`. An int |
+| `Maths:fraction(x)` | what's after the point, with x's sign: `Maths:fraction(-2.75)` is `-0.75`. A float |
+| `Maths:sign(x)` | -1, 0 or 1: which side of zero x is. An int for an int, a float for a float |
 | `Maths:sqrt(x)`, `Maths:power(x, p)`, `Maths:sin(x)`, `Maths:cos(x)`, `Maths:tan(x)` | a float. Angles are in radians |
 | `Maths:asin(x)`, `Maths:acos(x)`, `Maths:atan(x)` | the angle (in radians) whose sine, cosine or tangent is x. `asin` and `acos` take -1 to 1 |
 | `Maths:atan2(y, x)` | the angle of the direction (x, y), from -π to π: which way something points. `Maths:atan2(d.y, d.x)` for a vec3 `d` |
 | `Maths:degrees(r)`, `Maths:radians(d)` | radians to degrees, and back |
-| `Maths.pi` | 3.14159… |
+| `Maths:log(x)`, `Maths:exp(x)` | the natural log (x above zero), and e to the power x. Floats |
+| `Maths:lerp(a, b, t)` | the number t of the way from a to b: `Maths:lerp(0, 10, 0.25)` is `2.5`. t isn't held to 0–1, so 1.5 goes past b |
+| `Maths:moveTowards(current, target, step)` | current moved towards target by at most step, never past it: one frame's movement. step can't be below zero |
+| `Maths:smoothstep(low, high, x)` | 0 below low, 1 above high, and a smooth S curve between: for fades that start and stop gently. low and high must differ |
+| `Maths:isFinite(x)` | `false` for `infinity`, `-infinity` and `not a number`, `true` for every ordinary number |
+| `Maths:noise(x, y)`, `Maths:noise(x, y, z)` | smooth noise (Perlin noise) from -1 to 1: rolling hills for terrain, clouds, wobble. The same numbers give the same answer every run, everywhere. It's 0 at whole numbers, so step through it by fractions: `Maths:noise(x * 0.1, y * 0.1)` |
+| `Maths.pi`, `Maths.e` | 3.14159… and 2.71828… |
 
 **Files.** Paths are from the folder the program runs in.
 
@@ -1470,7 +1498,7 @@ An engine can use Lust's compiler itself, as a Rust library: to check a game's L
 
 ```
 [dependencies]
-lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.59", default-features = false }
+lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.62", default-features = false }
 ```
 
 Without its default features it needs nothing but Rust's own library (the default ones are the `lust` command). Lust doesn't open any files: the engine reads them, and hands over each one's path and text, with `/` between folders.
