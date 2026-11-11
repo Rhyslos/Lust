@@ -1,0 +1,4 @@
+-- Moving bits by 64 places or more stops the program, saying where and why.
+int places = 70;
+print(1 << places);
+end

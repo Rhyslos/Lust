@@ -463,6 +463,13 @@ pub enum BinOp {
     Ge,
     And,
     Or,
+    /// `&`, `|`, `^`: the bits of two whole numbers, joined.
+    BitAnd,
+    BitOr,
+    BitXor,
+    /// `<<`, `>>`: a whole number's bits moved left or right (keeping the sign).
+    Shl,
+    Shr,
 }
 
 impl BinOp {
@@ -483,7 +490,17 @@ impl BinOp {
             BinOp::Ge => ">=",
             BinOp::And => "&&",
             BinOp::Or => "||",
+            BinOp::BitAnd => "&",
+            BinOp::BitOr => "|",
+            BinOp::BitXor => "^",
+            BinOp::Shl => "<<",
+            BinOp::Shr => ">>",
         }
+    }
+
+    /// `& | ^ << >>`: work on a whole number's bits.
+    pub fn is_bitwise(self) -> bool {
+        matches!(self, BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor | BinOp::Shl | BinOp::Shr)
     }
 }
 
@@ -529,6 +546,8 @@ pub enum ExprKind {
     /// `#a`
     Len(Box<Expr>),
     Neg(Box<Expr>),
+    /// `~x`: a whole number with every bit flipped.
+    BitNot(Box<Expr>),
     Not(Box<Expr>),
     Bin(BinOp, Box<Expr>, Box<Expr>, Pos),
     Either(Box<Expr>, Box<Expr>, Box<Expr>),

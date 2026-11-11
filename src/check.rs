@@ -2569,6 +2569,7 @@ impl<'a> Checker<'a> {
                 match &e.kind {
                     ExprKind::Int(n) => Some(*n),
                     ExprKind::Neg(x) => literal(x).map(|n| -n),
+                    ExprKind::BitNot(x) => literal(x).map(|n| !n),
                     _ => None,
                 }
             }
@@ -2803,6 +2804,23 @@ impl<'a> Checker<'a> {
                 let t = self.expr(inner, ctx, Some(&Ty::Truth));
                 self.expect_truth(inner, &t, "not");
                 Ty::Truth
+            }
+            ExprKind::BitNot(inner) => {
+                let t = self.expr(inner, ctx, None);
+                match t {
+                    Ty::Int | Ty::Error => t,
+                    Ty::Truth => {
+                        self.err(
+                            e.pos,
+                            format!("Lust flips a check with not: is not {}?", self.name_or(inner, "alive")),
+                        );
+                        Ty::Error
+                    }
+                    other => {
+                        self.err(inner.pos, self.not_whole("~", &other));
+                        Ty::Error
+                    }
+                }
             }
             ExprKind::Bin(op, l, r, opos) => {
                 self.compound_now = self.compound.get(&e.id).copied();
@@ -3308,6 +3326,7 @@ impl<'a> Checker<'a> {
         };
         match &e.kind {
             ExprKind::Name(_) => Ok(()),
+            ExprKind::Bin(op, ..) if op.is_bitwise() => bad(),
             ExprKind::Bin(_, l, r, _) => {
                 self.sql_ok(l)?;
                 self.sql_ok(r)
@@ -4237,8 +4256,78 @@ impl<'a> Checker<'a> {
         Ty::Array(Box::new(el))
     }
 
+    /// How an expression reads in a hint, or a stand-in when it isn't a plain name.
+    fn name_or(&self, e: &Expr, stand_in: &str) -> String {
+        match describe(e) {
+            d if d == "this" => stand_in.to_string(),
+            d => d,
+        }
+    }
+
+    /// The mistake for a bitwise operator given something that isn't a whole number.
+    fn not_whole(&self, sym: &str, t: &Ty) -> String {
+        let fix = if *t == Ty::Float {
+            " Use .int() to drop the part after the point."
+        } else {
+            ""
+        };
+        format!("{sym} works on whole numbers (ints), but this is {}.{fix}", self.a(t))
+    }
+
+    /// & | ^ << >> (and &= |= ^= <<= >>=): two whole numbers, giving a whole number.
+    fn bitwise(&mut self, sym: &str, op: BinOp, l: &Expr, r: &Expr, opos: Pos, ctx: &mut Ctx) -> Ty {
+        let lt = self.expr(l, ctx, None);
+        let rt = self.expr(r, ctx, None);
+        if lt == Ty::Error || rt == Ty::Error {
+            return Ty::Error;
+        }
+        if lt == Ty::Int && rt == Ty::Int {
+            if matches!(op, BinOp::Shl | BinOp::Shr) {
+                fn literal(e: &Expr) -> Option<i64> {
+                    match &e.kind {
+                        ExprKind::Int(n) => Some(*n),
+                        ExprKind::Neg(x) => literal(x).map(|n| n.wrapping_neg()),
+                        _ => None,
+                    }
+                }
+                if let Some(n) = literal(r).filter(|n| !(0..64).contains(n)) {
+                    self.err(r.pos, format!("{sym} moves bits by 0 to 63 places, but this is {n}."));
+                }
+            }
+            return Ty::Int;
+        }
+        // Checks joined with & or |, from other languages.
+        if (lt == Ty::Truth || rt == Ty::Truth) && !matches!(op, BinOp::Shl | BinOp::Shr) {
+            let (a, b) = (self.name_or(l, "a"), self.name_or(r, "b"));
+            let compound = sym.ends_with('=');
+            let msg = match op {
+                BinOp::BitAnd | BinOp::BitOr if compound => {
+                    let join = if op == BinOp::BitAnd { "&&" } else { "||" };
+                    format!("Lust joins checks with && and ||, which have no {sym}: {a} = {a} {join} {b};")
+                }
+                BinOp::BitOr => format!("Lust joins checks with || (and &&): is {a} || {b}?"),
+                BinOp::BitXor => {
+                    format!("{sym} works on whole numbers. To ask whether just one of two checks is true, compare them: is {a} != {b}?")
+                }
+                _ => format!("Lust joins checks with && (and ||): is {a} && {b}?"),
+            };
+            self.err(opos, msg);
+            return Ty::Error;
+        }
+        for (t, x) in [(&lt, l), (&rt, r)] {
+            if *t != Ty::Int {
+                self.err(x.pos, self.not_whole(sym, t));
+                return Ty::Error;
+            }
+        }
+        Ty::Int
+    }
+
     /// hp += 5, name += "!", at *= 2, facing *= turn: what fits, and mistakes that speak of +=.
     fn compound(&mut self, sym: &str, op: BinOp, l: &Expr, r: &Expr, opos: Pos, ctx: &mut Ctx) -> Ty {
+        if op.is_bitwise() {
+            return self.bitwise(sym, op, l, r, opos, ctx);
+        }
         let lt = self.expr(l, ctx, None);
         let hint = match (&lt, op) {
             (Ty::Vec3, BinOp::Add | BinOp::Sub) | (Ty::Rot, BinOp::Mul) => Some(lt.clone()),
@@ -4304,6 +4393,7 @@ impl<'a> Checker<'a> {
             None
         };
         match op {
+            BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor | BinOp::Shl | BinOp::Shr => self.bitwise(op.symbol(), op, l, r, opos, ctx),
             BinOp::And | BinOp::Or => {
                 let lt = self.expr(l, ctx, Some(&Ty::Truth));
                 let rt = self.expr(r, ctx, Some(&Ty::Truth));

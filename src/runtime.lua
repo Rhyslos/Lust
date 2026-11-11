@@ -379,6 +379,88 @@ function L.toint(v)
   if L.exact and (v > EXACT or v < -EXACT) then too_big(2) end
   if v >= 0 then return floor(v) else return -floor(-v) end
 end
+-- The bitwise operators (& | ^ ~ << >>), giving exactly what a built program's 64-bit ints give,
+-- for every whole number lust run holds. Lua 5.1 has none, and Luau's bit32 is 32 bits only, so
+-- they're worked out with plain arithmetic. A number is cut into two 27-bit halves; the top half
+-- keeps the sign the way two's complement does, so every bit above it is a copy of its top bit.
+-- The halves are joined a byte at a time, through a table of every byte & byte made the first
+-- time it's needed. a | b is a + b - (a & b), and a ^ b is a + b - 2 * (a & b).
+local B27, B26 = 134217728, 67108864
+local AND8
+local function and8()
+  local t = {}
+  for a = 0, 255 do
+    for b = 0, 255 do
+      -- The lowest bits, then the rest, which an earlier round already worked out.
+      local low = (a % 2 == 1 and b % 2 == 1) and 1 or 0
+      t[a * 256 + b + 1] = (a + b == 0) and 0 or low + 2 * t[floor(a / 2) * 256 + floor(b / 2) + 1]
+    end
+  end
+  AND8 = t
+  return t
+end
+-- a & b for two numbers from 0 to 2^27 - 1.
+local function and27(a, b)
+  local t = AND8 or and8()
+  local a0, b0 = a % 256, b % 256
+  a, b = (a - a0) / 256, (b - b0) / 256
+  local a1, b1 = a % 256, b % 256
+  a, b = (a - a1) / 256, (b - b1) / 256
+  local a2, b2 = a % 256, b % 256
+  a, b = (a - a2) / 256, (b - b2) / 256
+  return t[a0 * 256 + b0 + 1] + 256 * (t[a1 * 256 + b1 + 1] + 256 * (t[a2 * 256 + b2 + 1] + 256 * t[a * 256 + b + 1]))
+end
+-- A whole number's two halves, each from 0 to 2^27 - 1.
+local function halves(x)
+  if x > EXACT or x < -EXACT then too_big(3) end
+  local lo = x % B27
+  return (x - lo) / B27 % B27, lo
+end
+-- The two halves joined back into a number, the top one's top bit as the sign.
+local function joined(hi, lo)
+  if hi >= B26 then hi = hi - B27 end
+  local v = hi * B27 + lo
+  if v > EXACT or v < -EXACT then too_big(3) end
+  return v
+end
+function L.band(a, b)
+  local ah, al = halves(a)
+  local bh, bl = halves(b)
+  return joined(and27(ah, bh), and27(al, bl))
+end
+function L.bor(a, b)
+  local ah, al = halves(a)
+  local bh, bl = halves(b)
+  return joined(ah + bh - and27(ah, bh), al + bl - and27(al, bl))
+end
+function L.bxor(a, b)
+  local ah, al = halves(a)
+  local bh, bl = halves(b)
+  return joined(ah + bh - 2 * and27(ah, bh), al + bl - 2 * and27(al, bl))
+end
+function L.bnot(a)
+  if a > EXACT or a < -EXACT then too_big(2) end
+  local v = -a - 1
+  if v < -EXACT then too_big(2) end
+  return v
+end
+local function shift_by(n, op)
+  if n < 0 or n > 63 then error(op .. " moves bits by 0 to 63 places, but this is " .. whole(n) .. ".", 3) end
+end
+function L.shl(a, n)
+  shift_by(n, "<<")
+  if a > EXACT or a < -EXACT then too_big(2) end
+  local v = a * 2 ^ n
+  if v >= 9223372036854775808 or v < -9223372036854775808 then error("a number got too big for an int.", 2) end
+  if v > EXACT or v < -EXACT then too_big(2) end
+  return v
+end
+function L.shr(a, n)
+  shift_by(n, ">>")
+  if a > EXACT or a < -EXACT then too_big(2) end
+  return floor(a / 2 ^ n)
+end
+
 function L.isnum(s)
   local v = tonumber((s:gsub("^%s+", ""):gsub("%s+$", "")))
   return v ~= nil and v == v and v ~= math.huge and v ~= -math.huge and not s:find("[xX]")

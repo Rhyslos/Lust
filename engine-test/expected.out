@@ -46,8 +46,9 @@ velocity 2.5
 the hopper's own jump
 the engine makes 0000000000009 jump
 [0.5, 0.0, 0.0]
+bits 7 4 4 -6 -4 1099511627776 240 9007199254740990 255
 Farmer's anim is object FarmerAnimator
-main.lst:33  anim is filled in by the engine before the component's first update, and hasn't been yet.
+main.lst:45  anim is filled in by the engine before the component's first update, and hasn't been yet.
 animator 12 plays Walk
 objects: ["Clock"]
 saved: day 2 hour 0.5

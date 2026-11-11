@@ -1380,6 +1380,14 @@ impl<'a> W<'a> {
                 let c = self.expr(inner);
                 format!("(not {c})")
             }
+            ExprKind::BitNot(inner) => {
+                let c = self.expr(inner);
+                // A uint8 (or uint16, uint32) read straight: its own bits flipped, so ~ of 0 is 255.
+                match self.info.narrow_reads.get(&inner.id) {
+                    Some(w) if w.range().0 == 0 => format!("({} - {c})", w.range().1),
+                    _ => format!("_L.bnot({c})"),
+                }
+            }
             ExprKind::Bin(op, l, r, _) => self.binary(*op, l, r),
             ExprKind::Either(c, a, b) => {
                 let cc = self.expr(c);
@@ -1859,6 +1867,12 @@ impl<'a> W<'a> {
             BinOp::Ge => format!("({lc} >= {rc})"),
             BinOp::And => format!("({lc} and {rc})"),
             BinOp::Or => format!("({lc} or {rc})"),
+            // Lua 5.1 has no bitwise operators, and Luau's are 32-bit: the runtime's give 64-bit results.
+            BinOp::BitAnd => format!("_L.band({lc}, {rc})"),
+            BinOp::BitOr => format!("_L.bor({lc}, {rc})"),
+            BinOp::BitXor => format!("_L.bxor({lc}, {rc})"),
+            BinOp::Shl => format!("_L.shl({lc}, {rc})"),
+            BinOp::Shr => format!("_L.shr({lc}, {rc})"),
         }
     }
 }
@@ -1905,6 +1919,8 @@ pub fn sql_bin(
                 BinOp::Ge => ">=",
                 BinOp::And => "AND",
                 BinOp::Or => "OR",
+                // Never in a :where( ): the checker keeps them out.
+                BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor | BinOp::Shl | BinOp::Shr => op.symbol(),
             };
             format!("({a} {o} {b})")
         }

@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (alpha 63):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (alpha 64):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -113,7 +113,7 @@ bool alive = true;
   | `uint16` | 0 to 65535 |
   | `uint32` | 0 to 4294967295 |
 
-  - Reading one gives an `int`, so maths, text and comparisons work as they do for any int: `int total = hp + 1000;`, `"hp: {hp}"`.
+  - Reading one gives an `int`, so maths, text and comparisons work as they do for any int: `int total = hp + 1000;`, `"hp: {hp}"`. The one difference is `~` on an unsigned one, which flips only its own bits (section 6).
   - Putting a number into one checks it fits. A number written out has to fit before anything runs (`int8 x = 300;` is a mistake). One worked out while running stops the program if it doesn't fit, with what happened: `303 doesn't fit in a uint8, which holds 0 to 255.` It never wraps round quietly.
   - They go in variables, fields, parameters, what a method gives back, arrays, maps, cMaps, hooks, saves and JSON. Not yet in components, events, database tables or native methods: use `int` there.
   - `loop (int c in colours)` goes through a `uint8 array` too.
@@ -193,7 +193,7 @@ check mood {
 - **Things made from classes** are compared by which thing they are, with either: two `new Hero`s with the same fields are two heroes, so `==` says false. To ask whether two are alike, compare their fields: `a.name == b.name`.
 - **State options:** `==` counts the options inside an option. During `ActiveGame.Combat`, `now == GameState.ActiveGame` is true, and so is `GameState.ActiveGame == now`. `===` asks for that very option: `now === GameState.ActiveGame` is false then.
 - Comparing different types (`"1" == 1`) is a mistake caught before running. Lust never converts types quietly.
-- Join checks with `&&` and `||`. Group with `( )`.
+- Join checks with `&&` and `||`. Group with `( )`. (A single `&` or `|` is for the bits of whole numbers, section 6.)
 
 ### either
 
@@ -207,13 +207,52 @@ string mood = either hp > 10? "happy" or "grumpy";
 
 ## 6. Maths and text
 
-- `+ - * / %` work on `int` and `float`. `( )` groups.
+- `+ - * / %` work on `int` and `float`. `( )` groups. `& | ^ ~ << >>` work on the bits of whole numbers (below).
 - `int / int` gives an `int`: `7 / 2` is `3`. Use `7.float() / 2` for `3.5`.
 - **Below zero:** `int / int` drops what's after the point, towards zero: `-7 / 2` is `-3`. `%` takes the sign of the number on its left: `-7 % 3` is `-1` and `7 % -3` is `1` (`-7.5 % 2` is `-1.5`). `Maths:round` takes a half away from zero: `Maths:round(2.5)` is `3` and `Maths:round(-2.5)` is `-3`. Built programs and `lust run` agree on all of these.
 - **Dividing a float by zero** doesn't stop the program: `1.0 / 0.0` is `infinity`, `-1.0 / 0.0` is `-infinity`, and `0.0 / 0.0` is `not a number`. `Maths:isFinite(x)` asks whether a float is an ordinary number. (Dividing an *int* by zero does stop it.)
 - **Very big and very small numbers** can be written with `e`, a power of ten, as Lust prints them: `1e30`, `2.5e-7`, `1E+20`. They're always floats.
-- `+=`, `-=`, `*=` and `/=` change a value using itself: `hp -= damage;` is `hp = hp - damage;`. They work on variables, fields (`player.hp += 5;`) and items (`scores[2] += 1;`). `+=` adds to text too (`log += "done. ";`), `+=` and `-=` move a vec3 (`at += [0, 0, 1];`), `*=` and `/=` scale one, and `*=` turns a rotation (`facing *= turn;`).
+- `+=`, `-=`, `*=` and `/=` (and the bitwise `&=`, `|=`, `^=`, `<<=` and `>>=`, below) change a value using itself: `hp -= damage;` is `hp = hp - damage;`. They work on variables, fields (`player.hp += 5;`) and items (`scores[2] += 1;`). `+=` adds to text too (`log += "done. ";`), `+=` and `-=` move a vec3 (`at += [0, 0, 1];`), `*=` and `/=` scale one, and `*=` turns a rotation (`facing *= turn;`).
 - `+` joins text: `"Hello, " + name`. It never turns other values into text by itself, so `hp + lives` always adds numbers.
+- **There's no power operator.** Use `Maths:power(2, 3)`. `2 ^ 3` is a bitwise operator (below), so it's `1`, not `8`.
+
+### Bits: & | ^ ~ << >>
+
+A whole number is kept as bits, ones and zeros. The bitwise operators work on those bits, which is handy for flags (several yes-or-no settings packed into one number), masks and colours.
+
+| Write | Means | Example |
+| --- | --- | --- |
+| `a & b` | and: the bits that are on in both | `12 & 10` is `8` |
+| `a \| b` | or: the bits that are on in either | `12 \| 10` is `14` |
+| `a ^ b` | xor: the bits that are on in one but not the other | `12 ^ 10` is `6` |
+| `~a` | not: every bit flipped | `~0` is `-1` |
+| `a << n` | the bits moved left `n` places (times 2, `n` times) | `3 << 4` is `48` |
+| `a >> n` | the bits moved right `n` places (halved, rounding down, `n` times) | `-8 >> 1` is `-4` |
+
+**Flags.** Give each setting a bit of its own, join them with `|`, and ask about one with `&`:
+
+```
+lock int walk = 1;
+lock int swim = 2;
+lock int fly = 4;
+
+int moves = walk | swim;
+is moves & swim != 0? then {
+    print("can swim");
+}
+moves |= fly;      -- now it can fly too
+moves &= ~walk;    -- and no longer walk
+```
+
+- They work on whole numbers only: `int`, and the sized numbers. On a `bool`, Lust says to use `&&`, `||` or `not`, which join and flip checks. On a `float` they're a mistake (use `.int()` first), and so is mixing an int with a float.
+- **The order** is Rust's: `~` (like `-`) first, then `* / %`, then `+ -`, then `<< >>`, then `&`, then `^`, then `|`, then comparisons, then `&&` and `||`. So `moves & swim != 0` means `(moves & swim) != 0`, and `1 | 2 & 3` is `1 | (2 & 3)`, which is `3`. Brackets make it plain when in doubt.
+- **Below zero:** an `int` is 64 bits in two's complement, as Rust's `i64` is: `-1` is all ones, so `-1 & 255` is `255` and `~5` is `-6`. `>>` keeps the sign: `-8 >> 1` is `-4`, and `-1 >> 63` is still `-1`.
+- **Moving by a number of places** from 0 to 63 works. A negative number, or 64 or more, stops the program: `<< moves bits by 0 to 63 places, but this is 64.` (A number written out is a mistake before anything runs.)
+- **`<<` that pushes bits off the top**, so the number would change, stops the program the way `*` does when a number gets too big for an int: `a number got too big for an int.` So `1 << 62` is fine, and `1 << 63` and `3 << 62` stop.
+- `&=`, `|=`, `^=`, `<<=` and `>>=` change a value using itself, like `+=`: `moves |= fly;`.
+- **Sized numbers** are read as ints, so `&`, `|`, `^`, `<<` and `>>` give an int, checked to fit when it goes back into a sized place (`uint8 x = low << 5;` stops if it comes to 480). `~` on an unsigned one (`uint8`, `uint16`, `uint32`) read straight from where it's kept flips only its own bits: with `uint8 none = 0;`, `~none` is `255`. On a signed one, `~` is the same as on an `int` (`~x` is `-x - 1`), which always fits.
+- **Under `lust run`,** whole numbers are Lua's, exact up to 9007199254740991 (section 4), and Lua 5.1 has no bitwise operators, so Lust works them out itself and gets exactly what a built program does for every number in that range. A number outside it, going in or coming out, stops the program with the usual "too big for lust run" message.
+- They can't be used on a table's columns in `:where( )`: work the value out first, in a variable.
 
 ### Values in text
 
@@ -1507,7 +1546,7 @@ An engine can use Lust's compiler itself, as a Rust library: to check a game's L
 
 ```
 [dependencies]
-lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.63", default-features = false }
+lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.64", default-features = false }
 ```
 
 Without its default features it needs nothing but Rust's own library (the default ones are the `lust` command). Lust doesn't open any files: the engine reads them, and hands over each one's path and text, with `/` between folders.

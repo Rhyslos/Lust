@@ -1,0 +1,47 @@
+-- Bitwise operators work on whole numbers only.
+bool alive = true;
+bool ready = false;
+is alive & ready? then {
+    print("go");
+}
+is alive | ready? then {
+    print("go");
+}
+bool odd = alive ^ ready;
+bool flipped = ~alive;
+alive |= ready;
+alive &= ready;
+
+-- Floats, and mixing an int with a float.
+float speed = 1.5;
+int a = 6;
+int b = speed & a;
+int c = a | 2.0;
+int d = ~speed;
+a ^= 1.5;
+int e = a << 0.5;
+
+-- Other types.
+string name = "Ada";
+int f = name ^ 1;
+int g = a >> name;
+
+-- Moving by places that don't exist.
+int h = a << 64;
+int i = a >> -1;
+a <<= 100;
+
+-- Lua's ~= is != in Lust.
+is a ~= b? then {
+    print("different");
+}
+
+-- A number written out still has to fit where it goes.
+uint8 big = ~0;
+
+-- & | ^ << >> can't be used on a table's columns in where.
+database Shop in "shop.db" {
+    cMap(int id, int tags) items;
+}
+print(Shop.items:where(tags & 2 != 0));
+end

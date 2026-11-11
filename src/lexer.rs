@@ -53,8 +53,8 @@ impl Token {
 
 // Longest first, so === wins over == and =.
 const SYMBOLS: &[&str] = &[
-    "===", "!==", "==", "!=", "<=", ">=", "&&", "||", "=>", "+=", "-=", "*=", "/=", ";", ",", ".", ":", "(", ")", "{", "}", "[", "]", "?",
-    "#", "+", "-", "*", "/", "%", "<", ">", "=",
+    "===", "!==", "<<=", ">>=", "==", "!=", "<<", ">>", "<=", ">=", "&&", "||", "=>", "+=", "-=", "*=", "/=", "&=", "|=", "^=", ";", ",",
+    ".", ":", "(", ")", "{", "}", "[", "]", "?", "#", "+", "-", "*", "/", "%", "<", ">", "=", "&", "|", "^", "~",
 ];
 
 pub fn lex(src: &str, file: usize, diags: &mut Diags) -> Vec<Token> {
@@ -363,6 +363,17 @@ pub fn lex(src: &str, file: usize, diags: &mut Diags) -> Vec<Token> {
             advance!(1);
             continue;
         }
+        // a ~= b, from Lua: Lust writes "not the same" as !=.
+        if c == '~' && at(i + 1) == '=' {
+            diags.add(pos, "Lust writes \"not the same\" as !=: is a != b?");
+            advance!(2);
+            out.push(Token {
+                kind: Tk::Sym("!="),
+                pos,
+                end: Pos { line, col },
+            });
+            continue;
+        }
         let mut matched = None;
         // Symbols are plain ASCII, so they're matched in place, without making anything.
         for s in SYMBOLS {
@@ -383,8 +394,6 @@ pub fn lex(src: &str, file: usize, diags: &mut Diags) -> Vec<Token> {
             None => {
                 let hint = match c {
                     '!' => "Lust writes not, not !: is not alive?".to_string(),
-                    '&' => "Lust joins checks with &&.".to_string(),
-                    '|' => "Lust joins checks with ||.".to_string(),
                     _ => format!("Lust doesn't use the symbol {c}."),
                 };
                 diags.add(pos, hint);

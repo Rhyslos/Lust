@@ -791,7 +791,12 @@ fn walk_styles(items: &[StyleItem], f: &mut dyn FnMut(&Expr)) {
 pub fn walk_expr(e: &Expr, f: &mut dyn FnMut(&Expr)) {
     f(e);
     match &e.kind {
-        ExprKind::Field(t, ..) | ExprKind::MethodRef(t, ..) | ExprKind::Len(t) | ExprKind::Neg(t) | ExprKind::Not(t) => walk_expr(t, f),
+        ExprKind::Field(t, ..)
+        | ExprKind::MethodRef(t, ..)
+        | ExprKind::Len(t)
+        | ExprKind::Neg(t)
+        | ExprKind::BitNot(t)
+        | ExprKind::Not(t) => walk_expr(t, f),
         ExprKind::Like(t, ..) | ExprKind::Convert(t, ..) => walk_expr(t, f),
         ExprKind::Method(t, _, args, _) => {
             walk_expr(t, f);
@@ -2201,6 +2206,14 @@ impl<'a> W<'a> {
             ExprKind::Neg(inner) if self.info.ty(inner) == Ty::Vec3 => format!("rt::vneg({})", self.expr(inner)),
             ExprKind::Neg(inner) => format!("(-{})", self.expr(inner)),
             ExprKind::Not(inner) => format!("(!{})", self.expr(inner)),
+            ExprKind::BitNot(inner) => {
+                let c = self.expr(inner);
+                // A uint8 (or uint16, uint32) read straight: its own bits flipped, so ~ of 0 is 255.
+                match self.info.narrow_reads.get(&inner.id) {
+                    Some(w) if w.range().0 == 0 => format!("({} - {c})", w.range().1),
+                    _ => format!("(!{c})"),
+                }
+            }
             ExprKind::Bin(op, l, r, _) => self.binary(e, *op, l, r),
             ExprKind::Either(c, a, b) => {
                 let want = self.info.ty(e);
@@ -2904,6 +2917,11 @@ impl<'a> W<'a> {
             BinOp::Ge => format!("({lc} >= {rc})"),
             BinOp::And => format!("({lc} && {rc})"),
             BinOp::Or => format!("({lc} || {rc})"),
+            BinOp::BitAnd => format!("({lc} & {rc})"),
+            BinOp::BitOr => format!("({lc} | {rc})"),
+            BinOp::BitXor => format!("({lc} ^ {rc})"),
+            BinOp::Shl => format!("rt::shl({lc}, {rc})"),
+            BinOp::Shr => format!("rt::shr({lc}, {rc})"),
             BinOp::Eq | BinOp::Ne | BinOp::Same | BinOp::NotSame => {
                 let negate = matches!(op, BinOp::Ne | BinOp::NotSame);
                 let t = if lt == Ty::Nothing { &rt } else { &lt };

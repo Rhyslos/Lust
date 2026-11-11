@@ -598,6 +598,14 @@ mod deep_code {
         too_deep(method(&format!("bool b = {};\nreturn a;", vec!["true"; 100_000].join(" || "))));
         fine(method(&format!("return {};", vec!["a"; 140].join(" + "))));
         fine(method(&format!("bool b = {}true;\nreturn a;", "not ".repeat(70))));
+        // The bitwise operators, each level of them, and ~.
+        for op in [" | ", " ^ ", " & ", " << ", " >> "] {
+            too_deep(method(&format!("return {};", vec!["a"; 100_000].join(op))));
+            fine(method(&format!("return {};", vec!["a"; 140].join(op))));
+        }
+        too_deep(method(&format!("return {}a;", "~ ".repeat(100_000))));
+        fine(method(&format!("return {}a;", "~ ".repeat(40))));
+        fine(method(&format!("return {}a;", "a | a ^ a & a << a + ".repeat(25))));
     }
 
     #[test]
@@ -767,5 +775,147 @@ mod rotation_helpers {
         assert_eq!(rt::vangle(x, rt::vec3(0.0, 2.0, 0.0)), 90.0);
         assert_eq!(rt::vangle(x, rt::vec3(-3.0, 0.0, 0.0)), 180.0);
         assert_eq!(rt::vangle(x, x), 0.0);
+    }
+}
+
+#[cfg(all(test, feature = "cli"))]
+mod bitwise {
+    //! lust run's bitwise operators, made from plain arithmetic in runtime.lua, against Rust's own
+    //! 64-bit ones, for numbers all over the range lust run holds exactly.
+    use crate::native_rt as rt;
+    use mlua::{Function, Lua, Table};
+
+    const EXACT: i64 = 9_007_199_254_740_991;
+
+    fn runtime(lua: &Lua) -> Table {
+        lua.load(crate::lua::RUNTIME).eval().unwrap()
+    }
+
+    /// Numbers to try: the edges, then a spread of others (a fixed sequence, so it's repeatable).
+    fn numbers() -> Vec<i64> {
+        let mut v = vec![
+            0,
+            1,
+            -1,
+            2,
+            -2,
+            255,
+            -256,
+            1 << 26,
+            (1 << 27) - 1,
+            1 << 27,
+            -(1 << 27),
+            EXACT,
+            -EXACT,
+            EXACT - 1,
+            1 << 52,
+            -(1 << 52),
+        ];
+        let mut x: u64 = 0x2545_f491_4f6c_dd1d;
+        for _ in 0..400 {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            // Some big, some small: the top bits cut off by a varying amount.
+            let n = ((x >> 11) as i64) % (EXACT + 1);
+            let n = n >> (x % 50);
+            v.push(if x & 1 == 0 { n } else { -n });
+        }
+        v
+    }
+
+    #[test]
+    fn and_or_xor_not_match_rust() {
+        let lua = Lua::new();
+        let l = runtime(&lua);
+        let (band, bor, bxor, bnot): (Function, Function, Function, Function) = (
+            l.get("band").unwrap(),
+            l.get("bor").unwrap(),
+            l.get("bxor").unwrap(),
+            l.get("bnot").unwrap(),
+        );
+        let ns = numbers();
+        for (i, &a) in ns.iter().enumerate() {
+            let want = !a;
+            match bnot.call::<f64>(a as f64) {
+                Ok(got) => assert_eq!(got, want as f64, "~{a}"),
+                Err(e) => assert!(want < -EXACT && e.to_string().contains("too big for lust run"), "~{a}: {e}"),
+            }
+            for &b in ns.iter().skip(i % 7).step_by(7) {
+                for (f, want, op) in [(&band, a & b, "&"), (&bor, a | b, "|"), (&bxor, a ^ b, "^")] {
+                    match f.call::<f64>((a as f64, b as f64)) {
+                        Ok(got) => assert_eq!(got, want as f64, "{a} {op} {b}"),
+                        Err(e) => assert!(
+                            want.abs() > EXACT && e.to_string().contains("too big for lust run"),
+                            "{a} {op} {b}: {e}"
+                        ),
+                    }
+                }
+            }
+        }
+        // A number lust run can't hold exactly stops, rather than giving a wrong answer.
+        let e = band.call::<f64>((2f64.powi(60), 1.0)).unwrap_err().to_string();
+        assert!(e.contains("too big for lust run"), "{e}");
+    }
+
+    #[test]
+    fn shifts_match_rust() {
+        let lua = Lua::new();
+        let l = runtime(&lua);
+        let (shl, shr): (Function, Function) = (l.get("shl").unwrap(), l.get("shr").unwrap());
+        for &a in &numbers() {
+            for n in 0..64i64 {
+                assert_eq!(shr.call::<f64>((a as f64, n as f64)).unwrap(), (a >> n) as f64, "{a} >> {n}");
+                let want = (a as i128) << n;
+                match shl.call::<f64>((a as f64, n as f64)) {
+                    Ok(got) => assert_eq!(got, want as f64, "{a} << {n}"),
+                    Err(e) if want.abs() > EXACT as i128 && (i64::MIN as i128..=i64::MAX as i128).contains(&want) => {
+                        assert!(e.to_string().contains("too big for lust run"), "{a} << {n}: {e}")
+                    }
+                    Err(e) => assert!(e.to_string().contains("too big for an int"), "{a} << {n}: {e}"),
+                }
+            }
+        }
+        for bad in [-1.0, 64.0, 1000.0] {
+            let e = shl.call::<f64>((1.0, bad)).unwrap_err().to_string();
+            assert!(e.contains("<< moves bits by 0 to 63 places"), "{e}");
+            let e = shr.call::<f64>((1.0, bad)).unwrap_err().to_string();
+            assert!(e.contains(">> moves bits by 0 to 63 places"), "{e}");
+        }
+    }
+
+    fn stops(f: impl FnOnce() -> i64 + std::panic::UnwindSafe) -> bool {
+        let hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let r = std::panic::catch_unwind(f).is_err();
+        std::panic::set_hook(hook);
+        r
+    }
+
+    #[test]
+    fn built_shifts() {
+        assert_eq!(rt::shl(1, 62), 1 << 62);
+        assert_eq!(rt::shl(-1, 63), i64::MIN);
+        assert_eq!(rt::shr(-8, 1), -4);
+        assert_eq!(rt::shr(-1, 63), -1);
+        assert_eq!(rt::shr(i64::MAX, 63), 0);
+        // Bits pushed out of the top stop the program, as * does when it goes past an int.
+        assert!(stops(|| rt::shl(1, 63)));
+        assert!(stops(|| rt::shl(3, 62)));
+        assert!(stops(|| rt::shl(i64::MIN, 1)));
+        assert!(stops(|| rt::shl(1, 64)));
+        assert!(stops(|| rt::shr(1, -1)));
+    }
+
+    #[test]
+    fn many_quickly() {
+        // Not a bit at a time: 100,000 of each takes well under a second.
+        let lua = Lua::new();
+        lua.globals().set("L", runtime(&lua)).unwrap();
+        let start = std::time::Instant::now();
+        lua.load("local x = 0 for i = 1, 100000 do x = L.bxor(L.band(i * 7919, 8191) + L.bor(x, i), i) end return x")
+            .exec()
+            .unwrap();
+        assert!(start.elapsed().as_secs_f64() < 5.0, "{:?}", start.elapsed());
     }
 }

@@ -373,7 +373,8 @@ pub fn load(entry: &Path, src: String, is_script: bool, diags: &mut Diags, mem: 
         };
         let mut prog = file.prog;
         if !reached[f] {
-            prog.items.retain(|item| !matches!(item, Item::Class(c) if c.is_component || c.is_object));
+            prog.items
+                .retain(|item| !matches!(item, Item::Class(c) if c.is_component || c.is_object));
         }
         for item in &mut prog.items {
             r.item(item);
@@ -779,6 +780,7 @@ impl<'a> Renamer<'a> {
             | ExprKind::MethodRef(t, ..)
             | ExprKind::Len(t)
             | ExprKind::Neg(t)
+            | ExprKind::BitNot(t)
             | ExprKind::Not(t)
             | ExprKind::Convert(t, ..) => self.expr(t),
             ExprKind::Method(t, _, args, _) => {

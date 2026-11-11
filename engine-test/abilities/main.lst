@@ -23,6 +23,18 @@ component Hopper {
     }
 }
 
+-- Bitwise operators, made from plain arithmetic, give a built program's 64-bit answers in Luau too.
+component Bits {
+    has {
+        int flags = 5;
+    }
+
+    method update(float dt) {
+        uint8 low = 15;
+        log("bits {flags | 2} {flags & 4} {flags ^ 1} {(~flags)} {(-8 >> 1)} {(1 << 40)} {(~low)} {(9007199254740991 & -2)} {(-1 & 255)}");
+    }
+}
+
 -- Something the engine's editor made for it, filled in by the engine.
 component Farmer {
     has {

@@ -1,0 +1,21 @@
+bitwise.lst:4:10  Lust joins checks with && (and ||): is alive && ready?
+bitwise.lst:7:10  Lust joins checks with || (and &&): is alive || ready?
+bitwise.lst:10:18  ^ works on whole numbers. To ask whether just one of two checks is true, compare them: is alive != ready?
+bitwise.lst:11:16  Lust flips a check with not: is not alive?
+bitwise.lst:12:7  Lust joins checks with && and ||, which have no |=: alive = alive || ready;
+bitwise.lst:13:7  Lust joins checks with && and ||, which have no &=: alive = alive && ready;
+bitwise.lst:18:9  & works on whole numbers (ints), but this is a float. Use .int() to drop the part after the point.
+bitwise.lst:19:13  | works on whole numbers (ints), but this is a float. Use .int() to drop the part after the point.
+bitwise.lst:20:10  ~ works on whole numbers (ints), but this is a float. Use .int() to drop the part after the point.
+bitwise.lst:21:6  ^= works on whole numbers (ints), but this is a float. Use .int() to drop the part after the point.
+bitwise.lst:22:14  << works on whole numbers (ints), but this is a float. Use .int() to drop the part after the point.
+bitwise.lst:26:9  ^ works on whole numbers (ints), but this is a string.
+bitwise.lst:27:14  >> works on whole numbers (ints), but this is a string.
+bitwise.lst:30:14  << moves bits by 0 to 63 places, but this is 64.
+bitwise.lst:31:14  >> moves bits by 0 to 63 places, but this is -1.
+bitwise.lst:32:7  <<= moves bits by 0 to 63 places, but this is 100.
+bitwise.lst:35:6  Lust writes "not the same" as !=: is a != b?
+bitwise.lst:40:13  -1 doesn't fit in a uint8, which holds 0 to 255.
+bitwise.lst:46:24  where can use a table's columns with maths, comparisons, &&, ||, not, # and :contains, :startsWith and :endsWith. Work anything else out first, in a variable.
+
+19 mistakes. Nothing was run.
