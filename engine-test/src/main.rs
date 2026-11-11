@@ -185,6 +185,9 @@ fn main() {
     let hopper: Table = api3.get::<Function>("new").unwrap().call(("Hopper", "0000000000009")).unwrap();
     let update: Function = hopper.get("update").unwrap();
     update.call::<()>((hopper.clone(), 0.5)).unwrap();
+    let bits: Table = api3.get::<Function>("new").unwrap().call(("Bits", "0000000000010")).unwrap();
+    let update: Function = bits.get("update").unwrap();
+    update.call::<()>((bits.clone(), 0.5)).unwrap();
     out.push_str(&log.borrow_mut().split_off(0));
 
     // 5. A field the engine fills in: its kind is "object", with its class; the engine makes one

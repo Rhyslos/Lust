@@ -1704,9 +1704,19 @@ impl<'a> Parser<'a> {
         }
         let target = self.expr()?;
         // hp += 5; is hp = hp + 5;
-        let op = [("+=", BinOp::Add), ("-=", BinOp::Sub), ("*=", BinOp::Mul), ("/=", BinOp::Div)]
-            .into_iter()
-            .find(|(s, _)| self.at_sym(s));
+        let op = [
+            ("+=", BinOp::Add),
+            ("-=", BinOp::Sub),
+            ("*=", BinOp::Mul),
+            ("/=", BinOp::Div),
+            ("&=", BinOp::BitAnd),
+            ("|=", BinOp::BitOr),
+            ("^=", BinOp::BitXor),
+            ("<<=", BinOp::Shl),
+            (">>=", BinOp::Shr),
+        ]
+        .into_iter()
+        .find(|(s, _)| self.at_sym(s));
         if let Some((sym, op)) = op {
             let opos = self.next().pos;
             if !matches!(target.kind, ExprKind::Name(_) | ExprKind::Field(..) | ExprKind::Index(..)) {
@@ -1726,7 +1736,7 @@ impl<'a> Parser<'a> {
                 }
             }
             if let Some(p) = calls(&target) {
-                let short = &sym[..1];
+                let short = &sym[..sym.len() - 1];
                 return self.fail(
                     p,
                     format!("{sym} reads and changes its left side, so the left side can't call a method. Put the result in a variable first, then use the variable with {sym}, or write = and {short} in full."),
@@ -2239,7 +2249,7 @@ impl<'a> Parser<'a> {
     }
 
     fn compare(&mut self) -> R<Expr> {
-        let left = self.sum()?;
+        let left = self.bit_or()?;
         if self.at_word("like") {
             let t = self.next();
             let (cls, pos) = self.ident("a class name")?;
@@ -2257,12 +2267,45 @@ impl<'a> Parser<'a> {
             _ => return Ok(left),
         };
         let t = self.next();
-        let right = self.sum()?;
+        let right = self.bit_or()?;
         if matches!(&self.cur().kind, Tk::Sym(s) if ["==", "!=", "===", "!==", "<", ">", "<=", ">="].contains(s)) {
             let pos = self.cur().pos;
             return self.fail(pos, "one comparison at a time. Join them with &&: a < b && b < c");
         }
         Ok(self.mk(left.pos, ExprKind::Bin(op, Box::new(left), Box::new(right), t.pos)))
+    }
+
+    // The bitwise operators, as in Rust: | joins loosest, then ^, then &, then << and >>, all
+    // tighter than comparisons, so flags & swim != 0 is (flags & swim) != 0.
+    fn bit_or(&mut self) -> R<Expr> {
+        self.bits(0)
+    }
+
+    /// One level of the bitwise operators: 0 is |, 1 is ^, 2 is &, 3 is << and >>.
+    fn bits(&mut self, level: u8) -> R<Expr> {
+        let d = self.depth;
+        let r = self.bit_chain(level);
+        self.depth = d;
+        r
+    }
+
+    fn bit_chain(&mut self, level: u8) -> R<Expr> {
+        let next = |p: &mut Self| if level == 3 { p.sum() } else { p.bits(level + 1) };
+        let mut left = next(self)?;
+        loop {
+            let op = match (level, &self.cur().kind) {
+                (0, Tk::Sym("|")) => BinOp::BitOr,
+                (1, Tk::Sym("^")) => BinOp::BitXor,
+                (2, Tk::Sym("&")) => BinOp::BitAnd,
+                (3, Tk::Sym("<<")) => BinOp::Shl,
+                (3, Tk::Sym(">>")) => BinOp::Shr,
+                _ => return Ok(left),
+            };
+            self.deeper()?;
+            let t = self.next();
+            let right = next(self)?;
+            left = self.mk(left.pos, ExprKind::Bin(op, Box::new(left), Box::new(right), t.pos));
+        }
     }
 
     fn sum(&mut self) -> R<Expr> {
@@ -2326,6 +2369,17 @@ impl<'a> Parser<'a> {
                 ExprKind::Int(v) => self.mk(t.pos, ExprKind::Int(-v)),
                 ExprKind::Float(v) => self.mk(t.pos, ExprKind::Float(-v)),
                 _ => self.mk(t.pos, ExprKind::Neg(Box::new(inner))),
+            });
+        }
+        if self.at_sym("~") {
+            let d = self.depth;
+            self.deeper_by(3)?;
+            let t = self.next();
+            let inner = self.unary()?;
+            self.depth = d;
+            return Ok(match inner.kind {
+                ExprKind::Int(v) => self.mk(t.pos, ExprKind::Int(!v)),
+                _ => self.mk(t.pos, ExprKind::BitNot(Box::new(inner))),
             });
         }
         if self.at_sym("#") {

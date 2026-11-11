@@ -1,0 +1,5 @@
+-- Bits pushed out of the top stop the program, as * does when a number gets too big for an int.
+int places = 63;
+int one = 1;
+print(one << places);
+end

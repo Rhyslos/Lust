@@ -672,6 +672,26 @@ pub fn imod(a: i64, b: i64) -> i64 {
     a % b
 }
 
+/// a << n: stops, as * does, when the bits pushed out the top would change the number.
+pub fn shl(a: i64, n: i64) -> i64 {
+    if !(0..64).contains(&n) {
+        fail(format!("<< moves bits by 0 to 63 places, but this is {n}."));
+    }
+    let v = a << n;
+    if v >> n != a {
+        fail("a number got too big for an int.".into());
+    }
+    v
+}
+
+/// a >> n: keeps the sign, so -8 >> 1 is -4.
+pub fn shr(a: i64, n: i64) -> i64 {
+    if !(0..64).contains(&n) {
+        fail(format!(">> moves bits by 0 to 63 places, but this is {n}."));
+    }
+    a >> n
+}
+
 pub fn toint(v: f64) -> i64 {
     if v.is_nan() {
         fail("this float isn't a number, so it can't be an int.".into());

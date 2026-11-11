@@ -1,0 +1,97 @@
+-- Bitwise operators: & | ^ ~ << >>, on whole numbers, the same as a built program's 64-bit ints.
+
+-- Flags: one bit each, joined with | and asked about with &.
+lock int walk = 1;
+lock int swim = 2;
+lock int fly = 4;
+int moves = walk | swim;
+print(moves);
+is moves & swim != 0? then {
+    print("swims");
+}
+is moves & fly != 0? then {
+    print("flies");
+} or {
+    print("doesn't fly");
+}
+moves |= fly;
+moves &= ~walk;
+print(moves, moves & walk, moves ^ 7);
+
+-- Masks and shifts, both ways.
+int colour = 16753920;
+int red = colour >> 16 & 255;
+int green = colour >> 8 & 255;
+int blue = colour & 255;
+print(red, green, blue);
+print(red << 16 | green << 8 | blue);
+print(1 << 0, 1 << 10, 3 << 4, 1024 >> 3, 7 >> 10);
+
+-- Below zero: two's complement, and >> keeps the sign.
+print(-8 >> 1, -1 >> 63, -7 >> 1, ~0, ~5, ~-6);
+print(-1 & 255, -256 | 15, -1 ^ 1, 5 & -2);
+
+-- Precedence, as in Rust: << >> before &, before ^, before |, all before comparisons.
+print(1 | 2 & 3, 6 ^ 3 & 5, 1 + 1 << 2, 2 * 3 & 4);
+int a = 12;
+int b = 10;
+print(a & b != 0, a & b == 8);
+print(2 ^ 3);
+
+-- Compound assignment.
+int bits = 1;
+bits <<= 4;
+bits |= 3;
+bits ^= 1;
+print(bits);
+bits >>= 2;
+bits &= 6;
+print(bits);
+int array masks = [255, 15];
+masks[1] <<= 4;
+print(masks);
+
+-- Sized numbers: read as ints; ~ on an unsigned one flips just its own bits.
+uint8 none = 0;
+uint8 low = 15;
+print(~none, ~low, none | low, low << 4);
+uint8 flipped = ~low;
+print(flipped);
+uint16 wide = 1;
+uint32 widest = 4278190080;
+print(~wide, ~widest, widest >> 24);
+int8 small = -128;
+int16 mid = 300;
+int32 big = -2147483648;
+print(~small, ~mid, ~big, small >> 2, mid & 255);
+uint8 array tiles = [0, 240];
+print(~tiles[1], tiles[1] >> 4);
+
+-- A result that doesn't fit a sized number stops, as with +.
+try {
+    uint8 over = low << 5;
+    print(over);
+} error (string message) {
+    print(message);
+}
+
+-- Near the biggest whole number lust run holds exactly (9007199254740991).
+int top = 9007199254740991;
+print(top & -2, top ^ 1, top >> 52, -top | 1, ~(top - 1), 1 << 52, (1 << 52) - 1 | 1 << 52);
+print(top & 4503599627370496, -top & 1, -top >> 60);
+
+-- Moving by a negative number of places, or 64 or more, stops.
+int far = 64;
+try {
+    print(1 << far);
+} error (string message) {
+    print(message);
+}
+int back = -1;
+try {
+    print(8 >> back);
+} error (string message) {
+    print(message);
+}
+print(1 >> 63, 5 << 0);
+end
