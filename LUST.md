@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (alpha 62):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (alpha 63):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -258,7 +258,16 @@ print(pos);                            -- [0.03333334, 0.0, 0.0]
 
 - **Arithmetic:** `+` and `-` between vec3s, `*` and `/` by a number, and `-pos` points the other way. A rotation times a vec3 turns it, and a rotation times a rotation turns by one and then the other.
 - **Their parts:** `pos.x`, `pos.y` and `pos.z` are floats, and can be changed: `pos.z = 0;`. A rotation's insides are a quaternion, kept out of the way; `facing:degrees()` gives its degrees around x, y and z as a vec3.
-- **Methods:** `pos:length()`, `dir:normalized()` (the same direction, 1 long), `a:dot(b)`, `a:cross(b)`, `a:distance(b)`, `a:lerp(b, 0.25)` (a quarter of the way to b), `facing:inverse()` (the turn back).
+- **Methods:** `pos:length()`, `dir:normalized()` (the same direction, 1 long), `a:dot(b)`, `a:cross(b)`, `a:distance(b)`, `a:lerp(b, 0.25)` (a quarter of the way to b), `a:angle(b)` (the angle between two directions, in degrees, 0 to 180), `facing:inverse()` (the turn back), and `facing:lerp(goal, 0.25)` (a quarter of the smooth turn from one rotation to another, the shortest way round).
+- **Making a turn:** `Rotation:toward(dir)` faces `dir`: `Rotation:toward(dir) * [1, 0, 0]` points along it. It turns only left and right and up and down, never rolling, so the turn's up stays as near +z as it can. Straight up or straight down faces up or down with no turn around z. `Rotation:around(axis, degrees)` turns that many degrees around an axis: `Rotation:around([0, 0, 1], 90)` is the same as `[0, 0, 90]`. A direction or axis of `[0, 0, 0]` points nowhere, so either stops the program, as does `a:angle(b)` with one.
+
+```
+vec3 toTarget = target - pos;
+rotation goal = Rotation:toward(toTarget);
+facing = facing:lerp(goal, 0.1);             -- turn a tenth of the way each frame
+vec3 ahead = facing * [1, 0, 0];
+is ahead:angle(toTarget) < 5? then { print("in sight"); }
+```
 - **Copied like numbers.** `vec3 b = a;` makes a copy, so changing `b.x` doesn't change `a`. It's the same in arrays, maps and fields.
 - **As an engine keeps them.** Each number is a 32-bit float, so a vec3 holds about 7 digits, and `.text()` shows them to 7. The degrees turn in the order z, then x, then y, the same as Solis and glam's `EulerRot::ZXY`: x tilts, y rolls, and z turns like a compass. Z is up.
 - **The same everywhere.** Every step is worked out the same way in a built program and through `lust run`, down to the last bit, so a game gives the same numbers in both.
@@ -1307,7 +1316,7 @@ Patterns are regular expressions, the kind most languages use: `[0-9]` is a digi
 
 ### Built-in objects
 
-Lust comes with five objects. Their methods are called like any object's: `Maths:sqrt(2.0)`. The fifth, `Web`, is in section 18.
+Lust comes with these objects. Their methods are called like any object's: `Maths:sqrt(2.0)`. `Web` is in section 18, `Random` under Random numbers above, and `Rotation` with vectors and rotations in section 6.
 
 **Maths**
 
@@ -1498,7 +1507,7 @@ An engine can use Lust's compiler itself, as a Rust library: to check a game's L
 
 ```
 [dependencies]
-lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.62", default-features = false }
+lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.63", default-features = false }
 ```
 
 Without its default features it needs nothing but Rust's own library (the default ones are the `lust` command). Lust doesn't open any files: the engine reads them, and hands over each one's path and text, with `/` between folders.
@@ -1699,7 +1708,7 @@ The built-ins can't be used as names either:
 print      wait       ask
 ```
 
-Neither can the built-in objects: `Maths`, `Files`, `Time`, `Json`, `Web` and `Random`.
+Neither can the built-in objects: `Maths`, `Files`, `Time`, `Json`, `Web`, `Random` and `Rotation`. (`Rotation` with a capital is the object; `rotation` is the type.)
 
 ---
 

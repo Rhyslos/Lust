@@ -2,7 +2,7 @@
 
 This file is for programs that use Lust as a library: Solis first. When an engine updates its pinned Lust, it reads the section for each version it skips over, newest at the bottom, and does what **The engine does** says. The full rules are in [LUST.md](LUST.md), section 21.
 
-An engine moving from alpha 48 to alpha 62 or later reads everything below.
+An engine moving from alpha 48 to alpha 63 or later reads everything below.
 
 ## alpha 49: states in native methods
 
@@ -85,3 +85,9 @@ An engine moving from alpha 48 to alpha 62 or later reads everything below.
 - **Lua:** an engine that gives Lust its own rolls through `LUST_HOST.random` and `LUST_HOST.frandom` should also give `LUST_HOST.seed(n)`, so `Random:seed` restarts them. Without it, `Random:seed` seeds Lua's own `math.random`.
 - `Maths`, `Files`, `Time`, `Json`, `Web` and `Random` stay names a game can't use.
 - **The engine does:** nothing, unless it gives Lust its own random rolls (above).
+
+## alpha 63: rotation and vector helpers
+
+- New calls on values that already cross to engines: `Rotation:toward(dir)`, `Rotation:around(axis, degrees)`, `a:lerp(b, t)` on rotations and `a:angle(b)` on vec3s. Rotations and vec3s are kept and passed exactly as before.
+- `Rotation` becomes a built-in object, so a game can't use it as a name (the type `rotation` is unchanged).
+- **The engine does:** nothing.

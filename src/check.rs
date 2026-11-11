@@ -3455,9 +3455,22 @@ impl<'a> Checker<'a> {
             // An empty list ([] for any file type) has no type of its own: it takes the
             // parameter's, once the method is known.
             let empty = |a: &Expr| matches!(&a.kind, ExprKind::List { items, keys } if items.is_empty() && keys.is_none());
+            // A vec3 or rotation written as [x, y, z] needs to know it's one: Rotation:toward([1, 0, 0]).
+            let hint: Vec<Ty> = match crate::stdlib::object_method(obj, m, &[]) {
+                Some(Ok(lib)) => lib.params.into_iter().map(|(_, t)| t).collect(),
+                _ => Vec::new(),
+            };
             let mut types: Vec<Ty> = args
                 .iter()
-                .map(|a| if empty(a) { Ty::Error } else { self.expr(a, ctx, None) })
+                .enumerate()
+                .map(|(i, a)| {
+                    if empty(a) {
+                        Ty::Error
+                    } else {
+                        let want = hint.get(i).filter(|t| matches!(t, Ty::Vec3 | Ty::Rot));
+                        self.expr(a, ctx, want)
+                    }
+                })
                 .collect();
             if let Some(found) = crate::stdlib::object_method(obj, m, &types) {
                 match found {
@@ -3532,7 +3545,7 @@ impl<'a> Checker<'a> {
                     fpos,
                     format!(
                         "{n} has no field called {f}. Its methods are called with : like {n}:{}(…).",
-                        crate::stdlib::listing(n).split(',').next().unwrap_or("")
+                        crate::stdlib::listing(n).split([',', ' ']).next().unwrap_or("")
                     ),
                 );
                 return Ty::Error;
@@ -3671,13 +3684,15 @@ impl<'a> Checker<'a> {
             (Ty::Vec3, "cross") => (vec![v("other")], Ty::Vec3),
             (Ty::Vec3, "distance") => (vec![v("other")], Ty::Float),
             (Ty::Vec3, "lerp") => (vec![v("to"), ("amount".into(), Ty::Float)], Ty::Vec3),
+            (Ty::Vec3, "angle") => (vec![v("other")], Ty::Float),
             (Ty::Rot, "inverse") => (vec![], Ty::Rot),
+            (Ty::Rot, "lerp") => (vec![("to".into(), Ty::Rot), ("amount".into(), Ty::Float)], Ty::Rot),
             (Ty::Rot, "degrees") => (vec![], Ty::Vec3),
             _ => {
                 let list = if *t == Ty::Vec3 {
-                    "length, normalized, dot, cross, distance and lerp"
+                    "length, normalized, dot, cross, distance, lerp and angle"
                 } else {
-                    "inverse and degrees"
+                    "inverse, degrees and lerp"
                 };
                 self.err(mpos, format!("{} has no method called {m}. Its methods are {list}.", self.a(t)));
                 for a in args {

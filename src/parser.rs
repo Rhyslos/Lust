@@ -124,7 +124,7 @@ pub fn check_name(diags: &mut Diags, name: &str, pos: Pos, kind: NameKind, what:
         diags.add(pos, format!("{name} is a built-in, so it can't be a name."));
         return;
     }
-    if crate::stdlib::OBJECTS.contains(&name) || name == "Random" {
+    if crate::stdlib::OBJECTS.contains(&name) {
         diags.add(pos, format!("{name} is one of Lust's built-in objects, so it can't be a name."));
         return;
     }

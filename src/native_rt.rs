@@ -518,6 +518,64 @@ pub fn qdegrees(q: Rotation) -> Vec3 {
     let y = (-(2.0 * (qx * qz - qy * qw))).atan2(1.0 - 2.0 * (qx * qx + qy * qy));
     vec3(x / RAD, y / RAD, z / RAD)
 }
+/// Rotation:toward(dir): forward (+x) along dir, up kept as near +z as it can be: a turn up or
+/// down (around y), then around z like a compass. No roll. Straight up or down faces x (yaw 0).
+pub fn rotation_toward(d: Vec3) -> Rotation {
+    let (x, y, z) = v64(d);
+    if x == 0.0 && y == 0.0 && z == 0.0 {
+        fail("toward needs a direction, but [0.0, 0.0, 0.0] has no length.".into());
+    }
+    let yaw = if x != 0.0 || y != 0.0 { y.atan2(x) } else { 0.0 };
+    let pitch = z.atan2((x * x + y * y).sqrt());
+    let (hz, hy) = (yaw / 2.0, -pitch / 2.0);
+    let (sz, cz, sy, cy) = (hz.sin(), hz.cos(), hy.sin(), hy.cos());
+    qround((-sz * sy, cz * sy, sz * cy, cz * cy))
+}
+/// Rotation:around(axis, degrees): that many degrees around the axis, turning the way a right
+/// hand's fingers curl when its thumb points along the axis.
+pub fn rotation_around(a: Vec3, deg: f64) -> Rotation {
+    let (x, y, z) = v64(a);
+    let l = (x * x + y * y + z * z).sqrt();
+    if l == 0.0 {
+        fail("around needs an axis to turn around, but [0.0, 0.0, 0.0] has no length.".into());
+    }
+    let h = deg * RAD / 2.0;
+    let s = h.sin();
+    qround((x / l * s, y / l * s, z / l * s, h.cos()))
+}
+/// a:lerp(b, t): the smooth turn from a to b, the shortest way round. glam's Quat::slerp's steps,
+/// worked out in f64 and rounded once, as the Lua runtime does.
+pub fn qlerp(a: Rotation, b: Rotation, t: f64) -> Rotation {
+    let ((ax, ay, az, aw), (mut bx, mut by, mut bz, mut bw)) = (q4(a), q4(b));
+    let mut dot = ax * bx + ay * by + az * bz + aw * bw;
+    if dot < 0.0 {
+        (bx, by, bz, bw, dot) = (-bx, -by, -bz, -bw, -dot);
+    }
+    if dot > 1.0 - f32::EPSILON as f64 {
+        let (x, y, z, w) = (ax + (bx - ax) * t, ay + (by - ay) * t, az + (bz - az) * t, aw + (bw - aw) * t);
+        let l = (x * x + y * y + z * z + w * w).sqrt();
+        return qround((x / l, y / l, z / l, w / l));
+    }
+    let theta = dot.acos();
+    let (s1, s2) = ((theta * (1.0 - t)).sin(), (theta * t).sin());
+    let inv = 1.0 / theta.sin();
+    qround((
+        (ax * s1 + bx * s2) * inv,
+        (ay * s1 + by * s2) * inv,
+        (az * s1 + bz * s2) * inv,
+        (aw * s1 + bw * s2) * inv,
+    ))
+}
+/// a:angle(b): the angle between two directions, in degrees, from 0 to 180.
+pub fn vangle(a: Vec3, b: Vec3) -> f64 {
+    let ((ax, ay, az), (bx, by, bz)) = (v64(a), v64(b));
+    if (ax == 0.0 && ay == 0.0 && az == 0.0) || (bx == 0.0 && by == 0.0 && bz == 0.0) {
+        fail("angle needs two directions, but one of them is [0.0, 0.0, 0.0], which has no length.".into());
+    }
+    let (cx, cy, cz) = (ay * bz - az * by, az * bx - ax * bz, ax * by - ay * bx);
+    let dot = ax * bx + ay * by + az * bz;
+    (cx * cx + cy * cy + cz * cz).sqrt().atan2(dot) / RAD
+}
 /// C's %.7g: an f32's number to the 7 digits it holds.
 fn g7(v: f64) -> f64 {
     format!("{:.6e}", v).parse().unwrap_or(v)

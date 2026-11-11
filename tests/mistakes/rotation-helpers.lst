@@ -1,0 +1,17 @@
+-- Mistakes with rotation and vector helpers.
+rotation a = Rotation:toward(5);
+rotation b = Rotation:toward([1, 0, 0], 2);
+rotation c = Rotation:around([0, 0, 1]);
+rotation d = Rotation:around(90, [0, 0, 1]);
+vec3 e = Rotation:toward([1, 0, 0]);
+rotation f = Rotation:spin(1);
+rotation g = [0, 0, 0];
+rotation h = g:lerp([0, 0, 1], 0.5);
+rotation i = g:lerp(g);
+vec3 v = [1, 0, 0];
+int j = v:angle(v);
+float k = v:angle(g);
+float l = g:angle(g);
+int Rotation = 3;
+float m = Rotation.x;
+end

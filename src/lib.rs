@@ -712,3 +712,60 @@ mod maths_helpers {
         }
     }
 }
+
+#[cfg(all(test, feature = "cli"))]
+mod rotation_helpers {
+    //! Rotation:toward, Rotation:around, rotation lerp and vec3 angle, tried straight from Rust.
+    use crate::native_rt as rt;
+
+    fn close(a: rt::Vec3, b: (f32, f32, f32)) -> bool {
+        (a.x - b.0).abs() < 1e-6 && (a.y - b.1).abs() < 1e-6 && (a.z - b.2).abs() < 1e-6
+    }
+
+    #[test]
+    fn toward_faces_the_direction() {
+        let x = rt::vec3(1.0, 0.0, 0.0);
+        for d in [
+            (1.0, 2.0, 3.0),
+            (-4.0, 0.5, -1.0),
+            (0.0, 0.0, 1.0),
+            (0.0, 0.0, -7.0),
+            (0.0, -1.0, 0.0),
+        ] {
+            let r = rt::rotation_toward(rt::vec3(d.0, d.1, d.2));
+            let l = (d.0 * d.0 + d.1 * d.1 + d.2 * d.2).sqrt();
+            let f = rt::qmulv(r, x);
+            assert!(close(f, ((d.0 / l) as f32, (d.1 / l) as f32, (d.2 / l) as f32)), "{d:?} {f:?}");
+            // No roll: the turn's own right side (its y) stays level.
+            assert!(rt::qmulv(r, rt::vec3(0.0, 1.0, 0.0)).z.abs() < 1e-6);
+        }
+        // Straight up turns no way round z.
+        assert_eq!(rt::qdegrees(rt::rotation_toward(rt::vec3(0.0, 0.0, 1.0))).z, 0.0);
+    }
+
+    #[test]
+    fn around_and_lerp() {
+        let q = rt::rotation_around(rt::vec3(0.0, 0.0, 2.0), 90.0);
+        assert_eq!(q, rt::rot(0.0, 0.0, 90.0));
+        let a = rt::rot(0.0, 0.0, 0.0);
+        assert_eq!(rt::qlerp(a, q, 0.0), a);
+        assert_eq!(rt::qlerp(a, q, 1.0), q);
+        assert!(close(rt::qdegrees(rt::qlerp(a, q, 0.5)), (0.0, 0.0, 45.0)));
+        // The same turn written with every number's sign flipped is the shortest way: no turn.
+        let neg = rt::Rotation {
+            x: -q.x,
+            y: -q.y,
+            z: -q.z,
+            w: -q.w,
+        };
+        assert!(close(rt::qmulv(rt::qlerp(q, neg, 0.5), rt::vec3(1.0, 0.0, 0.0)), (0.0, 1.0, 0.0)));
+    }
+
+    #[test]
+    fn angles_in_degrees() {
+        let x = rt::vec3(1.0, 0.0, 0.0);
+        assert_eq!(rt::vangle(x, rt::vec3(0.0, 2.0, 0.0)), 90.0);
+        assert_eq!(rt::vangle(x, rt::vec3(-3.0, 0.0, 0.0)), 180.0);
+        assert_eq!(rt::vangle(x, x), 0.0);
+    }
+}
