@@ -1,0 +1,10 @@
+window "Swatch" 240x120
+  column 0,0 240x107
+    text "Sky" 10,10 27x19
+    button "Darker" 10,37 77x33
+    text "#66b2ff" 10,78 58x19
+window "Swatch" 240x120
+  column 0,0 240x107
+    text "Sky" 10,10 27x19
+    button "Darker" 10,37 77x33
+    text "#4e81e3" 10,78 62x19

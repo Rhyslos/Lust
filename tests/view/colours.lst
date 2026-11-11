@@ -1,0 +1,21 @@
+-- A colour value styles a piece where a colour word would: background, color and border.
+assembly Swatch {
+    has {
+        colour sky = [0.4, 0.7, 1.0];
+        colour ink = indigo9;
+        colour glass = [1, 1, 1, 0.5];
+    }
+
+    view [title "Swatch", width 240, height 120, background sky] {
+        column [gap 8, pad 10, background glass] {
+            text "Sky" [color ink, background sky, border ink];
+            button "Darker" [background sky] {
+                sky = sky:lerp(ink, 0.5);
+            }
+            text sky.text();
+        }
+    }
+}
+
+Swatch:open();
+end

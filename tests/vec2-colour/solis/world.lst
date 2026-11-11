@@ -1,0 +1,10 @@
+-- What a stand-in 2D engine offers: vec2s and colours both ways.
+method vec2 spotOf(entity e) native;
+method slide(entity e, vec2 to) native;
+method colour tintOf(entity e) native;
+method paint(entity e, colour c) native;
+method vec2 array path() native;
+method log(string words) native;
+
+pass spotOf, slide, tintOf, paint, path, log;
+end

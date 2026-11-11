@@ -1,0 +1,22 @@
+-- vec2s and colours in Luau: through native methods, a component's fields and an event.
+method vec2 spotOf(entity e) native;
+method colour tintOf(entity e) native;
+method log(string words) native;
+
+event Glow(colour tint, vec2 at);
+
+component Lamp {
+    has {
+        vec2 drift = [0.5, -0.25];
+        colour light = yellow5;
+    }
+
+    method update(float dt) {
+        vec2 at = spotOf(this) + drift * dt;
+        colour seen = tintOf(this);
+        log("lamp at " + at.text() + ", turned " + at:rotated(90).text() + ", " + at:rotated(30).text());
+        log("engine tint " + seen.text() + ", mixed " + seen:lerp(light, 0.25).text());
+        send Glow(light:fade(0.5), at) to this;
+    }
+}
+end

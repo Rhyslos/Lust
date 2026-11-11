@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (alpha 64):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types, questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (alpha 65):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -87,7 +87,9 @@ bool alive = true;
 | `string` | text, in double quotes | `"Ada"`, `"line\n"` |
 | `bool` | yes or no | `true`, `false`, `not true` |
 | `vec3` | three numbers: a position, a direction or a speed (section 6) | `[1, 0, 2]` |
+| `vec2` | two numbers, x and y: a place or a direction in 2D (section 6) | `[3, 4.5]` |
 | `rotation` | a turn in 3D, written as degrees around x, y and z (section 6) | `[0, 0, 90]` |
+| `colour` | red, green, blue and see-through, each from 0 to 1 (section 6) | `[0.4, 0.7, 1.0]`, `orange5` |
 | `entity` | a thing in a game engine, given by the engine, or `nothing` (section 21) | `this`, `nothing` |
 | a class name | one thing made from a class | `Player`, `Weapon` |
 | `T array` | a list of `T` | `int array` |
@@ -312,6 +314,49 @@ is ahead:angle(toTarget) < 5? then { print("in sight"); }
 - **The same everywhere.** Every step is worked out the same way in a built program and through `lust run`, down to the last bit, so a game gives the same numbers in both.
 - **Compare with a little room.** 32-bit numbers can't hold every turn exactly: a quarter turn gives `facing * [1, 0, 0]` as `[3.4e-08, 0.9999999, 0.0]`, not `[0, 1, 0]`. So ask whether two vectors are close rather than equal: `is a:distance(b) < 0.0001? then { … }`.
 - Vectors and rotations can't go into JSON, saves or databases yet.
+
+### vec2: two numbers, for 2D
+
+A `vec2` is a vec3 without z: two numbers, x and y, for 2D games. It's written as two numbers in `[ ]`, and works like a vec3:
+
+```
+vec2 pos = [3.0, 4.5];
+vec2 speed = [2, 0];
+pos += speed * dt;
+pos.y = 0;
+vec2 left = speed:rotated(90);           -- a quarter turn counter-clockwise
+print(left, pos:distance([0, 0]));       -- [0.0, 2.0] and how far pos is from [0, 0]
+```
+
+- **Arithmetic:** `+` and `-` between vec2s, `*` and `/` by a number, `-pos`, and `+=`, `-=`, `*=` and `/=`.
+- **Its parts:** `pos.x` and `pos.y`, which can be changed. It has no `z`.
+- **Methods:** `length()`, `normalized()`, `dot(b)`, `distance(b)`, `lerp(b, t)` and `angle(b)` (degrees, 0 to 180), as on a vec3, and:
+  - `a:cross(b)`, a float: which way b turns from a. Above 0 is left (counter-clockwise), below 0 is right, and 0 means they point the same way or opposite ways.
+  - `v:rotated(degrees)`: turned around `[0, 0]`, counter-clockwise for more than 0. A rotation turns only vec3s. Whole quarter turns (90, 180, -90 …) are exact, so `[1, 0]:rotated(90)` is `[0.0, 1.0]`.
+- **Between 2D and 3D:** `pos3.xy` is a vec3's x and y as a vec2, and `pos:withZ(z)` makes a vec3 from a vec2. A vec2 and a vec3 don't mix, so `pos2 + pos3` is a mistake that shows both ways to make them match.
+- `.text()` and `print` show `[3.0, 4.5]`. Like a vec3, it's copied like a number, each number is a 32-bit float, the results are the same to the last bit in a built program and through `lust run`, and `==` compares exactly.
+
+### colour: red, green, blue and see-through
+
+A `colour` holds four numbers from 0 to 1: red, green, blue and how solid it is (`a`, 1 for solid, 0 for see-through). It's written as three numbers in `[ ]`, or four with see-through, or as one of the views' colour words (section 17), or from hex text:
+
+```
+colour sky = [0.4, 0.7, 1.0];            -- solid
+colour glass = [1, 1, 1, 0.5];           -- half see-through
+colour warn = orange5;                   -- a colour word
+colour moss = Colour:hex("#3a8f2a");     -- or "#3a8f2a80", with see-through
+colour dusk = sky:lerp(warn, 0.5);
+print(sky, dusk.r);                      -- #66b2ff 0.699999988079071
+```
+
+- **Parts go from 0 to 1.** Written as numbers in `[ ]`, a part outside that is a mistake before anything runs (for 0 to 255, divide by 255). Worked out while running, each part is kept between 0 and 1: `[big, 0 - big, 0.5]` is `[1, 0, 0.5]`.
+- **Colour words** are the words views use, `white`, `black`, `gray1` to `gray9`, `red`, `blue1` to `blue9` and the rest (section 17), with exactly the red, green and blue the views draw them with. They're colours only where a colour is wanted: `colour c = teal;`, `paint(teal)` for a method taking a colour, `[red, blue]` for a `colour array`, `c == teal`. Anywhere else they aren't names, so a variable can still be called `teal`, and where there is one, it comes first.
+- **`Colour:hex(text)`** reads `"#rrggbb"` or `"#rrggbbaa"`, in capitals or not. Text written right there that isn't one is a mistake before anything runs; text worked out while running stops the program, saying what it was. `Colour` with a capital is the object; `colour` is the type.
+- **Its parts:** `c.r`, `c.g`, `c.b` and `c.a`, floats that can be changed, and are kept between 0 and 1.
+- **Methods:** `c:fade(alpha)` (the same colour with this see-through), `a:lerp(b, t)` (blends all four parts, `t` of the way to b) and `c:hex()` (`"#rrggbb"`, or `"#rrggbbaa"` when it isn't solid).
+- `.text()` and `print` show its hex text, `==` compares exactly, and there's no arithmetic on colours. Each part is a 32-bit float, the same everywhere.
+- **In a view**, a colour value goes wherever a colour word does after `background`, `color` and `border`: `[background sky]`. It's drawn exactly as it is, in dark mode too, and a background shows its see-through.
+- vec2s and colours can't go into JSON, saves or databases yet either.
 
 ---
 
@@ -1205,7 +1250,7 @@ Short words in `[ ]`, in the spirit of Tailwind:
 | words | `font "file.ttf"` |
 | off | `disabled`, or `disabled` with a bool: `disabled not ready` |
 
-**Colours** are `white`, `black`, `gray1` to `gray9`, and `red`, `orange`, `yellow`, `green`, `teal`, `blue`, `indigo`, `purple` and `pink`. Each of those has nine shades from light to dark: `blue1` is a pale blue for backgrounds, `blue9` a deep one. Any other colour is written `"#2f9e44"`. The shades are the Open Color palette.
+**Colours** are `white`, `black`, `gray1` to `gray9`, and `red`, `orange`, `yellow`, `green`, `teal`, `blue`, `indigo`, `purple` and `pink`. Each of those has nine shades from light to dark: `blue1` is a pale blue for backgrounds, `blue9` a deep one. Any other colour is written `"#2f9e44"`, or held in a `colour` (section 6): `[background sky]` with `colour sky = [0.4, 0.7, 1.0];`. A colour's see-through (`"#2f9e4480"`) shows on a background. The shades are the Open Color palette.
 
 **Sharing the room.** Pieces are as big as what's in them. `width fill` in a row (or `height fill` in a column) takes the room that's left over; several fills share it equally, and `grow 2` takes twice the share of `grow 1`. A `space` is an empty fill, so it pushes what comes after it to the end. `minWidth` and `maxWidth` keep a piece between two sizes.
 
@@ -1289,7 +1334,7 @@ string reply = Web:post("https://example.com/scores", Json:write(score));
 
 | Built-in | Does |
 | --- | --- |
-| `print(x);` | shows `x` on its own line. Any type: numbers, text, bools, lists, vectors, states and `nothing` |
+| `print(x);` | shows `x` on its own line. Any type: numbers, text, bools, lists, vectors, colours, states and `nothing` |
 | `print(a, b, c);` | shows several values on one line, with a space between each: `print("Score:", score, "lives:", lives);` |
 | `wait seconds;` | pauses |
 | `ask(question)` | shows a question and gives back what's typed |
@@ -1355,7 +1400,7 @@ Patterns are regular expressions, the kind most languages use: `[0-9]` is a digi
 
 ### Built-in objects
 
-Lust comes with these objects. Their methods are called like any object's: `Maths:sqrt(2.0)`. `Web` is in section 18, `Random` under Random numbers above, and `Rotation` with vectors and rotations in section 6.
+Lust comes with these objects. Their methods are called like any object's: `Maths:sqrt(2.0)`. `Web` is in section 18, `Random` under Random numbers above, and `Rotation` and `Colour` (`Colour:hex("#3a8f2a")`) with vectors and colours in section 6.
 
 **Maths**
 
@@ -1486,7 +1531,7 @@ end
 
 The game uses it like any other file: `fetch "engine/entity":Entity;` and `get "engine/entity":now;`. Lust checks every call against it, so a typo or a wrong type is caught before anything runs, even though the bodies are elsewhere.
 
-- A native method takes and gives back ints, floats, text, bools, `vec3`s, `rotation`s, states' options, things made from classes, and arrays of any of those (`Thing array`, `vec3 array`).
+- A native method takes and gives back ints, floats, text, bools, `vec3`s, `vec2`s, `rotation`s, `colour`s, states' options, things made from classes, and arrays of any of those (`Thing array`, `vec3 array`).
 - **States' options** cross by their full name, inside options and all: `method animate(Clip clip) native;` hands the program `"Farmer.Walk"` for `Clip.Farmer.Walk`. One given back is checked by name: if its state has no such option, the program stops on the line that asked, saying what came back and which options there are. So `==`, `===` and `check` work on what a native gives back like on any option.
 - Where the body comes from:
   - **built as a Rust library** (below): from the Rust program using it;
@@ -1535,8 +1580,8 @@ What the Rust program sees:
 - **Failures come back as a `LustError`.** Everything gives back a `Result`, and a Lust failure says where it happened: `file`, `line` and `column` (of the statement that failed), and `message`. Shown with `{}`, it's the message Lust prints: `game.lst:24  this is nothing, so it has no fields or methods.` The program decides what to do with it.
 - **`game::LUST_VERSION`** is the version of Lust that wrote the library.
 - **No unsafe code.** A library starts with `#![forbid(unsafe_code)]`, so Rust itself checks it has none. The one thing that needed it, the computer's time zone for `Time:date()` and `Time:time()`, comes from the program instead: when the Lust uses either, `Host` has `local_time_offset(&self, unix_seconds: i64) -> i64`, the seconds the local time is ahead of UTC (0 for UTC). A program of its own (`lust build`) still asks the computer.
-- Ints, floats, text and bools are Rust's `i64`, `f64`, `String` and `bool`. A state's option comes in as `&'static str` (its full name) and goes back as a `String`, checked by name. A thing made from a class is `Option<Weapon>`, since it can be `nothing`. A `vec3` is the library's `Vec3 { x, y, z }` and a `rotation` its `Rotation { x, y, z, w }` (a quaternion), all `f32`, the same layout as Solis's and glam's. An array is a `Vec` of its items, copied each way.
-- **In LustScript**, the host's Lua function hands a `vec3` back as a Luau `vector` or any table with `x`, `y` and `z`, a rotation as a table with `x`, `y`, `z` and `w`, and an array as a plain list. Lust rounds the numbers to f32 and counts the list, so they're the same as Lust's own. In Luau, the `vec3`s Lust hands over are Luau vectors.
+- Ints, floats, text and bools are Rust's `i64`, `f64`, `String` and `bool`. A state's option comes in as `&'static str` (its full name) and goes back as a `String`, checked by name. A thing made from a class is `Option<Weapon>`, since it can be `nothing`. A `vec3` is the library's `Vec3 { x, y, z }` and a `rotation` its `Rotation { x, y, z, w }` (a quaternion), all `f32`, the same layout as Solis's and glam's. A `vec2` is its `Vec2 { x, y }`, and a `colour` its `Colour { r, g, b, a }` (`to_array()` gives `[f32; 4]`, and `Colour::from([r, g, b, a])` makes one); a colour coming in from the program has each part kept between 0 and 1. An array is a `Vec` of its items, copied each way.
+- **In LustScript**, the host's Lua function hands a `vec3` back as a Luau `vector` or any table with `x`, `y` and `z`, a rotation as a table with `x`, `y`, `z` and `w`, and an array as a plain list. Lust rounds the numbers to f32 and counts the list, so they're the same as Lust's own. In Luau, the `vec3`s Lust hands over are Luau vectors. A `vec2` is a table with `x` and `y`, and a `colour` a table with `r`, `g`, `b` and `a` (an `a` left out is 1), both ways, in plain Lua and Luau alike.
 
 `lust test` tests libraries too: a `game.host.rs` next to `game.lst` is a Rust program that uses it, and its output is compared with `game.out`.
 
@@ -1546,7 +1591,7 @@ An engine can use Lust's compiler itself, as a Rust library: to check a game's L
 
 ```
 [dependencies]
-lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.64", default-features = false }
+lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.65", default-features = false }
 ```
 
 Without its default features it needs nothing but Rust's own library (the default ones are the `lust` command). Lust doesn't open any files: the engine reads them, and hands over each one's path and text, with `/` between folders.
@@ -1577,7 +1622,7 @@ match lust::to_lua("main.lst", &files) {
 - **`changes(old)`**, given the earlier chunk's table, lists the components whose fields `changed`, and those `removed` and `added`, so an inspector knows what to show again.
 - The code outside classes and methods runs again with each new chunk, and objects start over.
 
-**Vectors and rotations:** in Luau, a `vec3` is a Luau `vector` (`vector.create(x, y, z)`; mlua's `Vector`): in components' fields, in what events carry, and in what native methods are given and give back. Luau keeps a vector's numbers as f32s, as Lust does. A `rotation` is a table, `{ x, y, z, w }`. In plain Lua, which has no vectors, a `vec3` is a table, `{ x, y, z }`, and the chunk's `vectors` says which: `"luau"` or `"table"`. A native method's body may give back a table for a vec3 in Luau too, and Lust turns it into a vector. Lust never changes a rotation in place, so it shares them; an engine setting one gives a new table, and never changes one it got from Lust.
+**Vectors and rotations:** in Luau, a `vec3` is a Luau `vector` (`vector.create(x, y, z)`; mlua's `Vector`): in components' fields, in what events carry, and in what native methods are given and give back. Luau keeps a vector's numbers as f32s, as Lust does. A `rotation` is a table, `{ x, y, z, w }`. In plain Lua, which has no vectors, a `vec3` is a table, `{ x, y, z }`, and the chunk's `vectors` says which: `"luau"` or `"table"`. A native method's body may give back a table for a vec3 in Luau too, and Lust turns it into a vector. Lust never changes a rotation in place, so it shares them; an engine setting one gives a new table, and never changes one it got from Lust. A `vec2` is a table `{ x, y }` and a `colour` a table `{ r, g, b, a }`, in Luau as in plain Lua (Luau's vectors have three numbers, and a table keeps a vec2 apart from a vec3); their kinds in a schema are `"vec2"` and `"colour"`. They're shared the same way, so an engine never changes one it got from Lust either.
 
 **Speed:** in Luau, Lust's vector maths is Luau's own, and it rounds numbers to f32 with Luau's vectors, which is many times faster than plain Lua can; it gives exactly the numbers Rust gives. Luau's native code (mlua's `luau-jit` feature) makes it faster again. `bench/` in Lust's own folder ticks 2,000 components both ways, and checks Rust and Luau end with exactly the same values.
 
@@ -1641,7 +1686,7 @@ pass Gun;
 
 - **`this`** is the entity the component is on. Every component has it, and it can't be changed. Hand it over whole (`send Hit(this, 6) to target;`), or ask it for an ability (`this:jump()`). It was written `me` before; `me` still works for now, with a note saying to write `this` (from `lust check`, `lust run` and the others, and in a Lua chunk's `notes`; a Rust library has nowhere to put notes), and becomes a mistake once Solis has moved over. Outside a component, `this` is a mistake.
 - **Abilities are called bare.** Inside a component, the methods the engine gives `entity` (above) are the component's own abilities: `moveTo(position() + [1, 0, 0])` is `this:moveTo(this:position() + …)`. A variable can share an ability's name (`float velocity = velocity();`). The component's own methods come first, then methods brought in with `get`, then the abilities: so a component's own `jump()` wins over the engine's, and `this:jump()` still reaches the engine's.
-- **Fields** hold what the engine can keep and show: `bool`, `int`, `float`, `string`, a state (shown as a choice of its options), `vec3`, `rotation` and `entity`.
+- **Fields** hold what the engine can keep and show: `bool`, `int`, `float`, `string`, a state (shown as a choice of its options), `vec3`, `vec2`, `rotation`, `colour` and `entity`. A colour field can start as a colour word: `colour tint = blue1;`.
 - **Things the engine made for it.** A component can hold a thing of one of the engine's own classes (from its host folders), such as the animator its editor made: `FarmerAnimator anim;`, with **no starting value**. The engine fills it in before the first `update`; reading it before then stops on its line, naming the field: "anim is filled in by the engine before the component's first update, and hasn't been yet." A class of the game's own can't be a component's field (keep those in a class or an object), and one of the engine's can't be given a starting value.
 - **`update(float dt)`** runs once a tick, with how long a tick is. The engine runs the entities in order of their IDs, and an entity's components in order of their names, so a game runs the same way every time.
 - **`entity`** is a value the engine hands over: an entity, or `nothing`. Entities can be compared with `==`, and `.text()` gives the 13 letters and digits Solis writes them as. Lust can't make one; it gets them from the engine's native methods and from `this`.
@@ -1654,7 +1699,7 @@ Built as a library, each component also has what the engine needs to keep, show 
 - `gun.to_data()` gives its fields' values by name, as a `Data` (a `BTreeMap<String, Value>`), and `Gun::from_data(&data)` makes one from values. A value that's missing, or of the wrong kind, keeps the starting value.
 - `gun.set_data(&data)` changes only the fields `data` has, so an edit made in the editor while the game runs keeps the rest, like ammo left and cooldowns.
 - `gun.set_me(Some(id))` puts it on an entity, and `gun.update(dt)` runs a tick. An entity is its 64-bit ID, `Option<u64>`, with `None` for nothing.
-- `Value` is `Bool`, `Int`, `Float`, `Text`, `List` (a vec3's three numbers, a rotation's four) and `Entity`, and `FieldKind` is `Bool`, `Int`, `Float`, `Text`, `Choice` (with the options), `Vec3`, `Rotation` and `Entity`.
+- `Value` is `Bool`, `Int`, `Float`, `Text`, `List` (a vec3's three numbers, a vec2's two, a rotation's four, a colour's four from 0 to 1) and `Entity`, and `FieldKind` is `Bool`, `Int`, `Float`, `Text`, `Choice` (with the options), `Vec3`, `Vec2`, `Rotation`, `Colour` and `Entity`. A colour from `set_data` has its parts kept between 0 and 1.
 
 ### Objects in an engine
 
@@ -1676,7 +1721,7 @@ pass Clock;
 
 - **Passed objects only:** the engine ticks and saves an object its file passes (`pass Clock;`), from any file of the game. An object that isn't passed is that file's own helper: the engine leaves it alone.
 - **Ticked:** a passed object's `update(float dt)` runs once a tick, objects in order of their names, before the entities' components. An `update` the engine can't call that way (`update(int n)`, one that gives something back) is a mistake when the game is built for the engine, as it is for a component.
-- **Saved:** the engine keeps its fields of the kinds a component's are (`bool`, `int`, `float`, `string`, a state, `vec3`, `rotation`, `entity`), and gives them back when a save loads. Other fields (arrays, things) start as written. A saved value that's missing, or of the wrong kind, leaves its field as it is, in Lua and in Rust.
+- **Saved:** the engine keeps its fields of the kinds a component's are (`bool`, `int`, `float`, `string`, a state, `vec3`, `vec2`, `rotation`, `colour`, `entity`), and gives them back when a save loads. Other fields (arrays, things) start as written. A saved value that's missing, or of the wrong kind, leaves its field as it is, in Lua and in Rust.
 - **In Lua:** the chunk's `objects` (by name) and `objectNames` (in order); `tick(dt)` runs the updates; `save(name)` gives an object's kept fields by name, and `load(name, values)` gives them back. A name that isn't a passed object stops with a message saying so.
 - **Built as a library:** each object has `NAME`, `schema()`, `to_data()` and `set_data(&data)`; `objects()` lists their schemas and `tick_objects(dt)` runs the updates.
 
@@ -1712,7 +1757,7 @@ component Gun {
 }
 ```
 
-- **`event Name(…)`** says what an event carries, in order. It carries the same kinds a component's fields hold: `bool`, `int`, `float`, `string`, a state, `vec3`, `rotation` and `entity`.
+- **`event Name(…)`** says what an event carries, in order. It carries the same kinds a component's fields hold: `bool`, `int`, `float`, `string`, a state, `vec3`, `vec2`, `rotation`, `colour` and `entity`.
 - **`on Name(…) { … }`** in a component runs when the event reaches the entity it's on. It takes what the event carries, in the same order (the names can be its own). Only components handle events, and each one handles an event once.
 - **`send Name(…) to target;`** hands the event to the engine, which queues it. Nothing runs straight away: the engine delivers the queue in order, to each component on the entity in order of their names. Events sent while delivering (Hit sends Damaged, which sends Died) join the end of the same tick's queue, so a game runs the same way every time.
 - The engine knows events by their names, so two files can't each have an event with the same name. A program with `send` needs the engine, so like native methods it's built with `lust build --library`; `lust run` on its own stops at the first `send`.
@@ -1747,7 +1792,7 @@ The built-ins can't be used as names either:
 print      wait       ask
 ```
 
-Neither can the built-in objects: `Maths`, `Files`, `Time`, `Json`, `Web`, `Random` and `Rotation`. (`Rotation` with a capital is the object; `rotation` is the type.)
+Neither can the built-in objects: `Maths`, `Files`, `Time`, `Json`, `Web`, `Random`, `Rotation` and `Colour`. (`Rotation` and `Colour` with a capital are the objects; `rotation` and `colour` are the types.)
 
 ---
 

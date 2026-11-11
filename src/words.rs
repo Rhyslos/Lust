@@ -80,10 +80,122 @@ pub const COLOURS: &[&str] = &[
     "pink5", "pink6", "pink7", "pink8", "pink9",
 ];
 
-/// Whether a word is a colour: one of Lust's names, or #rgb / #rrggbb.
+/// What each colour word is, as 0xrrggbb: the Open Color palette. The views draw them with the
+/// same numbers (native_ui.rs's own copy; a test keeps the two the same), and a colour value made
+/// from a word (`colour warn = orange5;`) has exactly the same red, green and blue.
+pub const PALETTE: &[(&str, u32)] = &[
+    ("white", 0xffffff),
+    ("black", 0x000000),
+    ("gray1", 0xf8f9fa),
+    ("gray2", 0xf1f3f5),
+    ("gray3", 0xe9ecef),
+    ("gray4", 0xdee2e6),
+    ("gray5", 0xced4da),
+    ("gray6", 0xadb5bd),
+    ("gray7", 0x868e96),
+    ("gray8", 0x495057),
+    ("gray9", 0x212529),
+    ("red", 0xe03131),
+    ("orange", 0xf76707),
+    ("yellow", 0xf59f00),
+    ("green", 0x2f9e44),
+    ("teal", 0x0c8599),
+    ("blue", 0x1c7ed6),
+    ("indigo", 0x4263eb),
+    ("purple", 0x7048e8),
+    ("pink", 0xd6336c),
+    ("red1", 0xffe3e3),
+    ("red2", 0xffc9c9),
+    ("red3", 0xffa8a8),
+    ("red4", 0xff8787),
+    ("red5", 0xff6b6b),
+    ("red6", 0xfa5252),
+    ("red7", 0xf03e3e),
+    ("red8", 0xe03131),
+    ("red9", 0xc92a2a),
+    ("orange1", 0xffe8cc),
+    ("orange2", 0xffd8a8),
+    ("orange3", 0xffc078),
+    ("orange4", 0xffa94d),
+    ("orange5", 0xff922b),
+    ("orange6", 0xfd7e14),
+    ("orange7", 0xf76707),
+    ("orange8", 0xe8590c),
+    ("orange9", 0xd9480f),
+    ("yellow1", 0xfff3bf),
+    ("yellow2", 0xffec99),
+    ("yellow3", 0xffe066),
+    ("yellow4", 0xffd43b),
+    ("yellow5", 0xfcc419),
+    ("yellow6", 0xfab005),
+    ("yellow7", 0xf59f00),
+    ("yellow8", 0xf08c00),
+    ("yellow9", 0xe67700),
+    ("green1", 0xd3f9d8),
+    ("green2", 0xb2f2bb),
+    ("green3", 0x8ce99a),
+    ("green4", 0x69db7c),
+    ("green5", 0x51cf66),
+    ("green6", 0x40c057),
+    ("green7", 0x37b24d),
+    ("green8", 0x2f9e44),
+    ("green9", 0x2b8a3e),
+    ("teal1", 0xc5f6fa),
+    ("teal2", 0x99e9f2),
+    ("teal3", 0x66d9e8),
+    ("teal4", 0x3bc9db),
+    ("teal5", 0x22b8cf),
+    ("teal6", 0x15aabf),
+    ("teal7", 0x1098ad),
+    ("teal8", 0x0c8599),
+    ("teal9", 0x0b7285),
+    ("blue1", 0xd0ebff),
+    ("blue2", 0xa5d8ff),
+    ("blue3", 0x74c0fc),
+    ("blue4", 0x4dabf7),
+    ("blue5", 0x339af0),
+    ("blue6", 0x228be6),
+    ("blue7", 0x1c7ed6),
+    ("blue8", 0x1971c2),
+    ("blue9", 0x1864ab),
+    ("indigo1", 0xdbe4ff),
+    ("indigo2", 0xbac8ff),
+    ("indigo3", 0x91a7ff),
+    ("indigo4", 0x748ffc),
+    ("indigo5", 0x5c7cfa),
+    ("indigo6", 0x4c6ef5),
+    ("indigo7", 0x4263eb),
+    ("indigo8", 0x3b5bdb),
+    ("indigo9", 0x364fc7),
+    ("purple1", 0xe5dbff),
+    ("purple2", 0xd0bfff),
+    ("purple3", 0xb197fc),
+    ("purple4", 0x9775fa),
+    ("purple5", 0x845ef7),
+    ("purple6", 0x7950f2),
+    ("purple7", 0x7048e8),
+    ("purple8", 0x6741d9),
+    ("purple9", 0x5f3dc4),
+    ("pink1", 0xffdeeb),
+    ("pink2", 0xfcc2d7),
+    ("pink3", 0xfaa2c1),
+    ("pink4", 0xf783ac),
+    ("pink5", 0xf06595),
+    ("pink6", 0xe64980),
+    ("pink7", 0xd6336c),
+    ("pink8", 0xc2255c),
+    ("pink9", 0xa61e4d),
+];
+
+/// A colour word's red, green and blue, as 0xrrggbb.
+pub fn rgb(word: &str) -> Option<u32> {
+    PALETTE.iter().find(|(n, _)| *n == word).map(|(_, c)| *c)
+}
+
+/// Whether a word is a colour: one of Lust's names, or #rgb / #rrggbb / #rrggbbaa.
 pub fn is_colour(v: &str) -> bool {
     if let Some(hex) = v.strip_prefix('#') {
-        return matches!(hex.len(), 3 | 6) && hex.chars().all(|c| c.is_ascii_hexdigit());
+        return matches!(hex.len(), 3 | 6 | 8) && hex.chars().all(|c| c.is_ascii_hexdigit());
     }
     COLOURS.contains(&v)
 }
@@ -93,7 +205,24 @@ mod same_as_the_drawing {
     #[test]
     fn colours() {
         assert_eq!(super::COLOURS, crate::native_ui::COLOURS);
-        for w in ["red", "#abc", "#a1b2c3", "#abcd", "#xyz", "nope", "gray5", "white"] {
+        // Colour values made from words have exactly the colours the views draw.
+        assert_eq!(super::PALETTE.len(), super::COLOURS.len());
+        for (word, rgb) in super::PALETTE {
+            assert!(super::COLOURS.contains(word), "{word}");
+            assert_eq!(crate::native_ui::colour(word), Some(*rgb), "{word}");
+        }
+        for w in [
+            "red",
+            "#abc",
+            "#a1b2c3",
+            "#a1b2c380",
+            "#a1b2c3d",
+            "#abcd",
+            "#xyz",
+            "nope",
+            "gray5",
+            "white",
+        ] {
             assert_eq!(super::is_colour(w), crate::native_ui::colour(w).is_some(), "{w}");
         }
     }

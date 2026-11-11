@@ -226,6 +226,102 @@ function L.vangle(a, b)
   local dot = a.x * b.x + a.y * b.y + a.z * b.z
   return math.atan2(sqrt(cx * cx + cy * cy + cz * cz), dot) / RAD
 end
+-- ----- vec2s -----
+-- A vec2 is { x, y }, each an f32, in plain Lua and in Luau alike (Luau's vector has three
+-- numbers, and a table keeps a vec2 apart from a vec3). Worked out in doubles and rounded to f32,
+-- as the Rust runtime does.
+local function vec2(x, y) return { x = f32(x), y = f32(y) } end
+L.vec2 = vec2
+function L.v2with(v, f, n)
+  if f == "x" then return { x = f32(n), y = v.y } end
+  return { x = v.x, y = f32(n) }
+end
+function L.v2add(a, b) return vec2(a.x + b.x, a.y + b.y) end
+function L.v2sub(a, b) return vec2(a.x - b.x, a.y - b.y) end
+function L.v2mul(a, n) return vec2(a.x * n, a.y * n) end
+function L.v2div(a, n) return vec2(a.x / n, a.y / n) end
+function L.v2neg(a) return { x = -a.x, y = -a.y } end
+function L.v2eq(a, b) return a.x == b.x and a.y == b.y end
+function L.v2length(a) return sqrt(a.x * a.x + a.y * a.y) end
+function L.v2normalized(a)
+  local l = sqrt(a.x * a.x + a.y * a.y)
+  if l == 0 then return a end
+  return vec2(a.x / l, a.y / l)
+end
+function L.v2dot(a, b) return a.x * b.x + a.y * b.y end
+-- a:cross(b): which way b turns from a, above 0 to the left (counter-clockwise).
+function L.v2cross(a, b) return a.x * b.y - a.y * b.x end
+function L.v2distance(a, b)
+  local dx, dy = a.x - b.x, a.y - b.y
+  return sqrt(dx * dx + dy * dy)
+end
+function L.v2lerp(a, b, t) return vec2(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t) end
+function L.v2angle(a, b)
+  if (a.x == 0 and a.y == 0) or (b.x == 0 and b.y == 0) then
+    error("angle needs two directions, but one of them is [0.0, 0.0], which has no length.", 2)
+  end
+  local cross, dot = a.x * b.y - a.y * b.x, a.x * b.x + a.y * b.y
+  return math.atan2(math.abs(cross), dot) / RAD
+end
+-- The sine and cosine of a number of degrees, exactly 0 and 1 on a quarter turn: d % 360, worked
+-- out as Lua does (d - floor(d / 360) * 360) so Rust gets the same.
+local function sincos(d)
+  local r = d - floor(d / 360) * 360
+  if r == 0 then return 0, 1 end
+  if r == 90 then return 1, 0 end
+  if r == 180 then return 0, -1 end
+  if r == 270 then return -1, 0 end
+  return math.sin(d * RAD), math.cos(d * RAD)
+end
+-- v:rotated(degrees): turned around its origin, counter-clockwise for more than 0.
+function L.v2rotated(v, d)
+  local s, c = sincos(d)
+  return vec2(v.x * c - v.y * s, v.x * s + v.y * c)
+end
+function L.v2withZ(v, z) return vec(v.x, v.y, z) end
+-- pos.xy: a vec3's x and y.
+function L.vxy(v) return { x = v.x, y = v.y } end
+
+-- ----- colours -----
+-- A colour is { r, g, b, a }, each an f32 from 0 to 1. Made from numbers worked out while running,
+-- each part is kept between 0 and 1 (and not a number becomes 0).
+local function c01(x)
+  if not (x > 0) then return 0 end
+  if x > 1 then return 1 end
+  return f32(x)
+end
+local function colour(r, g, b, a) return { r = c01(r), g = c01(g), b = c01(b), a = c01(a) } end
+L.colour = colour
+-- From bytes 0 to 255: a colour word's, or hex text's.
+function L.rgb(r, g, b, a) return colour(r / 255, g / 255, b / 255, a / 255) end
+function L.colwith(c, f, n)
+  local w = { r = c.r, g = c.g, b = c.b, a = c.a }
+  w[f] = c01(n)
+  return w
+end
+function L.coleq(a, b) return a.r == b.r and a.g == b.g and a.b == b.b and a.a == b.a end
+function L.colfade(c, a) return colour(c.r, c.g, c.b, a) end
+function L.collerp(a, b, t)
+  return colour(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, a.a + (b.a - a.a) * t)
+end
+local function byte(x) return floor(x * 255 + 0.5) end
+function L.colhex(c)
+  local s = fmt("#%02x%02x%02x", byte(c.r), byte(c.g), byte(c.b))
+  if c.a ~= 1 then s = s .. fmt("%02x", byte(c.a)) end
+  return s
+end
+L.ctext = L.colhex
+-- Colour:hex("#3a8f2a") and Colour:hex("#3a8f2a80").
+function L.colour_hex(text)
+  local hex = text:match("^#(%x+)$")
+  if hex == nil or (#hex ~= 6 and #hex ~= 8) then
+    error("hex needs a colour written as \"#rrggbb\" or \"#rrggbbaa\", like \"#3a8f2a\", but this is \"" .. text .. "\".", 2)
+  end
+  local a = 255
+  if #hex == 8 then a = tonumber(hex:sub(7, 8), 16) end
+  return L.rgb(tonumber(hex:sub(1, 2), 16), tonumber(hex:sub(3, 4), 16), tonumber(hex:sub(5, 6), 16), a)
+end
+
 -- A vec3's numbers, to 7 digits, as an f32 holds.
 local function f32text(x) return L.ftext(tonumber(fmt("%.7g", x)) + 0) end
 -- What a host's Lua function gives back for a native method, made into Lust's own values: its
@@ -233,6 +329,9 @@ local function f32text(x) return L.ftext(tonumber(fmt("%.7g", x)) + 0) end
 -- given its length.
 function L.hvec(v) return vec(v.x, v.y, v.z) end
 function L.hrot(q) return quat(q.x, q.y, q.z, q.w) end
+function L.hvec2(v) return vec2(v.x, v.y) end
+-- A colour from the host: { r, g, b, a }, see-through 1 when there's no a.
+function L.hcol(c) return colour(c.r, c.g, c.b, c.a == nil and 1 or c.a) end
 -- A component's field the engine fills in, read: before the engine has filled it, the program
 -- stops, naming the field.
 function L.filled(v, name)
@@ -264,6 +363,7 @@ end
 function L.etext(e) if e == nil then return "nothing" end return e end
 function L.vtext(v) return "[" .. f32text(v.x) .. ", " .. f32text(v.y) .. ", " .. f32text(v.z) .. "]" end
 function L.rtext(q) return L.vtext(L.qdegrees(q)) end
+function L.v2text(v) return "[" .. f32text(v.x) .. ", " .. f32text(v.y) .. "]" end
 function L.qtext(v) return "\"" .. v .. "\"" end
 function L.stext(v) return v end
 -- Each line goes out straight away, as in a built program, even into a pipe or a file.
@@ -793,6 +893,7 @@ function L.engine(version, components, events, classes, objects, ticked)
       return false
     end
     if kind == "vec3" then return t == "vector" or t == "table" or t == "userdata" end
+    if kind == "vec2" or kind == "colour" then return t == "table" end
     if kind == "rotation" then return t == "table" end
     if kind == "entity" then return t ~= "boolean" end
     return false
@@ -868,6 +969,8 @@ local function shown_value(v, kind)
   if v == nil then return "nothing" end
   if kind == "vec3" then return L.vtext(v) end
   if kind == "rotation" then return L.rtext(v) end
+  if kind == "vec2" then return L.v2text(v) end
+  if kind == "colour" then return L.colhex(v) end
   if kind == "string" then return '"' .. v .. '"' end
   return tostring(v)
 end

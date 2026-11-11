@@ -1,8 +1,8 @@
 //! Lust's standard library, as the checker sees it: what each part takes and gives back.
 //!
-//! - Built-in objects: `Maths`, `Files`, `Time`, `Json`, `Web`, `Random` and `Rotation`, used like any
-//!   object: `Maths:sqrt(2.0)`. `Random[1, 6]` is its own piece of syntax; `Random:seed(42)` is a method.
-//!   `Rotation` (a turn) is a different word from `rotation` (the type).
+//! - Built-in objects: `Maths`, `Files`, `Time`, `Json`, `Web`, `Random`, `Rotation` and `Colour`, used
+//!   like any object: `Maths:sqrt(2.0)`. `Random[1, 6]` is its own piece of syntax; `Random:seed(42)` is a
+//!   method. `Rotation` (a turn) is a different word from `rotation` (the type), and `Colour` from `colour`.
 //! - Methods on text and arrays: `name:contains("a")`, `words:join(", ")`.
 //! - `.upper()`, `.lower()` and `.trim()` are conversions, like `.text()`.
 //!
@@ -11,7 +11,7 @@
 
 use crate::types::Ty;
 
-pub const OBJECTS: &[&str] = &["Maths", "Files", "Time", "Json", "Web", "Random", "Rotation"];
+pub const OBJECTS: &[&str] = &["Maths", "Files", "Time", "Json", "Web", "Random", "Rotation", "Colour"];
 
 /// One library call: the runtime function, and what it takes and gives back.
 #[derive(Clone, Debug)]
@@ -45,6 +45,7 @@ pub fn listing(obj: &str) -> &'static str {
         "Maths" => "abs, min, max, clamp, round, floor, ceil, trunc, fraction, sign, sqrt, power, log, exp, sin, cos, tan, asin, acos, atan, atan2, degrees, radians, lerp, moveTowards, smoothstep, isFinite and noise, and Maths.pi and Maths.e",
         "Random" => "seed, chance and direction, and Random[1, 6] for a number",
         "Rotation" => "toward and around",
+        "Colour" => "hex",
         "Files" => "read, write, append, exists, remove, list, makeFolder, chooseOpen, chooseSave and chooseFolder",
         "Time" => "now, clock, date, time, addDays, daysBetween, weekday and isDate",
         "Web" => "serve, request, fail, get and post",
@@ -94,6 +95,7 @@ pub fn object_method(obj: &str, m: &str, args: &[Ty]) -> Option<Result<Lib, Stri
         ("Maths", "noise") => lib("maths_noise", vec![("x", f()), ("y", f())], Float),
         ("Rotation", "toward") => lib("rotation_toward", vec![("direction", Vec3)], Rot),
         ("Rotation", "around") => lib("rotation_around", vec![("axis", Vec3), ("degrees", f())], Rot),
+        ("Colour", "hex") => lib("colour_hex", vec![("text", Str)], Colour),
         ("Random", "seed") => lib("random_seed", vec![("seed", Int)], Void),
         ("Random", "chance") => lib("random_chance", vec![("chance", f())], Truth),
         ("Random", "direction") => lib("random_direction", vec![], Vec3),
@@ -219,4 +221,16 @@ pub fn json_problem(t: &Ty, show: &dyn Fn(&Ty) -> String) -> Option<String> {
         Ty::CMap(cols) => cols.iter().find_map(|(_, t)| json_problem(t, show)),
         other => Some(format!("{} can't be JSON.", show(other))),
     }
+}
+
+/// Reads a colour's hex text, `"#3a8f2a"` or `"#3a8f2a80"`, into its four bytes (alpha 255 when
+/// it isn't given), or says what's wrong with it, the same way the runtimes do.
+pub fn colour_hex(text: &str) -> Result<[u8; 4], String> {
+    let bad = || format!("hex needs a colour written as \"#rrggbb\" or \"#rrggbbaa\", like \"#3a8f2a\", but this is \"{text}\".");
+    let hex = text.strip_prefix('#').ok_or_else(bad)?;
+    if !matches!(hex.len(), 6 | 8) || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(bad());
+    }
+    let byte = |i: usize| u8::from_str_radix(&hex[i..i + 2], 16).unwrap_or(0);
+    Ok([byte(0), byte(2), byte(4), if hex.len() == 8 { byte(6) } else { 255 }])
 }

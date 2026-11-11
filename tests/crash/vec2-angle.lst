@@ -1,0 +1,6 @@
+-- The angle to a vec2 with no length can't be known: the program stops, saying why.
+vec2 a = [1, 0];
+vec2 none = [0, 0];
+print(a:angle([0, 2]));
+print(a:angle(none));
+end
