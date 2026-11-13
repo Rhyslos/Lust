@@ -227,7 +227,10 @@ fn cache_dir() -> std::path::PathBuf {
     std::env::temp_dir().join("lust-cache")
 }
 
-const CARGO_TOML: &str = "[package]\nname = \"lust_program\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nrusqlite = { version = \"0.40\", features = [\"bundled\"] }\ntiny_http = \"0.12\"\nureq = \"3\"\nregex = \"1\"\nwinit = \"0.30\"\nsoftbuffer = \"0.4\"\nab_glyph = \"0.2\"\nrfd = \"0.16\"\narboard = { version = \"3\", default-features = false }\npng = \"0.17\"\njpeg-decoder = { version = \"0.3\", default-features = false }\nresvg = { version = \"0.49\", default-features = false }\n\n[profile.release]\noverflow-checks = true\n\n[workspace]\n";
+/// The tray icon and notifications, for a library with views: per system, as in CARGO_TOML.
+const UI_TARGET_DEPS: &str = "\n[target.'cfg(windows)'.dependencies]\ntray-icon = { version = \"0.25\", default-features = false }\ntauri-winrt-notification = \"0.8\"\n\n[target.'cfg(target_os = \"linux\")'.dependencies]\nzbus = { version = \"5\", default-features = false, features = [\"async-io\", \"blocking-api\"] }\n";
+
+const CARGO_TOML: &str = "[package]\nname = \"lust_program\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nrusqlite = { version = \"0.40\", features = [\"bundled\"] }\ntiny_http = \"0.12\"\nureq = \"3\"\nregex = \"1\"\nwinit = \"0.30\"\nsoftbuffer = \"0.4\"\nab_glyph = \"0.2\"\nrfd = \"0.16\"\narboard = { version = \"3\", default-features = false }\npng = \"0.17\"\njpeg-decoder = { version = \"0.3\", default-features = false }\nresvg = { version = \"0.49\", default-features = false }\n\n[target.'cfg(windows)'.dependencies]\ntray-icon = { version = \"0.25\", default-features = false }\ntauri-winrt-notification = \"0.8\"\n\n[target.'cfg(target_os = \"linux\")'.dependencies]\nzbus = { version = \"5\", default-features = false, features = [\"async-io\", \"blocking-api\"] }\n\n[profile.release]\noverflow-checks = true\n\n[workspace]\n";
 
 /// Builds a program that needs outside libraries with Cargo, in a folder of Lust's own. The
 /// libraries are shared, so they're only compiled the first time on each computer.
@@ -536,6 +539,7 @@ pub fn build_library_in(path: &Path, rust: &str, dir: &Path) -> Result<(), Strin
     // Only the libraries the Lust code uses.
     let has = |m: &str| rust.contains(&format!("\npub mod {m} {{\n"));
     let mut deps = String::new();
+    let mut target_deps = String::new();
     if has("db") {
         deps.push_str("rusqlite = { version = \"0.40\", features = [\"bundled\"] }\n");
     }
@@ -553,6 +557,7 @@ pub fn build_library_in(path: &Path, rust: &str, dir: &Path) -> Result<(), Strin
     }
     if has("ui") {
         deps.push_str("winit = \"0.30\"\nsoftbuffer = \"0.4\"\nab_glyph = \"0.2\"\narboard = { version = \"3\", default-features = false }\npng = \"0.17\"\njpeg-decoder = { version = \"0.3\", default-features = false }\nresvg = { version = \"0.49\", default-features = false }\n");
+        target_deps.push_str(UI_TARGET_DEPS);
         let fonts = dir.join("assets").join("fonts");
         std::fs::create_dir_all(&fonts).map_err(|e| format!("couldn't make {}: {e}", fonts.display()))?;
         for (file, bytes) in native_ui::FONT_FILES.iter().zip(native_ui::FONTS.iter()) {
@@ -560,7 +565,7 @@ pub fn build_library_in(path: &Path, rust: &str, dir: &Path) -> Result<(), Strin
         }
     }
     let toml = format!(
-        "# Made by Lust from {}. lust build --library writes it again, so don't edit it.\n[package]\nname = \"{name}\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[lib]\npath = \"src/lib.rs\"\n\n[dependencies]\n{deps}",
+        "# Made by Lust from {}. lust build --library writes it again, so don't edit it.\n[package]\nname = \"{name}\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[lib]\npath = \"src/lib.rs\"\n\n[dependencies]\n{deps}{target_deps}",
         path.file_name().unwrap_or_default().to_string_lossy()
     );
     std::fs::write(dir.join("Cargo.toml"), toml).map_err(|e| format!("couldn't write Cargo.toml: {e}"))?;

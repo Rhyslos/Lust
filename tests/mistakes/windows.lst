@@ -1,0 +1,42 @@
+-- Mistakes with second windows, toasts, the tray, close { } and full screen.
+assembly App {
+    has {
+        int count = 0;
+        bool open = false;
+        string mode = "";
+    }
+
+    view [title "Mistakes", fullscreen mode, visible count, escape] {
+        window count [title "Two"] {
+            text "Hi";
+        }
+        window open [title "Three", visible true, bogus 3] {
+            text "Hi";
+        } close {
+            open = false;
+        }
+        text "Hi" close {
+            count = 1;
+        }
+        button "Go" {
+            toast count;
+            toast "Hi" [blue, size 3, seconds 0];
+            App:notify("Only a title");
+            App:frob();
+        }
+        tray [icon "bell", tip "One", colour 3] {
+            item "Quit" { App:quit(); }
+        }
+        tray [tip "Two"] {
+            item "Show" { open = true; }
+        } click {
+            open = true;
+        }
+        button "Click" { count = 2; } click {
+            count = 3;
+        }
+    }
+}
+
+App:open();
+end

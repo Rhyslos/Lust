@@ -79,7 +79,7 @@ impl Node {
 
 /// Pieces that take no room on the screen: timers and keyboard shortcuts.
 fn unseen(kind: &str) -> bool {
-    kind == "every" || kind == "key" || kind == "drop"
+    kind == "every" || kind == "key" || kind == "drop" || kind == "window" || kind == "tray"
 }
 
 // ----- keyboard shortcuts -----
@@ -2847,15 +2847,37 @@ pub struct Settings {
     pub font: Option<usize>,
     /// Dark mode: dark backgrounds and light words.
     pub dark: bool,
+    /// Borderless full screen on the window's monitor.
+    pub fullscreen: bool,
+    /// The main window shows (false hides it, and the program goes on).
+    pub visible: bool,
+    /// A second window that Escape closes.
+    pub escape: bool,
 }
 
 pub fn settings(style: &[(String, SV)]) -> Settings {
     // Dark mode first, since the colours depend on it.
     let dark = style.iter().any(|(k, v)| k == "dark" && !matches!(v, SV::Truth(false)));
     DARK.with(|d| d.set(dark));
-    let mut s = Settings { title: "Lust".into(), width: 640.0, height: 480.0, min_width: 0.0, min_height: 0.0, background: nt(0xffffff), font: None, dark };
+    let mut s = Settings {
+        title: "Lust".into(),
+        width: 640.0,
+        height: 480.0,
+        min_width: 0.0,
+        min_height: 0.0,
+        background: nt(0xffffff),
+        font: None,
+        dark,
+        fullscreen: false,
+        visible: true,
+        escape: false,
+    };
     for (k, v) in style {
         match (k.as_str(), v) {
+            ("fullscreen", SV::Truth(false)) => s.fullscreen = false,
+            ("fullscreen", _) => s.fullscreen = true,
+            ("visible", SV::Truth(false)) => s.visible = false,
+            ("escape", SV::Flag) => s.escape = true,
             ("title", SV::Text(t)) => s.title = t.clone(),
             ("width", SV::Num(n)) => s.width = *n,
             ("height", SV::Num(n)) => s.height = *n,
@@ -2870,6 +2892,9 @@ pub fn settings(style: &[(String, SV)]) -> Settings {
 }
 
 pub type Build<'a> = dyn FnMut() -> Result<(Node, Vec<Action>), String> + 'a;
+
+/// The view's one maker, shared by every window it opens (native_ui_windows.rs).
+type Shared<'a, 'b> = std::cell::RefCell<&'a mut Build<'b>>;
 
 // ----- pieces: kept between redraws -----
 
@@ -2939,7 +2964,8 @@ pub fn show(style: &[(String, SV)], build: &mut Build, step: Box<Step>) -> Resul
         drop(gone);
         r
     };
-    let r = if std::env::var("LUST_VIEW_TEST").is_ok() { test(s, &mut framed, step) } else { windowed::run(s, &mut framed, step) };
+    let shared: Shared = std::cell::RefCell::new(&mut framed);
+    let r = windows_open(s, &shared, step);
     KEPT.with(|k| *k.borrow_mut() = kept);
     LISTS.with(|l| *l.borrow_mut() = lists);
     let gone = PIECES.with(|p| p.borrow_mut().pop());
@@ -3046,9 +3072,10 @@ struct Timer {
     due: f64,
 }
 
-/// Whether this is a dialog that's closed, so what's in it doesn't run.
+/// Whether this is a dialog that's closed, so what's in it doesn't run, or a second window, whose
+/// shortcuts and timers are its own (native_ui_windows.rs).
 fn shut(n: &Node) -> bool {
-    n.kind == "dialog" && !matches!(n.value, Some(SV::Truth(true)))
+    (n.kind == "dialog" && !matches!(n.value, Some(SV::Truth(true)))) || n.kind == "window"
 }
 
 /// Visits every piece that's shown: not in a closed dialog, a tab that isn't showing, or a branch
@@ -3154,7 +3181,8 @@ fn snap(l: &Look, v: f32) -> f32 {
 /// A window's view while it's open: the tree, what has focus, and what the mouse is doing.
 struct Ui<'a, 'b> {
     s: Settings,
-    build: &'a mut Build<'b>,
+    build: Box<Build<'a>>,
+    _maker: std::marker::PhantomData<&'b ()>,
     w: f32,
     h: f32,
     /// The view as last drawn, laid out again when only scrolling changes.
@@ -3223,6 +3251,10 @@ struct Ui<'a, 'b> {
     edge_last: Option<std::time::Instant>,
     /// The date or colour picker that's open, and what it's showing (native_ui_pickers.rs).
     picker: Option<Picker>,
+    /// Toasts showing in the window's corner, and Escape asking a second window to close
+    /// (native_ui_windows.rs).
+    toasts: Vec<Toast>,
+    close_asked: bool,
 }
 
 /// The program's tweens, moved on by the window's clock: given seconds, it gives back whether
@@ -3323,7 +3355,7 @@ fn modal_in(tree: &Laid) -> Option<usize> {
 }
 
 impl<'a, 'b> Ui<'a, 'b> {
-    fn new(s: Settings, build: &'a mut Build<'b>, windowed: bool, step: Box<Step>) -> Result<Ui<'a, 'b>, String> {
+    fn new(s: Settings, mut build: Box<Build<'a>>, windowed: bool, step: Box<Step>) -> Result<Ui<'a, 'b>, String> {
         let (w, h) = (s.width as f32, s.height as f32);
         let (node, actions) = build()?;
         let tree = lay(&Node::new("view"));
@@ -3331,6 +3363,7 @@ impl<'a, 'b> Ui<'a, 'b> {
         let mut ui = Ui {
             s,
             build,
+            _maker: std::marker::PhantomData,
             w,
             h,
             node,
@@ -3372,6 +3405,8 @@ impl<'a, 'b> Ui<'a, 'b> {
             ran: 0,
             edge_last: None,
             picker: None,
+            toasts: vec![],
+            close_asked: false,
         };
         ui.relayout();
         ui.settle()?;
@@ -3425,29 +3460,6 @@ impl<'a, 'b> Ui<'a, 'b> {
 
     fn next_timer(&self) -> Option<f64> {
         self.timers.iter().map(|t| t.due).fold(None, |m: Option<f64>, d| Some(m.map_or(d, |m| m.min(d))))
-    }
-
-    /// Moves the test's clock on, running timers and stepping tweens as they come due, in the
-    /// order they come (a timer first, when both are due together).
-    fn wait(&mut self, secs: f64) -> Result<(), String> {
-        let end = self.now() + secs;
-        loop {
-            let timer = self.next_timer().filter(|&d| d <= end + 1e-9);
-            let step = self.next_step().filter(|&d| d <= end + 1e-9);
-            match (timer, step) {
-                (Some(d), s) if s.is_none_or(|s| d <= s) => {
-                    self.test_clock = Some(d.max(self.now()));
-                    self.fire_timers()?;
-                }
-                (_, Some(s)) => {
-                    self.test_clock = Some(s.max(self.now()));
-                    self.step_tweens()?;
-                }
-                _ => break,
-            }
-        }
-        self.test_clock = Some(end);
-        Ok(())
     }
 
     /// Asks whether tweens are running; when they've just started, their clock starts now.
@@ -3536,6 +3548,9 @@ impl<'a, 'b> Ui<'a, 'b> {
         }
         if let Some(l) = self.picker_layer(&tree) {
             add(&mut tree, l, &mut self.scrolls);
+        }
+        if let Some(l) = self.toast_layer(w, h) {
+            tree.children.push(l);
         }
         if self.tip_on {
             let mut found = None;
@@ -3678,6 +3693,11 @@ impl<'a, 'b> Ui<'a, 'b> {
             self.title_changed = true;
         }
         self.s.background = now.background;
+        self.s.dark = now.dark;
+        self.s.fullscreen = now.fullscreen;
+        self.s.visible = now.visible;
+        self.s.escape = now.escape;
+        self.take_toasts();
         self.node = node;
         self.relayout();
         self.follow_rows(rows);
@@ -3939,6 +3959,10 @@ impl<'a, 'b> Ui<'a, 'b> {
         let count = if quick { n + 1 } else { 1 };
         self.clicks = (now, count, (x, y));
         self.hide_tip();
+        // A click on a toast puts it away, and does nothing else.
+        if self.toast_click(x, y) {
+            return Ok(());
+        }
         // An open list closes when the mouse goes down anywhere else, and that's all it does.
         if self.popup.is_some() {
             let inside = self
@@ -4538,7 +4562,8 @@ impl<'a, 'b> Ui<'a, 'b> {
                 Ok(())
             }
             Nav::Escape => {
-                // Escape takes focus out of an input first, then closes the dialog on top.
+                // Escape takes focus out of an input first, then closes the dialog on top, then
+                // a second window written with [escape].
                 let typing = editable(&self.focused_kind());
                 match modal_in(&self.tree) {
                     Some(m) if !typing => {
@@ -4546,6 +4571,7 @@ impl<'a, 'b> Ui<'a, 'b> {
                         self.close_dialog(m)
                     }
                     _ => {
+                        self.close_asked |= !typing && self.s.escape;
                         self.set_focus(None, false);
                         Ok(())
                     }
@@ -4799,441 +4825,6 @@ impl<'a, 'b> Ui<'a, 'b> {
             Some("canvas") => 5,
             Some(_) => 1,
             None => 0,
-        }
-    }
-}
-
-mod windowed {
-    use super::*;
-    use std::num::NonZeroU32;
-    use std::rc::Rc;
-    use winit::application::ApplicationHandler;
-    use winit::event::{ElementState, MouseButton, MouseScrollDelta, StartCause, WindowEvent};
-    use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
-    use winit::keyboard::{Key as WKey, ModifiersState, NamedKey};
-    use winit::window::{CursorIcon, Window, WindowId};
-
-    struct App<'a, 'b> {
-        ui: Ui<'a, 'b>,
-        window: Option<Rc<Window>>,
-        surface: Option<softbuffer::Surface<Rc<Window>, Rc<Window>>>,
-        mouse: Option<(f32, f32)>,
-        mods: ModifiersState,
-        error: Option<String>,
-        /// Files dropped on the window: winit tells of them one at a time, and they're handed
-        /// over together once it has told of them all.
-        dropped: Vec<String>,
-    }
-
-    impl<'a, 'b> App<'a, 'b> {
-        fn logical(&self) -> (f32, f32, f32) {
-            let w = self.window.as_ref().unwrap();
-            let scale = w.scale_factor() as f32;
-            let size = w.inner_size();
-            (size.width as f32 / scale, size.height as f32 / scale, scale)
-        }
-
-        fn mods(&self) -> Mods {
-            let m = self.mods;
-            if cfg!(target_os = "macos") {
-                Mods { shift: m.shift_key(), command: m.super_key(), word: m.alt_key(), alt: m.alt_key() }
-            } else {
-                Mods { shift: m.shift_key(), command: m.control_key(), word: m.control_key(), alt: m.alt_key() }
-            }
-        }
-
-        fn redraw(&self) {
-            if let Some(w) = &self.window {
-                w.request_redraw();
-            }
-        }
-
-        /// Keeps a failure to stop the window with.
-        fn check(&mut self, r: Result<(), String>, el: &ActiveEventLoop) {
-            if let Err(e) = r {
-                self.error = Some(e);
-                el.exit();
-            }
-            if self.ui.title_changed {
-                self.ui.title_changed = false;
-                if let Some(w) = &self.window {
-                    w.set_title(&self.ui.s.title);
-                }
-            }
-            self.redraw();
-        }
-
-        fn key(&mut self, event: winit::event::KeyEvent) -> Result<(), String> {
-            let mods = self.mods();
-            // The view's shortcuts go first, unless what has focus uses the key.
-            if let Some(name) = key_name(&event) {
-                if self.ui.shortcut(&name, mods)? {
-                    return Ok(());
-                }
-            }
-            let input = editable(&self.ui.focused_kind()) || self.ui.picker_takes_text();
-            if mods.command {
-                if let WKey::Character(c) = &event.logical_key {
-                    let nav = match c.to_lowercase().as_str() {
-                        "a" => Some(Nav::Edit(Key::All)),
-                        "c" => Some(Nav::Copy),
-                        "x" => Some(Nav::Cut),
-                        "v" => Some(Nav::Paste),
-                        "z" if mods.shift => Some(Nav::Redo),
-                        "z" => Some(Nav::Undo),
-                        "y" => Some(Nav::Redo),
-                        _ => None,
-                    };
-                    if let Some(n) = nav {
-                        return self.ui.nav(n, mods);
-                    }
-                }
-            }
-            let mac_line = cfg!(target_os = "macos") && mods.command;
-            let nav = match &event.logical_key {
-                WKey::Named(NamedKey::Backspace) => Some(Nav::Edit(Key::Back)),
-                WKey::Named(NamedKey::Delete) => Some(Nav::Edit(Key::Delete)),
-                WKey::Named(NamedKey::ArrowLeft) if mac_line => Some(Nav::Edit(Key::Home)),
-                WKey::Named(NamedKey::ArrowRight) if mac_line => Some(Nav::Edit(Key::End)),
-                WKey::Named(NamedKey::ArrowLeft) => Some(Nav::Edit(Key::Left)),
-                WKey::Named(NamedKey::ArrowRight) => Some(Nav::Edit(Key::Right)),
-                WKey::Named(NamedKey::Home) => Some(Nav::Edit(Key::Home)),
-                WKey::Named(NamedKey::End) => Some(Nav::Edit(Key::End)),
-                // Cmd+Up and Cmd+Down go to the start and end of a text box's text on a Mac.
-                WKey::Named(NamedKey::ArrowUp) if mac_line => Some(Nav::Edit(Key::Home)),
-                WKey::Named(NamedKey::ArrowDown) if mac_line => Some(Nav::Edit(Key::End)),
-                WKey::Named(NamedKey::ArrowUp) => Some(Nav::Up),
-                WKey::Named(NamedKey::ArrowDown) => Some(Nav::Down),
-                WKey::Named(NamedKey::PageUp) => Some(Nav::PageUp),
-                WKey::Named(NamedKey::PageDown) => Some(Nav::PageDown),
-                WKey::Named(NamedKey::Tab) => Some(Nav::Tab),
-                WKey::Named(NamedKey::Enter) => Some(Nav::Enter),
-                WKey::Named(NamedKey::Escape) => Some(Nav::Escape),
-                WKey::Named(NamedKey::Space) if !input => Some(Nav::Space),
-                // Shift+F10 and the Menu key open the right-click menu of what has focus.
-                WKey::Named(NamedKey::F10) if mods.shift => Some(Nav::Menu),
-                WKey::Named(NamedKey::ContextMenu) => Some(Nav::Menu),
-                _ => None,
-            };
-            if let Some(n) = nav {
-                return self.ui.nav(n, mods);
-            }
-            if input && !mods.command {
-                if let Some(t) = &event.text {
-                    if !t.chars().any(|c| c.is_control()) {
-                        return self.ui.typed(t);
-                    }
-                }
-            }
-            Ok(())
-        }
-    }
-
-    /// A key's name as shortcuts write it: "s", "1", "enter", "f5". Shift doesn't change it, so
-    /// shift+1 is "1", not "!".
-    fn key_name(event: &winit::event::KeyEvent) -> Option<String> {
-        #[cfg(any(target_os = "windows", target_os = "macos", all(unix, not(any(target_os = "ios", target_os = "android")))))]
-        let key = {
-            use winit::platform::modifier_supplement::KeyEventExtModifierSupplement;
-            event.key_without_modifiers()
-        };
-        #[cfg(not(any(target_os = "windows", target_os = "macos", all(unix, not(any(target_os = "ios", target_os = "android"))))))]
-        let key = event.logical_key.clone();
-        Some(match key {
-            WKey::Character(c) => c.to_lowercase(),
-            WKey::Named(n) => match n {
-                NamedKey::Enter => "enter".into(),
-                NamedKey::Escape => "escape".into(),
-                NamedKey::Tab => "tab".into(),
-                NamedKey::Space => "space".into(),
-                NamedKey::Backspace => "backspace".into(),
-                NamedKey::Delete => "delete".into(),
-                NamedKey::ArrowUp => "up".into(),
-                NamedKey::ArrowDown => "down".into(),
-                NamedKey::ArrowLeft => "left".into(),
-                NamedKey::ArrowRight => "right".into(),
-                NamedKey::Home => "home".into(),
-                NamedKey::End => "end".into(),
-                NamedKey::PageUp => "pageup".into(),
-                NamedKey::PageDown => "pagedown".into(),
-                other => {
-                    let f = format!("{other:?}").to_lowercase();
-                    if function_key(&f) {
-                        f
-                    } else {
-                        return None;
-                    }
-                }
-            },
-            _ => return None,
-        })
-    }
-
-    impl<'a, 'b> ApplicationHandler for App<'a, 'b> {
-        fn resumed(&mut self, el: &ActiveEventLoop) {
-            if self.window.is_some() {
-                return;
-            }
-            let attrs = Window::default_attributes()
-                .with_title(self.ui.s.title.clone())
-                .with_inner_size(winit::dpi::LogicalSize::new(self.ui.s.width, self.ui.s.height))
-                .with_min_inner_size(winit::dpi::LogicalSize::new(self.ui.s.min_width.max(1.0), self.ui.s.min_height.max(1.0)));
-            let window = match el.create_window(attrs) {
-                Ok(w) => Rc::new(w),
-                Err(e) => {
-                    self.error = Some(format!("can't open a window: {e}."));
-                    el.exit();
-                    return;
-                }
-            };
-            let surface = softbuffer::Context::new(window.clone()).and_then(|ctx| softbuffer::Surface::new(&ctx, window.clone()));
-            match surface {
-                Ok(s) => self.surface = Some(s),
-                Err(e) => {
-                    self.error = Some(format!("can't draw in the window: {e}."));
-                    el.exit();
-                    return;
-                }
-            }
-            self.window = Some(window);
-            let (w, h, _) = self.logical();
-            let r = self.ui.resize(w, h);
-            self.check(r, el);
-        }
-
-        fn new_events(&mut self, el: &ActiveEventLoop, cause: StartCause) {
-            if let StartCause::ResumeTimeReached { .. } = cause {
-                if self.ui.tip_due().is_some_and(|t| t <= std::time::Instant::now()) {
-                    self.ui.show_tip();
-                    self.redraw();
-                }
-                let r = self.ui.fire_timers().map(|_| ());
-                self.check(r, el);
-                // Tweens move on a frame at a time, and the view is drawn again after each step.
-                let now = self.ui.now();
-                if self.error.is_none() && self.ui.next_step().is_some_and(|d| d <= now + 0.001) {
-                    let r = self.ui.step_tweens();
-                    self.check(r, el);
-                }
-            }
-        }
-
-        fn about_to_wait(&mut self, el: &ActiveEventLoop) {
-            if self.error.is_some() {
-                return;
-            }
-            // All the files of one drop have been told of: the drop's block runs once, with them all.
-            if !self.dropped.is_empty() {
-                let paths = std::mem::take(&mut self.dropped);
-                let r = self.ui.drop_files(paths);
-                self.check(r, el);
-            }
-            // A row dragged near the top or bottom of its list scrolls it, even with the mouse still.
-            if self.ui.edge_speed() != 0.0 {
-                let r = self.ui.edge_scroll();
-                self.check(r, el);
-                el.set_control_flow(ControlFlow::WaitUntil(std::time::Instant::now() + std::time::Duration::from_millis(16)));
-                return;
-            }
-            // Wake for the caret's next blink, the next timer, or a tip, whichever is soonest.
-            let timer = self.ui.next_timer().map(|d| self.ui.started + std::time::Duration::from_secs_f64(d.max(0.0)));
-            let step = self.ui.next_step().map(|d| self.ui.started + std::time::Duration::from_secs_f64(d.max(0.0)));
-            let wake = [self.ui.next_blink(), timer, step, self.ui.tip_due()].into_iter().flatten().min();
-            match wake {
-                Some(t) => el.set_control_flow(ControlFlow::WaitUntil(t)),
-                None => el.set_control_flow(ControlFlow::Wait),
-            }
-        }
-
-        fn window_event(&mut self, el: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
-            if self.error.is_some() {
-                el.exit();
-                return;
-            }
-            match event {
-                WindowEvent::CloseRequested => el.exit(),
-                WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
-                    let (w, h, _) = self.logical();
-                    let r = self.ui.resize(w, h);
-                    self.check(r, el);
-                }
-                WindowEvent::ModifiersChanged(m) => self.mods = m.state(),
-                WindowEvent::CursorMoved { position, .. } => {
-                    let (_, _, scale) = self.logical();
-                    let p = (position.x as f32 / scale, position.y as f32 / scale);
-                    self.mouse = Some(p);
-                    let before = (self.ui.hovered(), self.ui.pointer(p.0, p.1));
-                    let ran = self.ui.ran;
-                    let r = self.ui.moved(p.0, p.1);
-                    let dragging = self.ui.drag != Drag::None || self.ui.ran != ran;
-                    if self.ui.track_tip() {
-                        self.redraw();
-                    }
-                    if let Some(w) = &self.window {
-                        w.set_cursor(match self.ui.pointer(p.0, p.1) {
-                            2 => CursorIcon::Text,
-                            3 => CursorIcon::ColResize,
-                            4 => CursorIcon::RowResize,
-                            5 => CursorIcon::Crosshair,
-                            1 => CursorIcon::Pointer,
-                            _ => CursorIcon::Default,
-                        });
-                    }
-                    // Only draw again when something under the mouse changed, or while dragging.
-                    if dragging || r.is_err() || before != (self.ui.hovered(), self.ui.pointer(p.0, p.1)) || self.ui.pressed.is_some() {
-                        self.check(r, el);
-                    }
-                }
-                WindowEvent::MouseWheel { delta, .. } => {
-                    let Some((x, y)) = self.mouse else { return };
-                    let (_, _, scale) = self.logical();
-                    let dy = match delta {
-                        MouseScrollDelta::LineDelta(_, lines) => -lines * 48.0,
-                        MouseScrollDelta::PixelDelta(p) => -(p.y as f32) / scale,
-                    };
-                    // The wheel over a number box moves its number.
-                    if let Some(r) = self.ui.wheel_number(x, y, dy) {
-                        self.check(r, el);
-                        return;
-                    }
-                    // The wheel over a table or list scrolls its rows.
-                    if let Some(r) = self.ui.wheel_list(x, y, dy) {
-                        let _ = self.ui.moved(x, y);
-                        self.check(r, el);
-                        return;
-                    }
-                    if self.ui.wheel(x, y, dy) {
-                        let _ = self.ui.moved(x, y);
-                        self.redraw();
-                    }
-                }
-                WindowEvent::CursorLeft { .. } => {
-                    self.mouse = None;
-                    self.ui.st.hover = None;
-                    self.ui.track_tip();
-                    self.redraw();
-                }
-                WindowEvent::MouseInput { state, button: MouseButton::Left, .. } => {
-                    let Some((x, y)) = self.mouse else { return };
-                    let mods = self.mods();
-                    let r = match state {
-                        ElementState::Pressed => self.ui.press(x, y, mods),
-                        ElementState::Released => self.ui.release(x, y),
-                    };
-                    self.check(r, el);
-                }
-                // The right button picks the row under it when it goes down, and opens the
-                // right-click menu when it's let go, as on Windows.
-                WindowEvent::MouseInput { state, button: MouseButton::Right, .. } => {
-                    let Some((x, y)) = self.mouse else { return };
-                    let r = match state {
-                        ElementState::Pressed => self.ui.right_press(x, y),
-                        ElementState::Released => self.ui.right_release(x, y),
-                    };
-                    self.check(r, el);
-                }
-                WindowEvent::HoveredFile(_) => {
-                    if !self.ui.files_over {
-                        self.ui.files_over = true;
-                        self.redraw();
-                    }
-                }
-                WindowEvent::HoveredFileCancelled => {
-                    self.ui.files_over = false;
-                    self.redraw();
-                }
-                WindowEvent::DroppedFile(path) => {
-                    self.ui.files_over = false;
-                    self.dropped.push(path.to_string_lossy().into_owned());
-                }
-                WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
-                    let r = self.key(event);
-                    self.check(r, el);
-                }
-                WindowEvent::RedrawRequested => {
-                    // A table that came into view (a tab shown, a branch opened) makes its rows.
-                    if take_stale() {
-                        let r = self.ui.rebuild();
-                        if let Err(e) = r {
-                            self.error = Some(e);
-                            el.exit();
-                            return;
-                        }
-                    }
-                    let (lw, lh, scale) = self.logical();
-                    let (Some(win), Some(surface)) = (&self.window, &mut self.surface) else { return };
-                    let size = win.inner_size();
-                    let (Some(w), Some(h)) = (NonZeroU32::new(size.width), NonZeroU32::new(size.height)) else { return };
-                    if surface.resize(w, h).is_err() {
-                        return;
-                    }
-                    if (self.ui.tree.w - lw).abs() > 0.5 || (self.ui.tree.h - lh).abs() > 0.5 {
-                        win.request_redraw();
-                    }
-                    if self.ui.step_fades() {
-                        win.request_redraw();
-                    }
-                    if self.ui.moving() {
-                        win.request_redraw();
-                    }
-                    let (st, bg) = (self.ui.paint_state(), self.ui.s.background);
-                    let c = render(&self.ui.shown(), size.width as usize, size.height as usize, scale, &st, bg);
-                    if let Ok(mut buf) = surface.buffer_mut() {
-                        let n = buf.len().min(c.px.len());
-                        buf[..n].copy_from_slice(&c.px[..n]);
-                        let _ = buf.present();
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-
-    thread_local! {
-        // winit allows one event loop per program, so every window shares it.
-        static LOOP: std::cell::RefCell<Option<EventLoop<()>>> = const { std::cell::RefCell::new(None) };
-    }
-
-    fn new_loop() -> Result<EventLoop<()>, String> {
-        let mut b = EventLoop::builder();
-        // Lust programs run on a helper thread with a big stack. Windows and
-        // Linux allow windows there; macOS programs run on the main thread instead.
-        #[cfg(target_os = "windows")]
-        {
-            use winit::platform::windows::EventLoopBuilderExtWindows;
-            b.with_any_thread(true);
-        }
-        #[cfg(all(unix, not(any(target_os = "macos", target_os = "ios", target_os = "android"))))]
-        {
-            use winit::platform::wayland::EventLoopBuilderExtWayland;
-            use winit::platform::x11::EventLoopBuilderExtX11;
-            EventLoopBuilderExtX11::with_any_thread(&mut b, true);
-            EventLoopBuilderExtWayland::with_any_thread(&mut b, true);
-        }
-        b.build().map_err(|e| {
-            // winit's message starts with where in its code it failed; keep only the reason.
-            let raw = e.to_string();
-            let reason = raw.rsplit(": ").next().unwrap_or(&raw).trim_end_matches('.').to_string();
-            format!("can't open a window: {reason}.")
-        })
-    }
-
-    pub fn run(s: Settings, build: &mut Build, step: Box<super::Step>) -> Result<(), String> {
-        use winit::platform::run_on_demand::EventLoopExtRunOnDemand;
-        let mut el = match LOOP.with(|l| l.borrow_mut().take()) {
-            Some(el) => el,
-            None => new_loop()?,
-        };
-        let ui = Ui::new(s, build, true, step)?;
-        let mut app = App { ui, window: None, surface: None, mouse: None, mods: ModifiersState::default(), error: None, dropped: vec![] };
-        let ran = el.run_app_on_demand(&mut app);
-        app.surface = None;
-        app.window = None;
-        LOOP.with(|l| *l.borrow_mut() = Some(el));
-        ran.map_err(|e| format!("the window stopped: {e}."))?;
-        match app.error {
-            Some(e) => Err(e),
-            None => Ok(()),
         }
     }
 }
@@ -5533,7 +5124,7 @@ fn find_button(n: &Laid, text: &str, path: &mut Vec<usize>) -> Option<Vec<usize>
     }
     let labelled = matches!(n.kind.as_str(), "checkbox" | "switch") && !n.text.is_empty();
     let header = n.kind == "header" && n.whole;
-    if (labelled || header || matches!(n.kind.as_str(), "button" | "option" | "item" | "menu" | "tabbtn" | "branchhead" | "radiobtn")) && n.text == text {
+    if (labelled || header || matches!(n.kind.as_str(), "button" | "option" | "item" | "menu" | "tabbtn" | "branchhead" | "radiobtn" | "toast")) && n.text == text {
         return Some(path.clone());
     }
     for (i, c) in n.children.iter().enumerate() {
@@ -5609,10 +5200,262 @@ thread_local! {
     static TEST_TIMES: std::cell::RefCell<Vec<(String, std::time::Duration)>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
-fn test(s: Settings, build: &mut Build, step: Box<Step>) -> Result<(), String> {
+/// One test command, in one window.
+fn command(ui: &mut Ui, cmd: &str, rest: &str, line: &str, nums: &[f32]) -> Result<(), String> {
+    match cmd {
+        "click" => match find_button(&ui.tree, rest, &mut vec![]).or_else(|| find_row_text(&ui.tree, rest, &mut vec![])) {
+            Some(p) => {
+                let (x, y) = centre(ui, &p);
+                ui.press(x, y, Mods::default())?;
+                ui.release(x, y)?;
+            }
+            // In an open picker: Today, ‹, ›, its title, a month or a year.
+            None => match ui.picker_spot(rest) {
+                Some((x, y)) => {
+                    ui.press(x, y, Mods::default())?;
+                    ui.release(x, y)?;
+                }
+                None => println!("(there's no button \"{rest}\" to click)"),
+            },
+        },
+        // today 2026-11-13: the date a date picker takes as today.
+        "today" => set_today(rest),
+        // pickday 14, pickcolour 0.5 0.2, hue 0.6, alpha 0.5, swatch 3: in an open picker.
+        "pickday" | "pickcolour" | "hue" | "alpha" | "swatch" => match ui.picker_test_spot(cmd, &nums) {
+            Some((x, y)) => {
+                ui.press(x, y, Mods::default())?;
+                ui.release(x, y)?;
+            }
+            None => println!("(there's no open picker with {line})"),
+        },
+        "check" => match nums.first().and_then(|&n| find_nth(&ui.tree, "checkbox", n as usize)) {
+            Some(p) => {
+                let (x, y) = centre(ui, &p);
+                ui.press(x, y, Mods::default())?;
+                ui.release(x, y)?;
+            }
+            None => println!("(there's no checkbox {rest})"),
+        },
+        "slide" => match (nums.first().and_then(|&n| find_nth(&ui.tree, "slider", n as usize)), nums.get(1)) {
+            (Some(p), Some(&v)) => {
+                let n = node_at(&ui.tree, &p).unwrap();
+                let l = &n.look;
+                let f = if l.to == l.from { 0.0 } else { (v - l.from) / (l.to - l.from) };
+                let x = n.x + THUMB + f.clamp(0.0, 1.0) * (n.w - 2.0 * THUMB);
+                let y = n.y + n.h / 2.0;
+                ui.press(x, y, Mods::default())?;
+                ui.release(x, y)?;
+            }
+            _ => println!("(there's no slider {rest})"),
+        },
+        // flip 1: clicks the first switch.
+        "flip" => match nums.first().and_then(|&n| find_nth(&ui.tree, "switch", n as usize)) {
+            Some(p) => {
+                let (x, y) = centre(ui, &p);
+                ui.press(x, y, Mods::default())?;
+                ui.release(x, y)?;
+            }
+            None => println!("(there's no switch {rest})"),
+        },
+        // wheel 1 up: turns the mouse wheel one notch over the first number box.
+        "wheel" => {
+            let mut it = rest.split_whitespace();
+            let nth = it.next().and_then(|x| x.parse::<usize>().ok()).unwrap_or(1);
+            let dy = if it.next() == Some("down") { 48.0 } else { -48.0 };
+            let mut all = Vec::new();
+            fn every_number(n: &Laid, path: &mut Vec<usize>, out: &mut Vec<Vec<usize>>) {
+                if n.kind == "number" {
+                    out.push(path.clone());
+                }
+                for (i, c) in n.children.iter().enumerate() {
+                    path.push(i);
+                    every_number(c, path, out);
+                    path.pop();
+                }
+            }
+            every_number(&ui.tree, &mut vec![], &mut all);
+            match all.get(nth.saturating_sub(1)) {
+                Some(p) => {
+                    let (x, y) = centre(ui, p);
+                    ui.st.hover = Some((x, y));
+                    match ui.wheel_number(x, y, dy).or_else(|| ui.wheel_list(x, y, dy)) {
+                        Some(r) => r?,
+                        None => {
+                            ui.wheel(x, y, dy);
+                        }
+                    }
+                }
+                None => println!("(there's no number box {nth})"),
+            }
+        }
+        "focus" => {
+            let mut it = rest.split_whitespace();
+            let kind = it.next().unwrap_or("input");
+            let nth = it.next().and_then(|x| x.parse::<usize>().ok()).unwrap_or(1);
+            match find_nth(&ui.tree, kind, nth) {
+                Some(p) => ui.set_focus(Some(p), true),
+                None => println!("(there's no {kind} {nth})"),
+            }
+        }
+        "type" => ui.typed(rest)?,
+        "key" => {
+            // A shortcut in the view goes first, as in a window.
+            if let Ok(s) = parse_shortcut(rest) {
+                let m = Mods { shift: s.shift, command: s.command, word: s.command, alt: s.alt };
+                if ui.shortcut(&s.key, m)? {
+                    return Ok(());
+                }
+            }
+            match parse_key(rest) {
+                Some((nav, mods)) => ui.nav(nav, mods)?,
+                None if parse_shortcut(rest).is_ok() => {}
+                None => println!("(Lust doesn't know the key {rest})"),
+            }
+        }
+        // dblclick Ada: double-clicks the row of a table or list showing that text.
+        "dblclick" if nums.len() < 2 => match find_row_text(&ui.tree, rest, &mut vec![]) {
+            Some(p) => {
+                let (x, y) = centre(ui, &p);
+                for _ in 0..2 {
+                    ui.press(x, y, Mods::default())?;
+                    ui.release(x, y)?;
+                }
+            }
+            None => println!("(there's no row showing \"{rest}\")"),
+        },
+        "press" | "move" | "release" | "dblclick" if nums.len() >= 2 => {
+            let (x, y) = (nums[0], nums[1]);
+            match cmd {
+                "press" => ui.press(x, y, Mods::default())?,
+                "move" => ui.moved(x, y)?,
+                "release" => ui.release(x, y)?,
+                _ => {
+                    for _ in 0..2 {
+                        ui.press(x, y, Mods::default())?;
+                        ui.release(x, y)?;
+                    }
+                }
+            }
+        }
+                    // scroll table 1 2000: scrolls the first table (or list) down 2000.
+        "scroll" if rest.starts_with("table") || rest.starts_with("list") => {
+            let kind = if rest.starts_with("table") { "table" } else { "list" };
+            let mut all = Vec::new();
+            fn every_list(n: &Laid, kind: &str, path: &mut Vec<usize>, out: &mut Vec<Vec<usize>>) {
+                if n.kind == kind {
+                    out.push(path.clone());
+                }
+                for (i, c) in n.children.iter().enumerate() {
+                    path.push(i);
+                    every_list(c, kind, path, out);
+                    path.pop();
+                }
+            }
+            every_list(&ui.tree, kind, &mut vec![], &mut all);
+            match (all.get((nums.first().copied().unwrap_or(1.0) as usize).saturating_sub(1)), nums.get(1)) {
+                (Some(p), Some(&dy)) => {
+                    let p = p.clone();
+                    let now = node_at(&ui.tree, &p).map(|n| n.scrolled).unwrap_or(0.0);
+                    ui.list_scroll(&p, now + dy)?;
+                }
+                _ => println!("(there's no {rest})"),
+            }
+        }
+        "scroll" if nums.len() >= 2 => {
+            let mut all = Vec::new();
+            fn every_scroll(n: &Laid, path: &mut Vec<usize>, out: &mut Vec<Vec<usize>>) {
+                if n.kind == "scroll" {
+                    out.push(path.clone());
+                }
+                for (i, c) in n.children.iter().enumerate() {
+                    path.push(i);
+                    every_scroll(c, path, out);
+                    path.pop();
+                }
+            }
+            every_scroll(&ui.tree, &mut vec![], &mut all);
+            match all.get((nums[0] as usize).saturating_sub(1)).and_then(|p| node_at(&ui.tree, p)) {
+                Some(n) => {
+                    let (x, y) = (n.x + 4.0, n.y + 4.0);
+                    ui.wheel(x, y, nums[1]);
+                }
+                None => println!("(there's no scroll {})", nums[0]),
+            }
+        }
+        "hover" => {
+            ui.st.hover = find_button(&ui.tree, rest, &mut vec![]).and_then(|p| node_at(&ui.tree, &p)).map(|b| (b.x + 1.0, b.y + 1.0));
+            // In tests, a tip shows straight away.
+            ui.track_tip();
+            ui.show_tip();
+        }
+        // open dropdown 1, open menu File: clicks it, opening its list.
+        "open" => {
+            let mut it = rest.splitn(2, ' ');
+            let kind = it.next().unwrap_or("");
+            let what = it.next().unwrap_or("").trim();
+            let found = match kind {
+                "dropdown" | "datePicker" | "colourPicker" => find_nth(&ui.tree, kind, what.parse::<usize>().unwrap_or(1)),
+                _ => find_button(&ui.tree, what, &mut vec![]),
+            };
+            match found {
+                Some(p) => {
+                    let (mut x, y) = centre(ui, &p);
+                    // A date picker opens from its calendar icon, on its right.
+                    if kind == "datePicker" {
+                        x = node_at(&ui.tree, &p).map_or(x, |n| n.x + n.w - DATE_ICON_W / 2.0);
+                    }
+                    ui.press(x, y, Mods::default())?;
+                    ui.release(x, y)?;
+                }
+                None => println!("(there's no {rest} to open)"),
+            }
+        }
+        "size" if nums.len() >= 2 => ui.resize(nums[0], nums[1])?,
+        // rightclick Ada: right-clicks the button or row showing those words, or a place.
+        "rightclick" => match right_target(ui, rest, &nums) {
+            Some((x, y)) => {
+                ui.right_press(x, y)?;
+                ui.right_release(x, y)?;
+            }
+            None => println!("(there's nothing showing \"{rest}\" to right-click)"),
+        },
+        // drag Ada Cleo: drags the row showing Ada onto the row showing Cleo.
+        "drag" => test_drag(ui, line.split_once(' ').map(|x| x.1).unwrap_or(""))?,
+        // drop C:/a.txt "C:/My files/b.png": drops files on the window.
+        "drop" => ui.drop_files(test_words(line.split_once(' ').map(|x| x.1).unwrap_or("")))?,
+        // dragover: files are held over the window, not dropped yet.
+        "dragover" => ui.files_over = true,
+        // choose pictures/cat.png: the answer the next open or save box gives (or cancel).
+        "choose" => {
+            let was = std::env::var("LUST_CHOSEN").unwrap_or_default();
+            let all = if was.is_empty() { rest.to_string() } else { format!("{was}\n{rest}") };
+            std::env::set_var("LUST_CHOSEN", all);
+        }
+        // Paints the window N times without saving, to measure how long painting takes.
+        "paint" => {
+            let n = nums.first().copied().unwrap_or(1.0) as usize;
+            let t = std::time::Instant::now();
+            for _ in 0..n {
+                let (st, bg, w, h) = (ui.paint_state(), ui.s.background, ui.w, ui.h);
+                render(&ui.shown(), (w * 2.0) as usize, (h * 2.0) as usize, 2.0, &st, bg);
+            }
+            eprintln!("painted {n} times in {} ms", t.elapsed().as_millis());
+        }
+        "snapshot" => {
+            let scale = 2.0;
+            let (st, bg, w, h) = (ui.paint_state(), ui.s.background, ui.w, ui.h);
+            let c = render(&ui.shown(), (w * scale) as usize, (h * scale) as usize, scale, &st, bg);
+            std::fs::write(rest, png(&c)).map_err(|e| format!("can't write {rest}: {e}"))?;
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn test<'a, 'b>(s: Settings, shared: &'a Shared<'a, 'b>, step: Box<Step>) -> Result<(), String> {
     use std::io::BufRead;
     let started = std::time::Instant::now();
-    let mut ui = Ui::new(s, build, false, step)?;
+    let mut wins = Wins::new(s, shared, false, step)?;
     TEST_TIMES.with(|t| t.borrow_mut().push(("open".into(), started.elapsed())));
     let lines: Box<dyn Iterator<Item = String>> = match TEST_LINES.with(|t| t.borrow_mut().take()) {
         Some(given) => Box::new(given.into_iter()),
@@ -5621,273 +5464,39 @@ fn test(s: Settings, build: &mut Build, step: Box<Step>) -> Result<(), String> {
     for line in lines {
         // A table that came into view (a tab shown, a branch opened) makes its rows.
         if take_stale() {
-            ui.rebuild()?;
+            wins.rebuild_all()?;
         }
         let started = std::time::Instant::now();
         let whole = line.clone();
-        let line = line.trim();
-        let (cmd, rest) = line.split_once(' ').unwrap_or((line, ""));
+        // in Settings click Save: a command for another window.
+        let (target, line) = match wins.target(line.trim()) {
+            Ok(t) => t,
+            Err(e) => {
+                println!("{e}");
+                continue;
+            }
+        };
+        let (cmd, rest) = line.split_once(' ').unwrap_or((line.as_str(), ""));
         let rest = rest.trim().trim_matches('"');
         let nums: Vec<f32> = rest.split_whitespace().filter_map(|x| x.parse::<f32>().ok()).collect();
         match cmd {
-            "dump" => {
-                let mut out = format!("window {:?} {}x{}\n", ui.s.title, ui.w as i64, ui.h as i64);
-                let st = ui.paint_state();
-                for (i, c) in ui.tree.children.iter().enumerate() {
-                    dump(c, 1, &mut vec![i], &st, &mut out);
-                }
-                out.push_str(&ui.mouse_dump_lines());
-                print!("{out}");
+            "dump" => print!("{}", wins.dump()),
+            "wait" => wins.wait(nums.first().copied().unwrap_or(0.0) as f64)?,
+            // close: the window's X. tray click, tray item Quit: the tray icon.
+            "close" => wins.close(target)?,
+            "tray" => wins.tray(rest)?,
+            _ => {
+                wins.enter(target);
+                let r = command(&mut wins.list[target].ui, cmd, rest, &line, &nums);
+                wins.leave(target);
+                r?;
             }
-            "click" => match find_button(&ui.tree, rest, &mut vec![]).or_else(|| find_row_text(&ui.tree, rest, &mut vec![])) {
-                Some(p) => {
-                    let (x, y) = centre(&ui, &p);
-                    ui.press(x, y, Mods::default())?;
-                    ui.release(x, y)?;
-                }
-                // In an open picker: Today, ‹, ›, its title, a month or a year.
-                None => match ui.picker_spot(rest) {
-                    Some((x, y)) => {
-                        ui.press(x, y, Mods::default())?;
-                        ui.release(x, y)?;
-                    }
-                    None => println!("(there's no button \"{rest}\" to click)"),
-                },
-            },
-            // today 2026-11-13: the date a date picker takes as today.
-            "today" => set_today(rest),
-            // pickday 14, pickcolour 0.5 0.2, hue 0.6, alpha 0.5, swatch 3: in an open picker.
-            "pickday" | "pickcolour" | "hue" | "alpha" | "swatch" => match ui.picker_test_spot(cmd, &nums) {
-                Some((x, y)) => {
-                    ui.press(x, y, Mods::default())?;
-                    ui.release(x, y)?;
-                }
-                None => println!("(there's no open picker with {line})"),
-            },
-            "check" => match nums.first().and_then(|&n| find_nth(&ui.tree, "checkbox", n as usize)) {
-                Some(p) => {
-                    let (x, y) = centre(&ui, &p);
-                    ui.press(x, y, Mods::default())?;
-                    ui.release(x, y)?;
-                }
-                None => println!("(there's no checkbox {rest})"),
-            },
-            "slide" => match (nums.first().and_then(|&n| find_nth(&ui.tree, "slider", n as usize)), nums.get(1)) {
-                (Some(p), Some(&v)) => {
-                    let n = node_at(&ui.tree, &p).unwrap();
-                    let l = &n.look;
-                    let f = if l.to == l.from { 0.0 } else { (v - l.from) / (l.to - l.from) };
-                    let x = n.x + THUMB + f.clamp(0.0, 1.0) * (n.w - 2.0 * THUMB);
-                    let y = n.y + n.h / 2.0;
-                    ui.press(x, y, Mods::default())?;
-                    ui.release(x, y)?;
-                }
-                _ => println!("(there's no slider {rest})"),
-            },
-            // flip 1: clicks the first switch.
-            "flip" => match nums.first().and_then(|&n| find_nth(&ui.tree, "switch", n as usize)) {
-                Some(p) => {
-                    let (x, y) = centre(&ui, &p);
-                    ui.press(x, y, Mods::default())?;
-                    ui.release(x, y)?;
-                }
-                None => println!("(there's no switch {rest})"),
-            },
-            // wheel 1 up: turns the mouse wheel one notch over the first number box.
-            "wheel" => {
-                let mut it = rest.split_whitespace();
-                let nth = it.next().and_then(|x| x.parse::<usize>().ok()).unwrap_or(1);
-                let dy = if it.next() == Some("down") { 48.0 } else { -48.0 };
-                let mut all = Vec::new();
-                fn every_number(n: &Laid, path: &mut Vec<usize>, out: &mut Vec<Vec<usize>>) {
-                    if n.kind == "number" {
-                        out.push(path.clone());
-                    }
-                    for (i, c) in n.children.iter().enumerate() {
-                        path.push(i);
-                        every_number(c, path, out);
-                        path.pop();
-                    }
-                }
-                every_number(&ui.tree, &mut vec![], &mut all);
-                match all.get(nth.saturating_sub(1)) {
-                    Some(p) => {
-                        let (x, y) = centre(&ui, p);
-                        ui.st.hover = Some((x, y));
-                        match ui.wheel_number(x, y, dy).or_else(|| ui.wheel_list(x, y, dy)) {
-                            Some(r) => r?,
-                            None => {
-                                ui.wheel(x, y, dy);
-                            }
-                        }
-                    }
-                    None => println!("(there's no number box {nth})"),
-                }
-            }
-            "focus" => {
-                let mut it = rest.split_whitespace();
-                let kind = it.next().unwrap_or("input");
-                let nth = it.next().and_then(|x| x.parse::<usize>().ok()).unwrap_or(1);
-                match find_nth(&ui.tree, kind, nth) {
-                    Some(p) => ui.set_focus(Some(p), true),
-                    None => println!("(there's no {kind} {nth})"),
-                }
-            }
-            "type" => ui.typed(rest)?,
-            "key" => {
-                // A shortcut in the view goes first, as in a window.
-                if let Ok(s) = parse_shortcut(rest) {
-                    let m = Mods { shift: s.shift, command: s.command, word: s.command, alt: s.alt };
-                    if ui.shortcut(&s.key, m)? {
-                        continue;
-                    }
-                }
-                match parse_key(rest) {
-                    Some((nav, mods)) => ui.nav(nav, mods)?,
-                    None if parse_shortcut(rest).is_ok() => {}
-                    None => println!("(Lust doesn't know the key {rest})"),
-                }
-            }
-            // dblclick Ada: double-clicks the row of a table or list showing that text.
-            "dblclick" if nums.len() < 2 => match find_row_text(&ui.tree, rest, &mut vec![]) {
-                Some(p) => {
-                    let (x, y) = centre(&ui, &p);
-                    for _ in 0..2 {
-                        ui.press(x, y, Mods::default())?;
-                        ui.release(x, y)?;
-                    }
-                }
-                None => println!("(there's no row showing \"{rest}\")"),
-            },
-            "press" | "move" | "release" | "dblclick" if nums.len() >= 2 => {
-                let (x, y) = (nums[0], nums[1]);
-                match cmd {
-                    "press" => ui.press(x, y, Mods::default())?,
-                    "move" => ui.moved(x, y)?,
-                    "release" => ui.release(x, y)?,
-                    _ => {
-                        for _ in 0..2 {
-                            ui.press(x, y, Mods::default())?;
-                            ui.release(x, y)?;
-                        }
-                    }
-                }
-            }
-            "wait" => ui.wait(nums.first().copied().unwrap_or(0.0) as f64)?,
-            // scroll table 1 2000: scrolls the first table (or list) down 2000.
-            "scroll" if rest.starts_with("table") || rest.starts_with("list") => {
-                let kind = if rest.starts_with("table") { "table" } else { "list" };
-                let mut all = Vec::new();
-                fn every_list(n: &Laid, kind: &str, path: &mut Vec<usize>, out: &mut Vec<Vec<usize>>) {
-                    if n.kind == kind {
-                        out.push(path.clone());
-                    }
-                    for (i, c) in n.children.iter().enumerate() {
-                        path.push(i);
-                        every_list(c, kind, path, out);
-                        path.pop();
-                    }
-                }
-                every_list(&ui.tree, kind, &mut vec![], &mut all);
-                match (all.get((nums.first().copied().unwrap_or(1.0) as usize).saturating_sub(1)), nums.get(1)) {
-                    (Some(p), Some(&dy)) => {
-                        let p = p.clone();
-                        let now = node_at(&ui.tree, &p).map(|n| n.scrolled).unwrap_or(0.0);
-                        ui.list_scroll(&p, now + dy)?;
-                    }
-                    _ => println!("(there's no {rest})"),
-                }
-            }
-            "scroll" if nums.len() >= 2 => {
-                let mut all = Vec::new();
-                fn every_scroll(n: &Laid, path: &mut Vec<usize>, out: &mut Vec<Vec<usize>>) {
-                    if n.kind == "scroll" {
-                        out.push(path.clone());
-                    }
-                    for (i, c) in n.children.iter().enumerate() {
-                        path.push(i);
-                        every_scroll(c, path, out);
-                        path.pop();
-                    }
-                }
-                every_scroll(&ui.tree, &mut vec![], &mut all);
-                match all.get((nums[0] as usize).saturating_sub(1)).and_then(|p| node_at(&ui.tree, p)) {
-                    Some(n) => {
-                        let (x, y) = (n.x + 4.0, n.y + 4.0);
-                        ui.wheel(x, y, nums[1]);
-                    }
-                    None => println!("(there's no scroll {})", nums[0]),
-                }
-            }
-            "hover" => {
-                ui.st.hover = find_button(&ui.tree, rest, &mut vec![]).and_then(|p| node_at(&ui.tree, &p)).map(|b| (b.x + 1.0, b.y + 1.0));
-                // In tests, a tip shows straight away.
-                ui.track_tip();
-                ui.show_tip();
-            }
-            // open dropdown 1, open menu File: clicks it, opening its list.
-            "open" => {
-                let mut it = rest.splitn(2, ' ');
-                let kind = it.next().unwrap_or("");
-                let what = it.next().unwrap_or("").trim();
-                let found = match kind {
-                    "dropdown" | "datePicker" | "colourPicker" => find_nth(&ui.tree, kind, what.parse::<usize>().unwrap_or(1)),
-                    _ => find_button(&ui.tree, what, &mut vec![]),
-                };
-                match found {
-                    Some(p) => {
-                        let (mut x, y) = centre(&ui, &p);
-                        // A date picker opens from its calendar icon, on its right.
-                        if kind == "datePicker" {
-                            x = node_at(&ui.tree, &p).map_or(x, |n| n.x + n.w - DATE_ICON_W / 2.0);
-                        }
-                        ui.press(x, y, Mods::default())?;
-                        ui.release(x, y)?;
-                    }
-                    None => println!("(there's no {rest} to open)"),
-                }
-            }
-            "size" if nums.len() >= 2 => ui.resize(nums[0], nums[1])?,
-            // rightclick Ada: right-clicks the button or row showing those words, or a place.
-            "rightclick" => match right_target(&ui, rest, &nums) {
-                Some((x, y)) => {
-                    ui.right_press(x, y)?;
-                    ui.right_release(x, y)?;
-                }
-                None => println!("(there's nothing showing \"{rest}\" to right-click)"),
-            },
-            // drag Ada Cleo: drags the row showing Ada onto the row showing Cleo.
-            "drag" => test_drag(&mut ui, line.split_once(' ').map(|x| x.1).unwrap_or(""))?,
-            // drop C:/a.txt "C:/My files/b.png": drops files on the window.
-            "drop" => ui.drop_files(test_words(line.split_once(' ').map(|x| x.1).unwrap_or("")))?,
-            // dragover: files are held over the window, not dropped yet.
-            "dragover" => ui.files_over = true,
-            // choose pictures/cat.png: the answer the next open or save box gives (or cancel).
-            "choose" => {
-                let was = std::env::var("LUST_CHOSEN").unwrap_or_default();
-                let all = if was.is_empty() { rest.to_string() } else { format!("{was}\n{rest}") };
-                std::env::set_var("LUST_CHOSEN", all);
-            }
-            // Paints the window N times without saving, to measure how long painting takes.
-            "paint" => {
-                let n = nums.first().copied().unwrap_or(1.0) as usize;
-                let t = std::time::Instant::now();
-                for _ in 0..n {
-                    let (st, bg, w, h) = (ui.paint_state(), ui.s.background, ui.w, ui.h);
-                    render(&ui.shown(), (w * 2.0) as usize, (h * 2.0) as usize, 2.0, &st, bg);
-                }
-                eprintln!("painted {n} times in {} ms", t.elapsed().as_millis());
-            }
-            "snapshot" => {
-                let scale = 2.0;
-                let (st, bg, w, h) = (ui.paint_state(), ui.s.background, ui.w, ui.h);
-                let c = render(&ui.shown(), (w * scale) as usize, (h * scale) as usize, scale, &st, bg);
-                std::fs::write(rest, png(&c)).map_err(|e| format!("can't write {rest}: {e}"))?;
-            }
-            _ => {}
         }
+        wins.after(target)?;
         TEST_TIMES.with(|t| t.borrow_mut().push((whole, started.elapsed())));
-
+        if wins.ended {
+            break;
+        }
     }
     Ok(())
 }

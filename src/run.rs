@@ -66,6 +66,19 @@ fn host(lua: &Lua) -> mlua::Result<()> {
             },
         )?,
     )?;
+    // Toasts, App:quit() and App:notify(…): the same code as built programs use.
+    h.set(
+        "ui_toast",
+        lua.create_function(|_, (text, style): (String, mlua::Table)| {
+            crate::native_ui::toast(text, ui_styles(&style)?);
+            Ok(())
+        })?,
+    )?;
+    h.set("app_quit", lua.create_function(|_, ()| Ok(crate::native_ui::quit()))?)?;
+    h.set(
+        "app_notify",
+        lua.create_function(|_, (title, body): (String, String)| Ok(crate::native_ui::notify(title, body)))?,
+    )?;
     // Tables and lists: which rows to make, and the order a sort puts them in.
     {
         use crate::native_ui as ui;
@@ -313,12 +326,16 @@ fn ui_node(t: &mlua::Table, actions: &mut Vec<crate::native_ui::Action>) -> mlua
         ("H", "hover"),
         ("X", "drop"),
         ("R", "reorder"),
+        ("C", "click"),
+        ("Q", "close"),
+        ("F", "fullscreen"),
     ] {
         if let Some(f) = t.get::<Option<mlua::Function>>(key)? {
             actions.push(Box::new(move || {
                 let r = match crate::native_ui::incoming() {
                     crate::native_ui::SV::Point(x, y) => f.call::<()>((x, y)),
                     crate::native_ui::SV::List(paths) => f.call::<()>(mlua::Variadic::from_iter(paths)),
+                    crate::native_ui::SV::Truth(b) => f.call::<()>(b),
                     _ => f.call::<()>(()),
                 };
                 r.map_err(|e| raw_error(&e))

@@ -1,0 +1,52 @@
+-- Full screen, hiding the main window, close { } on the view, App:quit(), App:notify() and the
+-- tray icon. F11 is the program's own shortcut, not a built-in one.
+assembly App {
+    has {
+        bool isFull = false;
+        bool shown = true;
+        bool asking = false;
+        bool unsaved = true;
+        int clicks = 0;
+    }
+
+    view [title "Notes", width 320, height 200, fullscreen isFull, visible shown] {
+        column [gap 8, pad 12] {
+            text "Clicks: " + clicks.text();
+            button "Notify" { App:notify("Notes", "Saved " + clicks.text() + " times"); }
+            button "Hide" { shown = false; }
+        }
+        key "f11" { isFull = not isFull; }
+        dialog asking {
+            text "Save first?";
+            row [gap 8] {
+                button "Save" {
+                    unsaved = false;
+                    asking = false;
+                    App:quit();
+                }
+                button "Cancel" { asking = false; }
+            }
+        }
+        tray [icon "bell", tip "Notes"] {
+            item "Show" { shown = true; }
+            item "Count" [disabled not shown] { clicks = clicks + 1; }
+            divider;
+            item "Quit" { App:quit(); }
+        } click {
+            clicks = clicks + 1;
+            shown = true;
+        }
+    } close {
+        is unsaved? then {
+            asking = true;
+        } or {
+            shown = false;
+        }
+    }
+}
+
+App:open();
+print("the window closed, and the program goes on");
+App:quit();
+print("App:quit() with no window open does nothing");
+end

@@ -2348,6 +2348,18 @@ function L.view_open(class)
   if e then error(e, 0) end
 end
 
+-- toast "Saved";, App:quit() and App:notify(…): lust's own windows show them. Without them (in an
+-- engine), they do nothing: the engine has its own windows.
+function L.toast(text, style)
+  if host and host.ui_toast then host.ui_toast(text, style) end
+end
+function L.app_quit()
+  if host and host.app_quit then host.app_quit() end
+end
+function L.app_notify(title, body)
+  if host and host.app_notify then host.app_notify(title, body) end
+end
+
 function L.piece(parent, site, class, rowkey)
   local st = stores[#stores]
   local turns = st.turns[parent]

@@ -23,7 +23,8 @@ pub const LOCALTIME_RUNTIME: &str = include_str!("native_localtime.rs");
 pub const TEXT_RUNTIME: &str = include_str!("native_text.rs");
 /// Views: the pieces, then the radio buttons, switches, number boxes and icons, then tables, then
 /// the mouse (right-click menus, dragging rows, dropped files, canvases), then date and colour
-/// pickers, then the icons' shapes, all in one module.
+/// pickers, then more windows, toasts, the tray and notifications, then the icons' shapes, all in
+/// one module.
 pub const UI_RUNTIME: &str = concat!(
     include_str!("native_ui.rs"),
     "\n",
@@ -34,6 +35,8 @@ pub const UI_RUNTIME: &str = concat!(
     include_str!("native_ui_mouse.rs"),
     "\n",
     include_str!("native_ui_pickers.rs"),
+    "\n",
+    include_str!("native_ui_windows.rs"),
     "\n",
     include_str!("icons.rs")
 );
@@ -701,7 +704,7 @@ fn snake(name: &str) -> String {
 
 /// Whether the program has anything to do with screens.
 fn views(info: &Info) -> bool {
-    !info.view_opens.is_empty() || info.classes.iter().any(|c| c.has_view)
+    !info.view_opens.is_empty() || info.classes.iter().any(|c| c.has_view) || uses(info, &["app_notify"])
 }
 
 fn has_this(stmts: &[Stmt], info: &Info) -> bool {
@@ -1713,6 +1716,26 @@ impl<'a> W<'a> {
                     out.push_str(&format!("{pad}    {parent}.children.push({v});\n{pad}}}\n"));
                     return;
                 }
+                // toast "Saved" [green];: a message in the corner of the window that ran it. A
+                // program without a view has no windows to show it in.
+                if kind == "toast" {
+                    let text = arg
+                        .as_ref()
+                        .map(|a| self.coerced(a, &Ty::Str))
+                        .unwrap_or_else(|| "String::new()".into());
+                    if views(self.info) {
+                        let st = self.styles(style);
+                        out.push_str(&format!("{pad}rt::ui::toast({text}, {st});\n"));
+                    } else {
+                        out.push_str(&format!("{pad}let _ = {text};\n"));
+                    }
+                    return;
+                }
+                // The view's own blocks: close { … }, and setting fullscreen's field.
+                if kind == "viewroot" {
+                    self.attached(&parent, extra, out, depth.saturating_sub(1));
+                    return;
+                }
                 let v = format!("p{}", self.fresh());
                 out.push_str(&format!("{pad}{{\n{pad}    let mut {v} = rt::ui::Node::new({kind:?});\n"));
                 let bound = matches!(
@@ -1729,7 +1752,12 @@ impl<'a> W<'a> {
                         | "number"
                         | "datePicker"
                         | "colourPicker"
+                        | "window"
                 );
+                // A window is known by where it's written.
+                if let (Some(a), "window") = (arg, kind.as_str()) {
+                    out.push_str(&format!("{pad}    {v}.text = \"{}\".to_string();\n", a.id));
+                }
                 // A date picker is told today's date, by the computer's clock.
                 if kind == "datePicker" {
                     out.push_str(&format!("{pad}    {v}.text = rt::time_date();\n"));
@@ -3003,7 +3031,12 @@ impl<'a> W<'a> {
                 (n.clone(), ty)
             });
             let set = format!("{v}.mouse.push(({:?}.to_string(), #));", a.word);
-            self.view_action_to(&a.body, None, param, &set, out, depth);
+            // fullscreen's field is set from whether the window is full screen.
+            let given = match a.body.first() {
+                Some(Stmt::Assign { target, .. }) if a.word == "fullscreen" => Some(target),
+                _ => None,
+            };
+            self.view_action_to(&a.body, given, param, &set, out, depth);
         }
     }
 
@@ -3119,6 +3152,10 @@ impl<'a> W<'a> {
                 format!("rt::json_read({t}, &{dec})")
             }
             "web_serve" => format!("rt::web::serve({})", self.expr(&args[0])),
+            // App isn't a value: only what's in the ( ) goes over.
+            "app_quit" if views(self.info) => "rt::ui::quit()".to_string(),
+            "app_notify" if views(self.info) => format!("rt::ui::notify({}, {})", self.expr(&args[0]), self.expr(&args[1])),
+            "app_quit" | "app_notify" => "()".to_string(),
             "files_chooseOpen" => format!("rt::dlg::choose_open({}, rt::acopy(&{}))", self.expr(&args[0]), self.expr(&args[1])),
             "files_chooseSave" => format!("rt::dlg::choose_save({}, {})", self.expr(&args[0]), self.expr(&args[1])),
             "files_chooseFolder" => format!("rt::dlg::choose_folder({})", self.expr(&args[0])),

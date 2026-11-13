@@ -1,0 +1,50 @@
+-- Second windows: a window opens while its bool is true, shares the data with the main window,
+-- and has its own focus, shortcuts and timers. Its X, or Escape with [escape], sets the bool to
+-- false. Several can be open at once, and one can hold a dialog.
+assembly App {
+    has {
+        bool showingSettings = false;
+        bool showingHelp = false;
+        bool sure = false;
+        string name = "";
+        int ticks = 0;
+        int saves = 0;
+    }
+
+    view [title "Notes", width 360, height 240] {
+        column [gap 8, pad 12] {
+            text "Hello " + name;
+            text "ticks " + ticks.text() + ", saves " + saves.text();
+            row [gap 8] {
+                button "Settings" { showingSettings = true; }
+                button "Help" { showingHelp = true; }
+            }
+        }
+        key "ctrl+s" { saves = saves + 100; }
+
+        window showingSettings [title "Settings", width 300, height 200, escape] {
+            column [gap 8, pad 12] {
+                input name [placeholder "Your name"];
+                button "Forget" { sure = true; }
+                button "Done" { showingSettings = false; }
+            }
+            key "ctrl+s" { saves = saves + 1; }
+            every 1.0 { ticks = ticks + 1; }
+            dialog sure {
+                text "Forget the name?";
+                button "Yes" {
+                    name = "";
+                    sure = false;
+                }
+            }
+        }
+
+        window showingHelp [title "Help " + name, width 240, height 120] {
+            text "Type your name in Settings.";
+        }
+    }
+}
+
+App:open();
+print("the windows closed");
+end

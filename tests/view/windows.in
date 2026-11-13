@@ -1,0 +1,29 @@
+dump
+click Settings
+dump
+in Settings focus input 1
+in Settings type Ada
+dump
+in Settings key ctrl+s
+key ctrl+s
+wait 2.5
+in Settings dump
+click Help
+dump
+in "Help Ada" close
+in Settings click Forget
+in Settings dump
+in Settings click Yes
+in Settings key escape
+dump
+in Settings click Done
+in Nowhere click Done
+click Settings
+in Settings focus input 1
+in Settings key escape
+in Settings key escape
+dump
+click Settings
+in Settings close
+dump
+close

@@ -98,6 +98,8 @@ pub const ELEMENTS: &[&str] = &[
     "drop",
     "datePicker",
     "colourPicker",
+    "window",
+    "tray",
 ];
 
 /// What a piece in a table's or list's row is known by when the rows come from an array: the
@@ -905,10 +907,32 @@ impl<'a> Parser<'a> {
                 let was = std::mem::replace(&mut self.in_view, true);
                 let body = self.block("the view");
                 self.in_view = was;
+                let mut body = body?;
+                // close { … } after the view runs when its window's X is clicked. It and the
+                // block that sets `fullscreen`'s field when the window leaves full screen ride
+                // on a hidden piece at the end of the view, so they're checked and written as
+                // a view's other blocks are.
+                let mut extra = self.setters(&settings);
+                while self.at_word("close") && self.peek(1).is_sym("{") {
+                    extra.push(self.attached()?);
+                }
+                if !extra.is_empty() {
+                    body.push(Stmt::Element {
+                        kind: "viewroot".into(),
+                        arg: None,
+                        style: vec![],
+                        children: vec![],
+                        action: None,
+                        enter: None,
+                        choices: None,
+                        extra,
+                        pos: v.pos,
+                    });
+                }
                 view = Some(ViewDecl {
                     pos: v.pos,
                     settings,
-                    body: body?,
+                    body,
                 });
                 continue;
             }
@@ -1059,11 +1083,24 @@ impl<'a> Parser<'a> {
         // Pieces that hold others in { }. A menu and a dialog take a value first too.
         let container = matches!(
             kind.as_str(),
-            "column" | "row" | "stack" | "scroll" | "menu" | "dialog" | "grid" | "split" | "tabs" | "tab" | "branch" | "canvas"
+            "column"
+                | "row"
+                | "stack"
+                | "scroll"
+                | "menu"
+                | "dialog"
+                | "grid"
+                | "split"
+                | "tabs"
+                | "tab"
+                | "branch"
+                | "canvas"
+                | "window"
+                | "tray"
         );
         let bare = matches!(
             kind.as_str(),
-            "column" | "row" | "stack" | "scroll" | "space" | "divider" | "grid" | "split" | "canvas" | "box" | "circle" | "line"
+            "column" | "row" | "stack" | "scroll" | "space" | "divider" | "grid" | "split" | "canvas" | "box" | "circle" | "line" | "tray"
         );
         let arg = if bare || self.at_sym("[") || self.at_sym("{") || self.at_sym(";") {
             None
@@ -1142,6 +1179,7 @@ impl<'a> Parser<'a> {
                 | "number"
                 | "datePicker"
                 | "colourPicker"
+                | "window"
         ) {
             if let Some(a) = &arg {
                 let value = self.mk(a.pos, ExprKind::Name(VALUE.into()));
@@ -1153,6 +1191,10 @@ impl<'a> Parser<'a> {
                 body.extend(action.take().unwrap_or_default());
                 action = Some(body);
             }
+        }
+        // A window's `fullscreen` field is set when the window leaves full screen by itself.
+        if kind == "window" {
+            extra.extend(self.setters(&style));
         }
         Ok(Stmt::Element {
             kind,
@@ -1167,12 +1209,53 @@ impl<'a> Parser<'a> {
         })
     }
 
+    /// The block that sets the field `[fullscreen isFull]` is bound to, when the window goes in
+    /// or out of full screen by the computer's own means: isFull = (whether it's full screen).
+    fn setters(&mut self, style: &[StyleItem]) -> Vec<Attached> {
+        let mut out = Vec::new();
+        for it in style {
+            if let (true, StyleValue::Expr(e)) = (it.name == "fullscreen", &it.value) {
+                let value = self.mk(e.pos, ExprKind::Name(VALUE.into()));
+                out.push(Attached {
+                    word: "fullscreen".into(),
+                    param: None,
+                    body: vec![Stmt::Assign {
+                        target: e.clone(),
+                        value,
+                        pos: e.pos,
+                    }],
+                    pos: it.pos,
+                });
+            }
+        }
+        out
+    }
+
+    /// toast "Saved" [green, icon "check"]; shows a small message in the window's corner.
+    fn toast(&mut self) -> R<Stmt> {
+        let t = self.next();
+        let text = self.expr()?;
+        let style = if self.at_sym("[") { self.style_list()? } else { vec![] };
+        self.semi()?;
+        Ok(Stmt::Element {
+            kind: "toast".into(),
+            arg: Some(text),
+            style,
+            children: vec![],
+            action: None,
+            enter: None,
+            choices: None,
+            extra: vec![],
+            pos: t.pos,
+        })
+    }
+
     /// Whether a block for the mouse comes next, after a piece: menu { … }, or press (vec2 at) { … }
     /// and the like (the canvas's). `menu "File"` is a menu of its own, not one of these.
     fn attach_next(&self) -> bool {
         let Tk::Ident(w) = &self.cur().kind else { return false };
         match w.as_str() {
-            "menu" => self.peek(1).is_sym("{"),
+            "menu" | "click" | "close" => self.peek(1).is_sym("{"),
             "press" | "drag" | "release" | "hover" => {
                 self.peek(1).is_sym("{")
                     || (self.peek(1).is_sym("(") && matches!(self.peek(2).kind, Tk::Ident(_)) && matches!(self.peek(3).kind, Tk::Ident(_)))
@@ -1920,7 +2003,31 @@ impl<'a> Parser<'a> {
         {
             return self.tween();
         }
+        // toast "Saved"; shows a message in the window's corner. toast is a word only here, so a
+        // variable can still be called toast.
+        if t.kind == Tk::Ident("toast".into())
+            && (matches!(&self.peek(1).kind, Tk::Ident(w) if !RESERVED.contains(&w.as_str()))
+                || matches!(self.peek(1).kind, Tk::Int(_) | Tk::Float(..) | Tk::Str(_)))
+            && !(self.peek(2).is_sym("=") && !matches!(self.peek(1).kind, Tk::Str(_)))
+        {
+            if self.in_view {
+                return self.fail(
+                    t.pos,
+                    "toast shows a message when code runs, so it goes in a block, like a button's: button \"Save\" { save(); toast \"Saved\"; }",
+                );
+            }
+            return self.toast();
+        }
         if let Tk::Ident(w) = &t.kind {
+            // close { … } goes after the view's { }, not inside it.
+            if self.in_view && (w == "close" || w == "click") && self.peek(1).is_sym("{") {
+                let msg = if w == "close" {
+                    "close { } goes right after the view's { }, for when its window's X is clicked: view [title \"Notes\"] { … } close { … }"
+                } else {
+                    "click { } goes right after a tray's { }, for a click on its icon: tray [icon \"bell\"] { … } click { … }"
+                };
+                return self.fail(t.pos, msg);
+            }
             // A piece's name, unless it's used as a variable: key = "x"; or line.text()
             let used = self.peek(1).is_sym("=") || self.peek(1).is_sym(".") || self.peek(1).is_sym(":");
             if self.in_view && ELEMENTS.contains(&w.as_str()) && !used {

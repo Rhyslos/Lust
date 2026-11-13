@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (alpha 71):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, tables and long lists, right-click menus, rows dragged to new places, dropped files, the mouse on a canvas, scrolling, pictures (SVG too), timers, keyboard shortcuts, fonts of your own, and date and colour pickers, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (alpha 72):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, tables and long lists, right-click menus, rows dragged to new places, dropped files, the mouse on a canvas, scrolling, pictures (SVG too), timers, keyboard shortcuts, fonts of your own, date and colour pickers, second windows, full screen, toasts, notifications and a tray icon, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -790,7 +790,7 @@ An assembly with a `view` opens a window with `App:open();`, through `lust run` 
 - **Your own pieces:** any assembly with a view, used inside another view as `TodoRow { label = task };`, from the same file or fetched from files in `ui/` folders (see below).
 - **Styles and layout:** every word in the list below, `hover:[ … ]` included, plus named styles (`style chip = [pad 6, round];`). Text wraps onto more lines when it doesn't fit.
 - **Questions and loops** inside a view.
-- **The window's settings:** `title`, `width`, `height`, `minWidth`, `minHeight`, `background`, `font` and `dark`. They're worked out each time the view is drawn, so a title can show the data: `view [title "To do (" + (#todos).text() + ")"]`.
+- **The window's settings:** `title`, `width`, `height`, `minWidth`, `minHeight`, `background`, `font`, `dark`, `fullscreen` and `visible`. They're worked out each time the view is drawn, so a title can show the data: `view [title "To do (" + (#todos).text() + ")"]`.
 - **`disabled`** greys out a piece and stops it being clicked, typed in or reached with Tab. It can depend on the data: `button "Save" [disabled name == ""] { … }`.
 - **Undo and redo** in inputs: Ctrl+Z, and Ctrl+Shift+Z or Ctrl+Y (Cmd on a Mac). A run of typing undoes in one go.
 - **Enter and shortcuts:** `input newTodo enter { add(); }` runs a block when Enter is pressed in the input, and `key "ctrl+s" { save(); }` is a keyboard shortcut (see below).
@@ -801,6 +801,8 @@ An assembly with a `view` opens a window with `App:open();`, through `lust run` 
 - **Things that show over the view:** `dropdown` lists to choose from, `menu`s of `item`s, `dialog`s that pop up while a bool is true, and `tip "…"` for a note when the mouse rests on a piece (see below).
 - **Tables and long lists:** `table` shows rows in columns that sort, pick and resize, and `list` is a scrolling column of rows; both stay quick with 100,000 rows (see below).
 - **The mouse:** a right-click `menu { }` after any piece, `[reorder]` for a list's rows to be dragged to new places, `drop` for files dropped on the window, and `press`, `drag`, `release` and `hover` on a canvas (see below).
+- **More windows:** `window` for a second window that opens while a bool is true, `fullscreen` for full screen, `visible` to hide the main window, and `close { }` for what its X does (see below).
+- **Telling people things:** `toast "Saved";` for a small message in the window's corner, `App:notify(…)` for the computer's own notification, and `tray` for an icon in the system tray, with a menu (see below). `App:quit()` ends the program from anywhere.
 
 ```
 assembly App {
@@ -858,8 +860,11 @@ end
 | `wait 2.5` | lets 2.5 seconds go by on the test's own clock, running the timers that come due |
 | `size 800 600` | resizes the window |
 | `snapshot shot.png` | draws the window into a picture |
+| `in Settings click Save`, `in "My settings" dump` | sends a command to the second window with that title (in quotes when it has spaces) instead of the main one |
+| `close`, `in Settings close` | clicks the window's X: the main window runs its `close { }` (or ends), and a second window's bool becomes false |
+| `tray click`, `tray item Quit` | clicks the tray icon, or chooses one of its items |
 
-`lust test` sets it for every test, so a view's tests compare what `dump` prints. A table or list dumps only the rows on the screen, after a line saying how many it has and which show: `table 100000 rows, showing 41–51`.
+`lust test` sets it for every test, so a view's tests compare what `dump` prints. A table or list dumps only the rows on the screen, after a line saying how many it has and which show: `table 100000 rows, showing 41–51`. `dump` shows each open window under a heading of its own, `window "Settings" 300x200`, with `(fullscreen)` or `(hidden)` after the main window's when it is; the toasts showing, as `toast "Saved"` in a `layer "toast"`; and the tray, as `tray "Notes" (2 items)`. `App:notify("Title", "Body")` prints `notify: Title — Body` instead of showing anything. `wait` moves the toasts along too, and every window's timers.
 
 ### Pieces are assemblies
 
@@ -1000,8 +1005,8 @@ assembly Settings {
 | Drawing | `canvas` with `box`, `circle`, `line` |
 | Content | `text`, `button`, `input`, `textarea`, `checkbox`, `switch`, `number`, `slider`, `image`, `icon`, `progress` |
 | Choosing | `dropdown`, `radio`, `menu` with `item` and `divider`, `datePicker`, `colourPicker` |
-| Over the view | `dialog` |
-| Time, keys and files | `every`, `key`, `drop` |
+| Over the view | `dialog`, and `window` beside it |
+| Time, keys and files | `every`, `key`, `drop`, `tray` |
 
 Questions and loops work inside a view: showing something only sometimes is an `is … ? then`, and a list is a `loop`.
 
@@ -1358,6 +1363,132 @@ dialog confirming [width 320] {
 
 A dialog is a column with a white background, rounded corners and room around what it holds; styles change it like any other piece. It takes no room where it's written, so it can go anywhere in the view. Tab goes round the dialog's own pieces, and its `key` shortcuts and timers work only while it's open.
 
+### Second windows: window
+
+`window showingSettings [title "Settings", width 400, height 300] { … }` is a real second window of the computer's, open while the bool it's bound to is true. It's written inside a view, like a dialog, and takes no room where it's written:
+
+```
+assembly Notes {
+    has {
+        bool showingSettings = false;
+        string name = "";
+    }
+
+    view [title "Notes", width 480, height 320] {
+        column [gap 8, pad 16] {
+            text "Hello " + name;
+            button [icon "settings", tip "Settings"] { showingSettings = true; }
+        }
+
+        window showingSettings [title "Settings", width 300, height 160, escape] {
+            column [gap 8, pad 16] {
+                input name [placeholder "Your name"];
+                button "Done" { showingSettings = false; }
+            }
+        }
+    }
+}
+```
+
+- **Opening and closing.** Setting the bool to true opens the window, and false closes it. Its X sets the bool to false, and so does Escape when the window is written with `[escape]` (once Escape has taken focus out of an input, and closed any dialog or list open in the window).
+- **The data is shared.** A window is part of its view, so it reads and changes the same fields: typing a name in Settings changes the main window's text straight away, and anything that changes the data draws every open window again.
+- **Its own focus, keys and timers.** Each window has its own Tab order, its own `key` shortcuts and `every` timers, and its own dialogs, dropdowns and toasts. Its shortcuts and timers work only while it's open, and its keys only while it's the window in front, as a dialog's do. The main window's shortcuts don't work in it.
+- **Several at once.** Any number of windows can be open together, and a window can hold any piece, a dialog or another window too. A window is open while its bool is true and the view reaches it: inside a question that's false, or a loop with no rows, it's closed.
+- **Closing the main window ends the program** and closes the others with it.
+- **Its settings** are those of the view: `title`, `width`, `height`, `minWidth`, `minHeight`, `background`, `font`, `dark` and `fullscreen`, worked out from the data each time, plus `escape`. It's dark when the view is, unless it says `dark` itself: `window help [dark false] { … }`.
+- The bool has to be a field, as for a dialog: `window count { … }` with an int is a mistake, and so is `close { }` after a window, since its X closes it through its bool.
+
+### Full screen
+
+`fullscreen isFull` in the view's `[ ]` (or a window's) makes the window fill its screen, with no edges or title bar, while the bool is true. It's bound to the field both ways: when the window leaves full screen by the computer's own means, the field becomes false.
+
+Lust gives full screen no key of its own. Programs add one, usually F11 as in a browser, with a shortcut:
+
+```
+view [title "Slides", fullscreen isFull] {
+    …
+    key "f11" { isFull = not isFull; }
+    key "escape" { isFull = false; }
+}
+```
+
+`fullscreen` on its own, without a bool, is always full screen. Bound to anything but a bool, it's a mistake.
+
+### Hiding and closing the window
+
+`visible shown` in the view's `[ ]` hides the main window while the bool is false, without ending the program. It's for programs that live in the tray (below), which show their window again from the tray's menu.
+
+`close { … }` written after the view's `{ }` is what the main window's X does. With it, the X doesn't end the program: the block runs instead, and can hide the window, or ask first:
+
+```
+view [title "Notes", visible shown] {
+    …
+    dialog asking {
+        text "Save first?";
+        button "Save" { save(); App:quit(); }
+        button "Don't save" { App:quit(); }
+    }
+} close {
+    is unsaved? then { asking = true; } or { App:quit(); }
+}
+```
+
+`App:quit()` ends the program from any block a view runs: every window closes, as when the main window's X is clicked without a `close { }`, so `App:open()` gives back and the code after it runs, nodes' `onClose`s and all. Outside a window it does nothing, since a program without one ends when it reaches its end. A `close { }` after anything but the view is a mistake.
+
+### Toasts
+
+`toast "Saved";` shows a small message in the bottom right corner of the window, which fades after about 4 seconds. It's a statement, so it goes in any block a view runs (a button's, a timer's, a method it calls), not straight in the view:
+
+```
+button "Save" {
+    save();
+    toast "Saved" [green, icon "check"];
+}
+button "Delete" { toast "Can't delete a note that's open" [red, icon "triangle-alert", seconds 8]; }
+```
+
+- **How it looks:** white words on dark grey, or on its colour with a colour word, like a button: `[green]`, `[red]`. `icon "check"` puts one of Lust's icons before the words, and `seconds 8` keeps it for 8 seconds (more than 0).
+- **Several toasts** stack up, the newest at the bottom, up to five. A click on one puts it away.
+- **Which window:** a toast shows in the window whose code made it. Made from the tray, it shows in the main window. With no window open, it has nowhere to show and is let go.
+- `toast` is a word only at the start of a statement, so a variable can still be called `toast`. A toast of something that isn't text is a mistake, as with `text`: `toast count.text();`.
+
+### Notifications: App:notify
+
+`App:notify("Saved", "Your notes are safe.")` shows the computer's own notification, with a title and words under it, which stays in the system's list of notifications. It works from anywhere, with a window or without one.
+
+- **On Windows** it's a Windows notification, shown at the bottom right like any app's. A program that isn't installed has no name of its own in Windows' list of apps, so Windows names the notification after PowerShell, as it does for other small programs.
+- **On Linux** it goes to the desktop's notification service (through D-Bus). On a computer without one, nothing shows.
+- **On a Mac** it does nothing yet.
+- In tests it prints `notify: Saved — Your notes are safe.` instead.
+
+`App` is a built-in object with `quit` and `notify`. An assembly of the program's own can still be called `App`: `App:open()` opens it, and `App:quit()` and `App:notify(…)` are still the built-ins, unless it has methods called `quit` or `notify` of its own.
+
+### The tray icon: tray
+
+`tray` puts an icon in the system tray (the notification area at the bottom right on Windows) while it's in the view. Its `{ }` holds `item`s and `divider`s, as a menu does, shown when the icon is right-clicked, and `click { }` after it runs when the icon is clicked:
+
+```
+view [title "Notes", visible shown] {
+    …
+    tray [icon "bell", tip "Notes"] {
+        item "Show" { shown = true; }
+        item "New note" { add(); shown = true; }
+        divider;
+        item "Quit" { App:quit(); }
+    } click {
+        shown = true;
+    }
+} close {
+    shown = false;
+}
+```
+
+- **The icon** is one of Lust's icons, drawn white on a blue square: `icon "bell"`. `picture "tray.png"` uses a picture file instead, found the way `image` finds files. `tip` is the words shown when the mouse rests on it.
+- **The menu** is Windows' own tray menu, with the items' words; a `disabled` item is greyed out. Items can come from a loop or a question, and the menu follows the data.
+- **Clicks:** a right-click opens the menu, and a left click runs `click { }`, if there is one.
+- **One tray** in a view: a second is a mistake.
+- **Only on Windows.** On Linux and on a Mac, a tray does nothing (the libraries for it there need GTK), so a program that hides its window should still offer a way back, or not hide it there.
+
 ### Dark mode
 
 `dark` in the view's `[ ]` turns the whole window dark. It can depend on the data, so a checkbox or a setting can switch it: `view [title "Notes", dark darkMode]`.
@@ -1365,6 +1496,8 @@ A dialog is a column with a white background, rounded corners and room around wh
 In dark mode the greys turn round: `white` backgrounds become dark ones, the `gray` shades swap ends (so `gray1`, the palest, becomes the darkest), and dark words become light. The window, inputs, pickers and their pop-ups, buttons, lists and dialogs follow. Other colours stay as they are, except as backgrounds, where their palest shades (`blue1` to `blue3`, and so on) become deep tints of the colour, so a pale background stays a quiet one.
 
 `dark:[ … ]` on a piece holds styles it has only in dark mode, for anything that needs a different colour there: `text "New" [background green1, color green8, dark:[color green3]]`.
+
+Second windows and toasts follow dark mode too. A window is dark when the view is, unless it has `dark` of its own.
 
 ### Tips
 
@@ -1578,6 +1711,9 @@ Short words in `[ ]`, in the spirit of Tailwind:
 | placement | `left`, `center`, `right` side to side; `top`, `middle`, `bottom` up and down; `spread` |
 | under the mouse | `hover:[ … ]`, `tip "…"` |
 | in dark mode | `dark:[ … ]` |
+| windows | `title`, `width`, `height`, `minWidth`, `minHeight`, `background`, `font`, `dark`, `fullscreen`, `visible` (the main window), `escape` (a second window) |
+| toasts | a colour word, `icon "check"`, `seconds 8` |
+| the tray | `icon "bell"`, `picture "tray.png"`, `tip "Notes"` |
 | inputs and pictures | `placeholder "…"`, `from`, `to`, `step` (sliders), `min`, `max`, `step` (number boxes), `min`, `max` (date pickers, as dates), `alpha`, `swatches [ … ]` (colour pickers), `across` (radios), `cover` |
 | icons | `icon "trash"` on a button |
 | grids, splits, branches | `columns 3`, `cell 180`, `down`, `open` |
@@ -1603,7 +1739,7 @@ Name a style to reuse it: `style card = [pad 16, round, shadow];`, then `[card]`
 
 ### Underneath
 
-Lust draws everything itself, from the pixels up: layout, every piece, text editing, focus, scrolling, styles and animation. Small permissive libraries only open the window (winit), hand over the pixels (softbuffer), read font files (ab_glyph), show the computer's own boxes for choosing files (rfd), reach the system clipboard (arboard), read PNG and JPEG files (png, jpeg-decoder) and draw SVG files (resvg). Icons are Lucide's shapes, drawn by Lust. Views are for `.lst` programs on Windows, macOS and Linux. Web pages stay HTML, CSS and JavaScript.
+Lust draws everything itself, from the pixels up: layout, every piece, text editing, focus, scrolling, styles and animation. Small permissive libraries only open the window (winit), hand over the pixels (softbuffer), read font files (ab_glyph), show the computer's own boxes for choosing files (rfd), reach the system clipboard (arboard), read PNG and JPEG files (png, jpeg-decoder) and draw SVG files (resvg). On Windows, tray-icon puts the tray icon in the notification area, and tauri-winrt-notification shows notifications; on Linux, zbus sends notifications over D-Bus. Icons are Lucide's shapes, drawn by Lust. Views are for `.lst` programs on Windows, macOS and Linux. Web pages stay HTML, CSS and JavaScript.
 
 ---
 
@@ -1737,7 +1873,7 @@ Patterns are regular expressions, the kind most languages use: `[0-9]` is a digi
 
 ### Built-in objects
 
-Lust comes with these objects. Their methods are called like any object's: `Maths:sqrt(2.0)`. `Web` is in section 18, `Random` under Random numbers above, `Rotation` and `Colour` (`Colour:hex("#3a8f2a")`) with vectors and colours in section 6, and `Ease` (`Ease:apply(Ease.OutBack, t)`) with tweens in section 17.
+Lust comes with these objects. Their methods are called like any object's: `Maths:sqrt(2.0)`. `App` (`App:quit()`, `App:notify("Title", "Body")`) is with views in section 17, `Web` is in section 18, `Random` under Random numbers above, `Rotation` and `Colour` (`Colour:hex("#3a8f2a")`) with vectors and colours in section 6, and `Ease` (`Ease:apply(Ease.OutBack, t)`) with tweens in section 17.
 
 **Maths**
 
@@ -2154,7 +2290,7 @@ print      wait       ask
 
 Neither can the built-in objects: `Maths`, `Files`, `Time`, `Json`, `Web`, `Random`, `Rotation`, `Colour` and `Ease` (which is a state of easing curves too). (`Rotation` and `Colour` with a capital are the objects; `rotation` and `colour` are the types.)
 
-`tween`, `to` and `over` are words only in a tween (and `to` after `send`), so they can still be names.
+`tween`, `to` and `over` are words only in a tween (and `to` after `send`), so they can still be names. So is `toast`, a word only at the start of a statement, and `App`, which a program's own assembly can be called.
 
 The pieces of a view (`text`, `button`, `radio`, `switch`, `number`, `icon`, `table`, `list` and the rest) are words only at the start of a line inside a view, so they can still be names: `int number = 3;` works anywhere.
 

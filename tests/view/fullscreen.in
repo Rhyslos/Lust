@@ -1,0 +1,18 @@
+dump
+key f11
+dump
+key f11
+click Notify
+click Hide
+dump
+tray item Count
+tray click
+dump
+close
+dump
+click Cancel
+tray item Nope
+tray item Show
+close
+click Save
+dump

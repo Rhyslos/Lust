@@ -1,0 +1,8 @@
+app.lst:9:17  App has no method called frob. It has quit and notify: App:quit(), App:notify("Saved", "Your notes are safe.").
+app.lst:10:13  App:quit takes nothing in its ( ): App:quit();
+app.lst:11:24  App:notify's title is a string, but this is an int. Use .text() to turn it into text.
+app.lst:12:13  App:notify takes 2 values, but gets 3: App:notify("Title", "Body");
+app.lst:14:9  toast shows a message when code runs, so it goes in a block, like a button's: button "Save" { save(); toast "Saved"; }
+app.lst:15:9  close { } goes right after the view's { }, for when its window's X is clicked: view [title "Notes"] { … } close { … }
+
+6 mistakes. Nothing was run.

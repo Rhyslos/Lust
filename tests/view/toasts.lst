@@ -1,0 +1,28 @@
+-- Toasts: small messages in the bottom right corner that go after a few seconds, stacking with
+-- the newest at the bottom. A click puts one away. A toast shows in the window whose code made it.
+assembly App {
+    has {
+        bool showingMore = false;
+        int count = 0;
+    }
+
+    method store() {
+        count = count + 1;
+        toast "Saved " + count.text() [green, icon "check"];
+    }
+
+    view [title "Toasts", width 420, height 300] {
+        column [gap 8, pad 12] {
+            button "Save" { store(); }
+            button "Oops" { toast "Something went wrong" [red, icon "triangle-alert", seconds 8]; }
+            button "Plain" { toast "Hello"; }
+            button "More" { showingMore = true; }
+        }
+        window showingMore [title "More", width 300, height 200] {
+            button "Save here" { store(); }
+        }
+    }
+}
+
+App:open();
+end
