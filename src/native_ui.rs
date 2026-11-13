@@ -223,14 +223,20 @@ struct Glyph {
 
 /// A font's shapes are read straight from its file when they're needed (ab_glyph), so a font
 /// costs little more memory than its file. Faces 0 to 3 are Inter's four weights; fonts read from
-/// files come after.
+/// files come after, and so do the computer's own fonts, read for letters the others don't have
+/// (native_ui_ime.rs).
 struct Faces {
     fonts: Vec<ab_glyph::FontArc>,
     /// Font files already read, by path, and the face each became (None if it couldn't be read).
     files: HashMap<String, Option<usize>>,
-    /// Each letter's shape number and its width before scaling, by face.
-    advances: HashMap<(usize, char), (ab_glyph::GlyphId, f32)>,
+    /// Each letter asked of a face: the face that draws it (itself, or a system font when it has
+    /// no such letter), its shape number there, and its width before scaling.
+    advances: HashMap<(usize, char), (usize, ab_glyph::GlyphId, f32)>,
     glyphs: HashMap<(usize, char, u32), std::rc::Rc<Glyph>>,
+    /// The system fonts read so far for missing letters, and how far down the list of them the
+    /// search has gone.
+    fallbacks: Vec<usize>,
+    fallback_next: usize,
 }
 
 thread_local! {
@@ -239,6 +245,8 @@ thread_local! {
         files: HashMap::new(),
         advances: HashMap::new(),
         glyphs: HashMap::new(),
+        fallbacks: Vec::new(),
+        fallback_next: 0,
     });
     /// The window's own font, from its view's [font "…"], used by every piece without one.
     static WINDOW_FONT: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
@@ -280,25 +288,44 @@ fn per_unit(font: &ab_glyph::FontArc, size: f32) -> f32 {
     size / font.units_per_em().unwrap_or(1000.0)
 }
 
+/// The face that draws a letter asked of `face`, its shape number there, and its width before
+/// scaling. A letter the face doesn't have comes from a system font that has it (Chinese,
+/// Japanese and Korean letters, for Inter), so it isn't drawn as a box.
+fn letter(f: &mut Faces, face: usize, ch: char) -> (usize, ab_glyph::GlyphId, f32) {
+    use ab_glyph::Font;
+    if let Some(r) = f.advances.get(&(face, ch)) {
+        return *r;
+    }
+    let id = f.fonts[face].glyph_id(ch);
+    let mut found = (face, id, f.fonts[face].h_advance_unscaled(id));
+    if id.0 == 0 && !ch.is_control() && !ch.is_whitespace() {
+        if let Some(fb) = fallback_for(f, ch) {
+            let id = f.fonts[fb].glyph_id(ch);
+            found = (fb, id, f.fonts[fb].h_advance_unscaled(id));
+        }
+    }
+    f.advances.insert((face, ch), found);
+    found
+}
+
 /// How wide a line of text is, in pixels at this size.
 fn text_width(text: &str, size: f32, face: usize) -> f32 {
     use ab_glyph::Font;
     FACES.with(|f| {
         let f = &mut *f.borrow_mut();
-        let font = &f.fonts[face];
-        let k = per_unit(font, size);
         let mut w = 0.0;
-        let mut prev: Option<ab_glyph::GlyphId> = None;
+        let mut prev: Option<(usize, ab_glyph::GlyphId)> = None;
         for ch in text.chars() {
-            let (id, adv) = *f.advances.entry((face, ch)).or_insert_with(|| {
-                let id = font.glyph_id(ch);
-                (id, font.h_advance_unscaled(id))
-            });
-            if let Some(p) = prev {
-                w += font.kern_unscaled(p, id) * k;
+            let (at, id, adv) = letter(f, face, ch);
+            let font = &f.fonts[at];
+            let k = per_unit(font, size);
+            if let Some((pf, p)) = prev {
+                if pf == at {
+                    w += font.kern_unscaled(p, id) * k;
+                }
             }
             w += adv * k;
-            prev = Some(id);
+            prev = Some((at, id));
         }
         w
     })
@@ -306,15 +333,10 @@ fn text_width(text: &str, size: f32, face: usize) -> f32 {
 
 /// How far the pen moves on after one letter, in pixels at this size.
 fn text_width_one(ch: char, size: f32, face: usize) -> f32 {
-    use ab_glyph::Font;
     FACES.with(|f| {
         let f = &mut *f.borrow_mut();
-        let font = &f.fonts[face];
-        let (_, adv) = *f.advances.entry((face, ch)).or_insert_with(|| {
-            let id = font.glyph_id(ch);
-            (id, font.h_advance_unscaled(id))
-        });
-        adv * per_unit(font, size)
+        let (at, _, adv) = letter(f, face, ch);
+        adv * per_unit(&f.fonts[at], size)
     })
 }
 
@@ -338,9 +360,10 @@ fn glyph(face: usize, ch: char, px: f32) -> std::rc::Rc<Glyph> {
         if let Some(g) = f.glyphs.get(&(face, ch, px.to_bits())) {
             return g.clone();
         }
-        let font = &f.fonts[face];
+        let (at, id, _) = letter(f, face, ch);
+        let font = &f.fonts[at];
         let scale = ab_glyph::PxScale::from(px * font.height_unscaled() / font.units_per_em().unwrap_or(1000.0));
-        let g = font.glyph_id(ch).with_scale_and_position(scale, ab_glyph::point(0.0, 0.0));
+        let g = id.with_scale_and_position(scale, ab_glyph::point(0.0, 0.0));
         let made = match font.outline_glyph(g) {
             Some(o) => {
                 let b = o.px_bounds();
@@ -362,13 +385,18 @@ fn glyph(face: usize, ch: char, px: f32) -> std::rc::Rc<Glyph> {
     })
 }
 
-/// The kerning between two letters, in pixels at this size.
+/// The kerning between two letters, in pixels at this size (none between letters from two fonts).
 fn kern(face: usize, a: char, b: char, size: f32) -> f32 {
     use ab_glyph::Font;
     FACES.with(|f| {
-        let f = f.borrow();
-        let font = &f.fonts[face];
-        font.kern_unscaled(font.glyph_id(a), font.glyph_id(b)) * per_unit(font, size)
+        let f = &mut *f.borrow_mut();
+        let (fa, ia, _) = letter(f, face, a);
+        let (fb, ib, _) = letter(f, face, b);
+        if fa != fb {
+            return 0.0;
+        }
+        let font = &f.fonts[fa];
+        font.kern_unscaled(ia, ib) * per_unit(font, size)
     })
 }
 
@@ -636,6 +664,8 @@ struct Look {
     font: Option<usize>,
     /// What shows when the mouse rests on it.
     tip: String,
+    /// What a screen reader calls it (native_ui_access.rs).
+    label: String,
     /// A grid's columns, or how wide its cells are at least, to fit as many as there's room for.
     columns: usize,
     cell: f32,
@@ -730,6 +760,7 @@ fn base_look(kind: &str) -> Look {
         bg_alpha: 1.0,
         font: WINDOW_FONT.with(|f| f.get()),
         tip: String::new(),
+        label: String::new(),
         columns: 0,
         cell: 160.0,
         down: false,
@@ -1035,6 +1066,7 @@ fn apply(l: &mut Look, kind: &str, style: &[(String, SV)]) {
             "cover" => l.cover = true,
             "disabled" => l.disabled = true,
             "tip" => l.tip = text_of(v).unwrap_or("").to_string(),
+            "label" => l.label = text_of(v).unwrap_or("").to_string(),
             "columns" => l.columns = num(v).unwrap_or(2.0).max(1.0) as usize,
             "cell" => l.cell = num(v).unwrap_or(160.0).max(1.0),
             "down" => l.down = true,
@@ -2167,9 +2199,18 @@ impl Canvas {
     #[allow(clippy::too_many_arguments)]
     fn shape(&mut self, x: f32, y: f32, w: f32, h: f32, r: f32, ring: Option<f32>, c: u32, alpha: f32) {
         let s = self.scale;
-        let (x0, y0, x1, y1) = (x * s, y * s, (x + w) * s, (y + h) * s);
+        // Edges fall on whole pixels of the screen, so lines and borders stay sharp at any
+        // scale (at 125% a line 1 unit thick would otherwise be smeared over two pixels).
+        let (x0, y0, mut x1, mut y1) = ((x * s).round(), (y * s).round(), ((x + w) * s).round(), ((y + h) * s).round());
+        if w > 0.0 && x1 <= x0 {
+            x1 = x0 + 1.0;
+        }
+        if h > 0.0 && y1 <= y0 {
+            y1 = y0 + 1.0;
+        }
         let r = (r * s).min((x1 - x0) / 2.0).min((y1 - y0) / 2.0).max(0.0);
-        let b = ring.map(|b| (b * s).max(0.0));
+        // A ring a pixel or more thick is a whole number of pixels.
+        let b = ring.map(|b| if b * s >= 1.0 { (b * s).round() } else { (b * s).max(0.0) });
         // Only the pixels that can show are visited.
         let [bx0, by0, bx1, by1] = self.bounds();
         let (px0, px1) = ((x0.floor() as i64).max(bx0), (x1.ceil() as i64).min(bx1));
@@ -2240,7 +2281,19 @@ impl Canvas {
     #[allow(clippy::too_many_arguments)]
     fn line(&mut self, x0: f32, y0: f32, x1: f32, y1: f32, width: f32, c: u32) {
         let s = self.scale;
-        let (ax, ay, bx, by, r) = (x0 * s, y0 * s, x1 * s, y1 * s, width * s / 2.0);
+        let (mut ax, mut ay, mut bx, mut by, mut r) = (x0 * s, y0 * s, x1 * s, y1 * s, width * s / 2.0);
+        // A line straight across or down sits on whole pixels, so a thin one stays sharp.
+        if width * s >= 0.75 && ((ay - by).abs() < 1e-3 || (ax - bx).abs() < 1e-3) {
+            let thick = (width * s).round().max(1.0);
+            r = thick / 2.0;
+            if (ay - by).abs() < 1e-3 {
+                ay = (ay - r).round() + r;
+                by = ay;
+            } else {
+                ax = (ax - r).round() + r;
+                bx = ax;
+            }
+        }
         let (dx, dy) = (bx - ax, by - ay);
         let len2 = (dx * dx + dy * dy).max(1e-6);
         for py in ((ay.min(by) - r).floor() as i64)..((ay.max(by) + r).ceil() as i64) {
@@ -2316,6 +2369,8 @@ struct PaintState {
     files_over: bool,
     /// The date or colour picker that's open.
     picker: Option<Picker>,
+    /// What an input method is putting together at the caret (native_ui_ime.rs).
+    preedit: Preedit,
 }
 
 const RING: f32 = 3.0;
@@ -2385,6 +2440,9 @@ fn input_inner(n: &Laid) -> (f32, f32, f32) {
 }
 
 fn paint_input(c: &mut Canvas, n: &Laid, focused: bool, st: &PaintState) {
+    if let (true, Some((pre, cursor))) = (focused, &st.preedit) {
+        return paint_input_preedit(c, n, st, pre, *cursor);
+    }
     let l = &n.look;
     let (ix, top, iw) = input_inner(n);
     let (_, lh) = line_metrics(l.size, l.face());
@@ -2427,6 +2485,9 @@ fn textarea_point(n: &Laid, p: usize) -> (f32, f32) {
 }
 
 fn paint_textarea(c: &mut Canvas, n: &Laid, focused: bool, st: &PaintState) {
+    if let (true, Some((pre, cursor))) = (focused, &st.preedit) {
+        return paint_textarea_preedit(c, n, st, pre, *cursor);
+    }
     let l = &n.look;
     let (_, lh) = line_metrics(l.size, l.face());
     if focused {
@@ -2526,13 +2587,18 @@ fn paint_image(c: &mut Canvas, n: &Laid, l: &Look) {
     // Only the part inside the box shows, with its corners rounded.
     let (x0, y0, x1, y1) = (dx.max(bx) * s, dy.max(by) * s, (dx + dw).min(bx + bw) * s, (dy + dh).min(by + bh) * s);
     let r = (l.radius * s).min((x1 - x0) / 2.0).min((y1 - y0) / 2.0).max(0.0);
-    // An SVG picture is drawn again at the size it shows, so it's sharp at any size.
+    // An SVG picture is drawn again at the size it shows, so it's sharp at any size. A PNG or JPEG
+    // has a sharper twin for screens scaled 150% and more when there's one called name@2x.png.
     let p = match is_svg(&n.text) {
         true => svg_at(&n.text, (dw * s).round() as u32, (dh * s).round() as u32).unwrap_or(p),
+        false if s >= 1.5 => double_size(&n.text).and_then(|d| picture(&d)).unwrap_or(p),
         false => p,
     };
     let (pw, ph) = (p.w as f32, p.h as f32);
     let (per_x, per_y) = (pw / (dw * s).max(1e-6), ph / (dh * s).max(1e-6));
+    // Shrunk a lot, each screen pixel is the average of a few spots across the picture pixels it
+    // covers, so fine detail doesn't sparkle; otherwise one spot, blended from its four nearest.
+    let (kx, ky) = (per_x.ceil().clamp(1.0, 4.0) as usize, per_y.ceil().clamp(1.0, 4.0) as usize);
     let [bx0, by0, bx1, by1] = c.bounds();
     for py in (y0.floor() as i64).max(by0)..(y1.ceil() as i64).min(by1) {
         for px in (x0.floor() as i64).max(bx0)..(x1.ceil() as i64).min(bx1) {
@@ -2541,28 +2607,51 @@ fn paint_image(c: &mut Canvas, n: &Laid, l: &Look) {
             if cover <= 0.0 {
                 continue;
             }
-            // Where this pixel falls in the picture, blended from the four nearest of its pixels.
-            let sx = ((fx - dx * s) * per_x - 0.5).clamp(0.0, pw - 1.0);
-            let sy = ((fy - dy * s) * per_y - 0.5).clamp(0.0, ph - 1.0);
-            let (ix, iy) = (sx.floor() as usize, sy.floor() as usize);
-            let (ix2, iy2) = ((ix + 1).min(p.w - 1), (iy + 1).min(p.h - 1));
-            let (tx, ty) = (sx - ix as f32, sy - iy as f32);
-            let at = |x: usize, y: usize| p.px[y * p.w + x];
             let mut rgba = [0.0f32; 4];
-            for (q, wgt) in [(at(ix, iy), (1.0 - tx) * (1.0 - ty)), (at(ix2, iy), tx * (1.0 - ty)), (at(ix, iy2), (1.0 - tx) * ty), (at(ix2, iy2), tx * ty)] {
-                let a = q[3] as f32 / 255.0 * wgt;
-                rgba[0] += q[0] as f32 * a;
-                rgba[1] += q[1] as f32 * a;
-                rgba[2] += q[2] as f32 * a;
-                rgba[3] += a;
+            for j in 0..ky {
+                for i in 0..kx {
+                    let (ox, oy) = ((i as f32 + 0.5) / kx as f32 - 0.5, (j as f32 + 0.5) / ky as f32 - 0.5);
+                    let sx = ((fx + ox - dx * s) * per_x - 0.5).clamp(0.0, pw - 1.0);
+                    let sy = ((fy + oy - dy * s) * per_y - 0.5).clamp(0.0, ph - 1.0);
+                    let q = sample(&p, sx, sy);
+                    for (k, v) in q.iter().enumerate() {
+                        rgba[k] += v;
+                    }
+                }
             }
+            let spots = (kx * ky) as f32;
             if rgba[3] <= 0.0 {
                 continue;
             }
             let colour = ((rgba[0] / rgba[3]) as u32) << 16 | ((rgba[1] / rgba[3]) as u32) << 8 | (rgba[2] / rgba[3]) as u32;
-            c.blend(px, py, colour, rgba[3] * cover);
+            c.blend(px, py, colour, rgba[3] / spots * cover);
         }
     }
+}
+
+/// A picture's colour at a place between its pixels, blended from the four nearest: red, green and
+/// blue multiplied by how solid it is, and how solid.
+fn sample(p: &Picture, sx: f32, sy: f32) -> [f32; 4] {
+    let (ix, iy) = (sx.floor() as usize, sy.floor() as usize);
+    let (ix2, iy2) = ((ix + 1).min(p.w - 1), (iy + 1).min(p.h - 1));
+    let (tx, ty) = (sx - ix as f32, sy - iy as f32);
+    let at = |x: usize, y: usize| p.px[y * p.w + x];
+    let mut rgba = [0.0f32; 4];
+    for (q, wgt) in [(at(ix, iy), (1.0 - tx) * (1.0 - ty)), (at(ix2, iy), tx * (1.0 - ty)), (at(ix, iy2), (1.0 - tx) * ty), (at(ix2, iy2), tx * ty)] {
+        let a = q[3] as f32 / 255.0 * wgt;
+        rgba[0] += q[0] as f32 * a;
+        rgba[1] += q[1] as f32 * a;
+        rgba[2] += q[2] as f32 * a;
+        rgba[3] += a;
+    }
+    rgba
+}
+
+/// The name of a picture's sharper twin, for screens scaled 150% and more: `cat.png` →
+/// `cat@2x.png`. Reading it (and finding it isn't there) happens once, as for any picture.
+fn double_size(path: &str) -> Option<String> {
+    let dot = path.rfind('.').filter(|&d| d > path.rfind(['/', '\\']).map_or(0, |s| s + 1))?;
+    Some(format!("{}@2x{}", &path[..dot], &path[dot..]))
 }
 
 /// The scroll bar's knob: top and height, when there's more to see than fits.
@@ -3748,6 +3837,7 @@ impl<'a, 'b> Ui<'a, 'b> {
         }
         if path != self.st.focus {
             self.st.scroll_x = 0.0;
+            self.st.preedit = None;
             let end = path.as_ref().and_then(|p| node_at(&self.tree, p)).map(|n| value_text(n).len()).unwrap_or(0);
             self.st.caret = Caret::at(end);
         }
@@ -5094,6 +5184,9 @@ fn dump(n: &Laid, depth: usize, path: &mut Vec<usize>, st: &PaintState, out: &mu
             } else {
                 focus.push_str(&format!(", selected {}..{}", chars(a), chars(b)));
             }
+            if let Some((pre, _)) = &st.preedit {
+                focus.push_str(&format!(", composing {pre:?}"));
+            }
         }
         focus.push(')');
     }
@@ -5198,6 +5291,13 @@ thread_local! {
     /// in, and how long each took.
     static TEST_LINES: std::cell::RefCell<Option<Vec<String>>> = const { std::cell::RefCell::new(None) };
     static TEST_TIMES: std::cell::RefCell<Vec<(String, std::time::Duration)>> = const { std::cell::RefCell::new(Vec::new()) };
+    /// The screen's scale a test set with `scale 1.25`, for its snapshots and dumps.
+    static TEST_SCALE: std::cell::Cell<Option<f32>> = const { std::cell::Cell::new(None) };
+}
+
+/// The scale a test's snapshots are drawn at: what it set, or 2 (sharp enough to look at).
+fn test_scale() -> f32 {
+    TEST_SCALE.with(|t| t.get()).unwrap_or(2.0)
 }
 
 /// One test command, in one window.
@@ -5298,6 +5398,22 @@ fn command(ui: &mut Ui, cmd: &str, rest: &str, line: &str, nums: &[f32]) -> Resu
             }
         }
         "type" => ui.typed(rest)?,
+        // ime "にほん": an input method's text being put together; ime commit "日本": finished.
+        "ime" => match rest.strip_prefix("commit") {
+            Some(t) => ui.ime_commit(t.trim().trim_matches('"'))?,
+            None if rest == "cancel" => ui.ime_preedit(String::new(), None),
+            None if !ui.takes_typing() => println!("(nothing that takes typing has focus)"),
+            None => ui.ime_preedit(rest.to_string(), None),
+        },
+        // While an input method composes, keys go to it, not to the view.
+        "key" if ui.composing() => println!("(the input method has the keys while it's composing)"),
+        // act click Save, act set Name Ada: what a screen reader would ask.
+        "act" => ui.access_test(line.split_once(' ').map(|x| x.1).unwrap_or(""))?,
+        // scale 1.25: the screen's scale for the snapshots and dumps after it.
+        "scale" => match nums.first() {
+            Some(&k) if (0.5..=4.0).contains(&k) => TEST_SCALE.with(|t| t.set(Some(k))),
+            _ => println!("(scale takes a number from 0.5 to 4, like scale 1.25)"),
+        },
         "key" => {
             // A shortcut in the view goes first, as in a window.
             if let Ok(s) = parse_shortcut(rest) {
@@ -5435,16 +5551,17 @@ fn command(ui: &mut Ui, cmd: &str, rest: &str, line: &str, nums: &[f32]) -> Resu
         "paint" => {
             let n = nums.first().copied().unwrap_or(1.0) as usize;
             let t = std::time::Instant::now();
+            let scale = test_scale();
             for _ in 0..n {
                 let (st, bg, w, h) = (ui.paint_state(), ui.s.background, ui.w, ui.h);
-                render(&ui.shown(), (w * 2.0) as usize, (h * 2.0) as usize, 2.0, &st, bg);
+                render(&ui.shown(), (w * scale).round() as usize, (h * scale).round() as usize, scale, &st, bg);
             }
             eprintln!("painted {n} times in {} ms", t.elapsed().as_millis());
         }
         "snapshot" => {
-            let scale = 2.0;
+            let scale = test_scale();
             let (st, bg, w, h) = (ui.paint_state(), ui.s.background, ui.w, ui.h);
-            let c = render(&ui.shown(), (w * scale) as usize, (h * scale) as usize, scale, &st, bg);
+            let c = render(&ui.shown(), (w * scale).round() as usize, (h * scale).round() as usize, scale, &st, bg);
             std::fs::write(rest, png(&c)).map_err(|e| format!("can't write {rest}: {e}"))?;
         }
         _ => {}
@@ -5455,6 +5572,7 @@ fn command(ui: &mut Ui, cmd: &str, rest: &str, line: &str, nums: &[f32]) -> Resu
 fn test<'a, 'b>(s: Settings, shared: &'a Shared<'a, 'b>, step: Box<Step>) -> Result<(), String> {
     use std::io::BufRead;
     let started = std::time::Instant::now();
+    TEST_SCALE.with(|t| t.set(None));
     let mut wins = Wins::new(s, shared, false, step)?;
     TEST_TIMES.with(|t| t.borrow_mut().push(("open".into(), started.elapsed())));
     let lines: Box<dyn Iterator<Item = String>> = match TEST_LINES.with(|t| t.borrow_mut().take()) {
@@ -5480,6 +5598,7 @@ fn test<'a, 'b>(s: Settings, shared: &'a Shared<'a, 'b>, step: Box<Step>) -> Res
         let rest = rest.trim().trim_matches('"');
         let nums: Vec<f32> = rest.split_whitespace().filter_map(|x| x.parse::<f32>().ok()).collect();
         match cmd {
+            "dump" if rest == "access" => print!("{}", wins.dump_access()),
             "dump" => print!("{}", wins.dump()),
             "wait" => wins.wait(nums.first().copied().unwrap_or(0.0) as f64)?,
             // close: the window's X. tray click, tray item Quit: the tray icon.

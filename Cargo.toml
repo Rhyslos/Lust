@@ -1,6 +1,6 @@
 [package]
 name = "lust"
-version = "2.0.0-alpha.72"
+version = "2.0.0-alpha.73"
 edition = "2021"
 description = "The Lust programming language: its compiler, and the lust command"
 repository = "https://github.com/Rhyslos/Lust"
@@ -18,7 +18,7 @@ required-features = ["cli"]
 # library. The lust command, with lust run, lust test and views, needs the rest.
 [features]
 default = ["cli"]
-cli = ["dep:sha2", "dep:mlua", "dep:rusqlite", "dep:tiny_http", "dep:ureq", "dep:regex", "dep:winit", "dep:softbuffer", "dep:ab_glyph", "dep:rfd", "dep:arboard", "dep:png", "dep:jpeg-decoder", "dep:resvg", "dep:tray-icon", "dep:tauri-winrt-notification", "dep:zbus"]
+cli = ["dep:sha2", "dep:mlua", "dep:rusqlite", "dep:tiny_http", "dep:ureq", "dep:regex", "dep:winit", "dep:accesskit", "dep:accesskit_winit", "dep:softbuffer", "dep:ab_glyph", "dep:rfd", "dep:arboard", "dep:png", "dep:jpeg-decoder", "dep:resvg", "dep:tray-icon", "dep:tauri-winrt-notification", "dep:zbus"]
 
 [dependencies]
 mlua = { version = "0.10", features = ["lua51", "vendored"], optional = true }
@@ -27,6 +27,9 @@ tiny_http = { version = "0.12", optional = true }
 ureq = { version = "3", optional = true }
 regex = { version = "1", optional = true }
 winit = { version = "0.30", optional = true }
+# Screen readers: the accessibility tree goes to UI Automation on Windows and AT-SPI on Linux.
+accesskit = { version = "0.25", optional = true }
+accesskit_winit = { version = "0.34", optional = true }
 softbuffer = { version = "0.4", optional = true }
 ab_glyph = { version = "0.2", optional = true }
 rfd = { version = "0.16", optional = true }

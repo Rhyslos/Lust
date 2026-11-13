@@ -1,0 +1,14 @@
+dump access
+act click Fill
+dump access
+scroll table 1 1500000
+scroll list 1 2999970
+dump access
+act show "row 50003"
+act click "row 50003"
+act focus "row 99999"
+key down
+dump access
+act click N
+act click N
+dump access

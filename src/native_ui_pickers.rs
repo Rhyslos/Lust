@@ -750,20 +750,32 @@ fn paint_colourpop(c: &mut Canvas, n: &Laid, p: &Picker, st: &PaintState) {
     let face = l.face();
     let (_, lh) = line_metrics(14.0, face);
     let (tx, ty) = (hx[0] + 10.0, hx[1] + ((hx[3] - lh) / 2.0).round());
+    // While an input method composes in the hex box, its text shows at the caret, underlined.
+    let composing = st.preedit.as_ref().filter(|_| p.part == Part::Hex);
+    let (hex, caret, pre) = match composing {
+        Some((pre, cursor)) => {
+            let (shown, a, b, at) = with_preedit(&p.hex, &p.caret, pre, *cursor);
+            (shown, Caret::at(at), Some((a, b)))
+        }
+        None => (p.hex.clone(), p.caret.clone(), None),
+    };
     if p.part == Part::Hex {
-        let (a, b) = p.caret.range();
-        let (a, b) = (a.min(p.hex.len()), b.min(p.hex.len()));
+        let (a, b) = caret.range();
+        let (a, b) = (a.min(hex.len()), b.min(hex.len()));
         if a != b {
-            let x0 = tx + text_width(&p.hex[..a], 14.0, face);
-            let x1 = tx + text_width(&p.hex[..b], 14.0, face);
+            let x0 = tx + text_width(&hex[..a], 14.0, face);
+            let x1 = tx + text_width(&hex[..b], 14.0, face);
             c.rect(x0, ty, x1 - x0, lh, 0.0, if dark() { 0x1f4f7d } else { 0xb4d5fe }, 1.0);
         }
         if st.caret_on || a != b {
-            let x = tx + text_width(&p.hex[..p.caret.caret.min(p.hex.len())], 14.0, face);
+            let x = tx + text_width(&hex[..caret.caret.min(hex.len())], 14.0, face);
             c.rect(x - 0.5, ty + 1.0, 1.5, lh - 2.0, 0.0, nt(INK), 1.0);
         }
     }
-    c.text(&p.hex, tx, ty, 14.0, face, nt(INK));
+    c.text(&hex, tx, ty, 14.0, face, nt(INK));
+    if let Some((a, b)) = pre {
+        preedit_line(c, tx + text_width(&hex[..a], 14.0, face), tx + text_width(&hex[..b], 14.0, face), ty + lh, nt(INK));
+    }
     // A little swatch of the colour as it is now, on the right of the hex box.
     let now = [p.rgb[0], p.rgb[1], p.rgb[2], if l.alpha { p.a } else { 1.0 }];
     paint_swatch(c, [hx[0] + hx[2] - 26.0, hx[1] + 5.0, 20.0, 20.0], now, 4.0);
@@ -861,6 +873,9 @@ fn picker_dump(n: &Laid, path: &[usize], st: &PaintState) -> String {
             }
             if p.part == Part::Hex {
                 s.push_str(&format!(", typed {:?}", p.hex));
+                if let Some((pre, _)) = &st.preedit {
+                    s.push_str(&format!(", composing {pre:?}"));
+                }
             }
             s.push_str(&format!(", at {part})"));
             s

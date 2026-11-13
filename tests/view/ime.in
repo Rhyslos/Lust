@@ -1,0 +1,42 @@
+ime "nothing focused"
+focus input 1
+ime "にほん"
+dump
+key enter
+key escape
+key ctrl+s
+key backspace
+snapshot ime.snap.png
+ime "日本"
+ime commit "日本"
+dump
+key enter
+key left
+key shift+left
+ime "x"
+ime cancel
+ime commit "語"
+focus textarea 1
+key ctrl+end
+ime "かな"
+snapshot ime-box.snap.png
+dump
+ime commit "かな"
+focus number 1
+key ctrl+a
+ime "４２"
+ime commit "42"
+focus datePicker 1
+ime commit "2026-11-13"
+open colourPicker 1
+key tab
+key tab
+key ctrl+a
+ime "ff"
+snapshot ime-hex.snap.png
+dump
+ime commit "ff0000"
+key enter
+focus input 2
+ime "x"
+dump

@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (alpha 72):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, tables and long lists, right-click menus, rows dragged to new places, dropped files, the mouse on a canvas, scrolling, pictures (SVG too), timers, keyboard shortcuts, fonts of your own, date and colour pickers, second windows, full screen, toasts, notifications and a tray icon, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (alpha 73):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, tables and long lists, right-click menus, rows dragged to new places, dropped files, the mouse on a canvas, scrolling, pictures (SVG too), timers, keyboard shortcuts, fonts of your own, date and colour pickers, second windows, full screen, toasts, notifications and a tray icon, all drawn by Lust itself, sharp at any screen scaling, with input methods for typing any language and a tree for screen readers. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -803,6 +803,7 @@ An assembly with a `view` opens a window with `App:open();`, through `lust run` 
 - **The mouse:** a right-click `menu { }` after any piece, `[reorder]` for a list's rows to be dragged to new places, `drop` for files dropped on the window, and `press`, `drag`, `release` and `hover` on a canvas (see below).
 - **More windows:** `window` for a second window that opens while a bool is true, `fullscreen` for full screen, `visible` to hide the main window, and `close { }` for what its X does (see below).
 - **Telling people things:** `toast "Saved";` for a small message in the window's corner, `App:notify(…)` for the computer's own notification, and `tray` for an icon in the system tray, with a menu (see below). `App:quit()` ends the program from anywhere.
+- **For everyone:** windows are sharp at any screen scaling (125%, 150%, 200%, and moving between screens), take typing through input methods for Chinese, Japanese, Korean and other languages, and describe every piece to screen readers like Narrator and NVDA, with `label "…"` to name a piece that has no words (see below).
 
 ```
 assembly App {
@@ -863,8 +864,12 @@ end
 | `in Settings click Save`, `in "My settings" dump` | sends a command to the second window with that title (in quotes when it has spaces) instead of the main one |
 | `close`, `in Settings close` | clicks the window's X: the main window runs its `close { }` (or ends), and a second window's bool becomes false |
 | `tray click`, `tray item Quit` | clicks the tray icon, or chooses one of its items |
+| `scale 1.25` | draws the snapshots after it as on a screen scaled to 125% (from 0.5 to 4; 2 unless told), and `dump` says so in its heading |
+| `ime "にほん"`, `ime commit "日本"`, `ime cancel` | an input method's text being put together at the caret (`dump` shows it as `composing "にほん"`), the text it finished, typed in, or giving up |
+| `dump access` | prints the tree a screen reader is given: each piece's role, name, value and states |
+| `act click Save`, `act set Name Ada`, `act up Volume`, `act focus "row 5"` | does what a screen reader would ask of the first piece with that name (or role: `act up slider`, `act click "row 2"`): `click`, `focus`, `show` (scroll into view), `open`, `close`, `set` a value, or a step `up` or `down` |
 
-`lust test` sets it for every test, so a view's tests compare what `dump` prints. A table or list dumps only the rows on the screen, after a line saying how many it has and which show: `table 100000 rows, showing 41–51`. `dump` shows each open window under a heading of its own, `window "Settings" 300x200`, with `(fullscreen)` or `(hidden)` after the main window's when it is; the toasts showing, as `toast "Saved"` in a `layer "toast"`; and the tray, as `tray "Notes" (2 items)`. `App:notify("Title", "Body")` prints `notify: Title — Body` instead of showing anything. `wait` moves the toasts along too, and every window's timers.
+`lust test` sets it for every test, so a view's tests compare what `dump` prints. A table or list dumps only the rows on the screen, after a line saying how many it has and which show: `table 100000 rows, showing 41–51`. `dump` shows each open window under a heading of its own, `window "Settings" 300x200`, with `(fullscreen)` or `(hidden)` after the main window's when it is; the toasts showing, as `toast "Saved"` in a `layer "toast"`; and the tray, as `tray "Notes" (2 items)`. `App:notify("Title", "Body")` prints `notify: Title — Body` instead of showing anything. `wait` moves the toasts along too, and every window's timers. In tests, letters Lust's font doesn't have are drawn as boxes rather than taken from the computer's own fonts, so a test measures the same on every computer.
 
 ### Pieces are assemblies
 
@@ -1558,6 +1563,51 @@ view [title "Recipes", font "fonts/Lora.ttf"] {
 
 A font file is one weight, so `bold` doesn't change a font of your own: use the bold file of that font instead. A file that isn't there, or isn't a font, leaves the words in Inter. Fonts are read from their file as they're needed, so even a big font costs little memory.
 
+**Letters a font doesn't have.** Inter has no Chinese, Japanese or Korean letters, and few symbols. A letter the font lacks is taken from the computer's own fonts instead, read the first time one is needed: on Windows Yu Gothic UI, Microsoft YaHei UI, Malgun Gothic and Segoe UI Symbol, and on Linux Noto Sans CJK where it's installed. Words are measured with the same letters they're drawn with, so carets and selections line up. Where no font has the letter, it shows as a box.
+
+### Sharp on any screen: scaling
+
+Many screens are set to show everything bigger than its pixels: 125%, 150% or 200% in Windows' display settings, so words stay easy to read on a small, sharp laptop screen. A program that ignored this would look tiny there, or be stretched up by the computer and come out blurry.
+
+Lust draws each window at its screen's own scale. Sizes in a view are the view's own units, not pixels: `width 400` is 400 units, which is 400 pixels at 100%, 500 at 125% and 800 at 200%. So a view looks the same size on every screen, only sharper on a sharper one:
+
+- **Letters, icons and SVG pictures** are drawn again at the screen's scale, so they're sharp at any size. Thin lines, borders and rounded corners sit on whole pixels, so a line one unit thick is one crisp pixel at 125%, not a blur across two.
+- **PNG and JPEG pictures** are as big as their file in units, so a 32 × 32 picture is 32 units across, and smoothed when it's drawn bigger or smaller. For screens at 150% and more, a sharper picture twice the size can sit beside it, named with `@2x`: with `cat.png` and `cat@2x.png` in the same folder, `image "cat.png";` uses `cat@2x.png` there, at the same size.
+- **Moving between screens.** When a window is dragged to a screen with another scale, it keeps its size in units and is drawn again sharp for the new screen.
+- **Everything else stays in units:** a window's `width`, `height` and `minWidth`, where the mouse is (a canvas's `vec2`s too), how far it moves before a row is dragged, the edges of a table's columns, and how far the wheel scrolls.
+
+On Windows, Lust tells the computer it draws for each screen's scale itself (per-monitor DPI awareness), so Windows doesn't stretch its windows.
+
+### Typing in any language: input methods
+
+Chinese, Japanese, Korean and many other languages have far more letters than a keyboard has keys, so they're typed through an input method (IME): keys put a few letters together (Japanese "nihon" shows as にほん), and choosing from a little list turns them into the finished words (日本).
+
+Lust's inputs work with the computer's input method: an `input`, a text box, a number box, a date picker's box and a colour picker's hex box. While one has focus, the input method is on, and its list of choices shows beside the caret.
+
+- **While it's putting letters together,** they show at the caret with a line under them, but aren't in the field yet, so the field and its `{ }` don't change. Enter, Escape, Backspace and the arrows go to the input method then, not to the field, `enter { }` or the view's shortcuts.
+- **When it's finished,** the words go in as if they'd been typed, and the bound field changes, with its `{ }`.
+- Letters Lust's own font doesn't have come from the computer's fonts (see Fonts, above).
+
+### Screen readers
+
+A screen reader reads out what's on the screen, for people who can't see it well or at all, and lets them use a program from the keyboard: Narrator and NVDA on Windows, Orca on Linux. It can't see Lust's pixels, so Lust also describes each window as a tree of its pieces: what each is (a button, a check box, a slider, a table), what it's called, its value, and whether it's checked, picked, open, shut or disabled. Screen readers read that tree aloud as focus moves.
+
+Every piece is in it, with no extra code: buttons, checkboxes, switches, radio buttons, sliders, number boxes, inputs and text boxes (with their caret and selection), dropdowns, menus and their items, dialogs (which a screen reader keeps to while they're open), tabs, tables (with their headers, how they're sorted, and their rows and cells), lists, date and colour pickers, progress bars, text, pictures and second windows. Toasts are read out when they show, without moving focus. A table or list says how many rows it has, but only the rows on the screen are in the tree, so 100,000 rows cost no more than ten.
+
+**Names.** A screen reader says each piece's name. It's the piece's words (`button "Save"`), or else its `tip`, or else its icon's name. An icon-only button or a picture should be given a name of its own with `label`, which is said instead and isn't shown:
+
+```
+button [icon "trash", label "Delete the note"] { remove(); }
+image "chart.png" [label "Sales went up in March"];
+input search [label "Search", placeholder "Find…"];
+```
+
+An input's name is its `label`, or its `tip`; its `placeholder` is said too while it's empty. `label` takes text. A window's name is its `title`.
+
+**What a screen reader can do.** It can click a piece, move focus to it, give an input, number box, slider, date or colour a new value, move a slider or number box a step up or down, open and shut a dropdown, menu, picker or branch, and scroll a piece into view. Each goes through the same paths as the mouse and keyboard, so fields change through their bindings and blocks run as they would. Focus is shared both ways: where Lust's focus moves, the screen reader follows, and where the screen reader moves focus, so does Lust's.
+
+`dump access` in a test prints the tree, and `act` does what a screen reader would, so a view can be checked without one.
+
 ### Scrolling
 
 `scroll { … }` is a column whose content can be taller than it is. The mouse wheel or touchpad scrolls it, a knob on its right shows where you are and can be dragged, and Tab scrolls to what it reaches.
@@ -1629,7 +1679,7 @@ list (string job in jobs) [reorder, select current, rowHeight 32] {
 
 ### Pictures
 
-`image "cat.png";` shows a PNG, JPEG or SVG file, found the way `Files` finds files: from the folder the program runs in, or anywhere with its whole path. Without a size it's as big as its file, shrinking to fit if there isn't room. Give it a `width` or a `height` and the other follows, keeping its shape. Give both and it fits inside that box; add `cover` and it fills the box instead, cut to fit. `round` rounds its corners, so `[width 48, height 48, cover, round 24]` makes a round picture. A file that isn't there shows as a grey box.
+`image "cat.png";` shows a PNG, JPEG or SVG file, found the way `Files` finds files: from the folder the program runs in, or anywhere with its whole path. Without a size it's as big as its file (in the view's units; a `cat@2x.png` beside it is used on screens scaled 150% and more, see Scaling), shrinking to fit if there isn't room. Give it a `width` or a `height` and the other follows, keeping its shape. Give both and it fits inside that box; add `cover` and it fills the box instead, cut to fit. `round` rounds its corners, so `[width 48, height 48, cover, round 24]` makes a round picture. A file that isn't there shows as a grey box.
 
 An SVG picture is drawn again at the size it shows, so it's sharp at any size, and without a size it's as big as the SVG says. Everything in SVG's own rules is drawn (shapes, paths, colours, gradients, see-through, groups and transforms) except words written in the SVG and pictures inside it, which are left out.
 
@@ -1710,6 +1760,7 @@ Short words in `[ ]`, in the spirit of Tailwind:
 | shape | `round`, `round 12`, `pill`, `border`, `border red`, `borderWidth 2`, `shadow`, `opacity 0.5` |
 | placement | `left`, `center`, `right` side to side; `top`, `middle`, `bottom` up and down; `spread` |
 | under the mouse | `hover:[ … ]`, `tip "…"` |
+| for screen readers | `label "Delete the note"` |
 | in dark mode | `dark:[ … ]` |
 | windows | `title`, `width`, `height`, `minWidth`, `minHeight`, `background`, `font`, `dark`, `fullscreen`, `visible` (the main window), `escape` (a second window) |
 | toasts | a colour word, `icon "check"`, `seconds 8` |
@@ -1739,7 +1790,7 @@ Name a style to reuse it: `style card = [pad 16, round, shadow];`, then `[card]`
 
 ### Underneath
 
-Lust draws everything itself, from the pixels up: layout, every piece, text editing, focus, scrolling, styles and animation. Small permissive libraries only open the window (winit), hand over the pixels (softbuffer), read font files (ab_glyph), show the computer's own boxes for choosing files (rfd), reach the system clipboard (arboard), read PNG and JPEG files (png, jpeg-decoder) and draw SVG files (resvg). On Windows, tray-icon puts the tray icon in the notification area, and tauri-winrt-notification shows notifications; on Linux, zbus sends notifications over D-Bus. Icons are Lucide's shapes, drawn by Lust. Views are for `.lst` programs on Windows, macOS and Linux. Web pages stay HTML, CSS and JavaScript.
+Lust draws everything itself, from the pixels up: layout, every piece, text editing, focus, scrolling, styles and animation. Small permissive libraries only open the window (winit), hand over the pixels (softbuffer), read font files (ab_glyph), describe the window to screen readers (AccessKit: UI Automation on Windows, AT-SPI on Linux), show the computer's own boxes for choosing files (rfd), reach the system clipboard (arboard), read PNG and JPEG files (png, jpeg-decoder) and draw SVG files (resvg). On Windows, tray-icon puts the tray icon in the notification area, and tauri-winrt-notification shows notifications; on Linux, zbus sends notifications over D-Bus. Icons are Lucide's shapes, drawn by Lust. Views are for `.lst` programs on Windows, macOS and Linux. Web pages stay HTML, CSS and JavaScript.
 
 ---
 

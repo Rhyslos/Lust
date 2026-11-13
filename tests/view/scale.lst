@@ -1,0 +1,39 @@
+-- Sharp on any screen: the same view at 125% and 150% scaling. The pieces are where they'd be at
+-- 100% (sizes stay in the view's own units), and only the pixels change: thin lines and borders
+-- sit on whole pixels, letters, icons and SVG pictures are drawn at the scale, and a PNG uses its
+-- name@2x.png twin at 150% and more.
+assembly App {
+    has {
+        bool night = false;
+        string name = "Ada";
+        int volume = 40;
+        bool on = true;
+    }
+
+    view [title "Scale", width 320, height 260, dark night] {
+        column [gap 8, pad 12] {
+            row [gap 8] {
+                input name [width 140];
+                checkbox on "On";
+            }
+            row [gap 8] {
+                button "Save" [icon "save", border];
+                button [icon "trash", tip "Delete"] { }
+                image "dot.png";
+                image "badge.svg" [width 24];
+                icon "star" [size 16];
+            }
+            slider volume [from 0, to 100];
+            text "One unit lines:" [small];
+            canvas [width 200, height 40, border] {
+                line [x 0, y 10, toX 200, toY 10, thick 1];
+                line [x 50, y 0, toX 50, toY 40, thick 1];
+                box [x 100, y 18, width 60, height 1, gray6];
+            }
+            checkbox night "Night";
+        }
+    }
+}
+
+App:open();
+end

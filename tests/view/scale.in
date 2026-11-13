@@ -1,0 +1,17 @@
+dump
+press 30 30
+release 30 30
+scale 1.25
+dump
+snapshot scale-125.snap.png
+key end
+type !
+scale 1.5
+dump
+snapshot scale-150.snap.png
+click Night
+snapshot scale-150-dark.snap.png
+scale 0.1
+scale 2
+snapshot scale-200.snap.png
+dump

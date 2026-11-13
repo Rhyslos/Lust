@@ -1,0 +1,477 @@
+window "Everything"
+  text "Settings"
+  text input "Name" = "" placeholder "Your name"
+  text box "Notes" = "one two"
+  check box "I agree" (not checked)
+  switch "Sound" (checked)
+  radio group "Size" = "Medium"
+    radio button "Small" (not checked)
+    radio button "Medium" (checked)
+    radio button "Large" (not checked)
+  slider "Volume" = "30" (0 to 100, step 10)
+  slider "Zoom" = "1" (0.5 to 2) (disabled)
+  spin button "Count" = "2" (0 to 9, step 1)
+  combo box "Fruit" = "Pear" (collapsed)
+  date input "Due" = "" (collapsed)
+  colour well "Tint" = "#3b82f6" (collapsed)
+  progress bar "Loaded" = "30" (0 to 100)
+  button "Delete note"
+  button "Settings"
+  button "star"
+  button "Off" (disabled)
+  image "Liked"
+  image "bell"
+  image "A sunset"
+  image ""
+  menu button "File" (collapsed)
+  tab list
+    tab "One" (selected)
+    tab "Two"
+  text "first tab"
+  button "More" (collapsed)
+  canvas "Chart"
+    button "Red square"
+  table "People", 3 rows, showing 1–3, 2 columns
+    row
+      column header "Name"
+      column header "Age"
+    row 1
+      cell "Ada"
+      cell "36"
+    row 2
+      cell "Bo"
+      cell "7"
+    row 3
+      cell "Cy"
+      cell "52"
+  list, 2 rows, showing 1–2
+    list item "Cat" 1
+      text "Cat"
+    list item "Dog" 2
+      text "Dog"
+  text "pet: "
+window "Help"
+  text "Press Tab to move."
+  button "Got it"
+window "Everything"
+  text "Settings"
+  text input "Name" = "Ada" (focused, selected 2..3)
+  text box "Notes" = "one two"
+  check box "I agree" (not checked)
+  switch "Sound" (checked)
+  radio group "Size" = "Medium"
+    radio button "Small" (not checked)
+    radio button "Medium" (checked)
+    radio button "Large" (not checked)
+  slider "Volume" = "30" (0 to 100, step 10)
+  slider "Zoom" = "1" (0.5 to 2) (disabled)
+  spin button "Count" = "2" (0 to 9, step 1)
+  combo box "Fruit" = "Pear" (collapsed)
+  date input "Due" = "" (collapsed)
+  colour well "Tint" = "#3b82f6" (collapsed)
+  progress bar "Loaded" = "30" (0 to 100)
+  button "Delete note"
+  button "Settings"
+  button "star"
+  button "Off" (disabled)
+  image "Liked"
+  image "bell"
+  image "A sunset"
+  image ""
+  menu button "File" (collapsed)
+  tab list
+    tab "One" (selected)
+    tab "Two"
+  text "first tab"
+  button "More" (collapsed)
+  canvas "Chart"
+    button "Red square"
+  table "People", 3 rows, showing 1–3, 2 columns
+    row
+      column header "Name"
+      column header "Age"
+    row 1
+      cell "Ada"
+      cell "36"
+    row 2
+      cell "Bo"
+      cell "7"
+    row 3
+      cell "Cy"
+      cell "52"
+  list, 2 rows, showing 1–2
+    list item "Cat" 1
+      text "Cat"
+    list item "Dog" 2
+      text "Dog"
+  text "pet: "
+window "Help"
+  text "Press Tab to move."
+  button "Got it"
+window "Everything"
+  text "Settings"
+  text input "Name" = "Grace Hopper"
+  text box "Notes" = "three"
+  check box "I agree" (checked)
+  switch "Sound" (not checked)
+  radio group "Size" = "Large" (focused)
+    radio button "Small" (not checked)
+    radio button "Medium" (not checked)
+    radio button "Large" (checked)
+  slider "Volume" = "80" (0 to 100, step 10)
+  slider "Zoom" = "1" (0.5 to 2) (disabled)
+  spin button "Count" = "7" (0 to 9, step 1)
+  combo box "Fruit" = "Pear" (expanded)
+  date input "Due" = "" (collapsed)
+  colour well "Tint" = "#3b82f6" (collapsed)
+  progress bar "Loaded" = "80" (0 to 100)
+  button "Delete note"
+  button "Settings"
+  button "star"
+  button "Off" (disabled)
+  image "Liked"
+  image "bell"
+  image "A sunset"
+  image ""
+  menu button "File" (collapsed)
+  tab list
+    tab "One" (selected)
+    tab "Two"
+  text "first tab"
+  button "More" (collapsed)
+  canvas "Chart"
+    button "Red square"
+  table "People", 3 rows, showing 1–3, 2 columns
+    row
+      column header "Name"
+      column header "Age"
+    row 1
+      cell "Ada"
+      cell "36"
+    row 2
+      cell "Bo"
+      cell "7"
+    row 3
+      cell "Cy"
+      cell "52"
+  list, 2 rows, showing 1–2
+    list item "Cat" 1
+      text "Cat"
+    list item "Dog" 2
+      text "Dog"
+  text "hello Grace Hopper"
+  text "pet: "
+  list box
+    option "Apple"
+    option "Pear" (focused, selected)
+    option "Plum"
+window "Help"
+  text "Press Tab to move."
+  button "Got it"
+window "Everything"
+  text "Settings"
+  text input "Name" = "Grace Hopper"
+  text box "Notes" = "three"
+  check box "I agree" (checked)
+  switch "Sound" (not checked)
+  radio group "Size" = "Large"
+    radio button "Small" (not checked)
+    radio button "Medium" (not checked)
+    radio button "Large" (checked)
+  slider "Volume" = "80" (0 to 100, step 10)
+  slider "Zoom" = "1" (0.5 to 2) (disabled)
+  spin button "Count" = "7" (0 to 9, step 1)
+  combo box "Fruit" = "Plum" (collapsed)
+  date input "Due" = "" (collapsed)
+  colour well "Tint" = "#3b82f6" (collapsed)
+  progress bar "Loaded" = "80" (0 to 100)
+  button "Delete note"
+  button "Settings"
+  button "star"
+  button "Off" (disabled)
+  image "Liked"
+  image "bell"
+  image "A sunset"
+  image ""
+  menu button "File" (focused, expanded)
+  tab list
+    tab "One" (selected)
+    tab "Two"
+  text "first tab"
+  button "More" (collapsed)
+  canvas "Chart"
+    button "Red square"
+  table "People", 3 rows, showing 1–3, 2 columns
+    row
+      column header "Name"
+      column header "Age"
+    row 1
+      cell "Ada"
+      cell "36"
+    row 2
+      cell "Bo"
+      cell "7"
+    row 3
+      cell "Cy"
+      cell "52"
+  list, 2 rows, showing 1–2
+    list item "Cat" 1
+      text "Cat"
+    list item "Dog" 2
+      text "Dog"
+  text "hello Grace Hopper"
+  text "pet: "
+  menu
+    menu item "New"
+    menu item "Save" (disabled)
+    menu item "Quit"
+window "Help"
+  text "Press Tab to move."
+  button "Got it"
+window "Everything"
+  text "Settings"
+  text input "Name" = "Grace Hopper"
+  text box "Notes" = "three"
+  check box "I agree" (checked)
+  switch "Sound" (not checked)
+  radio group "Size" = "Large"
+    radio button "Small" (not checked)
+    radio button "Medium" (not checked)
+    radio button "Large" (checked)
+  slider "Volume" = "80" (0 to 100, step 10)
+  slider "Zoom" = "1" (0.5 to 2) (disabled)
+  spin button "Count" = "7" (0 to 9, step 1)
+  combo box "Fruit" = "Plum" (collapsed)
+  date input "Due" = "2026-11-20" (expanded)
+  colour well "Tint" = "#ff0000" (collapsed)
+  progress bar "Loaded" = "80" (0 to 100)
+  button "Delete note"
+  button "Settings"
+  button "star"
+  button "Off" (disabled)
+  image "Liked"
+  image "bell"
+  image "A sunset"
+  image ""
+  menu button "File" (collapsed)
+  tab list
+    tab "One"
+    tab "Two" (selected)
+  text "second tab"
+  button "More" (focused, expanded)
+  text "inside the branch"
+  canvas "Chart"
+    button "Red square"
+  table "People", 3 rows, showing 1–3, 2 columns
+    row
+      column header "Name"
+      column header "Age"
+    row 1
+      cell "Ada"
+      cell "36"
+    row 2
+      cell "Bo"
+      cell "7"
+    row 3
+      cell "Cy"
+      cell "52"
+  list, 2 rows, showing 1–2
+    list item "Cat" 1
+      text "Cat"
+    list item "Dog" 2
+      text "Dog"
+  text "hello Grace Hopper"
+  text "pet: "
+  calendar "November 2026" = "2026-11-20"
+window "Help"
+  text "Press Tab to move."
+  button "Got it"
+window "Everything"
+  text "Settings"
+  text input "Name" = "Grace Hopper"
+  text box "Notes" = "three"
+  check box "I agree" (checked)
+  switch "Sound" (not checked)
+  radio group "Size" = "Large"
+    radio button "Small" (not checked)
+    radio button "Medium" (not checked)
+    radio button "Large" (checked)
+  slider "Volume" = "80" (0 to 100, step 10)
+  slider "Zoom" = "1" (0.5 to 2) (disabled)
+  spin button "Count" = "7" (0 to 9, step 1)
+  combo box "Fruit" = "Plum" (collapsed)
+  date input "Due" = "2026-11-20" (collapsed)
+  colour well "Tint" = "#ff0000" (collapsed)
+  progress bar "Loaded" = "80" (0 to 100)
+  button "Delete note"
+  button "Settings"
+  button "star"
+  button "Off" (disabled)
+  image "Liked"
+  image "bell"
+  image "A sunset"
+  image ""
+  menu button "File" (collapsed)
+  tab list
+    tab "One"
+    tab "Two" (selected)
+  text "second tab"
+  button "More" (expanded)
+  text "inside the branch"
+  canvas "Chart"
+    button "Red square"
+  table "People", 3 rows, showing 1–3, 2 columns (focused)
+    row
+      column header "Name"
+      column header "Age" (sorted up)
+    row 1
+      cell "Bo"
+      cell "7"
+    row 2
+      cell "Ada"
+      cell "36"
+    row 3 (selected)
+      cell "Cy"
+      cell "52"
+  list, 2 rows, showing 1–2
+    list item "Cat" 1
+      text "Cat"
+    list item "Dog" 2
+      text "Dog"
+  text "opened Cy"
+  text "pet: "
+window "Help"
+  text "Press Tab to move."
+  button "Got it"
+window "Everything"
+  dialog "Delete the note?" (modal)
+    text "Delete the note?"
+    button "No"
+    button "Yes"
+window "Help"
+  text "Press Tab to move."
+  button "Got it"
+window "Everything"
+  text "Settings"
+  text input "Name" = "Grace Hopper"
+  text box "Notes" = "three"
+  check box "I agree" (checked)
+  switch "Sound" (not checked)
+  radio group "Size" = "Large"
+    radio button "Small" (not checked)
+    radio button "Medium" (not checked)
+    radio button "Large" (checked)
+  slider "Volume" = "80" (0 to 100, step 10)
+  slider "Zoom" = "1" (0.5 to 2) (disabled)
+  spin button "Count" = "7" (0 to 9, step 1)
+  combo box "Fruit" = "Plum" (collapsed)
+  date input "Due" = "2026-11-20" (collapsed)
+  colour well "Tint" = "#ff0000" (collapsed)
+  progress bar "Loaded" = "80" (0 to 100)
+  button "Delete note"
+  button "Settings"
+  button "star"
+  button "Off" (disabled)
+  image "Liked"
+  image "bell"
+  image "A sunset"
+  image ""
+  menu button "File" (collapsed)
+  tab list
+    tab "One"
+    tab "Two" (selected)
+  text "second tab"
+  button "More" (expanded)
+  text "inside the branch"
+  canvas "Chart"
+    button "Red square"
+  table "People", 3 rows, showing 1–3, 2 columns
+    row
+      column header "Name"
+      column header "Age" (sorted up)
+    row 1
+      cell "Bo"
+      cell "7"
+    row 2
+      cell "Ada"
+      cell "36"
+    row 3 (selected)
+      cell "Cy"
+      cell "52"
+  list, 2 rows, showing 1–2
+    list item "Cat" 1
+      text "Cat"
+    list item "Dog" 2
+      text "Dog"
+  text "starred"
+  text "pet: "
+  status "Deleted" (read out politely)
+(there's no piece called "Missing" for a screen reader)
+(act does click, focus, show, open, close, set, up or down, not wave)
+(act takes what to do and a piece's name: act click Save)
+window "Everything" 560x900
+  column 0,0 560x900
+    text "Settings" 12,12 62x19
+    input "Grace Hopper" 12,37 220x33
+    textarea "three" 12,76 300x50
+    checkbox "I agree" 12,132 76x19 (on)
+    switch "Sound" 12,157 90x20 (off)
+    radio "Large" 12,183 84x75
+      radiobtn "Small" 12,183 65x21
+      radiobtn "Medium" 12,210 84x21
+      radiobtn "Large" 12,237 67x21 (picked)
+    slider "80" 12,264 200x20
+    slider "1" 12,290 200x20 (disabled)
+    number "7" 12,316 120x33
+    dropdown "Plum" 12,355 82x33
+    datePicker "2026-11-20" 12,394 150x33
+    colourPicker "#ff0000" 12,433 111x31
+    progress "80" 12,470 200x8
+    row 12,484 357x33
+      button 12,484 32x33 (icon trash)
+      button 52,484 32x33 (icon settings)
+      button 92,484 32x33 (icon star)
+      button "Off" 132,484 51x33 (disabled)
+      icon "heart" 191,491 20x20
+      icon "bell" 219,491 20x20
+      image "sunset.png" 247,486 40x30
+      image "badge.svg" 295,496 20x10
+      menu "File" 323,485 46x31
+    tabs 12,523 536x67
+      tabbar 12,523 536x36
+        tabbtn "One" 12,523 54x36
+        tabbtn "Two (showing)" 70,523 56x36
+      tab "Two" 12,571 536x19
+        text "second tab" 12,571 80x19
+    branch "More" 12,596 536x48
+      branchhead "More (open)" 12,596 536x27
+      branchbody 12,625 536x19
+        text "inside the branch" 32,625 123x19
+    canvas 12,650 120x40
+      box 16,654 30x30
+      circle 62,660 20x20
+      line 91,653 32x34
+    table 3 rows, showing 1–3 12,696 536x120
+      thead 13,697 534x30
+        header "Name" 13,697 267x30
+        header "Age" (sorted rising) 280,697 267x30
+      tablerow 13,722 534x31
+        celltext "Bo" 13,722 267x31
+        celltext "7" 280,722 267x31
+      tablerow 13,753 534x31
+        celltext "Ada" 13,753 267x31
+        celltext "36" 280,753 267x31
+      tablerow 13,784 534x31 (picked)
+        celltext "Cy" 13,784 267x31
+        celltext "52" 280,784 267x31
+    list 2 rows, showing 1–2 12,822 536x60
+      listrow 12,822 536x24 (menu)
+        text "Cat" 12,825 25x19
+      listrow 12,846 536x24 (menu)
+        text "Dog" 12,849 30x19
+    text "starred" 12,888 51x19
+    text "pet: Cat" 12,913 56x19
+  layer "toast" 0,0 560x900
+    toast "Deleted" 437,845 107x39
+      icon "check" 451,857 16x16
+      text "Deleted" 475,855 55x19

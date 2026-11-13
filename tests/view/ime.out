@@ -1,0 +1,54 @@
+(nothing that takes typing has focus)
+window "Typing" 360x320
+  column 0,0 360x322
+    input "ab" 16,16 220x33 (focus, caret 2, composing "にほん")
+    textarea "first line" 16,57 300x60
+    number "5" 16,125 120x33
+    datePicker "" 16,166 150x33
+    colourPicker "#3b82f6" 16,207 111x31
+    input "fixed" 16,246 220x33 (disabled)
+    text 16,287 0x19
+(the input method has the keys while it's composing)
+(the input method has the keys while it's composing)
+(the input method has the keys while it's composing)
+(the input method has the keys while it's composing)
+window "Typing" 360x320
+  column 0,0 360x322
+    input "ab日本" 16,16 220x33 (focus, caret 4)
+    textarea "first line" 16,57 300x60
+    number "5" 16,125 120x33
+    datePicker "" 16,166 150x33
+    colourPicker "#3b82f6" 16,207 111x31
+    input "fixed" 16,246 220x33 (disabled)
+    text 16,287 0x19
+window "Typing" 360x320
+  column 0,0 360x322
+    input "ab語本" 16,16 220x33
+    textarea "first line" 16,57 300x60 (focus, caret 10, composing "かな")
+    number "5" 16,125 120x33
+    datePicker "" 16,166 150x33
+    colourPicker "#3b82f6" 16,207 111x31
+    input "fixed" 16,246 220x33 (disabled)
+    text "entered ab日本" 16,287 97x19
+window "Typing" 360x320
+  column 0,0 360x322
+    input "ab語本" 16,16 220x33
+    textarea "first lineかな" 16,57 300x60
+    number "42" 16,125 120x33
+    datePicker "2026-11-13" 16,166 150x33
+    colourPicker "#3b82f6" 16,207 111x31 (open) (focus)
+    input "fixed" 16,246 220x33 (disabled)
+    text "entered ab日本" 16,287 97x19
+  layer "picker" 0,0 360x320
+    colourpop "#3b82f6" 16,8 240x300 (hue 217, saturation 76%, brightness 96%, typed "#3b82f6", composing "ff", at hex)
+(there's no input 2)
+(nothing that takes typing has focus)
+window "Typing" 360x320
+  column 0,0 360x322
+    input "ab語本" 16,16 220x33
+    textarea "first lineかな" 16,57 300x60
+    number "42" 16,125 120x33
+    datePicker "2026-11-13" 16,166 150x33
+    colourPicker "#ff0000" 16,207 111x31 (focus)
+    input "fixed" 16,246 220x33 (disabled)
+    text "entered ab日本" 16,287 97x19

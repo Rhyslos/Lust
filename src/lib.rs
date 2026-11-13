@@ -100,6 +100,8 @@ mod native_ui {
     include!("native_ui_mouse.rs");
     include!("native_ui_pickers.rs");
     include!("native_ui_windows.rs");
+    include!("native_ui_ime.rs");
+    include!("native_ui_access.rs");
 }
 #[cfg(feature = "cli")]
 mod run;

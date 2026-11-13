@@ -1,0 +1,107 @@
+-- Screen readers: every kind of piece in the tree a screen reader is given, with its role, name,
+-- value and states, and what a screen reader asks for (act …) done through the same paths as the
+-- mouse and keys, so the bound fields change.
+state Size = [Small, Medium, Large];
+
+class Person {
+    has {
+        string name = "";
+        int age = 0;
+    }
+}
+
+assembly App {
+    has {
+        string name = "";
+        string notes = "one two";
+        bool agree = false;
+        bool sound = true;
+        int volume = 30;
+        float zoom = 1.0;
+        int count = 2;
+        Size size = Size.Medium;
+        string fruit = "Pear";
+        string due = "";
+        colour tint = Colour:hex("#3b82f6");
+        bool asking = false;
+        bool helping = true;
+        string log = "";
+        Person array people = [
+            new Person { name = "Ada", age = 36 },
+            new Person { name = "Bo", age = 7 },
+            new Person { name = "Cy", age = 52 }
+        ];
+        Person picked = nothing;
+        string pet = "";
+    }
+
+    view [title "Everything", width 560, height 900] {
+        column [gap 6, pad 12] {
+            text "Settings" [bold];
+            input name [label "Name", placeholder "Your name"] enter { log = "hello " + name; }
+            textarea notes [height 50, tip "Notes"];
+            checkbox agree "I agree";
+            switch sound "Sound";
+            radio size [label "Size"];
+            slider volume [from 0, to 100, step 10, label "Volume"];
+            slider zoom [from 0.5, to 2.0, step 0, label "Zoom", disabled true];
+            number count [min 0, max 9, label "Count"];
+            dropdown fruit in ["Apple", "Pear", "Plum"] [label "Fruit"];
+            datePicker due [label "Due", min "2026-01-01"];
+            colourPicker tint [label "Tint"];
+            progress volume [label "Loaded"];
+            row [gap 8] {
+                button [icon "trash", label "Delete note"] { asking = true; }
+                button [icon "settings", tip "Settings"] { log = "settings"; }
+                button [icon "star"] { log = "starred"; }
+                button "Off" [disabled true] { log = "never"; }
+                icon "heart" [label "Liked"];
+                icon "bell";
+                image "sunset.png" [width 40, label "A sunset"];
+                image "badge.svg" [width 20];
+                menu "File" {
+                    item "New" { log = "new"; }
+                    item "Save" [disabled true] { log = "saved"; }
+                    divider;
+                    item "Quit" { log = "quit"; }
+                }
+            }
+            tabs { tab "One" { text "first tab"; } tab "Two" { text "second tab"; } }
+            branch "More" { text "inside the branch"; }
+            canvas [width 120, height 40, label "Chart"] {
+                box [x 4, y 4, width 30, height 30, red, label "Red square"] { log = "red"; }
+                circle [x 60, y 20, radius 10, blue];
+                line [x 80, y 4, toX 110, toY 36, thick 2];
+            }
+            table (Person p in people) [select picked, height 120, label "People"] {
+                column "Name" p.name;
+                column "Age" p.age;
+            } open {
+                log = "opened " + picked.name;
+            }
+            list (string s in ["Cat", "Dog"]) [rowHeight 24, height 60] {
+                text s;
+            } menu {
+                item "Adopt " + s { pet = s; }
+            }
+            text log;
+            text "pet: " + pet;
+        }
+        dialog asking {
+            text "Delete the note?" [bold];
+            row [gap 8] {
+                button "No" { asking = false; }
+                button "Yes" { asking = false; toast "Deleted" [icon "check"]; }
+            }
+        }
+        window helping [title "Help", width 200, height 100] {
+            column [pad 8] {
+                text "Press Tab to move.";
+                button "Got it" { helping = false; }
+            }
+        }
+    }
+}
+
+App:open();
+end
