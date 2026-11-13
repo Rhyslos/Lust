@@ -2367,6 +2367,22 @@ impl<'a> Checker<'a> {
                         "tip takes text, shown when the mouse rests on the piece: tip \"Saves your work\".",
                     ),
                 },
+                ("label", _) if window => self.err(
+                    it.pos,
+                    format!("a screen reader calls a window by its title, so a {kind}'s [ ] has no label: [title \"Settings\"]."),
+                ),
+                // What a screen reader calls the piece, for icon-only buttons and pictures.
+                ("label", v) if !window => match v {
+                    StyleValue::Expr(e) if matches!(self.info.ty(e), Ty::Str | Ty::Error) => {}
+                    StyleValue::Expr(e) => {
+                        let t = self.info.ty(e);
+                        self.err(
+                            e.pos,
+                            format!("label takes text, the name a screen reader says for the piece: label \"Delete\". This is {}.", self.a(&t)),
+                        );
+                    }
+                    _ => self.err(it.pos, "label takes text, the name a screen reader says for the piece: label \"Delete\"."),
+                },
                 ("placeholder", v) if !window => match v {
                     StyleValue::Expr(e) if matches!(self.info.ty(e), Ty::Str | Ty::Error) => {}
                     _ => self.err(it.pos, "placeholder takes text: placeholder \"Search…\"."),
@@ -2432,6 +2448,7 @@ impl<'a> Checker<'a> {
                                     "disabled",
                                     "font",
                                     "tip",
+                                    "label",
                                     "dark",
                                     "icon",
                                     "reorder",

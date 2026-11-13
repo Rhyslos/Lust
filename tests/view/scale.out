@@ -1,0 +1,73 @@
+window "Scale" 320x260
+  column 0,0 320x225
+    row 12,12 195x33
+      input "Ada" 12,12 140x33
+      checkbox "On" 160,19 47x19 (on)
+    row 12,53 208x33
+      button "Save" 12,53 88x33 (icon save)
+      button 108,53 32x33 (icon trash)
+      image "dot.png" 148,62 16x16
+      image "badge.svg" 172,64 24x12
+      icon "star" 204,62 16x16
+    slider "40" 12,94 200x20
+    text "One unit lines:" 12,122 88x16
+    canvas 12,146 200x40
+      line 11,155 201x1
+      line 61,145 1x41
+      box 112,164 60x1
+    checkbox "Night" 12,194 64x19 (off)
+window "Scale" 320x260 at scale 1.25 (400x325 pixels)
+  column 0,0 320x225
+    row 12,12 195x33
+      input "Ada" 12,12 140x33 (focus, caret 1)
+      checkbox "On" 160,19 47x19 (on)
+    row 12,53 208x33
+      button "Save" 12,53 88x33 (icon save)
+      button 108,53 32x33 (icon trash)
+      image "dot.png" 148,62 16x16
+      image "badge.svg" 172,64 24x12
+      icon "star" 204,62 16x16
+    slider "40" 12,94 200x20
+    text "One unit lines:" 12,122 88x16
+    canvas 12,146 200x40
+      line 11,155 201x1
+      line 61,145 1x41
+      box 112,164 60x1
+    checkbox "Night" 12,194 64x19 (off)
+window "Scale" 320x260 at scale 1.5 (480x390 pixels)
+  column 0,0 320x225
+    row 12,12 195x33
+      input "Ada!" 12,12 140x33 (focus, caret 4)
+      checkbox "On" 160,19 47x19 (on)
+    row 12,53 208x33
+      button "Save" 12,53 88x33 (icon save)
+      button 108,53 32x33 (icon trash)
+      image "dot.png" 148,62 16x16
+      image "badge.svg" 172,64 24x12
+      icon "star" 204,62 16x16
+    slider "40" 12,94 200x20
+    text "One unit lines:" 12,122 88x16
+    canvas 12,146 200x40
+      line 11,155 201x1
+      line 61,145 1x41
+      box 112,164 60x1
+    checkbox "Night" 12,194 64x19 (off)
+(scale takes a number from 0.5 to 4, like scale 1.25)
+window "Scale" 320x260 at scale 2 (640x520 pixels)
+  column 0,0 320x225
+    row 12,12 195x33
+      input "Ada!" 12,12 140x33
+      checkbox "On" 160,19 47x19 (on)
+    row 12,53 208x33
+      button "Save" 12,53 88x33 (icon save)
+      button 108,53 32x33 (icon trash)
+      image "dot.png" 148,62 16x16
+      image "badge.svg" 172,64 24x12
+      icon "star" 204,62 16x16
+    slider "40" 12,94 200x20
+    text "One unit lines:" 12,122 88x16
+    canvas 12,146 200x40
+      line 11,155 201x1
+      line 61,145 1x41
+      box 112,164 60x1
+    checkbox "Night" 12,194 64x19 (on)

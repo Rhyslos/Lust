@@ -1,0 +1,54 @@
+today 2026-11-13
+dump access
+act focus Name
+type Ada
+key shift+left
+dump access
+act set Name "Grace Hopper"
+key enter
+act set Notes three
+act up Volume
+act up Volume
+act set Volume 75
+act down Count
+act up Count
+act set Count 7
+act set Count 70
+act up Zoom
+act click "I agree"
+act click Sound
+act click Large
+act open Fruit
+dump access
+act click Plum
+act click File
+dump access
+key escape
+act click Two
+act click More
+act set Due 2026-11-20
+act set Tint #ff000080
+act set Tint ff0000
+act open Due
+dump access
+act close Due
+act click "Red square"
+act click Age
+act click "row 2"
+act focus "row 3"
+key enter
+dump access
+act click Settings
+act click star
+act click Off
+act click "Delete note"
+dump access
+act click Yes
+in Help act click "Got it"
+dump access
+rightclick Cat
+act click "Adopt Cat"
+act click Missing
+act wave Name
+act
+dump

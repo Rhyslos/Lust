@@ -1,0 +1,39 @@
+-- Screen readers and 100,000 rows: a table and a list say how many rows they have, but only the
+-- rows on the screen are in the tree. A row keeps its id as the table scrolls, and a screen
+-- reader can scroll a row into view, pick it and sort the table.
+class Item {
+    has {
+        int n = 0;
+        string name = "";
+    }
+}
+
+assembly App {
+    has {
+        Item array items = [];
+        Item picked = nothing;
+        Item chosen = nothing;
+    }
+
+    view [title "Big", width 400, height 220, dark] {
+        column [gap 8, pad 8] {
+            button "Fill" {
+                loop (int i = 0; i < 100000; i += 1) {
+                    items:inject(new Item { n = i, name = "Item " + i.text() });
+                }
+            }
+            row [gap 8, height fill] {
+                table (Item i in items) [select picked, rowHeight 30, label "Items"] {
+                    column "N" i.n [width 80];
+                    column "Name" i.name;
+                }
+                list (Item i in items) [select chosen, rowHeight 30, width 120] {
+                    text i.name [padX 6];
+                }
+            }
+        }
+    }
+}
+
+App:open();
+end

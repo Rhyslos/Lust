@@ -1,0 +1,9 @@
+view-access.lst:9:27  a screen reader calls a window by its title, so a view's [ ] has no label: [title "Settings"].
+view-access.lst:10:23  label takes text, the name a screen reader says for the piece: label "Delete". This is an int.
+view-access.lst:11:35  label takes text, the name a screen reader says for the piece: label "Delete".
+view-access.lst:12:31  label takes text, the name a screen reader says for the piece: label "Delete". This is a bool.
+view-access.lst:13:36  label takes text, the name a screen reader says for the piece: label "Delete". This is an int.
+view-access.lst:14:38  Lust has no style called lable. Did you mean label?
+view-access.lst:17:39  a screen reader calls a window by its title, so a window's [ ] has no label: [title "Settings"].
+
+7 mistakes. Nothing was run.

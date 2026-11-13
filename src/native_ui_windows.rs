@@ -532,6 +532,10 @@ impl<'a, 'b> Wins<'a, 'b> {
             if !ui.s.visible {
                 flags.push_str(" (hidden)");
             }
+            // At a scale, the pieces are where they'd be at any other: only the pixels differ.
+            if let Some(k) = TEST_SCALE.with(|t| t.get()) {
+                flags.push_str(&format!(" at scale {} ({}x{} pixels)", num_text(k as f64), (ui.w * k).round() as i64, (ui.h * k).round() as i64));
+            }
             out.push_str(&format!("window {:?} {}x{}{flags}\n", ui.s.title, ui.w as i64, ui.h as i64));
             let st = ui.paint_state();
             for (j, c) in ui.tree.children.iter().enumerate() {
@@ -639,7 +643,7 @@ mod windowed {
     use std::num::NonZeroU32;
     use std::rc::Rc;
     use winit::application::ApplicationHandler;
-    use winit::event::{ElementState, MouseButton, MouseScrollDelta, StartCause, WindowEvent};
+    use winit::event::{ElementState, Ime, MouseButton, MouseScrollDelta, StartCause, WindowEvent};
     use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
     use winit::keyboard::{Key as WKey, ModifiersState, NamedKey};
     use winit::window::{CursorIcon, Fullscreen, Window, WindowId};
@@ -655,6 +659,15 @@ mod windowed {
         title: String,
         full: bool,
         shown: bool,
+        /// Whether the computer's input method is on (while something that takes typing has
+        /// focus), and where it was last told the caret is.
+        ime: bool,
+        ime_at: Option<[f32; 4]>,
+        /// The window's link to screen readers, the tree it was last sent (and what has focus),
+        /// and each node as it was sent, so only nodes that changed are sent again.
+        access: accesskit_winit::Adapter,
+        sent: Option<(Vec<ANode>, u64)>,
+        kit_sent: HashMap<u64, accesskit::Node>,
     }
 
     impl Os {
@@ -687,17 +700,36 @@ mod windowed {
 
     fn open_os(el: &ActiveEventLoop, s: &Settings, main: bool) -> Result<Os, String> {
         let shown = !main || s.visible;
+        // Sizes are logical: winit makes the window that many pixels times the screen's scale.
+        // It opens hidden, so screen readers can be linked to it before it shows.
         let attrs = Window::default_attributes()
             .with_title(s.title.clone())
             .with_inner_size(winit::dpi::LogicalSize::new(s.width, s.height))
             .with_min_inner_size(winit::dpi::LogicalSize::new(s.min_width.max(1.0), s.min_height.max(1.0)))
-            .with_visible(shown)
+            .with_visible(false)
             .with_fullscreen(s.fullscreen.then_some(Fullscreen::Borderless(None)));
         let window = Rc::new(el.create_window(attrs).map_err(|e| fail(e, "can't open a window"))?);
+        let access = kit::adapter(el, &window);
+        if shown {
+            window.set_visible(true);
+        }
         let surface = softbuffer::Context::new(window.clone())
             .and_then(|ctx| softbuffer::Surface::new(&ctx, window.clone()))
             .map_err(|e| fail(e, "can't draw in the window"))?;
-        Ok(Os { window, surface, mouse: None, dropped: vec![], title: s.title.clone(), full: s.fullscreen, shown })
+        Ok(Os {
+            window,
+            surface,
+            mouse: None,
+            dropped: vec![],
+            title: s.title.clone(),
+            full: s.fullscreen,
+            shown,
+            ime: false,
+            ime_at: None,
+            access,
+            sent: None,
+            kit_sent: HashMap::new(),
+        })
     }
 
     impl<'a, 'b> App<'a, 'b> {
@@ -790,6 +822,9 @@ mod windowed {
             let ui = &mut wins.list[i].ui;
             let Some(o) = os.get_mut(key) else { return Ok(false) };
             match event {
+                // Moved to a screen with another scale (or the scale changed): winit keeps the
+                // window's logical size, so the view is laid out the same and drawn again sharp
+                // at the new scale (letters, icons and SVG pictures are drawn again for it).
                 WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
                     let (w, h, _) = o.logical();
                     ui.resize(w, h)?;
@@ -892,6 +927,19 @@ mod windowed {
                     key_pressed(ui, event, mods)?;
                     Ok(true)
                 }
+                // The input method's text being put together, and the text it finished.
+                WindowEvent::Ime(Ime::Preedit(text, cursor)) => {
+                    ui.ime_preedit(text, cursor);
+                    Ok(true)
+                }
+                WindowEvent::Ime(Ime::Commit(text)) => {
+                    ui.ime_commit(&text)?;
+                    Ok(true)
+                }
+                WindowEvent::Ime(Ime::Disabled) => {
+                    ui.st.preedit = None;
+                    Ok(true)
+                }
                 _ => Ok(false),
             }
         }
@@ -930,11 +978,37 @@ mod windowed {
                 buf[..n].copy_from_slice(&c.px[..n]);
                 let _ = buf.present();
             }
+            // The input method is on while something that takes typing has focus, and knows
+            // where the caret is, so its list of choices shows beside it.
+            let typing = ui.takes_typing();
+            if typing != o.ime {
+                o.ime = typing;
+                o.ime_at = None;
+                o.window.set_ime_allowed(typing);
+                if !typing {
+                    ui.st.preedit = None;
+                }
+            }
+            if typing {
+                let at = ui.caret_area();
+                if at.is_some() && at != o.ime_at {
+                    o.ime_at = at;
+                    if let Some([x, y, w, h]) = at {
+                        o.window.set_ime_cursor_area(winit::dpi::LogicalPosition::new(x, y), winit::dpi::LogicalSize::new(w, h));
+                    }
+                }
+            }
+            kit::send(o, ui, scale);
             Ok(())
         }
     }
 
     fn key_pressed(ui: &mut Ui, event: winit::event::KeyEvent, mods: Mods) -> Result<(), String> {
+        // While an input method is putting text together, Enter, Escape, Backspace and the
+        // arrows are its own: they don't reach the view's shortcuts, enter { } or the field.
+        if ui.composing() {
+            return Ok(());
+        }
         // The view's shortcuts go first, unless what has focus uses the key.
         if let Some(name) = key_name(&event) {
             if ui.shortcut(&name, mods)? {
@@ -1105,6 +1179,27 @@ mod windowed {
                     return;
                 }
             }
+            // What screen readers asked for: a tree, or something done to a piece.
+            if kit::take_wanted() {
+                for o in self.os.values_mut() {
+                    o.sent = None;
+                    o.kit_sent.clear();
+                    o.window.request_redraw();
+                }
+            }
+            for (id, req) in kit::take_asked() {
+                let Some(key) = self.key_of(id) else { continue };
+                let Some(i) = self.wins.index(&key) else { continue };
+                let Some(o) = self.os.get(&key) else { continue };
+                let Some(act) = kit::act_of(&req) else { continue };
+                let target = o.sent.as_ref().and_then(|(t, _)| kit::target(t, req.target_node.0));
+                let Some(node) = target else { continue };
+                let r = self.wins.with(i, |u| u.access_do(&node, act));
+                self.after(el, &key, r, true);
+                if self.error.is_some() || self.wins.ended {
+                    return;
+                }
+            }
             // All the files of one drop have been told of: the drop's block runs once, with them all.
             let keys: Vec<String> = self.wins.list.iter().map(|w| w.key.clone()).collect();
             let mut soon = false;
@@ -1156,6 +1251,10 @@ mod windowed {
             }
             let Some(key) = self.key_of(id) else { return };
             let Some(i) = self.wins.index(&key) else { return };
+            // Screen readers follow the window's focus and size.
+            if let Some(o) = self.os.get_mut(&key) {
+                o.access.process_event(&o.window, &event);
+            }
             match event {
                 WindowEvent::CloseRequested => {
                     let r = self.wins.close(i);
@@ -1183,6 +1282,14 @@ mod windowed {
 
     fn new_loop() -> Result<EventLoop<()>, String> {
         let mut b = EventLoop::builder();
+        // Windows: sharp on every screen. Each window is drawn at its own screen's scale and told
+        // when it moves to one with another (per-monitor DPI awareness, version 2). winit asks for
+        // it unless told not to; this says so here, where it can be seen.
+        #[cfg(target_os = "windows")]
+        {
+            use winit::platform::windows::EventLoopBuilderExtWindows;
+            b.with_dpi_aware(true);
+        }
         // Lust programs run on a helper thread with a big stack. Windows and
         // Linux allow windows there; macOS programs run on the main thread instead.
         #[cfg(target_os = "windows")]
@@ -1212,6 +1319,7 @@ mod windowed {
             None => new_loop()?,
         };
         tray::wake_with(el.create_proxy());
+        kit::wake_with(el.create_proxy());
         let wins = Wins::new(s, shared, true, step)?;
         let mut app = App { wins, os: std::collections::HashMap::new(), mods: ModifiersState::default(), error: None, tray: tray::Tray::default() };
         let ran = el.run_app_on_demand(&mut app);
@@ -1222,6 +1330,325 @@ mod windowed {
         match app.error {
             Some(e) => Err(e),
             None => Ok(()),
+        }
+    }
+
+    /// Screen readers, through AccessKit: each window's tree goes to UI Automation on Windows and
+    /// AT-SPI on Linux, and what a screen reader asks for comes back here. AccessKit may ask from
+    /// another thread, so its requests wait in a queue and wake the event loop.
+    mod kit {
+        use super::super::*;
+        use super::Os;
+        use winit::event_loop::ActiveEventLoop;
+        use winit::window::Window;
+        use accesskit::{Action, ActionData, ActionRequest, NodeId, TreeId, TreeInfo, TreeUpdate};
+        use std::collections::HashSet;
+        use std::sync::Mutex;
+        use winit::window::WindowId;
+
+        static ACTIVE: Mutex<Option<HashSet<WindowId>>> = Mutex::new(None);
+        static WANTED: Mutex<bool> = Mutex::new(false);
+        static ASKED: Mutex<Vec<(WindowId, ActionRequest)>> = Mutex::new(Vec::new());
+        static PROXY: Mutex<Option<winit::event_loop::EventLoopProxy<()>>> = Mutex::new(None);
+
+        pub fn wake_with(p: winit::event_loop::EventLoopProxy<()>) {
+            if let Ok(mut q) = PROXY.lock() {
+                *q = Some(p);
+            }
+        }
+
+        fn wake() {
+            if let Some(p) = PROXY.lock().ok().and_then(|p| p.clone()) {
+                let _ = p.send_event(());
+            }
+        }
+
+        fn active(id: WindowId, on: bool) {
+            if let Ok(mut a) = ACTIVE.lock() {
+                let set = a.get_or_insert_with(HashSet::new);
+                if on {
+                    set.insert(id);
+                } else {
+                    set.remove(&id);
+                }
+            }
+        }
+
+        fn is_active(id: WindowId) -> bool {
+            ACTIVE.lock().ok().is_some_and(|a| a.as_ref().is_some_and(|s| s.contains(&id)))
+        }
+
+        struct Activate(WindowId);
+        impl accesskit::ActivationHandler for Activate {
+            // The tree is sent from the event loop, once it has drawn the window.
+            fn request_initial_tree(&mut self) -> Option<TreeUpdate> {
+                active(self.0, true);
+                if let Ok(mut w) = WANTED.lock() {
+                    *w = true;
+                }
+                wake();
+                None
+            }
+        }
+
+        struct Asked(WindowId);
+        impl accesskit::ActionHandler for Asked {
+            fn do_action(&mut self, request: ActionRequest) {
+                if let Ok(mut q) = ASKED.lock() {
+                    q.push((self.0, request));
+                }
+                wake();
+            }
+        }
+
+        struct Deactivate(WindowId);
+        impl accesskit::DeactivationHandler for Deactivate {
+            fn deactivate_accessibility(&mut self) {
+                active(self.0, false);
+            }
+        }
+
+        /// Links a window to screen readers. It must be hidden still.
+        pub fn adapter(el: &ActiveEventLoop, window: &Window) -> accesskit_winit::Adapter {
+            let id = window.id();
+            accesskit_winit::Adapter::with_direct_handlers(el, window, Activate(id), Asked(id), Deactivate(id))
+        }
+
+        pub fn take_wanted() -> bool {
+            WANTED.lock().map(|mut w| std::mem::take(&mut *w)).unwrap_or(false)
+        }
+
+        pub fn take_asked() -> Vec<(WindowId, ActionRequest)> {
+            ASKED.lock().map(|mut q| std::mem::take(&mut *q)).unwrap_or_default()
+        }
+
+        /// What was asked, as Lust does it.
+        pub fn act_of(r: &ActionRequest) -> Option<Act> {
+            Some(match r.action {
+                Action::Click => Act::Click,
+                Action::Focus => Act::Focus,
+                Action::ScrollIntoView => Act::Show,
+                Action::Expand => Act::Open(true),
+                Action::Collapse => Act::Open(false),
+                Action::Increment => Act::Step(true),
+                Action::Decrement => Act::Step(false),
+                Action::SetValue => match &r.data {
+                    Some(ActionData::Value(v)) => Act::Set(v.to_string()),
+                    Some(ActionData::NumericValue(x)) => Act::Set(num_text(*x)),
+                    _ => return None,
+                },
+                Action::ReplaceSelectedText => match &r.data {
+                    Some(ActionData::Value(v)) => Act::Set(v.to_string()),
+                    _ => return None,
+                },
+                _ => return None,
+            })
+        }
+
+        /// The piece a request is for: a text input's line is its input.
+        pub fn target(tree: &[ANode], id: u64) -> Option<ANode> {
+            if let Some(a) = tree.iter().find(|a| a.id == id) {
+                return Some(a.clone());
+            }
+            tree.iter().find(|a| (0..a.lines.len()).any(|i| line_id(a.id, i) == id)).cloned()
+        }
+
+        fn line_id(input: u64, i: usize) -> u64 {
+            child_id(input, (1u64 << 50) + i as u64)
+        }
+
+        fn role_of(r: Role) -> accesskit::Role {
+            use accesskit::Role as K;
+            match r {
+                Role::Window => K::Window,
+                Role::Label => K::Label,
+                Role::Button => K::Button,
+                Role::CheckBox => K::CheckBox,
+                Role::Switch => K::Switch,
+                Role::RadioGroup => K::RadioGroup,
+                Role::RadioButton => K::RadioButton,
+                Role::Slider => K::Slider,
+                Role::SpinButton => K::SpinButton,
+                Role::TextInput => K::TextInput,
+                Role::TextBox => K::MultilineTextInput,
+                Role::ComboBox => K::ComboBox,
+                Role::MenuButton => K::Button,
+                Role::Menu => K::Menu,
+                Role::MenuItem => K::MenuItem,
+                Role::ListBox => K::ListBox,
+                Role::Choice => K::ListBoxOption,
+                Role::Dialog => K::Dialog,
+                Role::TabList => K::TabList,
+                Role::Tab => K::Tab,
+                Role::Table => K::Table,
+                Role::ColumnHeader => K::ColumnHeader,
+                Role::Row => K::Row,
+                Role::Cell => K::Cell,
+                Role::List => K::List,
+                Role::ListItem => K::ListItem,
+                Role::DateInput => K::DateInput,
+                Role::ColourWell => K::ColorWell,
+                Role::Calendar | Role::ColourChooser => K::Group,
+                Role::ProgressBar => K::ProgressIndicator,
+                Role::Status => K::Status,
+                Role::Image => K::Image,
+                Role::Tooltip => K::Tooltip,
+                Role::Canvas => K::Canvas,
+            }
+        }
+
+        /// The tree as AccessKit takes it: every node, with the window's scale on the window, so
+        /// the pieces' places stay in the view's units.
+        fn update(tree: &[ANode], focus: u64, scale: f32) -> TreeUpdate {
+            use accesskit::{Affine, HasPopup, Invalid, Live, Node, Rect, SortDirection, TextPosition, TextSelection, Toggled};
+            let mut nodes = Vec::with_capacity(tree.len() + 8);
+            for a in tree {
+                let mut k = Node::new(role_of(a.role));
+                let [x, y, w, h] = a.bounds;
+                k.set_bounds(Rect::new(x as f64, y as f64, (x + w) as f64, (y + h) as f64));
+                if a.id == ROOT_ID {
+                    k.set_transform(Affine::scale(scale as f64));
+                }
+                if !a.name.is_empty() {
+                    k.set_label(a.name.clone());
+                }
+                let text = matches!(a.role, Role::TextInput | Role::TextBox | Role::SpinButton | Role::DateInput);
+                if let Some(v) = &a.value {
+                    k.set_value(v.clone());
+                }
+                if !a.placeholder.is_empty() {
+                    k.set_placeholder(a.placeholder.clone());
+                }
+                if let Some([v, lo, hi, step]) = a.num {
+                    k.set_numeric_value(v);
+                    if lo.is_finite() && lo.abs() < 1e300 {
+                        k.set_min_numeric_value(lo);
+                    }
+                    if hi.is_finite() && hi.abs() < 1e300 {
+                        k.set_max_numeric_value(hi);
+                    }
+                    if step > 0.0 {
+                        k.set_numeric_value_step(step);
+                    }
+                }
+                for s in &a.states {
+                    match *s {
+                        "disabled" => k.set_disabled(),
+                        "checked" => k.set_toggled(Toggled::True),
+                        "not checked" => k.set_toggled(Toggled::False),
+                        "selected" => k.set_selected(true),
+                        "expanded" => k.set_expanded(true),
+                        "collapsed" => k.set_expanded(false),
+                        "modal" => k.set_modal(),
+                        "sorted up" => k.set_sort_direction(SortDirection::Ascending),
+                        "sorted down" => k.set_sort_direction(SortDirection::Descending),
+                        "invalid" => k.set_invalid(Invalid::True),
+                        _ => {}
+                    }
+                }
+                if a.role == Role::MenuButton {
+                    k.set_has_popup(HasPopup::Menu);
+                }
+                if a.role == Role::ComboBox {
+                    k.set_has_popup(HasPopup::Listbox);
+                }
+                if a.live {
+                    k.set_live(Live::Polite);
+                }
+                if let Some((count, _, _)) = a.rows {
+                    k.set_row_count(count);
+                }
+                if let Some(c) = a.columns {
+                    k.set_column_count(c);
+                }
+                if let Some(r) = a.row_index {
+                    k.set_row_index(r - 1);
+                    if a.role == Role::ListItem {
+                        k.set_position_in_set(r);
+                    }
+                }
+                let acts = [
+                    (DO_CLICK, Action::Click),
+                    (DO_FOCUS, Action::Focus),
+                    (DO_SET, Action::SetValue),
+                    (DO_STEP, Action::Increment),
+                    (DO_STEP, Action::Decrement),
+                    (DO_SHOW, Action::ScrollIntoView),
+                    (DO_OPEN, Action::Expand),
+                    (DO_OPEN, Action::Collapse),
+                ];
+                for (bit, act) in acts {
+                    if a.actions & bit != 0 {
+                        k.add_action(act);
+                    }
+                }
+                let mut children: Vec<NodeId> = a.children.iter().map(|&c| NodeId(tree[c].id)).collect();
+                // A text input's text is in lines (text runs), each letter's length in bytes, so
+                // the caret and selection can be told by letter.
+                if text {
+                    let v = a.value.clone().unwrap_or_default();
+                    let mut runs = Vec::new();
+                    for (i, &(s, e)) in a.lines.iter().enumerate() {
+                        let (s, e) = (s.min(v.len()), e.min(v.len()).max(s.min(v.len())));
+                        let line = &v[s..e];
+                        let mut r = Node::new(accesskit::Role::TextRun);
+                        r.set_value(line.to_string());
+                        r.set_character_lengths(line.chars().map(|c| c.len_utf8() as u8).collect::<Vec<u8>>());
+                        r.set_bounds(Rect::new(x as f64, y as f64, (x + w) as f64, (y + h) as f64));
+                        let id = line_id(a.id, i);
+                        runs.push((id, s, e, line.chars().count()));
+                        children.push(NodeId(id));
+                        nodes.push((NodeId(id), r));
+                    }
+                    // A place in the text, as a line and the letter in it.
+                    let at = |p: usize| {
+                        let i = runs.iter().rposition(|&(_, s, _, _)| s <= p).unwrap_or(0);
+                        let (id, s, e, n) = runs.get(i).copied().unwrap_or((line_id(a.id, 0), 0, 0, 0));
+                        let p = p.clamp(s, e);
+                        let idx = if p >= e { n } else { v[s..p].chars().count() };
+                        TextPosition { node: NodeId(id), character_index: idx }
+                    };
+                    if let (Some((c, anchor)), false) = (a.caret, runs.is_empty()) {
+                        k.set_text_selection(TextSelection { anchor: at(anchor), focus: at(c) });
+                    }
+                }
+                k.set_children(children);
+                nodes.push((NodeId(a.id), k));
+            }
+            let mut info = TreeInfo::new(NodeId(ROOT_ID));
+            info.toolkit_name = Some("Lust".into());
+            TreeUpdate { nodes, tree: Some(info), tree_id: TreeId::ROOT, focus: NodeId(focus) }
+        }
+
+        /// Sends a window's tree to screen readers, when one is listening and it changed: only
+        /// the nodes that are new or changed (a node whose pieces came or went changes too), or
+        /// the whole tree the first time.
+        pub fn send(o: &mut Os, ui: &Ui, scale: f32) {
+            if !is_active(o.window.id()) {
+                o.sent = None;
+                o.kit_sent.clear();
+                return;
+            }
+            let now = ui.access_tree();
+            if o.sent.as_ref() == Some(&now) {
+                return;
+            }
+            let full = update(&now.0, now.1, scale);
+            let was = &mut o.kit_sent;
+            o.access.update_if_active(|| {
+                let fresh = was.is_empty();
+                let mut changed = Vec::new();
+                let mut kept = HashMap::with_capacity(full.nodes.len());
+                for (id, node) in full.nodes {
+                    if fresh || was.get(&id.0) != Some(&node) {
+                        changed.push((id, node.clone()));
+                    }
+                    kept.insert(id.0, node);
+                }
+                *was = kept;
+                TreeUpdate { nodes: changed, tree: full.tree, tree_id: full.tree_id, focus: full.focus }
+            });
+            o.sent = Some(now);
         }
     }
 

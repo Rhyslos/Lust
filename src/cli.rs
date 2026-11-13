@@ -230,7 +230,7 @@ fn cache_dir() -> std::path::PathBuf {
 /// The tray icon and notifications, for a library with views: per system, as in CARGO_TOML.
 const UI_TARGET_DEPS: &str = "\n[target.'cfg(windows)'.dependencies]\ntray-icon = { version = \"0.25\", default-features = false }\ntauri-winrt-notification = \"0.8\"\n\n[target.'cfg(target_os = \"linux\")'.dependencies]\nzbus = { version = \"5\", default-features = false, features = [\"async-io\", \"blocking-api\"] }\n";
 
-const CARGO_TOML: &str = "[package]\nname = \"lust_program\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nrusqlite = { version = \"0.40\", features = [\"bundled\"] }\ntiny_http = \"0.12\"\nureq = \"3\"\nregex = \"1\"\nwinit = \"0.30\"\nsoftbuffer = \"0.4\"\nab_glyph = \"0.2\"\nrfd = \"0.16\"\narboard = { version = \"3\", default-features = false }\npng = \"0.17\"\njpeg-decoder = { version = \"0.3\", default-features = false }\nresvg = { version = \"0.49\", default-features = false }\n\n[target.'cfg(windows)'.dependencies]\ntray-icon = { version = \"0.25\", default-features = false }\ntauri-winrt-notification = \"0.8\"\n\n[target.'cfg(target_os = \"linux\")'.dependencies]\nzbus = { version = \"5\", default-features = false, features = [\"async-io\", \"blocking-api\"] }\n\n[profile.release]\noverflow-checks = true\n\n[workspace]\n";
+const CARGO_TOML: &str = "[package]\nname = \"lust_program\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nrusqlite = { version = \"0.40\", features = [\"bundled\"] }\ntiny_http = \"0.12\"\nureq = \"3\"\nregex = \"1\"\nwinit = \"0.30\"\naccesskit = \"0.25\"\naccesskit_winit = \"0.34\"\nsoftbuffer = \"0.4\"\nab_glyph = \"0.2\"\nrfd = \"0.16\"\narboard = { version = \"3\", default-features = false }\npng = \"0.17\"\njpeg-decoder = { version = \"0.3\", default-features = false }\nresvg = { version = \"0.49\", default-features = false }\n\n[target.'cfg(windows)'.dependencies]\ntray-icon = { version = \"0.25\", default-features = false }\ntauri-winrt-notification = \"0.8\"\n\n[target.'cfg(target_os = \"linux\")'.dependencies]\nzbus = { version = \"5\", default-features = false, features = [\"async-io\", \"blocking-api\"] }\n\n[profile.release]\noverflow-checks = true\n\n[workspace]\n";
 
 /// Builds a program that needs outside libraries with Cargo, in a folder of Lust's own. The
 /// libraries are shared, so they're only compiled the first time on each computer.
@@ -556,7 +556,7 @@ pub fn build_library_in(path: &Path, rust: &str, dir: &Path) -> Result<(), Strin
         deps.push_str("rfd = \"0.16\"\n");
     }
     if has("ui") {
-        deps.push_str("winit = \"0.30\"\nsoftbuffer = \"0.4\"\nab_glyph = \"0.2\"\narboard = { version = \"3\", default-features = false }\npng = \"0.17\"\njpeg-decoder = { version = \"0.3\", default-features = false }\nresvg = { version = \"0.49\", default-features = false }\n");
+        deps.push_str("winit = \"0.30\"\naccesskit = \"0.25\"\naccesskit_winit = \"0.34\"\nsoftbuffer = \"0.4\"\nab_glyph = \"0.2\"\narboard = { version = \"3\", default-features = false }\npng = \"0.17\"\njpeg-decoder = { version = \"0.3\", default-features = false }\nresvg = { version = \"0.49\", default-features = false }\n");
         target_deps.push_str(UI_TARGET_DEPS);
         let fonts = dir.join("assets").join("fonts");
         std::fs::create_dir_all(&fonts).map_err(|e| format!("couldn't make {}: {e}", fonts.display()))?;

@@ -1,0 +1,143 @@
+window "Big"
+  button "Fill"
+  table "Items", 0 rows, 2 columns
+    row
+      column header "N"
+      column header "Name"
+  list, 0 rows
+window "Big"
+  button "Fill"
+  table "Items", 100000 rows, showing 1–5, 2 columns
+    row
+      column header "N"
+      column header "Name"
+    row 1
+      cell "0"
+      cell "Item 0"
+    row 2
+      cell "1"
+      cell "Item 1"
+    row 3
+      cell "2"
+      cell "Item 2"
+    row 4
+      cell "3"
+      cell "Item 3"
+    row 5
+      cell "4"
+      cell "Item 4"
+  list, 100000 rows, showing 1–6
+    list item "Item 0" 1
+      text "Item 0"
+    list item "Item 1" 2
+      text "Item 1"
+    list item "Item 2" 3
+      text "Item 2"
+    list item "Item 3" 4
+      text "Item 3"
+    list item "Item 4" 5
+      text "Item 4"
+    list item "Item 5" 6
+      text "Item 5"
+window "Big"
+  button "Fill"
+  table "Items", 100000 rows, showing 50001–50005, 2 columns
+    row
+      column header "N"
+      column header "Name"
+    row 50001
+      cell "50000"
+      cell "Item 50000"
+    row 50002
+      cell "50001"
+      cell "Item 50001"
+    row 50003
+      cell "50002"
+      cell "Item 50002"
+    row 50004
+      cell "50003"
+      cell "Item 50003"
+    row 50005
+      cell "50004"
+      cell "Item 50004"
+  list, 100000 rows, showing 99995–100000
+    list item "Item 99994" 99995
+      text "Item 99994"
+    list item "Item 99995" 99996
+      text "Item 99995"
+    list item "Item 99996" 99997
+      text "Item 99996"
+    list item "Item 99997" 99998
+      text "Item 99997"
+    list item "Item 99998" 99999
+      text "Item 99998"
+    list item "Item 99999" 100000
+      text "Item 99999"
+window "Big"
+  button "Fill"
+  table "Items", 100000 rows, showing 50001–50005, 2 columns
+    row
+      column header "N"
+      column header "Name"
+    row 50001
+      cell "50000"
+      cell "Item 50000"
+    row 50002
+      cell "50001"
+      cell "Item 50001"
+    row 50003 (selected)
+      cell "50002"
+      cell "Item 50002"
+    row 50004
+      cell "50003"
+      cell "Item 50003"
+    row 50005
+      cell "50004"
+      cell "Item 50004"
+  list, 100000 rows, showing 99995–100000 (focused)
+    list item "Item 99994" 99995
+      text "Item 99994"
+    list item "Item 99995" 99996
+      text "Item 99995"
+    list item "Item 99996" 99997
+      text "Item 99996"
+    list item "Item 99997" 99998
+      text "Item 99997"
+    list item "Item 99998" 99999
+      text "Item 99998"
+    list item "Item 99999" 100000 (selected)
+      text "Item 99999"
+window "Big"
+  button "Fill"
+  table "Items", 100000 rows, showing 1–5, 2 columns
+    row
+      column header "N" (sorted down)
+      column header "Name"
+    row 1
+      cell "99999"
+      cell "Item 99999"
+    row 2
+      cell "99998"
+      cell "Item 99998"
+    row 3
+      cell "99997"
+      cell "Item 99997"
+    row 4
+      cell "99996"
+      cell "Item 99996"
+    row 5
+      cell "99995"
+      cell "Item 99995"
+  list, 100000 rows, showing 99995–100000 (focused)
+    list item "Item 99994" 99995
+      text "Item 99994"
+    list item "Item 99995" 99996
+      text "Item 99995"
+    list item "Item 99996" 99997
+      text "Item 99996"
+    list item "Item 99997" 99998
+      text "Item 99997"
+    list item "Item 99998" 99999
+      text "Item 99998"
+    list item "Item 99999" 100000 (selected)
+      text "Item 99999"

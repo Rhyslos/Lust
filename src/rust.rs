@@ -23,8 +23,8 @@ pub const LOCALTIME_RUNTIME: &str = include_str!("native_localtime.rs");
 pub const TEXT_RUNTIME: &str = include_str!("native_text.rs");
 /// Views: the pieces, then the radio buttons, switches, number boxes and icons, then tables, then
 /// the mouse (right-click menus, dragging rows, dropped files, canvases), then date and colour
-/// pickers, then more windows, toasts, the tray and notifications, then the icons' shapes, all in
-/// one module.
+/// pickers, then more windows, toasts, the tray and notifications, then input methods and fonts
+/// for missing letters, then screen readers, then the icons' shapes, all in one module.
 pub const UI_RUNTIME: &str = concat!(
     include_str!("native_ui.rs"),
     "\n",
@@ -37,6 +37,10 @@ pub const UI_RUNTIME: &str = concat!(
     include_str!("native_ui_pickers.rs"),
     "\n",
     include_str!("native_ui_windows.rs"),
+    "\n",
+    include_str!("native_ui_ime.rs"),
+    "\n",
+    include_str!("native_ui_access.rs"),
     "\n",
     include_str!("icons.rs")
 );

@@ -1,0 +1,30 @@
+-- Typing through an input method (IME), as Chinese, Japanese and Korean are typed: the text
+-- being put together shows at the caret without being in the field, keys go to the input method
+-- while it composes, and the finished text is typed in like keys, so the bound field changes.
+assembly App {
+    has {
+        string name = "ab";
+        string notes = "first line";
+        int count = 5;
+        string due = "";
+        colour tint = Colour:hex("#3b82f6");
+        string said = "";
+        string locked = "fixed";
+    }
+
+    view [title "Typing", width 360, height 320] {
+        column [gap 8, pad 16] {
+            input name enter { said = "entered " + name; }
+            textarea notes [height 60];
+            number count [min 0, max 99];
+            datePicker due;
+            colourPicker tint;
+            input locked [disabled true];
+            text said;
+        }
+        key "ctrl+s" { said = "saved"; }
+    }
+}
+
+App:open();
+end

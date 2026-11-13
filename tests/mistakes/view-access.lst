@@ -1,0 +1,22 @@
+-- Mistakes with label, the name a screen reader says for a piece.
+assembly App {
+    has {
+        int count = 0;
+        string name = "";
+        bool helping = false;
+    }
+
+    view [title "Labels", label "Main"] {
+        column [label 5] {
+            button [icon "trash", label] { count = 1; }
+            input name [label true];
+            image "cat.png" [label count];
+            text "ok" [label "fine", lable "typo"];
+            icon "star" [label "Star " + count.text()];
+        }
+        window helping [title "Help", label "Second"] { text "x"; }
+    }
+}
+
+App:open();
+end
