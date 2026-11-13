@@ -34,6 +34,16 @@ mod stdlib;
 mod types;
 mod values;
 mod words;
+/// The built-in icons: a subset of Lucide, drawn by views and checked by name before running.
+#[allow(dead_code)]
+mod icons {
+    include!("icons.rs");
+    /// An icon's shapes, by its name or another name for it.
+    pub fn find(name: &str) -> Option<&'static str> {
+        let name = ICON_ALIASES.iter().find(|(a, _)| *a == name).map(|(_, to)| *to).unwrap_or(name);
+        ICONS.iter().find(|(n, _)| *n == name).map(|(_, d)| *d)
+    }
+}
 
 // The runtime that goes into built programs. lust uses its file functions too, so
 // LustScript run by lust says exactly the same things.
@@ -83,7 +93,9 @@ mod native_dlg {
 #[cfg(feature = "cli")]
 #[allow(dead_code)]
 mod native_ui {
+    use crate::icons::{ICONS, ICON_ALIASES};
     include!("native_ui.rs");
+    include!("native_ui_pieces.rs");
 }
 #[cfg(feature = "cli")]
 mod run;

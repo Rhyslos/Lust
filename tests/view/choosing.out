@@ -1,0 +1,126 @@
+window "Choosing" 420x360
+  column 0,0 420x314
+    radio "Medium" 16,16 84x75
+      radiobtn "Small" 16,16 65x21
+      radiobtn "Medium" 16,43 84x21 (picked)
+      radiobtn "Large" 16,70 67x21
+    radio "Pear" 16,101 221x21
+      radiobtn "Apple" 16,101 68x21
+      radiobtn "Pear" 100,101 59x21 (picked)
+      radiobtn "Plum" 175,101 62x21
+    radio "Pear" 16,132 221x21
+      radiobtn "Apple" 16,132 68x21
+      radiobtn "Pear" 100,132 59x21 (picked)
+      radiobtn "Plum" 175,132 62x21
+    row 16,163 237x20
+      switch "Sound" 16,163 90x20 (on)
+      switch "off" 122,163 36x20
+      checkbox "Locked" 174,164 79x19 (off)
+    text "Medium, Pear, true, false: " 16,193 187x19
+    button "Big" 16,222 51x33
+    button "Lock" 16,265 63x33
+window "Choosing" 420x360
+  column 0,0 420x314
+    radio "Small" 16,16 84x75
+      radiobtn "Small" 16,16 65x21 (picked)
+      radiobtn "Medium" 16,43 84x21
+      radiobtn "Large" 16,70 67x21
+    radio "Apple" 16,101 221x21
+      radiobtn "Apple" 16,101 68x21 (picked)
+      radiobtn "Pear" 100,101 59x21
+      radiobtn "Plum" 175,101 62x21
+    radio "Apple" 16,132 221x21
+      radiobtn "Apple" 16,132 68x21 (picked)
+      radiobtn "Pear" 100,132 59x21
+      radiobtn "Plum" 175,132 62x21
+    row 16,163 237x20
+      switch "Sound" 16,163 90x20 (off)
+      switch "on" 122,163 36x20
+      checkbox "Locked" 174,164 79x19 (off)
+    text "Small, Apple, false, true: sound false" 16,193 259x19
+    button "Big" 16,222 51x33
+    button "Lock" 16,265 63x33
+window "Choosing" 420x360
+  column 0,0 420x314
+    radio "Medium" 16,16 84x75 (focus)
+      radiobtn "Small" 16,16 65x21
+      radiobtn "Medium" 16,43 84x21 (picked)
+      radiobtn "Large" 16,70 67x21
+    radio "Apple" 16,101 221x21
+      radiobtn "Apple" 16,101 68x21 (picked)
+      radiobtn "Pear" 100,101 59x21
+      radiobtn "Plum" 175,101 62x21
+    radio "Apple" 16,132 221x21
+      radiobtn "Apple" 16,132 68x21 (picked)
+      radiobtn "Pear" 100,132 59x21
+      radiobtn "Plum" 175,132 62x21
+    row 16,163 237x20
+      switch "Sound" 16,163 90x20 (off)
+      switch "on" 122,163 36x20
+      checkbox "Locked" 174,164 79x19 (off)
+    text "Medium, Apple, false, true: size Medium" 16,193 285x19
+    button "Big" 16,222 51x33
+    button "Lock" 16,265 63x33
+window "Choosing" 420x360
+  column 0,0 420x314
+    radio "Medium" 16,16 84x75
+      radiobtn "Small" 16,16 65x21
+      radiobtn "Medium" 16,43 84x21 (picked)
+      radiobtn "Large" 16,70 67x21
+    radio "Apple" 16,101 221x21
+      radiobtn "Apple" 16,101 68x21 (picked)
+      radiobtn "Pear" 100,101 59x21
+      radiobtn "Plum" 175,101 62x21
+    radio "Apple" 16,132 221x21
+      radiobtn "Apple" 16,132 68x21 (picked)
+      radiobtn "Pear" 100,132 59x21
+      radiobtn "Plum" 175,132 62x21
+    row 16,163 237x20
+      switch "Sound" 16,163 90x20 (off)
+      switch "off" 122,163 36x20 (focus)
+      checkbox "Locked" 174,164 79x19 (off)
+    text "Medium, Apple, false, false: sound false" 16,193 284x19
+    button "Big" 16,222 51x33
+    button "Lock" 16,265 63x33
+window "Choosing" 420x360
+  column 0,0 420x314
+    radio "Large" 16,16 84x75
+      radiobtn "Small" 16,16 65x21
+      radiobtn "Medium" 16,43 84x21
+      radiobtn "Large" 16,70 67x21 (picked)
+    radio "Plum" 16,101 221x21
+      radiobtn "Apple" 16,101 68x21
+      radiobtn "Pear" 100,101 59x21
+      radiobtn "Plum" 175,101 62x21 (picked)
+    radio "Plum" 16,132 221x21
+      radiobtn "Apple" 16,132 68x21
+      radiobtn "Pear" 100,132 59x21
+      radiobtn "Plum" 175,132 62x21 (picked)
+    row 16,163 237x20
+      switch "Sound" 16,163 90x20 (off)
+      switch "off" 122,163 36x20
+      checkbox "Locked" 174,164 79x19 (off)
+    text "Large, Plum, false, false: sound false" 16,193 261x19
+    button "Big" 16,222 51x33
+    button "Lock" 16,265 63x33
+window "Choosing" 420x360
+  column 0,0 420x314
+    radio "Large" 16,16 84x75
+      radiobtn "Small" 16,16 65x21
+      radiobtn "Medium" 16,43 84x21
+      radiobtn "Large" 16,70 67x21 (picked)
+    radio "Pear" 16,101 221x21
+      radiobtn "Apple" 16,101 68x21
+      radiobtn "Pear" 100,101 59x21 (picked)
+      radiobtn "Plum" 175,101 62x21
+    radio "Pear" 16,132 221x21 (disabled)
+      radiobtn "Apple" 16,132 68x21
+      radiobtn "Pear" 100,132 59x21 (picked)
+      radiobtn "Plum" 175,132 62x21
+    row 16,163 237x20
+      switch "Sound" 16,163 90x20 (off)
+      switch "off" 122,163 36x20
+      checkbox "Locked" 174,164 79x19 (on)
+    text "Large, Pear, false, false: sound false" 16,193 258x19
+    button "Big" 16,222 51x33
+    button "Lock" 16,265 63x33 (focus)

@@ -7,3 +7,4 @@
 /bench/target
 /bench/game_library
 /dist
+*.snap.png

@@ -1,0 +1,30 @@
+dump
+click Small
+click Apple
+click Sound
+flip 2
+dump
+focus radio 1
+key down
+key down
+key down
+key up
+key left
+dump
+focus switch 1
+key space
+key enter
+focus switch 2
+key space
+dump
+click Big
+dump
+click Lock
+click Pear
+key tab
+key tab
+key tab
+key tab
+key tab
+dump
+snapshot choosing.snap.png

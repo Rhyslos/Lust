@@ -1,0 +1,14 @@
+arrow-up arrow-down arrow-left arrow-right arrow-up-right arrow-up-down arrow-left-right
+undo redo corner-down-left move maximize minimize external-link log-in log-out
+chevron-up chevron-down chevron-left chevron-right chevrons-up chevrons-down chevrons-left chevrons-right
+check x plus minus circle-check circle-x circle-plus circle-minus circle-alert circle-help info triangle-alert ban circle square
+trash trash-2 pencil square-pen scissors copy clipboard paperclip
+house menu ellipsis ellipsis-vertical search zoom-in zoom-out settings funnel list-filter list layout-grid panel-left grip-vertical
+user users
+folder folder-open file file-text save download upload cloud archive inbox printer share link
+play pause skip-back skip-forward volume-2 volume-x mic camera image video music
+refresh-cw refresh-ccw rotate-cw rotate-ccw loader eye eye-off lock lock-open key shield shield-check bell star heart thumbs-up bookmark flag tag map-pin globe wifi zap power
+calendar clock timer history
+mail send message-circle phone
+sun moon gift shopping-cart chart-column chart-line activity code terminal database monitor gamepad-2 trophy sword coins rocket palette book bug wrench lightbulb layers box puzzle
+bold italic type align-left

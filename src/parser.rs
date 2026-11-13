@@ -62,7 +62,7 @@ pub const RESERVED: &[&str] = &[
 pub const ELEMENTS: &[&str] = &[
     "column", "row", "stack", "scroll", "space", "text", "button", "input", "checkbox", "slider", "image", "every", "key", "textarea",
     "dropdown", "menu", "item", "divider", "dialog", "grid", "split", "tabs", "tab", "branch", "progress", "canvas", "box", "circle",
-    "line",
+    "line", "radio", "switch", "number", "icon",
 ];
 
 /// The value an input hands over when it changes. Lust code can't write this name.
@@ -983,9 +983,12 @@ impl<'a> Parser<'a> {
         } else {
             Some(self.expr()?)
         };
-        // dropdown size in ["Small", "Large"]; chooses from a list.
-        let choices = if kind == "dropdown" && self.at_word("in") {
+        // dropdown size in ["Small", "Large"]; chooses from a list, and so does a radio. A
+        // checkbox or switch can have words after its field: switch sound "Sound";
+        let choices = if (kind == "dropdown" || kind == "radio") && self.at_word("in") {
             self.next();
+            Some(self.expr()?)
+        } else if (kind == "checkbox" || kind == "switch") && arg.is_some() && !(self.at_sym("[") || self.at_sym("{") || self.at_sym(";")) {
             Some(self.expr()?)
         } else {
             None
@@ -1029,7 +1032,7 @@ impl<'a> Parser<'a> {
         // name = (what was typed); …
         if matches!(
             kind.as_str(),
-            "input" | "textarea" | "checkbox" | "slider" | "dropdown" | "dialog" | "tabs"
+            "input" | "textarea" | "checkbox" | "slider" | "dropdown" | "dialog" | "tabs" | "radio" | "switch" | "number"
         ) {
             if let Some(a) = &arg {
                 let value = self.mk(a.pos, ExprKind::Name(VALUE.into()));

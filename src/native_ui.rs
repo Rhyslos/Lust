@@ -37,13 +37,15 @@ pub struct Node {
     pub value: Option<SV>,
     /// Which action Enter runs in an input.
     pub enter: Option<usize>,
-    /// What a dropdown chooses from.
+    /// What a dropdown or radio chooses from.
     pub options: Vec<String>,
+    /// A number box bound to an int: it takes whole numbers only.
+    pub whole: bool,
 }
 
 impl Node {
     pub fn new(kind: &str) -> Node {
-        Node { kind: kind.to_string(), text: String::new(), style: vec![], children: vec![], action: None, value: None, enter: None, options: vec![] }
+        Node { kind: kind.to_string(), text: String::new(), style: vec![], children: vec![], action: None, value: None, enter: None, options: vec![], whole: false }
     }
 }
 
@@ -601,6 +603,14 @@ struct Look {
     thick: f32,
     /// Moves, and shows up, smoothly instead of jumping.
     animate: bool,
+    /// What a number box is kept between, and how far its arrows move it.
+    min: f64,
+    max: f64,
+    num_step: f64,
+    /// A radio's buttons go across in a row, instead of down.
+    across: bool,
+    /// An icon on a button, by its name.
+    icon: String,
 }
 
 impl Look {
@@ -676,6 +686,11 @@ fn base_look(kind: &str) -> Look {
         rad: 10.0,
         thick: 2.0,
         animate: false,
+        min: f64::NEG_INFINITY,
+        max: f64::INFINITY,
+        num_step: 1.0,
+        across: false,
+        icon: String::new(),
     };
     match kind {
         "input" | "textarea" => {
@@ -685,9 +700,8 @@ fn base_look(kind: &str) -> Look {
             l.border = Some(0xced4da);
             l.radius = 6.0;
         }
-        "checkbox" => {
-            l.width = Size::Fixed(18.0);
-            l.height = Size::Fixed(18.0);
+        // A checkbox's size is set in lay(): a box, or with words a box and its words.
+        "checkbox" | "radiobtn" => {
             l.background = Some(0xffffff);
             l.border = Some(0xadb5bd);
             l.border_w = 1.5;
@@ -697,6 +711,16 @@ fn base_look(kind: &str) -> Look {
             l.width = Size::Fixed(200.0);
             l.height = Size::Fixed(20.0);
         }
+        // A number box looks like an input, with its up and down arrows on the right.
+        "number" => {
+            l.pad = [7.0, 34.0, 7.0, 10.0];
+            l.width = Size::Fixed(120.0);
+            l.background = Some(0xffffff);
+            l.border = Some(0xced4da);
+            l.radius = 6.0;
+        }
+        "radio" => l.gap = 6.0,
+        "icon" => l.size = 20.0,
         // A dropdown looks like an input, with room on the right for its arrow.
         "dropdown" => {
             l.pad = [7.0, 30.0, 7.0, 10.0];
@@ -901,7 +925,13 @@ fn apply(l: &mut Look, kind: &str, style: &[(String, SV)]) {
             "placeholder" => l.placeholder = text_of(v).unwrap_or("").to_string(),
             "from" => l.from = num(v).unwrap_or(0.0),
             "to" => l.to = num(v).unwrap_or(100.0),
-            "step" => l.step = num(v).unwrap_or(1.0).max(0.0),
+            "step" => {
+                l.step = num(v).unwrap_or(1.0).max(0.0);
+                l.num_step = match v {
+                    SV::Num(n) => *n,
+                    _ => 1.0,
+                };
+            }
             "cover" => l.cover = true,
             "disabled" => l.disabled = true,
             "tip" => l.tip = text_of(v).unwrap_or("").to_string(),
@@ -916,6 +946,16 @@ fn apply(l: &mut Look, kind: &str, style: &[(String, SV)]) {
             "radius" => l.rad = num(v).unwrap_or(10.0).max(0.0),
             "thick" => l.thick = num(v).unwrap_or(2.0).max(0.0),
             "animate" => l.animate = true,
+            "min" => l.min = match v {
+                SV::Num(n) => *n,
+                _ => f64::NEG_INFINITY,
+            },
+            "max" => l.max = match v {
+                SV::Num(n) => *n,
+                _ => f64::INFINITY,
+            },
+            "across" => l.across = true,
+            "icon" => l.icon = text_of(v).unwrap_or("").to_string(),
             "font" => {
                 if let Some(f) = text_of(v).and_then(font_file) {
                     l.font = Some(f);
@@ -930,7 +970,7 @@ fn apply(l: &mut Look, kind: &str, style: &[(String, SV)]) {
                         l.color = if light(c) { INK } else { 0xffffff };
                     } else if matches!(kind, "box" | "circle") {
                         l.background = bg_colour(other);
-                    } else if matches!(kind, "checkbox" | "slider" | "input" | "textarea" | "progress" | "tabs") {
+                    } else if matches!(kind, "checkbox" | "slider" | "input" | "textarea" | "progress" | "tabs" | "radio" | "switch" | "number") {
                         l.accent = c;
                     } else {
                         l.color = c;
@@ -1058,8 +1098,11 @@ fn picture(path: &str) -> Option<std::rc::Rc<Picture>> {
     p
 }
 
-/// PNG and JPEG files.
+/// PNG and JPEG files (SVG files are read in native_ui_pieces.rs).
 fn read_picture(path: &str) -> Option<Picture> {
+    if is_svg(path) {
+        return read_svg(path);
+    }
     let bytes = std::fs::read(path).ok()?;
     if bytes.starts_with(b"\x89PNG") {
         let mut dec = png::Decoder::new(std::io::Cursor::new(bytes));
@@ -1126,6 +1169,11 @@ struct Laid {
     /// A scroll's content, top to bottom, and how far it's scrolled down.
     content_h: f32,
     scrolled: f32,
+    /// A number box's number, whether it takes whole numbers only, and whether what's typed in
+    /// it can't be kept (it isn't a number that fits), which gives it a red edge.
+    num: f64,
+    whole: bool,
+    bad: bool,
     x: f32,
     y: f32,
     w: f32,
@@ -1217,6 +1265,9 @@ fn lay(n: &Node) -> Laid {
         value: n.value.clone(),
         content_h: 0.0,
         scrolled: 0.0,
+        num: 0.0,
+        whole: n.whole,
+        bad: false,
         x: 0.0,
         y: 0.0,
         w: 0.0,
@@ -1232,6 +1283,19 @@ fn lay(n: &Node) -> Laid {
     match n.kind.as_str() {
         "tabs" => tabs(n, &mut laid),
         "branch" => branch(n, &mut laid),
+        "radio" => radio_group(n, &mut laid),
+        "number" => {
+            laid.num = match n.value {
+                Some(SV::Num(x)) => x,
+                _ => 0.0,
+            };
+            laid.value = Some(SV::Text(number_text(laid.num, n.whole)));
+        }
+        "checkbox" | "switch" => with_words(&mut laid),
+        // A button with only an icon is square.
+        "button" if laid.text.is_empty() && !laid.look.icon.is_empty() && !n.style.iter().any(|(k, _)| k.starts_with("pad")) => {
+            laid.look.pad = [7.0; 4];
+        }
         "split" => {
             laid.index = KEPT.with(|k| {
                 let mut k = k.borrow_mut();
@@ -1330,12 +1394,15 @@ thread_local! {
 }
 
 fn shows_text(kind: &str) -> bool {
-    matches!(kind, "text" | "button" | "dropdown" | "menu" | "option" | "item" | "tip" | "tabbtn" | "branchhead")
+    matches!(
+        kind,
+        "text" | "button" | "dropdown" | "menu" | "option" | "item" | "tip" | "tabbtn" | "branchhead" | "radiobtn" | "checkbox" | "switch"
+    )
 }
 
 /// How a piece lays out what it holds: across like a row, or down like a column.
 fn across(n: &Laid) -> bool {
-    n.kind == "row" || n.kind == "tabbar" || (n.kind == "split" && !n.look.down)
+    n.kind == "row" || n.kind == "tabbar" || (n.kind == "split" && !n.look.down) || (n.kind == "radio" && n.look.across)
 }
 
 /// A grid's columns and how wide each is, in `iw` of room.
@@ -1437,9 +1504,14 @@ fn measure(n: &Laid, max_w: f32) -> (f32, f32) {
     let gaps = l.gap * (n.children.len().saturating_sub(1)) as f32;
     let (mut w, mut h) = match if across(n) { "row" } else { n.kind.as_str() } {
         k if shows_text(k) => {
-            let lines = wrap_lines(&n.text, l.size, l.face(), inner, l.wrap);
-            let (_, lh) = line_metrics(l.size, l.face());
-            let mut w = lines.iter().map(|s| text_width(s, l.size, l.face())).fold(0.0, f32::max);
+            let room = inner - icon_room(n);
+            let lines = wrap_lines(&n.text, l.size, l.face(), room, l.wrap);
+            let (_, mut lh) = line_metrics(l.size, l.face());
+            let mut w = lines.iter().map(|s| text_width(s, l.size, l.face())).fold(0.0, f32::max) + icon_room(n);
+            // An icon on a button: as tall as the words at least.
+            if !l.icon.is_empty() {
+                lh = lh.max(button_icon_size(l));
+            }
             // A dropdown is as wide as its widest choice, so it doesn't change size as it changes.
             if n.kind == "dropdown" {
                 for o in &n.items {
@@ -1471,7 +1543,8 @@ fn measure(n: &Laid, max_w: f32) -> (f32, f32) {
             };
             (w.max(0.0), h.max(0.0))
         }
-        "input" => (0.0, line_metrics(l.size, l.face()).1),
+        "input" | "number" => (0.0, line_metrics(l.size, l.face()).1),
+        "icon" => (l.size, l.size),
         // A text box is four lines tall unless it's given a height; more lines scroll.
         "textarea" => (0.0, line_metrics(l.size, l.face()).1 * 4.0),
         "row" => {
@@ -1567,7 +1640,7 @@ fn place(n: &mut Laid, x: f32, y: f32, w: f32, h: f32) {
     let (ix, iy) = (x + l.pad[3], y + l.pad[0]);
     let (iw, ih) = ((w - l.pad[1] - l.pad[3]).max(0.0), (h - l.pad[0] - l.pad[2]).max(0.0));
     if shows_text(&n.kind) {
-        n.lines = wrap_lines(&n.text, l.size, l.face(), iw, l.wrap);
+        n.lines = wrap_lines(&n.text, l.size, l.face(), iw - icon_room(n), l.wrap);
         return;
     }
     if n.kind == "textarea" {
@@ -2086,6 +2159,8 @@ struct PaintState {
     fades: Option<HashMap<Vec<usize>, f32>>,
     /// The button being held down.
     pressed: Option<Vec<usize>>,
+    /// Switches part way through sliding their knob (in a window), from 0 (off) to 1 (on).
+    knobs: HashMap<Vec<usize>, f32>,
 }
 
 const RING: f32 = 3.0;
@@ -2238,20 +2313,23 @@ fn paint_textarea(c: &mut Canvas, n: &Laid, focused: bool, st: &PaintState) {
 
 fn paint_checkbox(c: &mut Canvas, n: &Laid, l: &Look, ring: bool) {
     let on = matches!(n.value, Some(SV::Truth(true)));
+    // With words, the box is on their left; without, it's the whole piece.
+    let (bx, by, bw, bh) = if n.text.is_empty() { (n.x, n.y, n.w, n.h) } else { (n.x, n.y + ((n.h - 18.0) / 2.0).round(), 18.0, 18.0) };
     if ring {
-        ring_around(c, n, l.accent);
+        let r = l.radius.min(bw.min(bh) / 2.0) + RING;
+        c.shape(bx - RING, by - RING, bw + 2.0 * RING, bh + 2.0 * RING, r, Some(RING), mix(l.accent, nt(0xffffff), 0.65), 1.0);
     }
     if on {
-        c.rect(n.x, n.y, n.w, n.h, l.radius, l.accent, 1.0);
-        let (x, y, w, h) = (n.x, n.y, n.w, n.h);
+        c.rect(bx, by, bw, bh, l.radius, l.accent, 1.0);
+        let (x, y, w, h) = (bx, by, bw, bh);
         c.line(x + w * 0.27, y + h * 0.53, x + w * 0.44, y + h * 0.69, 2.0, 0xffffff);
         c.line(x + w * 0.44, y + h * 0.69, x + w * 0.74, y + h * 0.33, 2.0, 0xffffff);
     } else {
         if let Some(bg) = l.background {
-            c.rect(n.x, n.y, n.w, n.h, l.radius, bg, 1.0);
+            c.rect(bx, by, bw, bh, l.radius, bg, 1.0);
         }
         if let Some(b) = l.border {
-            c.shape(n.x, n.y, n.w, n.h, l.radius, Some(l.border_w), b, 1.0);
+            c.shape(bx, by, bw, bh, l.radius, Some(l.border_w), b, 1.0);
         }
     }
 }
@@ -2293,7 +2371,13 @@ fn paint_image(c: &mut Canvas, n: &Laid, l: &Look) {
     // Only the part inside the box shows, with its corners rounded.
     let (x0, y0, x1, y1) = (dx.max(bx) * s, dy.max(by) * s, (dx + dw).min(bx + bw) * s, (dy + dh).min(by + bh) * s);
     let r = (l.radius * s).min((x1 - x0) / 2.0).min((y1 - y0) / 2.0).max(0.0);
-    let per = 1.0 / (fit * s);
+    // An SVG picture is drawn again at the size it shows, so it's sharp at any size.
+    let p = match is_svg(&n.text) {
+        true => svg_at(&n.text, (dw * s).round() as u32, (dh * s).round() as u32).unwrap_or(p),
+        false => p,
+    };
+    let (pw, ph) = (p.w as f32, p.h as f32);
+    let (per_x, per_y) = (pw / (dw * s).max(1e-6), ph / (dh * s).max(1e-6));
     let [bx0, by0, bx1, by1] = c.bounds();
     for py in (y0.floor() as i64).max(by0)..(y1.ceil() as i64).min(by1) {
         for px in (x0.floor() as i64).max(bx0)..(x1.ceil() as i64).min(bx1) {
@@ -2303,8 +2387,8 @@ fn paint_image(c: &mut Canvas, n: &Laid, l: &Look) {
                 continue;
             }
             // Where this pixel falls in the picture, blended from the four nearest of its pixels.
-            let sx = ((fx - dx * s) * per - 0.5).clamp(0.0, pw - 1.0);
-            let sy = ((fy - dy * s) * per - 0.5).clamp(0.0, ph - 1.0);
+            let sx = ((fx - dx * s) * per_x - 0.5).clamp(0.0, pw - 1.0);
+            let sy = ((fy - dy * s) * per_y - 0.5).clamp(0.0, ph - 1.0);
             let (ix, iy) = (sx.floor() as usize, sy.floor() as usize);
             let (ix2, iy2) = ((ix + 1).min(p.w - 1), (iy + 1).min(p.h - 1));
             let (tx, ty) = (sx - ix as f32, sy - iy as f32);
@@ -2379,6 +2463,10 @@ fn paint(c: &mut Canvas, n: &Laid, st: &PaintState, path: &mut Vec<usize>) {
     match n.kind.as_str() {
         "checkbox" => paint_checkbox(c, n, l, focused && st.ring),
         "slider" => paint_slider(c, n, l, focused && st.ring),
+        "switch" => paint_switch(c, n, l, focused && st.ring, st.knobs.get(path.as_slice()).copied()),
+        "radiobtn" => paint_radio_button(c, n, l),
+        "radio" if focused && st.ring => radio_ring(c, n),
+        "icon" => paint_icon(c, &n.text, n.x + l.pad[3], n.y + l.pad[0], l.size, l.color),
         _ => {
             if focused && st.ring && matches!(n.kind.as_str(), "button" | "dropdown" | "menu") {
                 ring_around(c, n, 0x1c7ed6);
@@ -2393,6 +2481,9 @@ fn paint(c: &mut Canvas, n: &Laid, st: &PaintState, path: &mut Vec<usize>) {
     }
     if n.kind == "input" {
         paint_input(c, n, focused, st);
+    }
+    if n.kind == "number" {
+        paint_number(c, n, l, focused, st);
     }
     if n.kind == "textarea" {
         paint_textarea(c, n, focused, st);
@@ -2455,9 +2546,23 @@ fn paint(c: &mut Canvas, n: &Laid, st: &PaintState, path: &mut Vec<usize>) {
         let inner_w = n.w - l.pad[1] - l.pad[3];
         let block = lh * n.lines.len() as f32;
         let top = n.y + l.pad[0] + ((n.h - l.pad[0] - l.pad[2] - block) / 2.0).max(0.0);
+        // An icon on a button goes before its words, and the two are placed together.
+        let ir = icon_room(n);
+        if ir > 0.0 {
+            let tw = n.lines.iter().map(|s| text_width(s, l.size, l.face())).fold(0.0, f32::max);
+            let size = button_icon_size(l);
+            let ix = n.x + l.pad[3] + offset(l.halign, inner_w - tw - ir);
+            paint_icon(c, &l.icon, ix, n.y + (n.h - size) / 2.0, size, l.color);
+        }
         for (i, line) in n.lines.iter().enumerate() {
             let tw = text_width(line, l.size, l.face());
-            let tx = n.x + l.pad[3] + offset(l.halign, inner_w - tw);
+            // With an icon, the lines start together just after it.
+            let tx = if ir > 0.0 {
+                let widest = n.lines.iter().map(|s| text_width(s, l.size, l.face())).fold(0.0, f32::max);
+                n.x + l.pad[3] + offset(l.halign, inner_w - widest - ir) + ir
+            } else {
+                n.x + l.pad[3] + offset(l.halign, inner_w - tw)
+            };
             let ty = top + lh * i as f32;
             c.text(line, tx, ty, l.size, l.face(), l.color);
             if l.strike {
@@ -2515,9 +2620,13 @@ fn node_at<'a>(n: &'a Laid, path: &[usize]) -> Option<&'a Laid> {
 
 /// Everything that can have focus, in the order Tab goes through them.
 fn focusable(n: &Laid, path: &mut Vec<usize>, out: &mut Vec<Vec<usize>>) {
-    let can = matches!(n.kind.as_str(), "button" | "input" | "textarea" | "checkbox" | "slider" | "dropdown");
+    let can = matches!(n.kind.as_str(), "button" | "input" | "textarea" | "checkbox" | "slider" | "dropdown" | "radio" | "switch" | "number");
     if (n.action.is_some() && can) || (matches!(n.kind.as_str(), "menu" | "tabbtn" | "branchhead") && !n.look.disabled) {
         out.push(path.clone());
+    }
+    // A radio group is reached as one; its buttons aren't reached on their own.
+    if n.kind == "radio" {
+        return;
     }
     for (i, c) in n.children.iter().enumerate() {
         path.push(i);
@@ -2878,6 +2987,13 @@ struct Ui<'a, 'b> {
     tween_base: f64,
     tween_steps: u64,
     tween_last: f64,
+    /// What's typed in the focused number box, when it isn't the number shown: "007", "1.50", or
+    /// text that isn't a number that fits. It goes when focus leaves.
+    draft: Option<(Vec<usize>, String)>,
+    /// Switches flipped from the mouse or keyboard, and when, so their knobs slide (in a window).
+    flips: HashMap<Vec<usize>, f64>,
+    /// The mouse wheel turned over a number box, kept until it adds up to a step.
+    wheel_acc: (Option<Vec<usize>>, f32),
 }
 
 /// The program's tweens, moved on by the window's clock: given seconds, it gives back whether
@@ -3015,6 +3131,9 @@ impl<'a, 'b> Ui<'a, 'b> {
             tween_base: 0.0,
             tween_steps: 0,
             tween_last: 0.0,
+            draft: None,
+            flips: HashMap::new(),
+            wheel_acc: (None, 0.0),
         };
         ui.relayout();
         ui.set_timers();
@@ -3137,6 +3256,16 @@ impl<'a, 'b> Ui<'a, 'b> {
     fn relayout(&mut self) {
         let (w, h) = (self.w, self.h);
         let (mut tree, dialogs) = lay_out(&self.node, w, h);
+        // The focused number box shows what's typed in it, red-edged if it can't be kept.
+        if let Some((p, t)) = self.draft.clone() {
+            match node_at_mut(&mut tree, &p).filter(|n| n.kind == "number") {
+                Some(n) => {
+                    n.bad = number_parse(&t, &n.look, n.whole).is_none();
+                    n.value = Some(SV::Text(t));
+                }
+                None => self.draft = None,
+            }
+        }
         // Where pieces told to animate are, before scrolling, so scrolling doesn't make them glide.
         let mut found = Vec::new();
         animated(&tree, "", &mut vec![], &mut found);
@@ -3243,7 +3372,7 @@ impl<'a, 'b> Ui<'a, 'b> {
     /// Whether something is still gliding or fading in, so the window should draw again soon.
     fn moving(&self) -> bool {
         let now = self.now();
-        self.motions.values().any(|m| now - m.start < MOVE_SECS)
+        self.motions.values().any(|m| now - m.start < MOVE_SECS) || self.flips.values().any(|&f| now - f < SWITCH_SECS)
     }
 
     /// Scrolls the scroll under the mouse, or the one around it if that one can't go further.
@@ -3335,6 +3464,10 @@ impl<'a, 'b> Ui<'a, 'b> {
     }
 
     fn set_focus(&mut self, path: Option<Vec<usize>>, ring: bool) {
+        // Leaving a number box shows its field's number again, whatever was typed.
+        if path != self.st.focus && self.draft.take().is_some() {
+            self.relayout();
+        }
         if path != self.st.focus {
             self.st.scroll_x = 0.0;
             let end = path.as_ref().and_then(|p| node_at(&self.tree, p)).map(|n| value_text(n).len()).unwrap_or(0);
@@ -3362,6 +3495,15 @@ impl<'a, 'b> Ui<'a, 'b> {
             st.fades = Some(self.fades.clone());
         }
         st.pressed = self.pressed.clone();
+        let now = self.now();
+        for (p, &start) in &self.flips {
+            let t = ((now - start) / SWITCH_SECS) as f32;
+            if (0.0..1.0).contains(&t) {
+                let on = node_at(&self.tree, p).is_some_and(|n| matches!(n.value, Some(SV::Truth(true))));
+                let e = eased(t as f64);
+                st.knobs.insert(p.clone(), if on { e } else { 1.0 - e });
+            }
+        }
         st
     }
 
@@ -3589,7 +3731,15 @@ impl<'a, 'b> Ui<'a, 'b> {
         };
         let kind = node_at(&self.tree, &path).map(|n| n.kind.clone()).unwrap_or_default();
         match kind.as_str() {
-            "input" | "textarea" => {
+            // A number box's up and down arrows, on its right.
+            "number" if node_at(&self.tree, &path).is_some_and(|n| x >= n.x + n.w - SPIN_W) => {
+                let up = node_at(&self.tree, &path).is_some_and(|n| y < n.y + n.h / 2.0);
+                self.set_focus(Some(path.clone()), false);
+                self.spin(&path, if up { 1.0 } else { -1.0 })?;
+            }
+            // Clicking a radio button gives its group focus, and picks it when the mouse is let go.
+            "radiobtn" => self.set_focus(Some(path[..path.len() - 1].to_vec()), false),
+            "input" | "textarea" | "number" => {
                 if self.st.focus.as_ref() != Some(&path) {
                     self.set_focus(Some(path.clone()), false);
                 }
@@ -3677,9 +3827,14 @@ impl<'a, 'b> Ui<'a, 'b> {
         let Some(path) = at.filter(|a| Some(a) == pressed.as_ref()) else { return Ok(()) };
         let Some(n) = node_at(&self.tree, &path) else { return Ok(()) };
         match n.kind.as_str() {
-            "checkbox" => {
+            "checkbox" | "switch" => {
                 let on = matches!(n.value, Some(SV::Truth(true)));
+                self.flipped(&path);
                 self.run(&path, SV::Truth(!on))
+            }
+            "radiobtn" => {
+                let v = SV::Text(n.text.clone());
+                self.run(&path, v)
             }
             "button" | "box" | "circle" => self.run(&path, SV::Flag),
             // A dropdown or menu opens its list, or closes it if it's open.
@@ -3878,7 +4033,7 @@ impl<'a, 'b> Ui<'a, 'b> {
             h.redo.clear();
             h.last = Some((typing, now));
             let caret = self.st.caret.clone();
-            self.run(&path, SV::Text(new))?;
+            self.set_text(&path, new)?;
             self.st.caret = caret;
             if let Some(n) = self.focused() {
                 let t = value_text(n).to_string();
@@ -4002,7 +4157,7 @@ impl<'a, 'b> Ui<'a, 'b> {
                 self.reveal();
                 // Tabbing into an input selects its text, ready to be typed over.
                 if let Some(n) = self.focused() {
-                    if n.kind == "input" {
+                    if n.kind == "input" || n.kind == "number" {
                         let end = value_text(n).len();
                         self.st.caret = Caret { anchor: 0, caret: end };
                     }
@@ -4046,8 +4201,8 @@ impl<'a, 'b> Ui<'a, 'b> {
                         Some(t) => self.edit(Key::Insert(t.replace("\r\n", "\n").replace('\r', "\n")), Mods::default()),
                         None => Ok(()),
                     },
-                    ("input" | "textarea", Nav::Edit(e)) => self.edit(e.clone(), mods),
-                    ("input" | "textarea", Nav::Copy | Nav::Cut) => {
+                    ("input" | "textarea" | "number", Nav::Edit(e)) => self.edit(e.clone(), mods),
+                    ("input" | "textarea" | "number", Nav::Copy | Nav::Cut) => {
                         let sel = self.st.caret.selected(value_text(n)).to_string();
                         if sel.is_empty() {
                             return Ok(());
@@ -4058,7 +4213,7 @@ impl<'a, 'b> Ui<'a, 'b> {
                         }
                         Ok(())
                     }
-                    ("input" | "textarea", Nav::Undo | Nav::Redo) => {
+                    ("input" | "textarea" | "number", Nav::Undo | Nav::Redo) => {
                         let current = (value_text(n).to_string(), self.st.caret.clone());
                         let h = self.history.entry(path.clone()).or_default();
                         let back = if k == Nav::Undo { h.undo.pop() } else { h.redo.pop() };
@@ -4069,7 +4224,7 @@ impl<'a, 'b> Ui<'a, 'b> {
                             h.undo.push(current);
                         }
                         h.last = None;
-                        self.run(&path, SV::Text(text))?;
+                        self.set_text(&path, text)?;
                         self.st.caret = caret;
                         if let Some(n) = self.focused() {
                             let t = value_text(n).to_string();
@@ -4085,7 +4240,17 @@ impl<'a, 'b> Ui<'a, 'b> {
                         }
                         None => Ok(()),
                     },
-                    ("input", Nav::Paste) => match self.clip_get() {
+                    // Up and Down move a number box's number a step; Enter shows the field's number.
+                    ("number", Nav::Up | Nav::Down) => self.spin(&path, if k == Nav::Up { 1.0 } else { -1.0 }),
+                    ("number", Nav::Enter) => {
+                        if self.draft.take().is_some() {
+                            self.relayout();
+                        }
+                        let end = self.focused().map(|n| value_text(n).len()).unwrap_or(0);
+                        self.st.caret = Caret::at(end);
+                        Ok(())
+                    }
+                    ("input" | "number", Nav::Paste) => match self.clip_get() {
                         // An input is one line, so pasted lines are joined with spaces.
                         Some(t) => self.edit(Key::Type(t.replace("\r\n", " ").replace(['\n', '\r'], " ")), Mods::default()),
                         None => Ok(()),
@@ -4127,9 +4292,29 @@ impl<'a, 'b> Ui<'a, 'b> {
                             None => Ok(()),
                         }
                     }
-                    ("checkbox", Nav::Enter | Nav::Space) => {
+                    ("checkbox" | "switch", Nav::Enter | Nav::Space) => {
                         let on = matches!(n.value, Some(SV::Truth(true)));
+                        self.flipped(&path);
                         self.run(&path, SV::Truth(!on))
+                    }
+                    // The arrows move a radio group's choice to the one before or after, going
+                    // round at the ends; Space picks the one with the ring when none is picked.
+                    ("radio", Nav::Up | Nav::Down | Nav::Edit(Key::Left | Key::Right) | Nav::Space) => {
+                        let count = n.children.len();
+                        if count == 0 {
+                            return Ok(());
+                        }
+                        let at = n.children.iter().position(|b| matches!(b.value, Some(SV::Truth(true))));
+                        let next = match (&k, at) {
+                            (Nav::Space, Some(_)) => return Ok(()),
+                            (Nav::Space, None) => 0,
+                            (Nav::Up | Nav::Edit(Key::Left), Some(i)) => (i + count - 1) % count,
+                            (Nav::Up | Nav::Edit(Key::Left), None) => count - 1,
+                            (_, Some(i)) => (i + 1) % count,
+                            (_, None) => 0,
+                        };
+                        let v = SV::Text(n.children[next].text.clone());
+                        self.run(&path, v)
                     }
                     ("slider", Nav::Edit(Key::Left | Key::Right | Key::Home | Key::End) | Nav::Up | Nav::Down) => {
                         let l = &n.look;
@@ -4161,7 +4346,7 @@ impl<'a, 'b> Ui<'a, 'b> {
             return true;
         }
         match self.focused_kind().as_str() {
-            "input" | "textarea" => {
+            "input" | "textarea" | "number" => {
                 if plain {
                     !function_key(key)
                 } else if m.command {
@@ -4170,7 +4355,8 @@ impl<'a, 'b> Ui<'a, 'b> {
                     matches!(key, "left" | "right" | "backspace" | "delete")
                 }
             }
-            "button" | "checkbox" => plain && matches!(key, "enter" | "space"),
+            "button" | "checkbox" | "switch" => plain && matches!(key, "enter" | "space"),
+            "radio" => plain && matches!(key, "left" | "right" | "up" | "down" | "space"),
             "slider" => plain && matches!(key, "left" | "right" | "up" | "down" | "home" | "end"),
             _ => false,
         }
@@ -4196,7 +4382,7 @@ impl<'a, 'b> Ui<'a, 'b> {
             return if down { 4 } else { 3 };
         }
         match self.hit_at(x, y).and_then(|p| node_at(&self.tree, &p)).map(|n| n.kind.as_str()) {
-            Some("input" | "textarea") => 2,
+            Some("input" | "textarea" | "number") => 2,
             Some(_) => 1,
             None => 0,
         }
@@ -4468,6 +4654,11 @@ mod windowed {
                         MouseScrollDelta::LineDelta(_, lines) => -lines * 48.0,
                         MouseScrollDelta::PixelDelta(p) => -(p.y as f32) / scale,
                     };
+                    // The wheel over a number box moves its number.
+                    if let Some(r) = self.ui.wheel_number(x, y, dy) {
+                        self.check(r, el);
+                        return;
+                    }
                     if self.ui.wheel(x, y, dy) {
                         let _ = self.ui.moved(x, y);
                         self.redraw();
@@ -4630,7 +4821,7 @@ fn word_at(t: &str, i: usize) -> (usize, usize) {
 
 /// Inputs and text boxes: what can be typed in.
 fn editable(kind: &str) -> bool {
-    kind == "input" || kind == "textarea"
+    kind == "input" || kind == "textarea" || kind == "number"
 }
 
 /// What a key does in an input.
@@ -4786,6 +4977,10 @@ fn dump(n: &Laid, depth: usize, path: &mut Vec<usize>, st: &PaintState, out: &mu
         (_, "tabbtn") if matches!(n.value, Some(SV::Truth(true))) => Some(format!("{} (showing)", n.text)),
         (_, "tabbtn") => Some(n.text.clone()),
         (_, "branchhead") => Some(format!("{} ({})", n.text, if matches!(n.value, Some(SV::Truth(true))) { "open" } else { "shut" })),
+        // A radio button shows its words (and below, which one is picked); a checkbox or switch
+        // with words shows them, and below whether it's on.
+        (_, "radiobtn") => Some(n.text.clone()),
+        (_, "checkbox" | "switch") if !n.text.is_empty() => Some(n.text.clone()),
         (Some(SV::Text(t)), _) => Some(t.clone()),
         (Some(SV::Truth(b)), _) => Some(if *b { "on" } else { "off" }.to_string()),
         (Some(SV::Num(x)), "slider" | "progress") => Some(num_text(*x)),
@@ -4797,6 +4992,17 @@ fn dump(n: &Laid, depth: usize, path: &mut Vec<usize>, st: &PaintState, out: &mu
         None => String::new(),
     };
     let mut focus = String::new();
+    match (n.kind.as_str(), &n.value) {
+        ("radiobtn", Some(SV::Truth(true))) => focus.push_str(" (picked)"),
+        ("checkbox" | "switch", Some(SV::Truth(on))) if !n.text.is_empty() => focus.push_str(if *on { " (on)" } else { " (off)" }),
+        _ => {}
+    }
+    if !n.look.icon.is_empty() {
+        focus.push_str(&format!(" (icon {})", n.look.icon));
+    }
+    if n.bad {
+        focus.push_str(" (refused)");
+    }
     if n.look.disabled {
         focus.push_str(" (disabled)");
     }
@@ -4838,7 +5044,8 @@ fn find_button(n: &Laid, text: &str, path: &mut Vec<usize>) -> Option<Vec<usize>
             }
         }
     }
-    if matches!(n.kind.as_str(), "button" | "option" | "item" | "menu" | "tabbtn" | "branchhead") && n.text == text {
+    let labelled = matches!(n.kind.as_str(), "checkbox" | "switch") && !n.text.is_empty();
+    if (labelled || matches!(n.kind.as_str(), "button" | "option" | "item" | "menu" | "tabbtn" | "branchhead" | "radiobtn")) && n.text == text {
         return Some(path.clone());
     }
     for (i, c) in n.children.iter().enumerate() {
@@ -4948,6 +5155,46 @@ fn test(s: Settings, build: &mut Build, step: Box<Step>) -> Result<(), String> {
                 }
                 _ => println!("(there's no slider {rest})"),
             },
+            // flip 1: clicks the first switch.
+            "flip" => match nums.first().and_then(|&n| find_nth(&ui.tree, "switch", n as usize)) {
+                Some(p) => {
+                    let (x, y) = centre(&ui, &p);
+                    ui.press(x, y, Mods::default())?;
+                    ui.release(x, y)?;
+                }
+                None => println!("(there's no switch {rest})"),
+            },
+            // wheel 1 up: turns the mouse wheel one notch over the first number box.
+            "wheel" => {
+                let mut it = rest.split_whitespace();
+                let nth = it.next().and_then(|x| x.parse::<usize>().ok()).unwrap_or(1);
+                let dy = if it.next() == Some("down") { 48.0 } else { -48.0 };
+                let mut all = Vec::new();
+                fn every_number(n: &Laid, path: &mut Vec<usize>, out: &mut Vec<Vec<usize>>) {
+                    if n.kind == "number" {
+                        out.push(path.clone());
+                    }
+                    for (i, c) in n.children.iter().enumerate() {
+                        path.push(i);
+                        every_number(c, path, out);
+                        path.pop();
+                    }
+                }
+                every_number(&ui.tree, &mut vec![], &mut all);
+                match all.get(nth.saturating_sub(1)) {
+                    Some(p) => {
+                        let (x, y) = centre(&ui, p);
+                        ui.st.hover = Some((x, y));
+                        match ui.wheel_number(x, y, dy) {
+                            Some(r) => r?,
+                            None => {
+                                ui.wheel(x, y, dy);
+                            }
+                        }
+                    }
+                    None => println!("(there's no number box {nth})"),
+                }
+            }
             "focus" => {
                 let mut it = rest.split_whitespace();
                 let kind = it.next().unwrap_or("input");

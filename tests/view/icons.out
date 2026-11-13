@@ -1,0 +1,26 @@
+window "Icons" 420x260
+  column 0,0 420x152
+    row 16,16 158x48
+      icon "trash" 16,31 18x18
+      icon "home" 42,30 20x20
+      icon "chevron-right" 70,16 48x48
+      icon "star" 126,30 20x20
+      icon "not-star" 154,30 20x20
+    row 16,74 227x33
+      button "Delete" 16,74 99x33 (icon trash)
+      button 123,74 32x33 (icon settings)
+      button "Next" 163,76 80x30 (icon arrow-right) (disabled)
+    text 16,117 0x19
+window "Icons" 420x260
+  column 0,0 420x152
+    row 16,16 158x48
+      icon "trash" 16,31 18x18
+      icon "home" 42,30 20x20
+      icon "chevron-right" 70,16 48x48
+      icon "heart" 126,30 20x20
+      icon "not-heart" 154,30 20x20
+    row 16,74 227x33
+      button "Delete" 16,74 99x33 (icon trash)
+      button 123,74 32x33 (icon settings)
+      button "Next" 163,76 80x30 (icon arrow-right) (focus)
+    text "settings" 16,117 57x19

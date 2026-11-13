@@ -1,0 +1,60 @@
+dump
+focus number 1
+key up
+key up
+key up
+dump
+key down
+type 7
+dump
+key ctrl+a
+type 12
+dump
+key backspace
+key backspace
+type 1x
+dump
+key backspace
+type .5
+dump
+key backspace
+key backspace
+key enter
+dump
+key tab
+dump
+key ctrl+a
+type 2.25
+key up
+key up
+key up
+dump
+type abc
+key tab
+dump
+wheel 1 up
+wheel 2 down
+dump
+focus number 1
+wheel 1 up
+wheel 1 up
+focus number 2
+wheel 2 down
+wheel 3 up
+dump
+press 129 30
+release 129 30
+press 129 40
+release 129 40
+press 129 40
+release 129 40
+dump
+focus number 2
+key ctrl+a
+type -2
+dump
+key ctrl+z
+dump
+click Reset
+dump
+snapshot numbers.snap.png

@@ -301,6 +301,25 @@ pub fn check(prog: &Program, diags: &mut Diags, is_script: bool) -> Info {
     c.info
 }
 
+/// A number written right there, like 5, -2 or 0.5.
+fn literal_number(e: &Expr) -> Option<f64> {
+    match &e.kind {
+        ExprKind::Int(i) => Some(*i as f64),
+        ExprKind::Float(f) => Some(*f),
+        ExprKind::Neg(inner) => literal_number(inner).map(|x| -x),
+        _ => None,
+    }
+}
+
+/// A number as it was written: 5, not 5.0.
+fn num_shown(x: f64) -> String {
+    if x.fract() == 0.0 && x.abs() < 1e15 {
+        format!("{}", x as i64)
+    } else {
+        format!("{x}")
+    }
+}
+
 fn suggest(name: &str, candidates: impl IntoIterator<Item = String>) -> String {
     let lower = name.to_lowercase();
     let mut best: Option<(usize, String)> = None;
@@ -1288,7 +1307,7 @@ impl<'a> Checker<'a> {
                     self.err(a.pos, format!("{kind} shows text, but this is {}.{fix}", self.a(&t)));
                 }
             }
-            ("input" | "textarea" | "checkbox" | "slider" | "dropdown" | "dialog" | "tabs", Some(a)) => {
+            ("input" | "textarea" | "checkbox" | "slider" | "dropdown" | "dialog" | "tabs" | "radio" | "switch" | "number", Some(a)) => {
                 let t = self.expr(a, ctx, None);
                 let (want, example) = match kind {
                     "input" => ("text", "input name;"),
@@ -1297,29 +1316,43 @@ impl<'a> Checker<'a> {
                     "dropdown" => ("text or a state", "dropdown size in [\"Small\", \"Large\"];"),
                     "dialog" => ("a bool", "dialog confirming { … }"),
                     "tabs" => ("text: the name of the tab that shows", "tabs page { tab \"Home\" { … } }"),
+                    "radio" => ("text or a state", "radio size;"),
+                    "switch" => ("a bool", "switch sound;"),
+                    "number" => ("a number", "number count [min 0, max 99];"),
                     _ => ("a number", "slider volume [from 0, to 100];"),
                 };
                 let fits = match kind {
                     "input" | "textarea" | "tabs" => t == Ty::Str,
-                    "checkbox" | "dialog" => t == Ty::Truth,
-                    "dropdown" => matches!(t, Ty::Str | Ty::State(_)),
+                    "checkbox" | "dialog" | "switch" => t == Ty::Truth,
+                    "dropdown" | "radio" => matches!(t, Ty::Str | Ty::State(_)),
                     _ => matches!(t, Ty::Int | Ty::Float),
                 };
-                if kind == "dropdown" {
+                // A checkbox's or switch's words, after its field.
+                if let (Some(c), "checkbox" | "switch") = (choices, kind) {
+                    let ct = self.expr(c, ctx, Some(&Ty::Str));
+                    if ct != Ty::Str && ct != Ty::Error {
+                        self.err(
+                            c.pos,
+                            format!(
+                                "the words after a {kind}'s field are text, but this is {}: {kind} {} \"Sound\";",
+                                self.a(&ct),
+                                describe(a)
+                            ),
+                        );
+                    }
+                }
+                if kind == "dropdown" || kind == "radio" {
                     match (&t, choices) {
                         (Ty::Str, Some(c)) => {
                             let ct = self.expr(c, ctx, None);
                             if !matches!(&ct, Ty::Array(e) if **e == Ty::Str) && ct != Ty::Error {
-                                self.err(
-                                    c.pos,
-                                    format!("a dropdown chooses from a string array, but this is {}.", self.a(&ct)),
-                                );
+                                self.err(c.pos, format!("a {kind} chooses from a string array, but this is {}.", self.a(&ct)));
                             }
                         }
                         (Ty::Str, None) => self.err(
                             a.pos,
                             format!(
-                                "a dropdown of text needs what to choose from: dropdown {} in [\"Small\", \"Large\"];",
+                                "a {kind} of text needs what to choose from: {kind} {} in [\"Small\", \"Large\"];",
                                 describe(a)
                             ),
                         ),
@@ -1328,7 +1361,7 @@ impl<'a> Checker<'a> {
                             self.err(
                                 c.pos,
                                 format!(
-                                    "{} is a {name}, so its dropdown chooses from {name}'s options. Leave out in …",
+                                    "{} is a {name}, so its {kind} chooses from {name}'s options. Leave out in …",
                                     describe(a)
                                 ),
                             );
@@ -1346,9 +1379,18 @@ impl<'a> Checker<'a> {
                         ),
                     );
                 } else if !fits && t != Ty::Error {
+                    // Where another piece fits what it's bound to, say which.
+                    let other = match (kind, &t) {
+                        ("radio", Ty::Truth) => format!(" For on and off, use switch {} or checkbox {}.", describe(a), describe(a)),
+                        ("switch", Ty::Str | Ty::State(_)) => format!(" To choose one of several, use radio {}.", describe(a)),
+                        ("switch", Ty::Int | Ty::Float) => format!(" For a number, use number {}.", describe(a)),
+                        ("number", Ty::Str) => format!(" For text, use input {}.", describe(a)),
+                        ("number", Ty::Truth) => format!(" For on and off, use switch {}.", describe(a)),
+                        _ => String::new(),
+                    };
                     self.err(
                         a.pos,
-                        format!("{kind} changes {want}, but {} is {}: {example}", describe(a), self.a(&t)),
+                        format!("{kind} changes {want}, but {} is {}: {example}{other}", describe(a), self.a(&t)),
                     );
                 }
                 // It changes what it's bound to, so that has to be something that stays.
@@ -1430,7 +1472,7 @@ impl<'a> Checker<'a> {
                 self.err(pos, "a dialog needs the bool that opens it: dialog confirming { … }");
                 ctx.scopes.push(HashMap::new());
             }
-            ("input" | "textarea" | "checkbox" | "slider" | "dropdown", None) => {
+            ("input" | "textarea" | "checkbox" | "slider" | "dropdown" | "radio" | "switch" | "number", None) => {
                 let an = if kind == "input" { "an" } else { "a" };
                 self.err(pos, format!("{an} {kind} needs the field it changes: {kind} name;"));
                 ctx.scopes.push(HashMap::new());
@@ -1448,6 +1490,17 @@ impl<'a> Checker<'a> {
                 }
             }
             ("image", None) => self.err(pos, "image needs the picture's file: image \"cat.png\";"),
+            ("icon", Some(a)) => {
+                let t = self.expr(a, ctx, Some(&Ty::Str));
+                if t != Ty::Str && t != Ty::Error {
+                    self.err(
+                        a.pos,
+                        format!("icon takes the icon's name, but this is {}: icon \"star\";", self.a(&t)),
+                    );
+                }
+                self.icon_name(a);
+            }
+            ("icon", None) => self.err(pos, "icon needs the icon's name: icon \"star\";"),
             ("every", Some(a)) => {
                 let t = self.expr(a, ctx, Some(&Ty::Float));
                 if !matches!(t, Ty::Int | Ty::Float | Ty::Error) {
@@ -1482,7 +1535,12 @@ impl<'a> Checker<'a> {
             }
             ("key", None) => self.err(pos, "key needs which keys: key \"ctrl+s\" { save(); }"),
             ("text", None) => self.err(pos, "text needs something to show: text \"Hello\";"),
-            ("button", None) => self.err(pos, "a button needs its words: button \"Start\" { … }"),
+            // A button can be only an icon: button [icon "trash"] { … }
+            ("button", None) if style.iter().any(|s| s.name == "icon") => {}
+            ("button", None) => self.err(
+                pos,
+                "a button needs its words, or an icon: button \"Start\" { … }, button [icon \"play\"] { … }",
+            ),
             (_, Some(a)) => self.err(
                 a.pos,
                 format!(
@@ -1510,7 +1568,10 @@ impl<'a> Checker<'a> {
             self.canvases -= canvas as usize;
             ctx.scopes.pop();
         }
-        let bound = matches!(kind, "input" | "textarea" | "checkbox" | "slider" | "dropdown" | "dialog" | "tabs");
+        let bound = matches!(
+            kind,
+            "input" | "textarea" | "checkbox" | "slider" | "dropdown" | "dialog" | "tabs" | "radio" | "switch" | "number"
+        );
         if let Some(a) = enter {
             let was = std::mem::replace(&mut ctx.in_view, false);
             ctx.scopes.push(HashMap::new());
@@ -1582,10 +1643,12 @@ impl<'a> Checker<'a> {
             "thick",
             "columns",
             "cell",
+            "min",
+            "max",
         ];
         const FLAGS: &[&str] = &[
             "tiny", "small", "large", "huge", "bold", "muted", "strike", "nowrap", "shadow", "pill", "left", "center", "right", "top",
-            "middle", "bottom", "spread", "subtle", "cover", "down", "open", "animate",
+            "middle", "bottom", "spread", "subtle", "cover", "down", "open", "animate", "across",
         ];
         const COLOURED: &[&str] = &["color", "background"];
         let window = kind == "view";
@@ -1605,6 +1668,28 @@ impl<'a> Checker<'a> {
             };
             match (n, &it.value) {
                 ("title", StyleValue::Expr(_)) if window => {}
+                // A slider goes from … to …, and a number box is kept between min and max.
+                ("min" | "max", _) if kind == "slider" => self.err(
+                    it.pos,
+                    "a slider goes from one number to another: slider volume [from 0, to 100]. min and max are for a number box.",
+                ),
+                ("from" | "to", _) if kind == "number" => self.err(
+                    it.pos,
+                    "a number box is kept between min and max: number count [min 0, max 99]. from and to are for a slider.",
+                ),
+                ("icon", v) if !window => match v {
+                    StyleValue::Expr(e) if matches!(self.info.ty(e), Ty::Str | Ty::Error) => {
+                        if kind != "button" {
+                            self.err(
+                                it.pos,
+                                format!("only a button has an icon in its [ ]. Put an icon next to a {kind} instead: row {{ icon \"star\"; … }}"),
+                            );
+                        }
+                        let e = e.clone();
+                        self.icon_name(&e);
+                    }
+                    _ => self.err(it.pos, "icon takes the icon's name: icon \"trash\"."),
+                },
                 ("disabled", StyleValue::Flag) if !window => {}
                 ("disabled", StyleValue::Expr(e)) if !window => {
                     let t = self.info.ty(e);
@@ -1706,6 +1791,7 @@ impl<'a> Checker<'a> {
                                     "font",
                                     "tip",
                                     "dark",
+                                    "icon",
                                 ]
                                 .iter(),
                             )
@@ -1732,6 +1818,46 @@ impl<'a> Checker<'a> {
             // Values are worked out like any expression, in the view's own place.
             let _ = (&it.value, n);
         }
+        // min more than max, written right there, leaves no number that fits.
+        let written = |name: &str| {
+            items.iter().rev().find(|i| i.name == name).and_then(|i| match &i.value {
+                StyleValue::Expr(e) => literal_number(e),
+                _ => None,
+            })
+        };
+        if let (Some(lo), Some(hi)) = (written("min"), written("max")) {
+            if lo > hi {
+                let pos = items.iter().rev().find(|i| i.name == "min").map(|i| i.pos).unwrap_or_default();
+                self.err(
+                    pos,
+                    format!(
+                        "min {} is more than max {}, so no number fits between them. Swap them: [min {}, max {}].",
+                        num_shown(lo),
+                        num_shown(hi),
+                        num_shown(hi),
+                        num_shown(lo)
+                    ),
+                );
+            }
+        }
+    }
+
+    /// An icon's name written right there has to be one Lust has.
+    fn icon_name(&mut self, e: &Expr) {
+        let ExprKind::Str(name) = &e.kind else { return };
+        if crate::icons::find(name).is_some() {
+            return;
+        }
+        let all = crate::icons::ICONS
+            .iter()
+            .map(|(n, _)| n.to_string())
+            .chain(crate::icons::ICON_ALIASES.iter().map(|(n, _)| n.to_string()));
+        // The names are written in quotes, so the one it might be is too.
+        let s = suggest(name, all).replace("Did you mean ", "Did you mean \"").replace('?', "\"?");
+        self.err(
+            e.pos,
+            format!("Lust has no icon called \"{name}\".{s} The icons are listed in the rulebook, LUST.md, under Icons."),
+        );
     }
 
     fn method_body(&mut self, m: &MethodDecl, class: Option<usize>) {
