@@ -1391,63 +1391,15 @@ mod windowed {
 
 // ----- the computer's own notifications -----
 
-/// On Windows, a notification from an icon of its own in the notification area, which Windows 10
-/// and 11 show as a toast.
+/// On Windows, a Windows notification (a toast in the corner, kept in the list of
+/// notifications), without waiting for it. Programs that aren't installed have no name of their
+/// own there, so Windows shows it as PowerShell's, as other small programs' notifications do.
 #[cfg(windows)]
 fn os_notify(title: &str, body: &str) {
-    use windows_sys::Win32::UI::Shell::{Shell_NotifyIconW, NIF_ICON, NIF_INFO, NIF_TIP, NIIF_INFO, NIM_ADD, NIM_DELETE, NIM_MODIFY, NOTIFYICONDATAW};
-    use windows_sys::Win32::UI::WindowsAndMessaging::{CreateWindowExW, LoadIconW, HWND_MESSAGE, IDI_APPLICATION};
-
-    /// The hidden window the icon belongs to; the icon goes when the program ends.
-    struct Owner(windows_sys::Win32::Foundation::HWND, bool);
-    impl Drop for Owner {
-        fn drop(&mut self) {
-            if self.1 {
-                let mut nid = NOTIFYICONDATAW::default();
-                nid.cbSize = std::mem::size_of::<NOTIFYICONDATAW>() as u32;
-                nid.hWnd = self.0;
-                nid.uID = 1;
-                unsafe { Shell_NotifyIconW(NIM_DELETE, &nid) };
-            }
-        }
-    }
-    thread_local! {
-        static OWNER: std::cell::RefCell<Option<Owner>> = const { std::cell::RefCell::new(None) };
-    }
-    fn wide<const N: usize>(s: &str) -> [u16; N] {
-        let mut out = [0u16; N];
-        for (o, c) in out.iter_mut().take(N - 1).zip(s.encode_utf16()) {
-            *o = c;
-        }
-        out
-    }
-    OWNER.with(|o| {
-        let mut o = o.borrow_mut();
-        if o.is_none() {
-            let class: Vec<u16> = "STATIC\0".encode_utf16().collect();
-            let hwnd = unsafe {
-                CreateWindowExW(0, class.as_ptr(), std::ptr::null(), 0, 0, 0, 0, 0, HWND_MESSAGE, std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null())
-            };
-            if hwnd.is_null() {
-                return;
-            }
-            *o = Some(Owner(hwnd, false));
-        }
-        let Some(owner) = o.as_mut() else { return };
-        let mut nid = NOTIFYICONDATAW::default();
-        nid.cbSize = std::mem::size_of::<NOTIFYICONDATAW>() as u32;
-        nid.hWnd = owner.0;
-        nid.uID = 1;
-        nid.uFlags = NIF_ICON | NIF_TIP | NIF_INFO;
-        nid.hIcon = unsafe { LoadIconW(std::ptr::null_mut(), IDI_APPLICATION) };
-        nid.szTip = wide(title);
-        nid.szInfoTitle = wide(title);
-        nid.szInfo = wide(body);
-        nid.dwInfoFlags = NIIF_INFO;
-        let message = if owner.1 { NIM_MODIFY } else { NIM_ADD };
-        if unsafe { Shell_NotifyIconW(message, &nid) } != 0 {
-            owner.1 = true;
-        }
+    let (title, body) = (title.to_string(), body.to_string());
+    let _ = std::thread::Builder::new().name("notify".into()).spawn(move || {
+        use tauri_winrt_notification::Toast;
+        let _ = Toast::new(Toast::POWERSHELL_APP_ID).title(&title).text1(&body).show();
     });
 }
 

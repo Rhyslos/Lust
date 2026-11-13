@@ -1456,7 +1456,7 @@ button "Delete" { toast "Can't delete a note that's open" [red, icon "triangle-a
 
 `App:notify("Saved", "Your notes are safe.")` shows the computer's own notification, with a title and words under it, which stays in the system's list of notifications. It works from anywhere, with a window or without one.
 
-- **On Windows** it's a Windows notification, shown at the bottom right like any app's.
+- **On Windows** it's a Windows notification, shown at the bottom right like any app's. A program that isn't installed has no name of its own in Windows' list of apps, so Windows names the notification after PowerShell, as it does for other small programs.
 - **On Linux** it goes to the desktop's notification service (through D-Bus). On a computer without one, nothing shows.
 - **On a Mac** it does nothing yet.
 - In tests it prints `notify: Saved — Your notes are safe.` instead.
@@ -1739,7 +1739,7 @@ Name a style to reuse it: `style card = [pad 16, round, shadow];`, then `[card]`
 
 ### Underneath
 
-Lust draws everything itself, from the pixels up: layout, every piece, text editing, focus, scrolling, styles and animation. Small permissive libraries only open the window (winit), hand over the pixels (softbuffer), read font files (ab_glyph), show the computer's own boxes for choosing files (rfd), reach the system clipboard (arboard), read PNG and JPEG files (png, jpeg-decoder) and draw SVG files (resvg). On Windows, tray-icon puts the tray icon in the notification area, and the Windows API (through windows-sys) shows notifications; on Linux, zbus sends notifications over D-Bus. Icons are Lucide's shapes, drawn by Lust. Views are for `.lst` programs on Windows, macOS and Linux. Web pages stay HTML, CSS and JavaScript.
+Lust draws everything itself, from the pixels up: layout, every piece, text editing, focus, scrolling, styles and animation. Small permissive libraries only open the window (winit), hand over the pixels (softbuffer), read font files (ab_glyph), show the computer's own boxes for choosing files (rfd), reach the system clipboard (arboard), read PNG and JPEG files (png, jpeg-decoder) and draw SVG files (resvg). On Windows, tray-icon puts the tray icon in the notification area, and tauri-winrt-notification shows notifications; on Linux, zbus sends notifications over D-Bus. Icons are Lucide's shapes, drawn by Lust. Views are for `.lst` programs on Windows, macOS and Linux. Web pages stay HTML, CSS and JavaScript.
 
 ---
 

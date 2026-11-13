@@ -18,7 +18,7 @@ required-features = ["cli"]
 # library. The lust command, with lust run, lust test and views, needs the rest.
 [features]
 default = ["cli"]
-cli = ["dep:sha2", "dep:mlua", "dep:rusqlite", "dep:tiny_http", "dep:ureq", "dep:regex", "dep:winit", "dep:softbuffer", "dep:ab_glyph", "dep:rfd", "dep:arboard", "dep:png", "dep:jpeg-decoder", "dep:resvg", "dep:tray-icon", "dep:windows-sys", "dep:zbus"]
+cli = ["dep:sha2", "dep:mlua", "dep:rusqlite", "dep:tiny_http", "dep:ureq", "dep:regex", "dep:winit", "dep:softbuffer", "dep:ab_glyph", "dep:rfd", "dep:arboard", "dep:png", "dep:jpeg-decoder", "dep:resvg", "dep:tray-icon", "dep:tauri-winrt-notification", "dep:zbus"]
 
 [dependencies]
 mlua = { version = "0.10", features = ["lua51", "vendored"], optional = true }
@@ -39,11 +39,11 @@ resvg = { version = "0.49", default-features = false, optional = true }
 sha2 = { version = "0.10", optional = true }
 
 # A view's tray icon, and App:notify's notifications, on Windows. tray-icon's Linux side needs
-# GTK, so it's Windows only: on other systems a tray does nothing. windows-sys is the one winit
-# and tray-icon already use.
+# GTK, so it's Windows only: on other systems a tray does nothing. Built programs forbid unsafe
+# code, so notifications go through tauri-winrt-notification's safe wrapper.
 [target.'cfg(windows)'.dependencies]
 tray-icon = { version = "0.25", default-features = false, optional = true }
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"], optional = true }
+tauri-winrt-notification = { version = "0.8", optional = true }
 
 # App:notify on Linux, through D-Bus: pure Rust, and already part of rfd's file boxes.
 [target.'cfg(target_os = "linux")'.dependencies]
