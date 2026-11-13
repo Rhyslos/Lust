@@ -170,6 +170,8 @@ pub struct Info {
     pub tween_top_names: std::collections::HashSet<String>,
     /// The program names `Ease` (its options or the object), so Lua makes its table.
     pub uses_ease: bool,
+    /// A view has a datePicker, which shows today by the computer's clock.
+    pub uses_dates: bool,
 }
 
 impl Info {
@@ -1319,7 +1321,21 @@ impl<'a> Checker<'a> {
                     self.err(a.pos, format!("{kind} shows text, but this is {}.{fix}", self.a(&t)));
                 }
             }
-            ("input" | "textarea" | "checkbox" | "slider" | "dropdown" | "dialog" | "tabs" | "radio" | "switch" | "number", Some(a)) => {
+            (
+                "input"
+                | "textarea"
+                | "checkbox"
+                | "slider"
+                | "dropdown"
+                | "dialog"
+                | "tabs"
+                | "radio"
+                | "switch"
+                | "number"
+                | "datePicker"
+                | "colourPicker",
+                Some(a),
+            ) => {
                 let t = self.expr(a, ctx, None);
                 let (want, example) = match kind {
                     "input" => ("text", "input name;"),
@@ -1331,12 +1347,16 @@ impl<'a> Checker<'a> {
                     "radio" => ("text or a state", "radio size;"),
                     "switch" => ("a bool", "switch sound;"),
                     "number" => ("a number", "number count [min 0, max 99];"),
+                    "datePicker" => ("a date, held as text like \"2026-11-13\"", "datePicker due;"),
+                    "colourPicker" => ("a colour", "colourPicker tint;"),
                     _ => ("a number", "slider volume [from 0, to 100];"),
                 };
                 let fits = match kind {
                     "input" | "textarea" | "tabs" => t == Ty::Str,
                     "checkbox" | "dialog" | "switch" => t == Ty::Truth,
                     "dropdown" | "radio" => matches!(t, Ty::Str | Ty::State(_)),
+                    "datePicker" => t == Ty::Str,
+                    "colourPicker" => t == Ty::Colour,
                     _ => matches!(t, Ty::Int | Ty::Float),
                 };
                 // A checkbox's or switch's words, after its field.
@@ -1398,6 +1418,7 @@ impl<'a> Checker<'a> {
                         ("switch", Ty::Int | Ty::Float) => format!(" For a number, use number {}.", describe(a)),
                         ("number", Ty::Str) => format!(" For text, use input {}.", describe(a)),
                         ("number", Ty::Truth) => format!(" For on and off, use switch {}.", describe(a)),
+                        ("input" | "textarea" | "number" | "datePicker", Ty::Colour) => format!(" For a colour, use colourPicker {}.", describe(a)),
                         _ => String::new(),
                     };
                     self.err(
@@ -1487,7 +1508,7 @@ impl<'a> Checker<'a> {
                 self.err(pos, "a dialog needs the bool that opens it: dialog confirming { … }");
                 ctx.scopes.push(HashMap::new());
             }
-            ("input" | "textarea" | "checkbox" | "slider" | "dropdown" | "radio" | "switch" | "number", None) => {
+            ("input" | "textarea" | "checkbox" | "slider" | "dropdown" | "radio" | "switch" | "number" | "datePicker" | "colourPicker", None) => {
                 let an = if kind == "input" { "an" } else { "a" };
                 self.err(pos, format!("{an} {kind} needs the field it changes: {kind} name;"));
                 ctx.scopes.push(HashMap::new());
@@ -1585,8 +1606,22 @@ impl<'a> Checker<'a> {
         }
         let bound = matches!(
             kind,
-            "input" | "textarea" | "checkbox" | "slider" | "dropdown" | "dialog" | "tabs" | "radio" | "switch" | "number"
+            "input"
+                | "textarea"
+                | "checkbox"
+                | "slider"
+                | "dropdown"
+                | "dialog"
+                | "tabs"
+                | "radio"
+                | "switch"
+                | "number"
+                | "datePicker"
+                | "colourPicker"
         );
+        if kind == "datePicker" {
+            self.info.uses_dates = true;
+        }
         if let Some(a) = enter {
             let was = std::mem::replace(&mut ctx.in_view, false);
             ctx.scopes.push(HashMap::new());
@@ -1953,6 +1988,10 @@ impl<'a> Checker<'a> {
     fn eval_styles(&mut self, items: &[StyleItem], ctx: &mut Ctx) {
         for it in items {
             match &it.value {
+                // swatches [red5, blue5]: colour words are colours here.
+                StyleValue::Expr(e) if it.name == "swatches" => {
+                    self.expr(e, ctx, Some(&Ty::Array(Box::new(Ty::Colour))));
+                }
                 StyleValue::Expr(e) => {
                     self.expr(e, ctx, None);
                 }
@@ -2019,6 +2058,47 @@ impl<'a> Checker<'a> {
             };
             match (n, &it.value) {
                 ("title", StyleValue::Expr(_)) if window => {}
+                // A date picker's min and max are dates, written as text.
+                ("min" | "max", v) if kind == "datePicker" => match v {
+                    StyleValue::Expr(e) if matches!(self.info.ty(e), Ty::Str | Ty::Error) => {
+                        if let ExprKind::Str(d) = &e.kind {
+                            if !crate::words::is_date(d) {
+                                self.err(
+                                    e.pos,
+                                    format!("{n} is a date written like \"2026-01-01\", but \"{d}\" isn't a real date."),
+                                );
+                            }
+                        }
+                    }
+                    _ => self.err(
+                        it.pos,
+                        format!("a datePicker's {n} is a date written as text: [{n} \"2026-01-01\"]."),
+                    ),
+                },
+                ("alpha", StyleValue::Flag) if kind == "colourPicker" => {}
+                ("alpha", StyleValue::Flag) if !window => self.err(
+                    it.pos,
+                    "alpha lets a colourPicker choose how see-through a colour is: colourPicker tint [alpha];",
+                ),
+                ("alpha", _) if !window => self.err(it.pos, "alpha is a word on its own, without a value: [alpha]"),
+                ("swatches", v) if !window => match v {
+                    StyleValue::Expr(e) if kind == "colourPicker" => {
+                        let t = self.info.ty(e);
+                        if !matches!(&t, Ty::Array(c) if **c == Ty::Colour) && t != Ty::Error {
+                            self.err(
+                                e.pos,
+                                format!("swatches takes a colour array, like swatches [red5, blue5], but this is {}.", self.a(&t)),
+                            );
+                        }
+                    }
+                    _ if kind == "colourPicker" => {
+                        self.err(it.pos, "swatches takes the colours to offer: [swatches [red5, blue5, Colour:hex(\"#3a8f2a\")]].")
+                    }
+                    _ => self.err(
+                        it.pos,
+                        "swatches are the colours a colourPicker offers: colourPicker tint [swatches [red5, blue5]];",
+                    ),
+                },
                 // A slider goes from … to …, and a number box is kept between min and max.
                 ("min" | "max", _) if kind == "slider" => self.err(
                     it.pos,
@@ -2150,6 +2230,8 @@ impl<'a> Checker<'a> {
                                     "dark",
                                     "icon",
                                     "reorder",
+                                    "alpha",
+                                    "swatches",
                                 ]
                                 .iter(),
                             )
@@ -2183,6 +2265,23 @@ impl<'a> Checker<'a> {
                 _ => None,
             })
         };
+        let written_date = |name: &str| {
+            items.iter().rev().find(|i| i.name == name).and_then(|i| match &i.value {
+                StyleValue::Expr(Expr {
+                    kind: ExprKind::Str(d), ..
+                }) if crate::words::is_date(d) => Some(d.clone()),
+                _ => None,
+            })
+        };
+        if let (Some(lo), Some(hi)) = (written_date("min"), written_date("max")) {
+            if lo > hi {
+                let pos = items.iter().rev().find(|i| i.name == "min").map(|i| i.pos).unwrap_or_default();
+                self.err(
+                    pos,
+                    format!("min \"{lo}\" is after max \"{hi}\", so no date fits between them. Swap them: [min \"{hi}\", max \"{lo}\"]."),
+                );
+            }
+        }
         if let (Some(lo), Some(hi)) = (written("min"), written("max")) {
             if lo > hi {
                 let pos = items.iter().rev().find(|i| i.name == "min").map(|i| i.pos).unwrap_or_default();

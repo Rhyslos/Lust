@@ -1,0 +1,14 @@
+today 2026-02-14
+open datePicker 1
+dump
+snapshot dates-dark.snap.png
+click February 2026
+dump
+snapshot dates-dark-months.snap.png
+click 2026
+dump
+snapshot dates-dark-years.snap.png
+key enter
+key enter
+key enter
+dump

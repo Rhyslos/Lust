@@ -1,0 +1,15 @@
+-- A date picker's calendar in dark mode, showing months and years.
+assembly App {
+    has {
+        string due = "2026-02-28";
+    }
+
+    view [title "Dark dates", width 320, height 400, dark] {
+        column [pad 16] {
+            datePicker due [purple] { print("due " + due); }
+        }
+    }
+}
+
+App:open();
+end

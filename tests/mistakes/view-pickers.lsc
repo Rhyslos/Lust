@@ -1,0 +1,31 @@
+assembly Form {
+    has {
+        string due = "";
+        int count = 0;
+        colour tint = blue5;
+        string name = "";
+        colour array mine = [red5];
+    }
+
+    view {
+        column {
+            datePicker count;
+            datePicker tint;
+            colourPicker name;
+            colourPicker count;
+            datePicker;
+            colourPicker;
+            datePicker due [min "2026-02-30", max "tomorrow"];
+            datePicker due [min 5];
+            datePicker due [min "2026-12-01", max "2026-01-01"];
+            colourPicker tint [alpha 1];
+            colourPicker tint [swatches mine];
+            colourPicker tint [swatches [red5, "blue"]];
+            colourPicker tint [swatches name];
+            input name [alpha];
+            input name [swatches [red5]];
+            datePicker due { print(due); }
+        }
+    }
+}
+end

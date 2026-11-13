@@ -22,8 +22,8 @@ pub const DLG_RUNTIME: &str = include_str!("native_dlg.rs");
 pub const LOCALTIME_RUNTIME: &str = include_str!("native_localtime.rs");
 pub const TEXT_RUNTIME: &str = include_str!("native_text.rs");
 /// Views: the pieces, then the radio buttons, switches, number boxes and icons, then tables, then
-/// the mouse (right-click menus, dragging rows, dropped files, canvases), then the icons' shapes,
-/// all in one module.
+/// the mouse (right-click menus, dragging rows, dropped files, canvases), then date and colour
+/// pickers, then the icons' shapes, all in one module.
 pub const UI_RUNTIME: &str = concat!(
     include_str!("native_ui.rs"),
     "\n",
@@ -32,6 +32,8 @@ pub const UI_RUNTIME: &str = concat!(
     include_str!("native_ui_table.rs"),
     "\n",
     include_str!("native_ui_mouse.rs"),
+    "\n",
+    include_str!("native_ui_pickers.rs"),
     "\n",
     include_str!("icons.rs")
 );
@@ -507,7 +509,7 @@ pub fn write(prog: &Program, info: &Info, files: &[String], library: bool) -> St
         format!("{host}\nfn program() {{\n{body}}}\n\nfn main() {{\n    rt::main(program, &[{files_list}]);\n}}\n")
     };
     let what = if library { "a Rust library" } else { "a program" };
-    let forbid = if !library && uses(info, &["time_date", "time_time"]) {
+    let forbid = if !library && (uses(info, &["time_date", "time_time"]) || info.uses_dates) {
         ""
     } else {
         "// No unsafe code: Rust checks it.\n#![forbid(unsafe_code)]\n"
@@ -518,7 +520,7 @@ pub fn write(prog: &Program, info: &Info, files: &[String], library: bool) -> St
             let mut m = format!("pub const UI_PROGRAM: bool = {};\n", views(info));
             // The time zone: from the computer (unsafe, so only when Time:date() or Time:time()
             // is used), from the engine in a library, or none (UTC).
-            let local = uses(info, &["time_date", "time_time"]);
+            let local = uses(info, &["time_date", "time_time"]) || info.uses_dates;
             if local && library {
                 m.push_str("pub fn local_fields(t: i64) -> Option<[i32; 9]> {\n    Some(utc_fields(t + crate::host().local_time_offset(t)))\n}\n");
             } else if local {
@@ -1715,8 +1717,23 @@ impl<'a> W<'a> {
                 out.push_str(&format!("{pad}{{\n{pad}    let mut {v} = rt::ui::Node::new({kind:?});\n"));
                 let bound = matches!(
                     kind.as_str(),
-                    "input" | "textarea" | "checkbox" | "slider" | "dropdown" | "dialog" | "tabs" | "radio" | "switch" | "number"
+                    "input"
+                        | "textarea"
+                        | "checkbox"
+                        | "slider"
+                        | "dropdown"
+                        | "dialog"
+                        | "tabs"
+                        | "radio"
+                        | "switch"
+                        | "number"
+                        | "datePicker"
+                        | "colourPicker"
                 );
+                // A date picker is told today's date, by the computer's clock.
+                if kind == "datePicker" {
+                    out.push_str(&format!("{pad}    {v}.text = rt::time_date();\n"));
+                }
                 // A checkbox's or switch's words come after its field.
                 if let Some(l) = choices.as_ref().filter(|_| kind == "checkbox" || kind == "switch") {
                     let t = self.coerced(l, &Ty::Str);
@@ -1752,6 +1769,7 @@ impl<'a> W<'a> {
                             Ty::State(_) => format!("rt::ui::SV::Text({shown}.to_string())"),
                             Ty::Str => format!("rt::ui::SV::Text({shown})"),
                             Ty::Truth => format!("rt::ui::SV::Truth({shown})"),
+                            Ty::Colour => format!("{{ let c = {shown}; rt::ui::SV::Rgba([c.r, c.g, c.b, c.a]) }}"),
                             _ => format!("rt::ui::SV::Num(({shown}) as f64)"),
                         };
                         out.push_str(&format!("{pad}    {v}.value = Some({sv});\n"));
@@ -3023,6 +3041,8 @@ impl<'a> W<'a> {
                 Ty::State(_) => state.as_str(),
                 Ty::Str => "rt::ui::incoming_text()",
                 Ty::Truth => "rt::ui::incoming_truth()",
+                // Each part is already an f32, so the colour is kept exactly.
+                Ty::Colour => "{ let c = rt::ui::incoming_rgba(); rt::colour(c[0] as f64, c[1] as f64, c[2] as f64, c[3] as f64) }",
                 Ty::Int => "rt::ui::incoming_num().round() as i64",
                 _ => "rt::ui::incoming_num()",
             };
@@ -3065,6 +3085,13 @@ impl<'a> W<'a> {
                     Ty::Truth => format!("if {} {{ rt::ui::SV::Flag }} else {{ rt::ui::SV::Truth(false) }}", self.expr(e)),
                     // A colour value goes to the view as its hex text, as "#2f9e44" would.
                     Ty::Colour => format!("rt::ui::SV::Text(rt::colhex({}))", self.expr(e)),
+                    // swatches [red5, blue5]: each colour's four parts.
+                    Ty::Array(c) if *c == Ty::Colour => {
+                        format!(
+                            "rt::ui::SV::Colours(rt::acopy(&{}).iter().map(|c| [c.r, c.g, c.b, c.a]).collect())",
+                            self.expr(e)
+                        )
+                    }
                     _ => format!("rt::ui::SV::Text({})", self.expr(e)),
                 },
                 StyleValue::Nested(n) => format!("rt::ui::SV::Nested({})", self.styles(n)),

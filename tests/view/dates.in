@@ -1,0 +1,80 @@
+today 2026-11-13
+dump
+open datePicker 1
+dump
+snapshot dates-open.snap.png
+pickday 20
+dump
+open datePicker 1
+click ›
+pickday 3
+dump
+open datePicker 1
+click December 2026
+dump
+click Feb
+dump
+click February 2026
+click 2026
+dump
+click 2030
+click Jun
+pickday 1
+dump
+focus datePicker 1
+key alt+down
+key right
+key down
+key end
+key pageup
+key shift+pagedown
+dump
+key enter
+dump
+focus datePicker 1
+key alt+down
+key home
+key left
+key escape
+dump
+focus datePicker 2
+key enter
+dump
+click Today
+dump
+focus datePicker 1
+key ctrl+a
+type 2026-02-3
+dump
+type 0
+dump
+key backspace
+type 8
+dump
+key tab
+dump
+focus datePicker 2
+key ctrl+a
+key backspace
+dump
+open datePicker 3
+dump
+pickday 9
+pickday 21
+dump
+open datePicker 3
+key pageup
+dump
+pickday 10
+dump
+focus datePicker 3
+key ctrl+a
+type 2026-05-01
+dump
+key escape
+dump
+open datePicker 4
+dump
+open datePicker 2
+press 400 400
+dump

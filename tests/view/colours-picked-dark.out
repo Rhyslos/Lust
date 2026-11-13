@@ -1,0 +1,14 @@
+window "Dark colours" 320x420
+  column 0,0 320x63
+    colourPicker "#339966bf" 16,16 129x31
+window "Dark colours" 320x420
+  column 0,0 320x63
+    colourPicker "#339966bf" 16,16 129x31 (focus)
+window "Dark colours" 320x420
+  column 0,0 320x63
+    colourPicker "#339966bf" 16,16 129x31 (open) (focus)
+  layer "picker" 0,0 320x420
+    colourpop "#339966bf" 16,51 240x324 (hue 150, saturation 67%, brightness 60%, alpha 75%, at square)
+window "Dark colours" 320x420
+  column 0,0 320x63
+    colourPicker "#339966bf" 16,16 129x31 (focus)

@@ -1,0 +1,18 @@
+window "Dark dates" 320x400
+  column 0,0 320x65
+    datePicker "2026-02-28" 16,16 150x33 (open February 2026) (focus, caret 10)
+  layer "picker" 0,0 320x400
+    calendar "February 2026" 16,53 258x296 (cursor 2026-02-28, today 2026-02-14)
+window "Dark dates" 320x400
+  column 0,0 320x65
+    datePicker "2026-02-28" 16,16 150x33 (open 2026) (focus, caret 10)
+  layer "picker" 0,0 320x400
+    calendar "2026" 16,53 258x296 (cursor 2026-02-28, today 2026-02-14, months)
+window "Dark dates" 320x400
+  column 0,0 320x65
+    datePicker "2026-02-28" 16,16 150x33 (open 2020–2029) (focus, caret 10)
+  layer "picker" 0,0 320x400
+    calendar "2020–2029" 16,53 258x296 (cursor 2026-02-28, today 2026-02-14, years)
+window "Dark dates" 320x400
+  column 0,0 320x65
+    datePicker "2026-02-28" 16,16 150x33 (focus, caret 10)

@@ -1,0 +1,199 @@
+window "Dates" 420x420
+  column 0,0 420x223
+    datePicker "2026-11-13" 16,16 150x33
+    datePicker "" 16,59 180x33
+    datePicker "2026-03-15" 16,102 150x33
+    datePicker "2026-11-13" 16,145 150x33 (disabled)
+    text "Due 2026-11-13, start , trip 2026-03-15: " 16,188 286x19
+window "Dates" 420x420
+  column 0,0 420x223
+    datePicker "2026-11-13" 16,16 150x33 (open November 2026) (focus, caret 10)
+    datePicker "" 16,59 180x33
+    datePicker "2026-03-15" 16,102 150x33
+    datePicker "2026-11-13" 16,145 150x33 (disabled)
+    text "Due 2026-11-13, start , trip 2026-03-15: " 16,188 286x19
+  layer "picker" 0,0 420x420
+    calendar "November 2026" 16,53 258x296 (cursor 2026-11-13, today 2026-11-13)
+window "Dates" 420x420
+  column 0,0 420x242
+    datePicker "2026-11-20" 16,16 150x33 (focus, caret 10)
+    datePicker "" 16,59 180x33
+    datePicker "2026-03-15" 16,102 150x33
+    datePicker "2026-11-20" 16,145 150x33 (disabled)
+    text "Due 2026-11-20, start , trip 2026-03-15: due 2026-11-20" 16,188 316x38
+window "Dates" 420x420
+  column 0,0 420x242
+    datePicker "2026-12-03" 16,16 150x33 (focus, caret 10)
+    datePicker "" 16,59 180x33
+    datePicker "2026-03-15" 16,102 150x33
+    datePicker "2026-12-03" 16,145 150x33 (disabled)
+    text "Due 2026-12-03, start , trip 2026-03-15: due 2026-12-03" 16,188 319x38
+window "Dates" 420x420
+  column 0,0 420x242
+    datePicker "2026-12-03" 16,16 150x33 (open 2026) (focus, caret 10)
+    datePicker "" 16,59 180x33
+    datePicker "2026-03-15" 16,102 150x33
+    datePicker "2026-12-03" 16,145 150x33 (disabled)
+    text "Due 2026-12-03, start , trip 2026-03-15: due 2026-12-03" 16,188 319x38
+  layer "picker" 0,0 420x420
+    calendar "2026" 16,53 258x296 (cursor 2026-12-03, today 2026-11-13, months)
+window "Dates" 420x420
+  column 0,0 420x242
+    datePicker "2026-12-03" 16,16 150x33 (open February 2026) (focus, caret 10)
+    datePicker "" 16,59 180x33
+    datePicker "2026-03-15" 16,102 150x33
+    datePicker "2026-12-03" 16,145 150x33 (disabled)
+    text "Due 2026-12-03, start , trip 2026-03-15: due 2026-12-03" 16,188 319x38
+  layer "picker" 0,0 420x420
+    calendar "February 2026" 16,53 258x296 (cursor 2026-02-03, today 2026-11-13)
+window "Dates" 420x420
+  column 0,0 420x242
+    datePicker "2026-12-03" 16,16 150x33 (open 2020–2029) (focus, caret 10)
+    datePicker "" 16,59 180x33
+    datePicker "2026-03-15" 16,102 150x33
+    datePicker "2026-12-03" 16,145 150x33 (disabled)
+    text "Due 2026-12-03, start , trip 2026-03-15: due 2026-12-03" 16,188 319x38
+  layer "picker" 0,0 420x420
+    calendar "2020–2029" 16,53 258x296 (cursor 2026-02-03, today 2026-11-13, years)
+window "Dates" 420x420
+  column 0,0 420x242
+    datePicker "2030-06-01" 16,16 150x33 (focus, caret 10)
+    datePicker "" 16,59 180x33
+    datePicker "2026-03-15" 16,102 150x33
+    datePicker "2030-06-01" 16,145 150x33 (disabled)
+    text "Due 2030-06-01, start , trip 2026-03-15: due 2030-06-01" 16,188 319x38
+window "Dates" 420x420
+  column 0,0 420x242
+    datePicker "2030-06-01" 16,16 150x33 (open May 2031) (focus, caret 10)
+    datePicker "" 16,59 180x33
+    datePicker "2026-03-15" 16,102 150x33
+    datePicker "2030-06-01" 16,145 150x33 (disabled)
+    text "Due 2030-06-01, start , trip 2026-03-15: due 2030-06-01" 16,188 319x38
+  layer "picker" 0,0 420x420
+    calendar "May 2031" 16,53 258x296 (cursor 2031-05-09, today 2026-11-13)
+window "Dates" 420x420
+  column 0,0 420x242
+    datePicker "2031-05-09" 16,16 150x33 (focus, caret 10)
+    datePicker "" 16,59 180x33
+    datePicker "2026-03-15" 16,102 150x33
+    datePicker "2031-05-09" 16,145 150x33 (disabled)
+    text "Due 2031-05-09, start , trip 2026-03-15: due 2031-05-09" 16,188 319x38
+window "Dates" 420x420
+  column 0,0 420x242
+    datePicker "2031-05-09" 16,16 150x33 (focus, caret 10)
+    datePicker "" 16,59 180x33
+    datePicker "2026-03-15" 16,102 150x33
+    datePicker "2031-05-09" 16,145 150x33 (disabled)
+    text "Due 2031-05-09, start , trip 2026-03-15: due 2031-05-09" 16,188 319x38
+window "Dates" 420x420
+  column 0,0 420x242
+    datePicker "2031-05-09" 16,16 150x33
+    datePicker "" 16,59 180x33 (open November 2026) (focus, caret 0)
+    datePicker "2026-03-15" 16,102 150x33
+    datePicker "2031-05-09" 16,145 150x33 (disabled)
+    text "Due 2031-05-09, start , trip 2026-03-15: due 2031-05-09" 16,188 319x38
+  layer "picker" 0,0 420x420
+    calendar "November 2026" 16,96 258x296 (cursor 2026-11-13, today 2026-11-13)
+window "Dates" 420x420
+  column 0,0 420x242
+    datePicker "2031-05-09" 16,16 150x33
+    datePicker "2026-11-13" 16,59 180x33 (focus, caret 10)
+    datePicker "2026-03-15" 16,102 150x33
+    datePicker "2031-05-09" 16,145 150x33 (disabled)
+    text "Due 2031-05-09, start 2026-11-13, trip 2026-03-15: due 2031-05-09" 16,188 367x38
+window "Dates" 420x420
+  column 0,0 420x242
+    datePicker "2026-02-3" 16,16 150x33 (refused) (focus, caret 9)
+    datePicker "2026-11-13" 16,59 180x33
+    datePicker "2026-03-15" 16,102 150x33
+    datePicker "2031-05-09" 16,145 150x33 (disabled)
+    text "Due 2031-05-09, start 2026-11-13, trip 2026-03-15: due 2031-05-09" 16,188 367x38
+window "Dates" 420x420
+  column 0,0 420x242
+    datePicker "2026-02-30" 16,16 150x33 (refused) (focus, caret 10)
+    datePicker "2026-11-13" 16,59 180x33
+    datePicker "2026-03-15" 16,102 150x33
+    datePicker "2031-05-09" 16,145 150x33 (disabled)
+    text "Due 2031-05-09, start 2026-11-13, trip 2026-03-15: due 2031-05-09" 16,188 367x38
+window "Dates" 420x420
+  column 0,0 420x242
+    datePicker "2026-02-38" 16,16 150x33 (refused) (focus, caret 10)
+    datePicker "2026-11-13" 16,59 180x33
+    datePicker "2026-03-15" 16,102 150x33
+    datePicker "2031-05-09" 16,145 150x33 (disabled)
+    text "Due 2031-05-09, start 2026-11-13, trip 2026-03-15: due 2031-05-09" 16,188 367x38
+window "Dates" 420x420
+  column 0,0 420x242
+    datePicker "2031-05-09" 16,16 150x33
+    datePicker "2026-11-13" 16,59 180x33 (focus, selected 0..10)
+    datePicker "2026-03-15" 16,102 150x33
+    datePicker "2031-05-09" 16,145 150x33 (disabled)
+    text "Due 2031-05-09, start 2026-11-13, trip 2026-03-15: due 2031-05-09" 16,188 367x38
+window "Dates" 420x420
+  column 0,0 420x242
+    datePicker "2031-05-09" 16,16 150x33
+    datePicker "" 16,59 180x33 (focus, caret 0)
+    datePicker "2026-03-15" 16,102 150x33
+    datePicker "2031-05-09" 16,145 150x33 (disabled)
+    text "Due 2031-05-09, start , trip 2026-03-15: due 2031-05-09" 16,188 319x38
+window "Dates" 420x420
+  column 0,0 420x242
+    datePicker "2031-05-09" 16,16 150x33
+    datePicker "" 16,59 180x33
+    datePicker "2026-03-15" 16,102 150x33 (open March 2026) (focus, caret 10)
+    datePicker "2031-05-09" 16,145 150x33 (disabled)
+    text "Due 2031-05-09, start , trip 2026-03-15: due 2031-05-09" 16,188 319x38
+  layer "picker" 0,0 420x420
+    calendar "March 2026" 16,116 258x296 (cursor 2026-03-15, today 2026-11-13)
+window "Dates" 420x420
+  column 0,0 420x242
+    datePicker "2031-05-09" 16,16 150x33
+    datePicker "" 16,59 180x33
+    datePicker "2026-03-21" 16,102 150x33 (focus, caret 10)
+    datePicker "2031-05-09" 16,145 150x33 (disabled)
+    text "Due 2031-05-09, start , trip 2026-03-21: trip 2026-03-21" 16,188 316x38
+window "Dates" 420x420
+  column 0,0 420x242
+    datePicker "2031-05-09" 16,16 150x33
+    datePicker "" 16,59 180x33
+    datePicker "2026-03-21" 16,102 150x33 (open March 2026) (focus, caret 10)
+    datePicker "2031-05-09" 16,145 150x33 (disabled)
+    text "Due 2031-05-09, start , trip 2026-03-21: trip 2026-03-21" 16,188 316x38
+  layer "picker" 0,0 420x420
+    calendar "March 2026" 16,116 258x296 (cursor 2026-03-10, today 2026-11-13)
+window "Dates" 420x420
+  column 0,0 420x242
+    datePicker "2031-05-09" 16,16 150x33
+    datePicker "" 16,59 180x33
+    datePicker "2026-03-10" 16,102 150x33 (focus, caret 10)
+    datePicker "2031-05-09" 16,145 150x33 (disabled)
+    text "Due 2031-05-09, start , trip 2026-03-10: trip 2026-03-10" 16,188 316x38
+window "Dates" 420x420
+  column 0,0 420x242
+    datePicker "2031-05-09" 16,16 150x33
+    datePicker "" 16,59 180x33
+    datePicker "2026-05-01" 16,102 150x33 (refused) (focus, caret 10)
+    datePicker "2031-05-09" 16,145 150x33 (disabled)
+    text "Due 2031-05-09, start , trip 2026-03-10: trip 2026-03-10" 16,188 316x38
+window "Dates" 420x420
+  column 0,0 420x242
+    datePicker "2031-05-09" 16,16 150x33
+    datePicker "" 16,59 180x33
+    datePicker "2026-03-10" 16,102 150x33
+    datePicker "2031-05-09" 16,145 150x33 (disabled)
+    text "Due 2031-05-09, start , trip 2026-03-10: trip 2026-03-10" 16,188 316x38
+(there's no datePicker 4 to open)
+window "Dates" 420x420
+  column 0,0 420x242
+    datePicker "2031-05-09" 16,16 150x33
+    datePicker "" 16,59 180x33
+    datePicker "2026-03-10" 16,102 150x33
+    datePicker "2031-05-09" 16,145 150x33 (disabled)
+    text "Due 2031-05-09, start , trip 2026-03-10: trip 2026-03-10" 16,188 316x38
+window "Dates" 420x420
+  column 0,0 420x242
+    datePicker "2031-05-09" 16,16 150x33
+    datePicker "" 16,59 180x33 (focus, caret 0)
+    datePicker "2026-03-10" 16,102 150x33
+    datePicker "2031-05-09" 16,145 150x33 (disabled)
+    text "Due 2031-05-09, start , trip 2026-03-10: trip 2026-03-10" 16,188 316x38

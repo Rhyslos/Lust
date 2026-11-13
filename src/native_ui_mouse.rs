@@ -332,6 +332,13 @@ impl<'a, 'b> Ui<'a, 'b> {
             self.popup = None;
             self.relayout();
         }
+        // An open picker closes, keeping what it chose, or does nothing if the mouse is in it.
+        if self.picker.is_some() {
+            if self.in_picker(x, y) {
+                return Ok(());
+            }
+            self.close_picker();
+        }
         // Outside an open dialog, the right button does nothing.
         if let Some(m) = modal_in(&self.tree) {
             let inside = self.tree.children[m].children.first().is_some_and(|b| x >= b.x && y >= b.y && x < b.x + b.w && y < b.y + b.h);

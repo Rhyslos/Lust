@@ -243,6 +243,14 @@ fn ui_styles(t: &mlua::Table) -> mlua::Result<Vec<(String, crate::native_ui::SV)
         let pair = pair?;
         let name: String = pair.get(1)?;
         let v = match pair.get::<mlua::Value>(2)? {
+            // swatches [red5, blue5]: a colour array, each colour's four parts.
+            mlua::Value::Table(list) if name == "swatches" => {
+                let mut all = Vec::new();
+                for c in list.sequence_values::<mlua::Table>() {
+                    all.push(lua_colour(&c?)?);
+                }
+                SV::Colours(all)
+            }
             mlua::Value::Number(n) => SV::Num(n),
             mlua::Value::Integer(i) => SV::Num(i as f64),
             mlua::Value::String(s) => SV::Text(s.to_str()?.to_string()),
@@ -254,6 +262,16 @@ fn ui_styles(t: &mlua::Table) -> mlua::Result<Vec<(String, crate::native_ui::SV)
         out.push((name, v));
     }
     Ok(out)
+}
+
+/// A colour from Lua, { r, g, b, a }: each part is already an f32, so it's kept exactly.
+fn lua_colour(c: &mlua::Table) -> mlua::Result<[f32; 4]> {
+    Ok([
+        c.get::<f64>("r")? as f32,
+        c.get::<f64>("g")? as f32,
+        c.get::<f64>("b")? as f32,
+        c.get::<f64>("a")? as f32,
+    ])
 }
 
 /// A view's tree of tables, turned into nodes. Buttons' functions become actions.
@@ -268,6 +286,8 @@ fn ui_node(t: &mlua::Table, actions: &mut Vec<crate::native_ui::Action>) -> mlua
         mlua::Value::Boolean(b) => Some(crate::native_ui::SV::Truth(b)),
         mlua::Value::Integer(i) => Some(crate::native_ui::SV::Num(i as f64)),
         mlua::Value::Number(x) => Some(crate::native_ui::SV::Num(x)),
+        // A colour picker's colour.
+        mlua::Value::Table(c) => Some(crate::native_ui::SV::Rgba(lua_colour(&c)?)),
         _ => None,
     };
     if let Some(f) = t.get::<Option<mlua::Function>>("f")? {
@@ -277,6 +297,7 @@ fn ui_node(t: &mlua::Table, actions: &mut Vec<crate::native_ui::Action>) -> mlua
                 crate::native_ui::SV::Text(s) => f.call::<()>(s),
                 crate::native_ui::SV::Truth(b) => f.call::<()>(b),
                 crate::native_ui::SV::Num(x) => f.call::<()>(x),
+                crate::native_ui::SV::Rgba(c) => f.call::<()>((c[0] as f64, c[1] as f64, c[2] as f64, c[3] as f64)),
                 _ => f.call::<()>(()),
             };
             r.map_err(|e| raw_error(&e))

@@ -27,6 +27,10 @@ pub enum SV {
     Point(f64, f64),
     /// The paths of files dropped on the window.
     List(Vec<String>),
+    /// A colour picker's colour: red, green, blue and see-through, each an f32 from 0 to 1.
+    Rgba([f32; 4]),
+    /// A colour picker's swatches.
+    Colours(Vec<[f32; 4]>),
 }
 
 #[derive(Clone, Debug)]
@@ -179,6 +183,13 @@ pub fn incoming_point() -> (f64, f64) {
     match incoming() {
         SV::Point(x, y) => (x, y),
         _ => (0.0, 0.0),
+    }
+}
+
+pub fn incoming_rgba() -> [f32; 4] {
+    match incoming() {
+        SV::Rgba(c) => c,
+        _ => [0.0, 0.0, 0.0, 1.0],
     }
 }
 
@@ -652,6 +663,9 @@ struct Look {
     stripes: bool,
     /// An icon on a button, by its name.
     icon: String,
+    /// A colour picker chooses how see-through, and offers these colours (None: the colour words').
+    alpha: bool,
+    swatches: Option<Vec<[f32; 4]>>,
 }
 
 impl Look {
@@ -733,6 +747,8 @@ fn base_look(kind: &str) -> Look {
         across: false,
         stripes: false,
         icon: String::new(),
+        alpha: false,
+        swatches: None,
     };
     match kind {
         "input" | "textarea" => {
@@ -752,6 +768,22 @@ fn base_look(kind: &str) -> Look {
         "slider" => {
             l.width = Size::Fixed(200.0);
             l.height = Size::Fixed(20.0);
+        }
+        // A date picker looks like an input, with a calendar icon on the right.
+        "datePicker" => {
+            l.pad = [7.0, 34.0, 7.0, 10.0];
+            l.width = Size::Fixed(150.0);
+            l.background = Some(0xffffff);
+            l.border = Some(0xced4da);
+            l.radius = 6.0;
+        }
+        // A colour picker is a button with a swatch of the colour and its hex.
+        "colourPicker" => {
+            l.pad = [6.0, 10.0, 6.0, 36.0];
+            l.background = Some(0xffffff);
+            l.border = Some(0xced4da);
+            l.radius = 6.0;
+            l.wrap = false;
         }
         // A number box looks like an input, with its up and down arrows on the right.
         "number" => {
@@ -1014,14 +1046,23 @@ fn apply(l: &mut Look, kind: &str, style: &[(String, SV)]) {
             "radius" => l.rad = num(v).unwrap_or(10.0).max(0.0),
             "thick" => l.thick = num(v).unwrap_or(2.0).max(0.0),
             "animate" => l.animate = true,
+            // A date picker's min and max are dates, kept as days since 1970.
             "min" => l.min = match v {
                 SV::Num(n) => *n,
+                SV::Text(t) => cal_day_of(t).map_or(f64::NEG_INFINITY, |d| d as f64),
                 _ => f64::NEG_INFINITY,
             },
             "max" => l.max = match v {
                 SV::Num(n) => *n,
+                SV::Text(t) => cal_day_of(t).map_or(f64::INFINITY, |d| d as f64),
                 _ => f64::INFINITY,
             },
+            "alpha" => l.alpha = true,
+            "swatches" => {
+                if let SV::Colours(c) = v {
+                    l.swatches = Some(c.clone());
+                }
+            }
             "across" => l.across = true,
             "stripes" => l.stripes = true,
             "icon" => l.icon = text_of(v).unwrap_or("").to_string(),
@@ -1039,7 +1080,10 @@ fn apply(l: &mut Look, kind: &str, style: &[(String, SV)]) {
                         l.color = if light(c) { INK } else { 0xffffff };
                     } else if matches!(kind, "box" | "circle") {
                         l.background = bg_colour(other);
-                    } else if matches!(kind, "checkbox" | "slider" | "input" | "textarea" | "progress" | "tabs" | "radio" | "switch" | "number") {
+                    } else if matches!(
+                        kind,
+                        "checkbox" | "slider" | "input" | "textarea" | "progress" | "tabs" | "radio" | "switch" | "number" | "datePicker" | "colourPicker"
+                    ) {
                         l.accent = c;
                     } else {
                         l.color = c;
@@ -1370,6 +1414,7 @@ fn lay(n: &Node) -> Laid {
             laid.value = Some(SV::Text(number_text(laid.num, n.whole)));
         }
         "checkbox" | "switch" => with_words(&mut laid),
+        "datePicker" | "colourPicker" => picker_lay(n, &mut laid),
         "table" | "list" => list_lay(n, &mut laid),
         // A button with only an icon is square.
         "button" if laid.text.is_empty() && !laid.look.icon.is_empty() && !n.style.iter().any(|(k, _)| k.starts_with("pad")) => {
@@ -1636,7 +1681,8 @@ fn measure(n: &Laid, max_w: f32) -> (f32, f32) {
             };
             (w.max(0.0), h.max(0.0))
         }
-        "input" | "number" => (0.0, line_metrics(l.size, l.face()).1),
+        "input" | "number" | "datePicker" => (0.0, line_metrics(l.size, l.face()).1),
+        "colourPicker" => (picker_text_w(n), line_metrics(l.size, l.face()).1),
         "icon" => (l.size, l.size),
         // A text box is four lines tall unless it's given a height; more lines scroll.
         "textarea" => (0.0, line_metrics(l.size, l.face()).1 * 4.0),
@@ -2268,6 +2314,8 @@ struct PaintState {
     /// dragged over the window.
     marks: Vec<[f32; 4]>,
     files_over: bool,
+    /// The date or colour picker that's open.
+    picker: Option<Picker>,
 }
 
 const RING: f32 = 3.0;
@@ -2575,7 +2623,7 @@ fn paint(c: &mut Canvas, n: &Laid, st: &PaintState, path: &mut Vec<usize>) {
         "radio" if focused && st.ring => radio_ring(c, n),
         "icon" => paint_icon(c, &n.text, n.x + l.pad[3], n.y + l.pad[0], l.size, l.color),
         _ => {
-            if focused && st.ring && matches!(n.kind.as_str(), "button" | "dropdown" | "menu") {
+            if focused && st.ring && matches!(n.kind.as_str(), "button" | "dropdown" | "menu" | "colourPicker") {
                 ring_around(c, n, 0x1c7ed6);
             }
             if let Some(bg) = l.background {
@@ -2591,6 +2639,9 @@ fn paint(c: &mut Canvas, n: &Laid, st: &PaintState, path: &mut Vec<usize>) {
     }
     if n.kind == "number" {
         paint_number(c, n, l, focused, st);
+    }
+    if matches!(n.kind.as_str(), "datePicker" | "colourPicker" | "calendar" | "colourpop") {
+        paint_picker(c, n, l, focused, st);
     }
     if n.kind == "textarea" {
         paint_textarea(c, n, focused, st);
@@ -2751,7 +2802,10 @@ fn node_at<'a>(n: &'a Laid, path: &[usize]) -> Option<&'a Laid> {
 
 /// Everything that can have focus, in the order Tab goes through them.
 fn focusable(n: &Laid, path: &mut Vec<usize>, out: &mut Vec<Vec<usize>>) {
-    let can = matches!(n.kind.as_str(), "button" | "input" | "textarea" | "checkbox" | "slider" | "dropdown" | "radio" | "switch" | "number");
+    let can = matches!(
+        n.kind.as_str(),
+        "button" | "input" | "textarea" | "checkbox" | "slider" | "dropdown" | "radio" | "switch" | "number" | "datePicker" | "colourPicker"
+    );
     if (n.action.is_some() && can) || (matches!(n.kind.as_str(), "menu" | "tabbtn" | "branchhead") && !n.look.disabled) {
         out.push(path.clone());
     }
@@ -2953,6 +3007,8 @@ enum Drag {
     Row(RowDrag),
     /// The mouse went down on a canvas with press, drag or release: its place.
     Canvas(Vec<usize>),
+    /// The mouse went down in an open colour picker's square, hue strip or alpha strip.
+    Picker(Part),
 }
 
 /// The line between two panels of a split at this point: the split's place, which split it is in
@@ -3165,6 +3221,8 @@ struct Ui<'a, 'b> {
     ran: u64,
     /// When a list under a dragged row last scrolled by itself.
     edge_last: Option<std::time::Instant>,
+    /// The date or colour picker that's open, and what it's showing (native_ui_pickers.rs).
+    picker: Option<Picker>,
 }
 
 /// The program's tweens, moved on by the window's clock: given seconds, it gives back whether
@@ -3313,6 +3371,7 @@ impl<'a, 'b> Ui<'a, 'b> {
             files_over: false,
             ran: 0,
             edge_last: None,
+            picker: None,
         };
         ui.relayout();
         ui.settle()?;
@@ -3439,9 +3498,9 @@ impl<'a, 'b> Ui<'a, 'b> {
         let (mut tree, dialogs) = lay_out(&self.node, w, h);
         // The focused number box shows what's typed in it, red-edged if it can't be kept.
         if let Some((p, t)) = self.draft.clone() {
-            match node_at_mut(&mut tree, &p).filter(|n| n.kind == "number") {
+            match node_at_mut(&mut tree, &p).filter(|n| n.kind == "number" || n.kind == "datePicker") {
                 Some(n) => {
-                    n.bad = number_parse(&t, &n.look, n.whole).is_none();
+                    n.bad = if n.kind == "number" { number_parse(&t, &n.look, n.whole).is_none() } else { !date_fits(&t, &n.look) };
                     n.value = Some(SV::Text(t));
                 }
                 None => self.draft = None,
@@ -3474,6 +3533,9 @@ impl<'a, 'b> Ui<'a, 'b> {
                 }
                 None => self.popup = None,
             }
+        }
+        if let Some(l) = self.picker_layer(&tree) {
+            add(&mut tree, l, &mut self.scrolls);
         }
         if self.tip_on {
             let mut found = None;
@@ -3693,6 +3755,7 @@ impl<'a, 'b> Ui<'a, 'b> {
         st.pressed = self.pressed.clone();
         st.marks = self.drag_marks();
         st.files_over = self.files_over;
+        st.picker = self.picker.clone();
         let now = self.now();
         for (p, &start) in &self.flips {
             let t = ((now - start) / SWITCH_SECS) as f32;
@@ -3892,6 +3955,10 @@ impl<'a, 'b> Ui<'a, 'b> {
                 return Ok(());
             }
         }
+        // An open date or colour picker takes the mouse, and closes when it goes down elsewhere.
+        if self.picker.is_some() {
+            return self.picker_press(x, y);
+        }
         // So does an open dialog, closing.
         if let Some(m) = modal_in(&self.tree) {
             let l = &self.tree.children[m];
@@ -3958,9 +4025,14 @@ impl<'a, 'b> Ui<'a, 'b> {
                 self.set_focus(Some(path.clone()), false);
                 self.spin(&path, if up { 1.0 } else { -1.0 })?;
             }
+            // A date picker's calendar icon, on its right, opens its calendar.
+            "datePicker" if node_at(&self.tree, &path).is_some_and(|n| x >= n.x + n.w - DATE_ICON_W) => {
+                self.set_focus(Some(path.clone()), false);
+                self.open_picker(&path);
+            }
             // Clicking a radio button gives its group focus, and picks it when the mouse is let go.
             "radiobtn" => self.set_focus(Some(path[..path.len() - 1].to_vec()), false),
-            "input" | "textarea" | "number" => {
+            "input" | "textarea" | "number" | "datePicker" => {
                 if self.st.focus.as_ref() != Some(&path) {
                     self.set_focus(Some(path.clone()), false);
                 }
@@ -3986,7 +4058,7 @@ impl<'a, 'b> Ui<'a, 'b> {
                 self.drag = Drag::Slide;
                 self.slide_to(&path, x)?;
             }
-            "dropdown" | "menu" => self.set_focus(Some(path.clone()), false),
+            "dropdown" | "menu" | "colourPicker" => self.set_focus(Some(path.clone()), false),
             // A row of an open list: it acts when the mouse is let go, and focus stays.
             "option" | "item" => {}
             "tabbtn" | "branchhead" => self.set_focus(Some(path.clone()), false),
@@ -4058,6 +4130,7 @@ impl<'a, 'b> Ui<'a, 'b> {
             }
             Drag::Row(r) => self.row_moved(r, x, y, self.test_clock.is_some())?,
             Drag::Canvas(p) => self.canvas_drag(&p, x, y)?,
+            Drag::Picker(part) => self.picker_drag(part, x, y)?,
             Drag::None if self.pressed.is_none() => self.canvas_hover(x, y)?,
             Drag::None => {}
         }
@@ -4074,6 +4147,10 @@ impl<'a, 'b> Ui<'a, 'b> {
             Drag::Canvas(p) => {
                 self.pressed = None;
                 return self.canvas_release(&p, x, y);
+            }
+            Drag::Picker(_) => {
+                self.pressed = None;
+                return Ok(());
             }
             _ => {}
         }
@@ -4114,6 +4191,12 @@ impl<'a, 'b> Ui<'a, 'b> {
                 self.pick_row(&path[..path.len() - 1], j, open)
             }
             "header" => self.sort_by(&path),
+            // A colour picker opens when it's clicked; a click in an open picker acts.
+            "colourPicker" => {
+                self.open_picker(&path);
+                Ok(())
+            }
+            "calendar" | "colourpop" => self.picker_release(x, y),
             _ => Ok(()),
         }
     }
@@ -4280,6 +4363,9 @@ impl<'a, 'b> Ui<'a, 'b> {
 
     /// A key in the focused input: the text changes, then its action runs with the new text.
     fn edit(&mut self, k: Key, mods: Mods) -> Result<(), String> {
+        if self.picker.is_some() {
+            return self.picker_edit(k, mods);
+        }
         let Some(path) = self.st.focus.clone() else { return Ok(()) };
         let Some(n) = node_at(&self.tree, &path) else { return Ok(()) };
         if !editable(&n.kind) {
@@ -4400,10 +4486,14 @@ impl<'a, 'b> Ui<'a, 'b> {
         }
         self.popup = Some((path.to_vec(), hl));
         self.ctx_at = None;
+        self.picker = None;
         self.relayout();
     }
 
     fn nav(&mut self, k: Nav, mods: Mods) -> Result<(), String> {
+        if self.picker_key(&k, mods)? {
+            return Ok(());
+        }
         if self.popup_key(&k)? {
             return Ok(());
         }
@@ -4439,7 +4529,7 @@ impl<'a, 'b> Ui<'a, 'b> {
                 self.reveal();
                 // Tabbing into an input selects its text, ready to be typed over.
                 if let Some(n) = self.focused() {
-                    if n.kind == "input" || n.kind == "number" {
+                    if n.kind == "input" || n.kind == "number" || n.kind == "datePicker" {
                         let end = value_text(n).len();
                         self.st.caret = Caret { anchor: 0, caret: end };
                     }
@@ -4491,8 +4581,8 @@ impl<'a, 'b> Ui<'a, 'b> {
                         Some(t) => self.edit(Key::Insert(t.replace("\r\n", "\n").replace('\r', "\n")), Mods::default()),
                         None => Ok(()),
                     },
-                    ("input" | "textarea" | "number", Nav::Edit(e)) => self.edit(e.clone(), mods),
-                    ("input" | "textarea" | "number", Nav::Copy | Nav::Cut) => {
+                    ("input" | "textarea" | "number" | "datePicker", Nav::Edit(e)) => self.edit(e.clone(), mods),
+                    ("input" | "textarea" | "number" | "datePicker", Nav::Copy | Nav::Cut) => {
                         let sel = self.st.caret.selected(value_text(n)).to_string();
                         if sel.is_empty() {
                             return Ok(());
@@ -4503,7 +4593,7 @@ impl<'a, 'b> Ui<'a, 'b> {
                         }
                         Ok(())
                     }
-                    ("input" | "textarea" | "number", Nav::Undo | Nav::Redo) => {
+                    ("input" | "textarea" | "number" | "datePicker", Nav::Undo | Nav::Redo) => {
                         let current = (value_text(n).to_string(), self.st.caret.clone());
                         let h = self.history.entry(path.clone()).or_default();
                         let back = if k == Nav::Undo { h.undo.pop() } else { h.redo.pop() };
@@ -4523,6 +4613,28 @@ impl<'a, 'b> Ui<'a, 'b> {
                         self.keep_caret_in_view();
                         Ok(())
                     }
+                    // Alt+Down opens a date picker's calendar, and so does Enter in an empty one.
+                    ("datePicker", Nav::Down) if mods.alt => {
+                        self.open_picker(&path);
+                        Ok(())
+                    }
+                    ("datePicker", Nav::Enter) => {
+                        let empty = value_text(n).is_empty();
+                        if self.draft.take().is_some() {
+                            self.relayout();
+                        }
+                        if empty {
+                            self.open_picker(&path);
+                        } else {
+                            let end = self.focused().map(|n| value_text(n).len()).unwrap_or(0);
+                            self.st.caret = Caret::at(end);
+                        }
+                        Ok(())
+                    }
+                    ("colourPicker", Nav::Enter | Nav::Space) => {
+                        self.open_picker(&path);
+                        Ok(())
+                    }
                     ("input", Nav::Enter) => match n.enter {
                         Some(a) => {
                             run_with(&mut self.actions[a], SV::Flag)?;
@@ -4540,7 +4652,7 @@ impl<'a, 'b> Ui<'a, 'b> {
                         self.st.caret = Caret::at(end);
                         Ok(())
                     }
-                    ("input" | "number", Nav::Paste) => match self.clip_get() {
+                    ("input" | "number" | "datePicker", Nav::Paste) => match self.clip_get() {
                         // An input is one line, so pasted lines are joined with spaces.
                         Some(t) => self.edit(Key::Type(t.replace("\r\n", " ").replace(['\n', '\r'], " ")), Mods::default()),
                         None => Ok(()),
@@ -4635,8 +4747,12 @@ impl<'a, 'b> Ui<'a, 'b> {
         if key == "tab" && !m.command {
             return true;
         }
+        // An open picker uses every key but the function keys.
+        if self.picker.is_some() {
+            return !function_key(key);
+        }
         match self.focused_kind().as_str() {
-            "input" | "textarea" | "number" => {
+            "input" | "textarea" | "number" | "datePicker" => {
                 if plain {
                     !function_key(key)
                 } else if m.command {
@@ -4645,7 +4761,7 @@ impl<'a, 'b> Ui<'a, 'b> {
                     matches!(key, "left" | "right" | "backspace" | "delete")
                 }
             }
-            "button" | "checkbox" | "switch" => plain && matches!(key, "enter" | "space"),
+            "button" | "checkbox" | "switch" | "colourPicker" => plain && matches!(key, "enter" | "space"),
             "radio" => plain && matches!(key, "left" | "right" | "up" | "down" | "space"),
             "slider" => plain && matches!(key, "left" | "right" | "up" | "down" | "home" | "end"),
             "table" | "list" => {
@@ -4679,7 +4795,7 @@ impl<'a, 'b> Ui<'a, 'b> {
             return 3;
         }
         match self.hit_at(x, y).and_then(|p| node_at(&self.tree, &p)).map(|n| n.kind.as_str()) {
-            Some("input" | "textarea" | "number") => 2,
+            Some("input" | "textarea" | "number" | "datePicker") => 2,
             Some("canvas") => 5,
             Some(_) => 1,
             None => 0,
@@ -4755,7 +4871,7 @@ mod windowed {
                     return Ok(());
                 }
             }
-            let input = editable(&self.ui.focused_kind());
+            let input = editable(&self.ui.focused_kind()) || self.ui.picker_takes_text();
             if mods.command {
                 if let WKey::Character(c) = &event.logical_key {
                     let nav = match c.to_lowercase().as_str() {
@@ -5181,7 +5297,7 @@ fn word_at(t: &str, i: usize) -> (usize, usize) {
 
 /// Inputs and text boxes: what can be typed in.
 fn editable(kind: &str) -> bool {
-    kind == "input" || kind == "textarea" || kind == "number"
+    kind == "input" || kind == "textarea" || kind == "number" || kind == "datePicker"
 }
 
 /// What a key does in an input.
@@ -5334,6 +5450,8 @@ fn dump(n: &Laid, depth: usize, path: &mut Vec<usize>, st: &PaintState, out: &mu
     let pad = "  ".repeat(depth);
     let shown = match (&n.value, n.kind.as_str()) {
         (_, "dialog" | "tablerow" | "listrow") => None,
+        // An open calendar shows its title.
+        (_, "calendar") => Some(n.text.clone()),
         (_, "tabbtn") if matches!(n.value, Some(SV::Truth(true))) => Some(format!("{} (showing)", n.text)),
         (_, "tabbtn") => Some(n.text.clone()),
         (_, "branchhead") => Some(format!("{} ({})", n.text, if matches!(n.value, Some(SV::Truth(true))) { "open" } else { "shut" })),
@@ -5344,6 +5462,7 @@ fn dump(n: &Laid, depth: usize, path: &mut Vec<usize>, st: &PaintState, out: &mu
         (Some(SV::Text(t)), _) => Some(t.clone()),
         (Some(SV::Truth(b)), _) => Some(if *b { "on" } else { "off" }.to_string()),
         (Some(SV::Num(x)), "slider" | "progress") => Some(num_text(*x)),
+        (Some(SV::Rgba(c)), _) => Some(rgba_hex(*c, true)),
         _ => None,
     };
     let text = match shown {
@@ -5369,6 +5488,7 @@ fn dump(n: &Laid, depth: usize, path: &mut Vec<usize>, st: &PaintState, out: &mu
         focus.push_str(" (disabled)");
     }
     focus.push_str(&mouse_dump(n));
+    focus.push_str(&picker_dump(n, path, st));
     if n.kind == "scroll" || (n.kind == "textarea" && n.content_h > n.h + 0.5) {
         focus.push_str(&format!(" (scrolled {} of {})", n.scrolled as i64, (n.content_h - n.h).max(0.0) as i64));
     }
@@ -5525,7 +5645,24 @@ fn test(s: Settings, build: &mut Build, step: Box<Step>) -> Result<(), String> {
                     ui.press(x, y, Mods::default())?;
                     ui.release(x, y)?;
                 }
-                None => println!("(there's no button \"{rest}\" to click)"),
+                // In an open picker: Today, ‹, ›, its title, a month or a year.
+                None => match ui.picker_spot(rest) {
+                    Some((x, y)) => {
+                        ui.press(x, y, Mods::default())?;
+                        ui.release(x, y)?;
+                    }
+                    None => println!("(there's no button \"{rest}\" to click)"),
+                },
+            },
+            // today 2026-11-13: the date a date picker takes as today.
+            "today" => set_today(rest),
+            // pickday 14, pickcolour 0.5 0.2, hue 0.6, alpha 0.5, swatch 3: in an open picker.
+            "pickday" | "pickcolour" | "hue" | "alpha" | "swatch" => match ui.picker_test_spot(cmd, &nums) {
+                Some((x, y)) => {
+                    ui.press(x, y, Mods::default())?;
+                    ui.release(x, y)?;
+                }
+                None => println!("(there's no open picker with {line})"),
             },
             "check" => match nums.first().and_then(|&n| find_nth(&ui.tree, "checkbox", n as usize)) {
                 Some(p) => {
@@ -5694,12 +5831,16 @@ fn test(s: Settings, build: &mut Build, step: Box<Step>) -> Result<(), String> {
                 let kind = it.next().unwrap_or("");
                 let what = it.next().unwrap_or("").trim();
                 let found = match kind {
-                    "dropdown" => find_nth(&ui.tree, "dropdown", what.parse::<usize>().unwrap_or(1)),
+                    "dropdown" | "datePicker" | "colourPicker" => find_nth(&ui.tree, kind, what.parse::<usize>().unwrap_or(1)),
                     _ => find_button(&ui.tree, what, &mut vec![]),
                 };
                 match found {
                     Some(p) => {
-                        let (x, y) = centre(&ui, &p);
+                        let (mut x, y) = centre(&ui, &p);
+                        // A date picker opens from its calendar icon, on its right.
+                        if kind == "datePicker" {
+                            x = node_at(&ui.tree, &p).map_or(x, |n| n.x + n.w - DATE_ICON_W / 2.0);
+                        }
                         ui.press(x, y, Mods::default())?;
                         ui.release(x, y)?;
                     }
