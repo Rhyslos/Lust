@@ -1,0 +1,66 @@
+state Mood = [Happy, Calm];
+
+class Person {
+    has {
+        string name = "";
+        int age = 0;
+        Mood mood = Mood.Calm;
+    }
+}
+
+class Pet {
+    has {
+        string name = "";
+    }
+}
+
+assembly App {
+    has {
+        Person array people = [];
+        int map ages = [];
+        Pet pet = nothing;
+        int count = 0;
+        string title = "People";
+    }
+
+    view {
+        column {
+            table (Person p in people) [select pet] {
+                column "Name" p.name;
+            }
+            table (Person p in people) [select count] {
+                column "Name" p.name;
+            }
+            list (Person p in people) [select p] {
+                text p.name;
+            }
+            column "Name" title;
+            table (int a in count) {
+                column "Age" a;
+            }
+            table (string k, int a in ages) {
+                column "Age" a;
+            }
+            list (int a in 5) {
+                text a.text();
+            }
+            table (Person p in people) {
+                column title p.name;
+                column "Who" p;
+                column "Both" p.age { text "x"; }
+                column "Nothing";
+                column "Age" [sort p] { text "x"; }
+                text "not a column";
+            }
+            table [height 200] {
+                column "Name" title;
+            }
+            list (Person p in people) {
+                text p.name;
+            } open {
+                pet = p;
+            }
+        }
+    }
+}
+end

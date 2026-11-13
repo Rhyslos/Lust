@@ -1,0 +1,17 @@
+view-tables.lsc:28:48  select puts the picked row in pet, which holds a Pet, but each row is a Person. Pick into a field like Person chosen;
+view-tables.lsc:31:48  select puts the picked row in count, which holds an int, but each row is a Person. Pick into a field like Person chosen;
+view-tables.lsc:34:47  p is a variable of the view, made again each time it's drawn, so the pick would be lost. Keep it in a field.
+view-tables.lsc:37:13  a column with a header is one of a table's columns, so it goes inside a table: table (Person p in people) { column "Name" p.name; }. To put pieces under each other, use column { … } without a header.
+view-tables.lsc:38:29  a table's rows come from an array, a cMap or a database table, but count is an int: table (Person p in people)
+view-tables.lsc:41:39  a table's rows come from an array, a cMap or a database table, but ages is an int map: table (Person p in people)
+view-tables.lsc:44:28  a list's rows come from an array, a cMap or a database table, but this is an int: list (Item i in items)
+view-tables.lsc:48:24  a column's header is text written in place: column "Age" p.age;
+view-tables.lsc:49:30  a column can show text, a number, a bool or a state, but p is a Person. Use one of its fields: column "Name" p.name;
+view-tables.lsc:50:31  a column shows a value or holds pieces in { }, not both.
+view-tables.lsc:51:17  a column needs what it shows: column "Age" p.age; or pieces: column "" { button … }
+view-tables.lsc:52:36  a column can sort by text, a number, a bool or a state, but p is a Person. Use one of its fields: column "Name" p.name;
+view-tables.lsc:53:17  a table holds its columns, one for each thing it shows: column "Name" p.name; or column "" { button … }
+view-tables.lsc:55:13  a table shows a row for each item of an array: table (Person p in people) { column "Name" p.name; }
+view-tables.lsc:61:23  pet is a Pet, but this is a Person.
+
+15 mistakes. Nothing was run.

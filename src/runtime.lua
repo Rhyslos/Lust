@@ -2353,6 +2353,33 @@ function L.piece(parent, site, class, rowkey)
   return p
 end
 
+-- Tables and lists make only the rows on the screen: lust says which, and remembers how each
+-- is scrolled and sorted. A sort is kept while the values it sorted by stay the same.
+local orders = {}
+function L.ui_list_begin(site, n, rowh) return host.ui_list_begin(site, n, rowh) end
+function L.ui_list_sort(id) return host.ui_list_sort(id) end
+-- The order the last sort gave, while lust says nothing has changed since.
+function L.ui_list_kept(id)
+  local c = orders[id]
+  return c and c.order
+end
+function L.ui_list_range(id) return host.ui_list_range(id) end
+function L.ui_list_hint(id) return host.ui_list_hint(id) end
+function L.ui_list_order(id, keys, falling)
+  local c = orders[id]
+  local n = #keys
+  if c and c.falling == falling and c.n == n then
+    local ck, same = c.keys, true
+    for i = 1, n do
+      if ck[i] ~= keys[i] then same = false break end
+    end
+    if same then return c.order end
+  end
+  local order = host.ui_list_order(id, keys, falling)
+  orders[id] = {keys = keys, falling = falling, n = n, order = order}
+  return order
+end
+
 -- ----- saves: readable JSON files, name.save -----
 
 function L.save_exists(name)

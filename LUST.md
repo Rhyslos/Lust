@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (alpha 68):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, scrolling, pictures (SVG too), timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (alpha 69):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, tables and long lists, scrolling, pictures (SVG too), timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -798,6 +798,7 @@ An assembly with a `view` opens a window with `App:open();`, through `lust run` 
 - **Laying out bigger apps:** `grid` for cards in columns that rewrap as the window changes size, `split` for panels with a line between them to drag, `tabs`, `branch` for parts that fold open and shut (trees), and `progress` bars (see below).
 - **Drawing and motion:** `canvas` with `box`, `circle` and `line` placed by `x` and `y`, for charts, maps and games, and `animate` for pieces that glide to where they go and fade in (see below).
 - **Things that show over the view:** `dropdown` lists to choose from, `menu`s of `item`s, `dialog`s that pop up while a bool is true, and `tip "…"` for a note when the mouse rests on a piece (see below).
+- **Tables and long lists:** `table` shows rows in columns that sort, pick and resize, and `list` is a scrolling column of rows; both stay quick with 100,000 rows (see below).
 
 ```
 assembly App {
@@ -824,15 +825,18 @@ end
 | | |
 | --- | --- |
 | `dump` | prints every piece with its place and size |
-| `click Add one` | clicks the button showing that text, or a row of an open list (`click Cupboard`, `click Save`) |
+| `click Add one` | clicks the button showing that text, or a row of an open list (`click Cupboard`, `click Save`), or a table's or list's row by words it shows (`click Ada`) |
+| `click Age` | clicks a table's header, sorting by it |
+| `dblclick Ada` | double-clicks the row of a table or list showing those words, opening it |
+| `scroll table 1 2000`, `scroll list 1 -300` | scrolls the first table (or list) down 2000 (up with a minus) |
 | `open menu File`, `open dropdown 1` | clicks a menu or the first dropdown, opening its list |
 | `click Weapons`, `click Stats` | opens or shuts a branch, or shows a tab, by its name |
 | `press 184 200`, `move 260 200`, `release 260 200` | drags the line between a split's panels, like any drag |
 | `choose cat.png`, `choose cancel` | the answer the next `Files:chooseOpen`, `chooseSave` or `chooseFolder` box gives |
 | `hover Delete` | puts the mouse on the button showing that text, and shows its tip straight away |
-| `focus input 1` | gives the first input focus (also `textarea 1`, `checkbox 2`, `switch 1`, `radio 1`, `number 1`, `slider 1`, `button 3`) |
+| `focus input 1` | gives the first input focus (also `textarea 1`, `checkbox 2`, `switch 1`, `radio 1`, `number 1`, `slider 1`, `button 3`, `table 1`, `list 1`) |
 | `type Hello` | types into the input that has focus |
-| `key ctrl+left` | presses a key: `backspace`, `delete`, `left`, `right`, `home`, `end`, `up`, `down`, `tab`, `enter`, `space`, `escape`, with `shift+` or `ctrl+` in front, and `ctrl+a`, `ctrl+c`, `ctrl+x`, `ctrl+v`; any key a shortcut uses works too (`key ctrl+s`, `key f1`) |
+| `key ctrl+left` | presses a key: `backspace`, `delete`, `left`, `right`, `home`, `end`, `up`, `down`, `pageup`, `pagedown`, `tab`, `enter`, `space`, `escape`, with `shift+` or `ctrl+` in front, and `ctrl+a`, `ctrl+c`, `ctrl+x`, `ctrl+v`; any key a shortcut uses works too (`key ctrl+s`, `key f1`) |
 | `check 1` | clicks the first checkbox |
 | `flip 1` | clicks the first switch |
 | `click Medium`, `click Sound` | clicks a radio button, or a checkbox or switch, by its words |
@@ -844,7 +848,7 @@ end
 | `size 800 600` | resizes the window |
 | `snapshot shot.png` | draws the window into a picture |
 
-`lust test` sets it for every test, so a view's tests compare what `dump` prints.
+`lust test` sets it for every test, so a view's tests compare what `dump` prints. A table or list dumps only the rows on the screen, after a line saying how many it has and which show: `table 100000 rows, showing 41–51`.
 
 ### Pieces are assemblies
 
@@ -980,6 +984,7 @@ assembly Settings {
 | | |
 | --- | --- |
 | Layout | `column`, `row`, `stack` (layers), `scroll`, `space`, `grid`, `split` |
+| Rows of data | `table` with `column`s, `list` |
 | Showing parts | `tabs` with `tab`, `branch` |
 | Drawing | `canvas` with `box`, `circle`, `line` |
 | Content | `text`, `button`, `input`, `textarea`, `checkbox`, `switch`, `number`, `slider`, `image`, `icon`, `progress` |
@@ -1284,6 +1289,53 @@ A font file is one weight, so `bold` doesn't change a font of your own: use the 
 
 A scroll is as wide as it can be, and in a column it takes the room that's left (and so does whatever holds it), so `column { text "Title"; scroll { … } }` fills the window with a title above a list. Give it a `height` to make it a fixed size instead.
 
+A scroll makes, lays out and draws everything in it, even what's scrolled out of sight, which is fine for a few hundred rows. For long lists, of thousands of rows or more, use `list` or `table` (below), which make only the rows on the screen.
+
+### Tables
+
+`table` shows a row for each item of an array, in columns with a header each. Its `( )` reads like a loop's: what each row is called, and where the rows come from:
+
+```
+table (Person p in people) [select chosen, height 300] {
+    column "Name" p.name [width 160];
+    column "Age" p.age;
+    column "" [width 40] {
+        button [icon "trash", subtle] { forget(p); }
+    }
+} open {
+    edit(chosen);
+}
+```
+
+- **Columns.** `column "Age" p.age;` shows a value: text, a number, a bool or a state. `column "" { … }` holds any pieces instead, like a button on each row. The header is text written in place. A column with a `width` has it, and the others share the rest. Dragging the line at a header's right edge makes the column wider or narrower (40 at least), and the window remembers the widths while it's open, as a split remembers its lines.
+- **Sorting.** Clicking the header of a column that shows a value sorts the rows by it, smallest first, with an arrow pointing up; clicking again sorts largest first, with the arrow down; a third time puts the rows back in the array's own order. Numbers sort as numbers, text without minding capitals (`ada` next to `Ada`), bools false first, and states in the order their options are written. Rows that are the same keep their order. A column of pieces sorts too when it's told by what: `column "Note" [sort p.note] { … }`. Sorting only changes what's shown, never the array.
+- **Picking a row.** `select chosen` puts the row that's clicked in `chosen`, a field of the rows' type (a `Person` field, which can be `nothing` when none is picked). The picked row is blue, and stays picked wherever it moves, since it's the row itself that's picked, not its place. Up and Down pick the row above or below, Home and End the first and last, and Page Up and Page Down go a page at a time, scrolling to keep the picked row in sight.
+- **Opening a row.** `open { … }` after the table runs on a double-click on a row, or Enter, after the row is picked, the same shape as `enter { }` on an input.
+- **The keyboard.** Tab reaches the table as one piece, with a ring around it, and then the buttons and inputs in the rows on the screen.
+- **How it looks.** The header stays put while the rows scroll under it, thin lines go between the rows, the row under the mouse is shaded softly, and `[stripes]` shades every other row. In dark mode it all turns dark with the rest.
+- **Where the rows come from.** An array, or a cMap or database table, written as in a loop: `table (int id, string name, float price in shop)`. For a cMap or a table, `select` picks the row's key (the first column), so it's bound to an int or string field.
+- **Size.** A table scrolls by itself. It's as wide as it can be, and with no `height` it fills the room it's given, like a split; inside a scroll it's as tall as about eight rows.
+- **Quick with any number of rows.** Only the rows on the screen are made, laid out and drawn, plus a few spare, so 100,000 rows scroll as smoothly as ten. That needs every row to be one height: the first row's, or `rowHeight 28`.
+
+A piece of your own in a row keeps its memory with its row (by the row itself, or a cMap's key), and an input in a row keeps its text and focus while the table scrolls, as long as its row stays on the screen.
+
+### Long lists: list
+
+`list` is a scrolling column of rows, one for each item, made only while they're on the screen, so it stays quick with tens of thousands of them. Each row holds the pieces in its `{ }`, and every row is one height (the first row's, or `rowHeight`):
+
+```
+list (Message m in inbox) [rowHeight 48, select current] {
+    row [gap 8, padX 12] {
+        text m.from [bold];
+        text m.subject [muted];
+    }
+} open {
+    show(current);
+}
+```
+
+It picks rows (`select`), opens them (`open { }`) and takes the same keys as a table, with no columns or headers. Like a table it fills the room it's given and scrolls by itself.
+
 ### Pictures
 
 `image "cat.png";` shows a PNG, JPEG or SVG file, found the way `Files` finds files: from the folder the program runs in, or anywhere with its whole path. Without a size it's as big as its file, shrinking to fit if there isn't room. Give it a `width` or a `height` and the other follows, keeping its shape. Give both and it fits inside that box; add `cover` and it fills the box instead, cut to fit. `round` rounds its corners, so `[width 48, height 48, cover, round 24]` makes a round picture. A file that isn't there shows as a grey box.
@@ -1371,6 +1423,7 @@ Short words in `[ ]`, in the spirit of Tailwind:
 | inputs and pictures | `placeholder "…"`, `from`, `to`, `step` (sliders), `min`, `max`, `step` (number boxes), `across` (radios), `cover` |
 | icons | `icon "trash"` on a button |
 | grids, splits, branches | `columns 3`, `cell 180`, `down`, `open` |
+| tables and lists | `select chosen`, `rowHeight 28`, `stripes`, and `sort p.age` on a column |
 | in a canvas | `x`, `y`, `toX`, `toY`, `radius`, `thick` |
 | motion | `animate` |
 | words | `font "file.ttf"` |
@@ -1945,7 +1998,7 @@ Neither can the built-in objects: `Maths`, `Files`, `Time`, `Json`, `Web`, `Rand
 
 `tween`, `to` and `over` are words only in a tween (and `to` after `send`), so they can still be names.
 
-The pieces of a view (`text`, `button`, `radio`, `switch`, `number`, `icon` and the rest) are words only at the start of a line inside a view, so they can still be names: `int number = 3;` works anywhere.
+The pieces of a view (`text`, `button`, `radio`, `switch`, `number`, `icon`, `table`, `list` and the rest) are words only at the start of a line inside a view, so they can still be names: `int number = 3;` works anywhere.
 
 ---
 

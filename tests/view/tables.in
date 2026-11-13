@@ -1,0 +1,37 @@
+dump
+click Age
+dump
+click Age
+dump
+click Age
+click Name
+dump
+click Name
+click Mood
+dump
+click Mood
+click Mood
+click Cleo
+dump
+key down
+key down
+key up
+dump
+key home
+dump
+key end
+key enter
+dump
+dblclick Ada
+dump
+press 173 27
+move 220 27
+release 220 27
+dump
+press 448 135
+release 448 135
+dump
+key tab
+key tab
+dump
+snapshot tables.snap.png

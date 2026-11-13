@@ -1,0 +1,190 @@
+window "Shop" 420x260
+  column 0,0 420x260
+    table 4 rows, showing 1–4 10,10 400x176
+      thead 11,11 398x30
+        header "Name" 11,11 119x30
+        header "Price" 130,11 70x30
+        header "In stock" 200,11 90x30
+        header "Note" 290,11 119x30
+      tablerow 11,41 398x30
+        celltext "Apple" 11,41 119x30
+        celltext "0.5" 130,41 70x30
+        celltext "true" 200,41 90x30
+        cell 290,41 119x30
+          piece "Note" 298,45 101x30
+            row 298,45 101x30
+              text "Apple" 298,51 42x19
+              button "+" 346,45 37x30
+              text "0" 389,51 10x19
+      tablerow 11,71 398x30
+        celltext "pear" 11,71 119x30
+        celltext "0.75" 130,71 70x30
+        celltext "false" 200,71 90x30
+        cell 290,71 119x30
+          piece "Note" 298,75 91x30
+            row 298,75 91x30
+              text "pear" 298,81 32x19
+              button "+" 336,75 37x30
+              text "0" 379,81 10x19
+      tablerow 11,101 398x30
+        celltext "Cherry" 11,101 119x30
+        celltext "3.25" 130,101 70x30
+        celltext "true" 200,101 90x30
+        cell 290,101 119x30
+          piece "Note" 298,105 103x30
+            row 298,105 103x30
+              text "Cherry" 298,111 49x19
+              button "+" 353,105 37x30
+              text "0" 396,111 10x19
+      tablerow 11,131 398x30
+        celltext "banana" 11,131 119x30
+        celltext "0.25" 130,131 70x30
+        celltext "true" 200,131 90x30
+        cell 290,131 119x30
+          piece "Note" 298,135 103x30
+            row 298,135 103x30
+              text "banana" 298,141 53x19
+              button "+" 357,135 37x30
+              text "0" 400,141 10x19
+    text "picked 0 " 10,192 66x19
+    button "Drop first" 10,217 96x33
+window "Shop" 420x260
+  column 0,0 420x260
+    table 4 rows, showing 1–4 10,10 400x176
+      thead 11,11 398x30
+        header "Name" 11,11 119x30
+        header "Price" 130,11 70x30
+        header "In stock" (sorted rising) 200,11 90x30
+        header "Note" 290,11 119x30
+      tablerow 11,41 398x30
+        celltext "pear" 11,41 119x30
+        celltext "0.75" 130,41 70x30
+        celltext "false" 200,41 90x30
+        cell 290,41 119x30
+          piece "Note" 298,45 91x30
+            row 298,45 91x30
+              text "pear" 298,51 32x19
+              button "+" 336,45 37x30
+              text "0" 379,51 10x19
+      tablerow 11,71 398x30
+        celltext "Apple" 11,71 119x30
+        celltext "0.5" 130,71 70x30
+        celltext "true" 200,71 90x30
+        cell 290,71 119x30
+          piece "Note" 298,75 101x30
+            row 298,75 101x30
+              text "Apple" 298,81 42x19
+              button "+" 346,75 37x30
+              text "2" 389,81 10x19
+      tablerow 11,101 398x30
+        celltext "Cherry" 11,101 119x30
+        celltext "3.25" 130,101 70x30
+        celltext "true" 200,101 90x30
+        cell 290,101 119x30
+          piece "Note" 298,105 103x30
+            row 298,105 103x30
+              text "Cherry" 298,111 49x19
+              button "+" 353,105 37x30
+              text "0" 396,111 10x19
+      tablerow 11,131 398x30
+        celltext "banana" 11,131 119x30
+        celltext "0.25" 130,131 70x30
+        celltext "true" 200,131 90x30
+        cell 290,131 119x30
+          piece "Note" 298,135 103x30
+            row 298,135 103x30
+              text "banana" 298,141 53x19
+              button "+" 357,135 37x30
+              text "0" 400,141 10x19
+    text "picked 0 " 10,192 66x19
+    button "Drop first" 10,217 96x33
+window "Shop" 420x260
+  column 0,0 420x260
+    table 4 rows, showing 1–4 10,10 400x176
+      thead 11,11 398x30
+        header "Name" 11,11 119x30
+        header "Price" 130,11 70x30
+        header "In stock" 200,11 90x30
+        header "Note" (sorted falling) 290,11 119x30
+      tablerow 11,41 398x30
+        celltext "pear" 11,41 119x30
+        celltext "0.75" 130,41 70x30
+        celltext "false" 200,41 90x30
+        cell 290,41 119x30
+          piece "Note" 298,45 91x30
+            row 298,45 91x30
+              text "pear" 298,51 32x19
+              button "+" 336,45 37x30
+              text "0" 379,51 10x19
+      tablerow 11,71 398x30
+        celltext "Cherry" 11,71 119x30
+        celltext "3.25" 130,71 70x30
+        celltext "true" 200,71 90x30
+        cell 290,71 119x30
+          piece "Note" 298,75 103x30
+            row 298,75 103x30
+              text "Cherry" 298,81 49x19
+              button "+" 353,75 37x30
+              text "0" 396,81 10x19
+      tablerow 11,101 398x30
+        celltext "banana" 11,101 119x30
+        celltext "0.25" 130,101 70x30
+        celltext "true" 200,101 90x30
+        cell 290,101 119x30
+          piece "Note" 298,105 103x30
+            row 298,105 103x30
+              text "banana" 298,111 53x19
+              button "+" 357,105 37x30
+              text "0" 400,111 10x19
+      tablerow 11,131 398x30
+        celltext "Apple" 11,131 119x30
+        celltext "0.5" 130,131 70x30
+        celltext "true" 200,131 90x30
+        cell 290,131 119x30
+          piece "Note" 298,135 101x30
+            row 298,135 101x30
+              text "Apple" 298,141 42x19
+              button "+" 346,135 37x30
+              text "2" 389,141 10x19
+    text "picked 0 " 10,192 66x19
+    button "Drop first" 10,217 96x33
+window "Shop" 420x260
+  column 0,0 420x260
+    table 3 rows, showing 1–3 10,10 400x176
+      thead 11,11 398x30
+        header "Name" 11,11 119x30
+        header "Price" 130,11 70x30
+        header "In stock" 200,11 90x30
+        header "Note" (sorted falling) 290,11 119x30
+      tablerow 11,41 398x30
+        celltext "pear" 11,41 119x30
+        celltext "0.75" 130,41 70x30
+        celltext "false" 200,41 90x30
+        cell 290,41 119x30
+          piece "Note" 298,45 91x30
+            row 298,45 91x30
+              text "pear" 298,51 32x19
+              button "+" 336,45 37x30
+              text "0" 379,51 10x19
+      tablerow 11,71 398x30 (picked)
+        celltext "Cherry" 11,71 119x30
+        celltext "3.25" 130,71 70x30
+        celltext "true" 200,71 90x30
+        cell 290,71 119x30
+          piece "Note" 298,75 103x30
+            row 298,75 103x30
+              text "Cherry" 298,81 49x19
+              button "+" 353,75 37x30
+              text "0" 396,81 10x19
+      tablerow 11,101 398x30
+        celltext "banana" 11,101 119x30
+        celltext "0.25" 130,101 70x30
+        celltext "true" 200,101 90x30
+        cell 290,101 119x30
+          piece "Note" 298,105 103x30
+            row 298,105 103x30
+              text "banana" 298,111 53x19
+              button "+" 357,105 37x30
+              text "0" 400,111 10x19
+    text "picked 3 open Cherry" 10,192 154x19
+    button "Drop first" 10,217 96x33

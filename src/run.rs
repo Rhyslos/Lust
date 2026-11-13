@@ -66,6 +66,33 @@ fn host(lua: &Lua) -> mlua::Result<()> {
             },
         )?,
     )?;
+    // Tables and lists: which rows to make, and the order a sort puts them in.
+    {
+        use crate::native_ui as ui;
+        h.set(
+            "ui_list_begin",
+            lua.create_function(|_, (site, n, rowh): (f64, f64, f64)| Ok(ui::list_begin(site as usize, n.max(0.0) as usize, rowh)))?,
+        )?;
+        h.set("ui_list_sort", lua.create_function(|_, id: usize| Ok(ui::list_sort(id)))?)?;
+        h.set("ui_list_range", lua.create_function(|_, id: usize| Ok(ui::list_range(id)))?)?;
+        h.set("ui_list_hint", lua.create_function(|_, id: usize| Ok(ui::list_hint(id)))?)?;
+        h.set(
+            "ui_list_order",
+            lua.create_function(|lua, (id, keys, falling): (usize, mlua::Table, bool)| {
+                let mut list = Vec::with_capacity(keys.raw_len());
+                for k in keys.sequence_values::<mlua::Value>() {
+                    list.push(match k? {
+                        mlua::Value::String(s) => ui::SortKey::Text(s.to_str()?.to_string()),
+                        mlua::Value::Integer(i) => ui::SortKey::Num(i as f64),
+                        mlua::Value::Number(x) => ui::SortKey::Num(x),
+                        _ => ui::SortKey::Num(0.0),
+                    });
+                }
+                // Lua counts from 1.
+                lua.create_sequence_from(ui::list_order(id, list, falling).into_iter().map(|i| i + 1))
+            })?,
+        )?;
+    }
     h.set(
         "http",
         lua.create_function(|_, (url, body): (String, Option<String>)| {
@@ -257,6 +284,16 @@ fn ui_node(t: &mlua::Table, actions: &mut Vec<crate::native_ui::Action>) -> mlua
         n.action = Some(actions.len() - 1);
     }
     n.whole = t.get::<Option<bool>>("i")?.unwrap_or(false);
+    // A table or list: { id, rows, first made, picked (-1 for none) }.
+    if let Some(l) = t.get::<Option<mlua::Table>>("L")? {
+        let pick: i64 = l.get(4)?;
+        n.list = Some(crate::native_ui::ListInfo {
+            id: l.get(1)?,
+            count: l.get(2)?,
+            first: l.get(3)?,
+            pick: (pick >= 0).then_some(pick as usize),
+        });
+    }
     if let Some(o) = t.get::<Option<mlua::Table>>("o")? {
         for s in o.sequence_values::<String>() {
             n.options.push(s?);
@@ -316,4 +353,91 @@ fn locate(raw: &str, lines: &[u32]) -> (Option<u32>, String) {
         }
     }
     (None, first.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    /// A table and a list of `rows` rows, opened in test mode, scrolled to the middle and the end,
+    /// sorted and picked from. Gives back how long each step took.
+    fn timed(rows: usize, steps: &[&str]) -> Vec<(String, std::time::Duration)> {
+        let src = format!(
+            "class Item {{\n    has {{\n        int n = 0;\n        string name = \"\";\n    }}\n}}\n\
+             object Store {{\n    has {{\n        Item array items = [];\n    }}\n}}\n\
+             loop (int i = 0; i < {rows}; i += 1) {{\n    Store.items:inject(new Item {{ n = i, name = \"Item \" + i.text() }});\n}}\n\
+             assembly App {{\n    has {{\n        Item chosen = nothing;\n        Item other = nothing;\n    }}\n\
+             view [title \"Big\", width 800, height 600] {{\n        split {{\n\
+             table (Item i in Store.items) [select chosen] {{\n                column \"N\" i.n [width 80];\n                column \"Name\" i.name;\n            }}\n\
+             list (Item i in Store.items) [select other, rowHeight 28] {{\n                text i.name;\n            }}\n        }}\n    }}\n}}\n\
+             App:open();\nend\n"
+        );
+        let dir = std::env::temp_dir().join(format!("lust-rows-{}-{rows}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("main.lst");
+        std::fs::write(&path, src).unwrap();
+        let c = crate::cli::compile(&path, false).expect("the timing test's program checks");
+        std::env::set_var("LUST_VIEW_TEST", "1");
+        crate::native_ui::test_commands(steps.iter().map(|s| s.to_string()).collect());
+        let code = super::run(&c.out, &c.files);
+        assert_eq!(code, std::process::ExitCode::SUCCESS);
+        let _ = std::fs::remove_dir_all(&dir);
+        crate::native_ui::test_times()
+    }
+
+    /// 100,000 rows: each frame (a scroll and drawing again, or a pick) takes under 16 ms, sorted
+    /// or not, and opening the view takes about as long as with 1,000 rows. Timed in release builds only,
+    /// as debug builds are far slower: `cargo test --release rows_stay_quick -- --nocapture`.
+    #[test]
+    fn a_hundred_thousand_rows_stay_quick() {
+        let steps = [
+            "paint 1",
+            "scroll table 1 1500000",
+            "paint 1",
+            "scroll list 1 1400000",
+            "paint 1",
+            "scroll table 1 99999999",
+            "scroll list 1 99999999",
+            "paint 1",
+            "click Item 99999",
+            "paint 1",
+            "key up",
+            "paint 1",
+            // Sorting reads every row once. The frame after it can be slower too, as Lua tidies
+            // away what the sort used; the frames after that are timed.
+            "click N",
+            "click N",
+            "scroll table 1 -900000",
+            "scroll table 1 -900000",
+            "paint 1",
+            "scroll table 1 2000",
+            "paint 1",
+        ];
+        // A frame: what a step does, then drawing the window. What went over 16 ms, if anything.
+        let slow = |times: &[(String, std::time::Duration)]| -> Option<String> {
+            if times[0].1.as_secs_f64() >= 0.016 {
+                return Some(format!("opening took {:?}", times[0].1));
+            }
+            times.windows(2).find(|w| w[1].0 == "paint 1" && (w[0].1 + w[1].1).as_secs_f64() >= 0.016).map(|w| {
+                format!("{} then drawing took {:?}", w[0].0, w[0].1 + w[1].1)
+            })
+        };
+        let small = timed(1_000, &steps);
+        let mut big = timed(100_000, &steps);
+        // A busy computer can make one run slow, so it gets three tries; something really slow
+        // is slow every time.
+        for _ in 0..2 {
+            if slow(&big).is_none() {
+                break;
+            }
+            big = timed(100_000, &steps);
+        }
+        for ((what, s), (_, b)) in small.iter().zip(&big) {
+            eprintln!("{what:<26} 1,000 rows: {:>6.2} ms   100,000 rows: {:>6.2} ms", s.as_secs_f64() * 1e3, b.as_secs_f64() * 1e3);
+        }
+        assert_eq!(big.len(), steps.len() + 1);
+        if !cfg!(debug_assertions) {
+            if let Some(why) = slow(&big) {
+                panic!("{why}");
+            }
+        }
+    }
 }

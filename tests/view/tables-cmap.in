@@ -1,0 +1,14 @@
+dump
+click +
+click +
+click Price
+click In stock
+dump
+click Note
+click Note
+dump
+click Cherry
+key enter
+click Drop first
+dump
+snapshot tables-cmap.snap.png

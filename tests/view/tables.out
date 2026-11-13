@@ -1,0 +1,429 @@
+window "People" 480x320
+  column 0,0 480x320
+    table 4 rows, showing 1–4 12,12 456x200
+      thead 13,13 454x30
+        header "Name" 13,13 160x30
+        header "Age" 173,13 122x30
+        header "Mood" 295,13 122x30
+        header 417,13 50x30
+      tablerow 13,43 454x38
+        celltext "Ada" 13,43 160x38
+        celltext "36" 173,43 122x38
+        celltext "Happy" 295,43 122x38
+        cell 417,43 50x38
+          button 425,47 30x30 (icon trash)
+      tablerow 13,81 454x38
+        celltext "bob" 13,81 160x38
+        celltext "7" 173,81 122x38
+        celltext "Grumpy" 295,81 122x38
+        cell 417,81 50x38
+          button 425,85 30x30 (icon trash)
+      tablerow 13,119 454x38
+        celltext "Cleo" 13,119 160x38
+        celltext "52" 173,119 122x38
+        celltext "Calm" 295,119 122x38
+        cell 417,119 50x38
+          button 425,123 30x30 (icon trash)
+      tablerow 13,157 454x38
+        celltext "dan" 13,157 160x38
+        celltext "7" 173,157 122x38
+        celltext "Happy" 295,157 122x38
+        cell 417,157 50x38
+          button 425,161 30x30 (icon trash)
+    text 12,220 0x19
+window "People" 480x320
+  column 0,0 480x320
+    table 4 rows, showing 1–4 12,12 456x200
+      thead 13,13 454x30
+        header "Name" 13,13 160x30
+        header "Age" (sorted rising) 173,13 122x30
+        header "Mood" 295,13 122x30
+        header 417,13 50x30
+      tablerow 13,43 454x38
+        celltext "bob" 13,43 160x38
+        celltext "7" 173,43 122x38
+        celltext "Grumpy" 295,43 122x38
+        cell 417,43 50x38
+          button 425,47 30x30 (icon trash)
+      tablerow 13,81 454x38
+        celltext "dan" 13,81 160x38
+        celltext "7" 173,81 122x38
+        celltext "Happy" 295,81 122x38
+        cell 417,81 50x38
+          button 425,85 30x30 (icon trash)
+      tablerow 13,119 454x38
+        celltext "Ada" 13,119 160x38
+        celltext "36" 173,119 122x38
+        celltext "Happy" 295,119 122x38
+        cell 417,119 50x38
+          button 425,123 30x30 (icon trash)
+      tablerow 13,157 454x38
+        celltext "Cleo" 13,157 160x38
+        celltext "52" 173,157 122x38
+        celltext "Calm" 295,157 122x38
+        cell 417,157 50x38
+          button 425,161 30x30 (icon trash)
+    text 12,220 0x19
+window "People" 480x320
+  column 0,0 480x320
+    table 4 rows, showing 1–4 12,12 456x200
+      thead 13,13 454x30
+        header "Name" 13,13 160x30
+        header "Age" (sorted falling) 173,13 122x30
+        header "Mood" 295,13 122x30
+        header 417,13 50x30
+      tablerow 13,43 454x38
+        celltext "Cleo" 13,43 160x38
+        celltext "52" 173,43 122x38
+        celltext "Calm" 295,43 122x38
+        cell 417,43 50x38
+          button 425,47 30x30 (icon trash)
+      tablerow 13,81 454x38
+        celltext "Ada" 13,81 160x38
+        celltext "36" 173,81 122x38
+        celltext "Happy" 295,81 122x38
+        cell 417,81 50x38
+          button 425,85 30x30 (icon trash)
+      tablerow 13,119 454x38
+        celltext "bob" 13,119 160x38
+        celltext "7" 173,119 122x38
+        celltext "Grumpy" 295,119 122x38
+        cell 417,119 50x38
+          button 425,123 30x30 (icon trash)
+      tablerow 13,157 454x38
+        celltext "dan" 13,157 160x38
+        celltext "7" 173,157 122x38
+        celltext "Happy" 295,157 122x38
+        cell 417,157 50x38
+          button 425,161 30x30 (icon trash)
+    text 12,220 0x19
+window "People" 480x320
+  column 0,0 480x320
+    table 4 rows, showing 1–4 12,12 456x200
+      thead 13,13 454x30
+        header "Name" (sorted rising) 13,13 160x30
+        header "Age" 173,13 122x30
+        header "Mood" 295,13 122x30
+        header 417,13 50x30
+      tablerow 13,43 454x38
+        celltext "Ada" 13,43 160x38
+        celltext "36" 173,43 122x38
+        celltext "Happy" 295,43 122x38
+        cell 417,43 50x38
+          button 425,47 30x30 (icon trash)
+      tablerow 13,81 454x38
+        celltext "bob" 13,81 160x38
+        celltext "7" 173,81 122x38
+        celltext "Grumpy" 295,81 122x38
+        cell 417,81 50x38
+          button 425,85 30x30 (icon trash)
+      tablerow 13,119 454x38
+        celltext "Cleo" 13,119 160x38
+        celltext "52" 173,119 122x38
+        celltext "Calm" 295,119 122x38
+        cell 417,119 50x38
+          button 425,123 30x30 (icon trash)
+      tablerow 13,157 454x38
+        celltext "dan" 13,157 160x38
+        celltext "7" 173,157 122x38
+        celltext "Happy" 295,157 122x38
+        cell 417,157 50x38
+          button 425,161 30x30 (icon trash)
+    text 12,220 0x19
+window "People" 480x320
+  column 0,0 480x320
+    table 4 rows, showing 1–4 12,12 456x200
+      thead 13,13 454x30
+        header "Name" 13,13 160x30
+        header "Age" 173,13 122x30
+        header "Mood" (sorted rising) 295,13 122x30
+        header 417,13 50x30
+      tablerow 13,43 454x38
+        celltext "Ada" 13,43 160x38
+        celltext "36" 173,43 122x38
+        celltext "Happy" 295,43 122x38
+        cell 417,43 50x38
+          button 425,47 30x30 (icon trash)
+      tablerow 13,81 454x38
+        celltext "dan" 13,81 160x38
+        celltext "7" 173,81 122x38
+        celltext "Happy" 295,81 122x38
+        cell 417,81 50x38
+          button 425,85 30x30 (icon trash)
+      tablerow 13,119 454x38
+        celltext "Cleo" 13,119 160x38
+        celltext "52" 173,119 122x38
+        celltext "Calm" 295,119 122x38
+        cell 417,119 50x38
+          button 425,123 30x30 (icon trash)
+      tablerow 13,157 454x38
+        celltext "bob" 13,157 160x38
+        celltext "7" 173,157 122x38
+        celltext "Grumpy" 295,157 122x38
+        cell 417,157 50x38
+          button 425,161 30x30 (icon trash)
+    text 12,220 0x19
+window "People" 480x320
+  column 0,0 480x320
+    table 4 rows, showing 1–4 12,12 456x200 (focus)
+      thead 13,13 454x30
+        header "Name" 13,13 160x30
+        header "Age" 173,13 122x30
+        header "Mood" 295,13 122x30
+        header 417,13 50x30
+      tablerow 13,43 454x38
+        celltext "Ada" 13,43 160x38
+        celltext "36" 173,43 122x38
+        celltext "Happy" 295,43 122x38
+        cell 417,43 50x38
+          button 425,47 30x30 (icon trash)
+      tablerow 13,81 454x38
+        celltext "bob" 13,81 160x38
+        celltext "7" 173,81 122x38
+        celltext "Grumpy" 295,81 122x38
+        cell 417,81 50x38
+          button 425,85 30x30 (icon trash)
+      tablerow 13,119 454x38 (picked)
+        celltext "Cleo" 13,119 160x38
+        celltext "52" 173,119 122x38
+        celltext "Calm" 295,119 122x38
+        cell 417,119 50x38
+          button 425,123 30x30 (icon trash)
+      tablerow 13,157 454x38
+        celltext "dan" 13,157 160x38
+        celltext "7" 173,157 122x38
+        celltext "Happy" 295,157 122x38
+        cell 417,157 50x38
+          button 425,161 30x30 (icon trash)
+    text "Picked Cleo. " 12,220 94x19
+window "People" 480x320
+  column 0,0 480x320
+    table 4 rows, showing 1–4 12,12 456x200 (focus)
+      thead 13,13 454x30
+        header "Name" 13,13 160x30
+        header "Age" 173,13 122x30
+        header "Mood" 295,13 122x30
+        header 417,13 50x30
+      tablerow 13,43 454x38
+        celltext "Ada" 13,43 160x38
+        celltext "36" 173,43 122x38
+        celltext "Happy" 295,43 122x38
+        cell 417,43 50x38
+          button 425,47 30x30 (icon trash)
+      tablerow 13,81 454x38
+        celltext "bob" 13,81 160x38
+        celltext "7" 173,81 122x38
+        celltext "Grumpy" 295,81 122x38
+        cell 417,81 50x38
+          button 425,85 30x30 (icon trash)
+      tablerow 13,119 454x38 (picked)
+        celltext "Cleo" 13,119 160x38
+        celltext "52" 173,119 122x38
+        celltext "Calm" 295,119 122x38
+        cell 417,119 50x38
+          button 425,123 30x30 (icon trash)
+      tablerow 13,157 454x38
+        celltext "dan" 13,157 160x38
+        celltext "7" 173,157 122x38
+        celltext "Happy" 295,157 122x38
+        cell 417,157 50x38
+          button 425,161 30x30 (icon trash)
+    text "Picked Cleo. " 12,220 94x19
+window "People" 480x320
+  column 0,0 480x320
+    table 4 rows, showing 1–4 12,12 456x200 (focus)
+      thead 13,13 454x30
+        header "Name" 13,13 160x30
+        header "Age" 173,13 122x30
+        header "Mood" 295,13 122x30
+        header 417,13 50x30
+      tablerow 13,43 454x38 (picked)
+        celltext "Ada" 13,43 160x38
+        celltext "36" 173,43 122x38
+        celltext "Happy" 295,43 122x38
+        cell 417,43 50x38
+          button 425,47 30x30 (icon trash)
+      tablerow 13,81 454x38
+        celltext "bob" 13,81 160x38
+        celltext "7" 173,81 122x38
+        celltext "Grumpy" 295,81 122x38
+        cell 417,81 50x38
+          button 425,85 30x30 (icon trash)
+      tablerow 13,119 454x38
+        celltext "Cleo" 13,119 160x38
+        celltext "52" 173,119 122x38
+        celltext "Calm" 295,119 122x38
+        cell 417,119 50x38
+          button 425,123 30x30 (icon trash)
+      tablerow 13,157 454x38
+        celltext "dan" 13,157 160x38
+        celltext "7" 173,157 122x38
+        celltext "Happy" 295,157 122x38
+        cell 417,157 50x38
+          button 425,161 30x30 (icon trash)
+    text "Picked Ada. " 12,220 89x19
+window "People" 480x320
+  column 0,0 480x320
+    table 4 rows, showing 1–4 12,12 456x200 (focus)
+      thead 13,13 454x30
+        header "Name" 13,13 160x30
+        header "Age" 173,13 122x30
+        header "Mood" 295,13 122x30
+        header 417,13 50x30
+      tablerow 13,43 454x38
+        celltext "Ada" 13,43 160x38
+        celltext "36" 173,43 122x38
+        celltext "Happy" 295,43 122x38
+        cell 417,43 50x38
+          button 425,47 30x30 (icon trash)
+      tablerow 13,81 454x38
+        celltext "bob" 13,81 160x38
+        celltext "7" 173,81 122x38
+        celltext "Grumpy" 295,81 122x38
+        cell 417,81 50x38
+          button 425,85 30x30 (icon trash)
+      tablerow 13,119 454x38
+        celltext "Cleo" 13,119 160x38
+        celltext "52" 173,119 122x38
+        celltext "Calm" 295,119 122x38
+        cell 417,119 50x38
+          button 425,123 30x30 (icon trash)
+      tablerow 13,157 454x38 (picked)
+        celltext "dan" 13,157 160x38
+        celltext "7" 173,157 122x38
+        celltext "Happy" 295,157 122x38
+        cell 417,157 50x38
+          button 425,161 30x30 (icon trash)
+    text "Picked dan. opened dan" 12,220 172x19
+window "People" 480x320
+  column 0,0 480x320
+    table 4 rows, showing 1–4 12,12 456x200 (focus)
+      thead 13,13 454x30
+        header "Name" 13,13 160x30
+        header "Age" 173,13 122x30
+        header "Mood" 295,13 122x30
+        header 417,13 50x30
+      tablerow 13,43 454x38 (picked)
+        celltext "Ada" 13,43 160x38
+        celltext "36" 173,43 122x38
+        celltext "Happy" 295,43 122x38
+        cell 417,43 50x38
+          button 425,47 30x30 (icon trash)
+      tablerow 13,81 454x38
+        celltext "bob" 13,81 160x38
+        celltext "7" 173,81 122x38
+        celltext "Grumpy" 295,81 122x38
+        cell 417,81 50x38
+          button 425,85 30x30 (icon trash)
+      tablerow 13,119 454x38
+        celltext "Cleo" 13,119 160x38
+        celltext "52" 173,119 122x38
+        celltext "Calm" 295,119 122x38
+        cell 417,119 50x38
+          button 425,123 30x30 (icon trash)
+      tablerow 13,157 454x38
+        celltext "dan" 13,157 160x38
+        celltext "7" 173,157 122x38
+        celltext "Happy" 295,157 122x38
+        cell 417,157 50x38
+          button 425,161 30x30 (icon trash)
+    text "Picked Ada. opened Ada" 12,220 175x19
+window "People" 480x320
+  column 0,0 480x320
+    table 4 rows, showing 1–4 12,12 456x200 (focus)
+      thead 13,13 454x30
+        header "Name" 13,13 207x30
+        header "Age" 220,13 99x30
+        header "Mood" 319,13 99x30
+        header 418,13 50x30
+      tablerow 13,43 454x38 (picked)
+        celltext "Ada" 13,43 207x38
+        celltext "36" 220,43 99x38
+        celltext "Happy" 319,43 99x38
+        cell 418,43 50x38
+          button 426,47 30x30 (icon trash)
+      tablerow 13,81 454x38
+        celltext "bob" 13,81 207x38
+        celltext "7" 220,81 99x38
+        celltext "Grumpy" 319,81 99x38
+        cell 418,81 50x38
+          button 426,85 30x30 (icon trash)
+      tablerow 13,119 454x38
+        celltext "Cleo" 13,119 207x38
+        celltext "52" 220,119 99x38
+        celltext "Calm" 319,119 99x38
+        cell 418,119 50x38
+          button 426,123 30x30 (icon trash)
+      tablerow 13,157 454x38
+        celltext "dan" 13,157 207x38
+        celltext "7" 220,157 99x38
+        celltext "Happy" 319,157 99x38
+        cell 418,157 50x38
+          button 426,161 30x30 (icon trash)
+    text "Picked Ada. opened Ada" 12,220 175x19
+window "People" 480x320
+  column 0,0 480x320
+    table 4 rows, showing 1–4 12,12 456x200
+      thead 13,13 454x30
+        header "Name" 13,13 207x30
+        header "Age" 220,13 99x30
+        header "Mood" 319,13 99x30
+        header 418,13 50x30
+      tablerow 13,43 454x38 (picked)
+        celltext "Ada" 13,43 207x38
+        celltext "36" 220,43 99x38
+        celltext "Happy" 319,43 99x38
+        cell 418,43 50x38
+          button 426,47 30x30 (icon trash)
+      tablerow 13,81 454x38
+        celltext "bob" 13,81 207x38
+        celltext "7" 220,81 99x38
+        celltext "Grumpy" 319,81 99x38
+        cell 418,81 50x38
+          button 426,85 30x30 (icon trash)
+      tablerow 13,119 454x38
+        celltext "Cleo" 13,119 207x38
+        celltext "52" 220,119 99x38
+        celltext "Calm" 319,119 99x38
+        cell 418,119 50x38
+          button 426,123 30x30 (icon trash)
+      tablerow 13,157 454x38
+        celltext "dan" 13,157 207x38
+        celltext "7" 220,157 99x38
+        celltext "Happy" 319,157 99x38
+        cell 418,157 50x38
+          button 426,161 30x30 (icon trash)
+    text "Picked Ada. bin Cleo" 12,220 147x19
+window "People" 480x320
+  column 0,0 480x320
+    table 4 rows, showing 1–4 12,12 456x200
+      thead 13,13 454x30
+        header "Name" 13,13 207x30
+        header "Age" 220,13 99x30
+        header "Mood" 319,13 99x30
+        header 418,13 50x30
+      tablerow 13,43 454x38 (picked)
+        celltext "Ada" 13,43 207x38
+        celltext "36" 220,43 99x38
+        celltext "Happy" 319,43 99x38
+        cell 418,43 50x38
+          button 426,47 30x30 (icon trash) (focus)
+      tablerow 13,81 454x38
+        celltext "bob" 13,81 207x38
+        celltext "7" 220,81 99x38
+        celltext "Grumpy" 319,81 99x38
+        cell 418,81 50x38
+          button 426,85 30x30 (icon trash)
+      tablerow 13,119 454x38
+        celltext "Cleo" 13,119 207x38
+        celltext "52" 220,119 99x38
+        celltext "Calm" 319,119 99x38
+        cell 418,119 50x38
+          button 426,123 30x30 (icon trash)
+      tablerow 13,157 454x38
+        celltext "dan" 13,157 207x38
+        celltext "7" 220,157 99x38
+        celltext "Happy" 319,157 99x38
+        cell 418,157 50x38
+          button 426,161 30x30 (icon trash)
+    text "Picked Ada. bin Cleo" 12,220 147x19

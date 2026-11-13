@@ -1,0 +1,44 @@
+-- A table from a cMap: its rows' keys are what's picked, and pieces in rows stay with them.
+assembly Note {
+    has {
+        string label = "";
+        int clicks = 0;
+    }
+    view {
+        row [gap 6] {
+            text label;
+            button "+" [small] { clicks += 1; }
+            text clicks.text();
+        }
+    }
+}
+
+assembly App {
+    has {
+        cMap(int id, string name, float price, bool stocked) shop = [
+            ["Apple", 0.5, true], ["pear", 0.75, false], ["Cherry", 3.25, true], ["banana", 0.25, true]
+        ];
+        int picked = 0;
+        string note = "";
+    }
+
+    view [title "Shop", width 420, height 260] {
+        column [gap 6, pad 10] {
+            table (int id, string name, float price, bool stocked in shop) [select picked, stripes, rowHeight 30] {
+                column "Name" name;
+                column "Price" price [width 70];
+                column "In stock" stocked [width 90];
+                column "Note" [sort name] {
+                    Note { label = name };
+                }
+            } open {
+                note = "open " + shop[picked].name;
+            }
+            text "picked " + picked.text() + " " + note;
+            button "Drop first" { shop:remove(1); }
+        }
+    }
+}
+
+App:open();
+end

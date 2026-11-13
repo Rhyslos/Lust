@@ -274,6 +274,10 @@ pub struct Checker<'a> {
     /// How many menus and canvases the piece being checked is inside.
     menus: usize,
     canvases: usize,
+    /// The tables whose rows are being checked, and for each table or list, whether its
+    /// select fits its rows (when it doesn't, that's said once, not again for each row).
+    tables: usize,
+    rows_ok: Vec<bool>,
     /// The + of each hp += 5, and what was written; and the one being checked now.
     compound: HashMap<usize, &'static str>,
     compound_now: Option<&'static str>,
@@ -293,6 +297,8 @@ pub fn check(prog: &Program, diags: &mut Diags, is_script: bool) -> Info {
         loop_keys: vec![],
         menus: 0,
         canvases: 0,
+        tables: 0,
+        rows_ok: vec![],
         compound: prog.compound.clone(),
         compound_now: None,
         this_ids: prog.this_ids.clone(),
@@ -1276,6 +1282,12 @@ impl<'a> Checker<'a> {
             self.err(pos, format!("{kind} is a piece of a screen, so it goes inside a view {{ }}."));
             return;
         }
+        match kind {
+            "table" | "list" => return self.rows_piece(kind, style, children, choices, ctx),
+            "tablerow" | "listrow" => return self.rows_row(kind, arg, children, action, enter, ctx),
+            "tablecolumn" => return self.table_column(arg, choices, style, children, pos, ctx),
+            _ => {}
+        }
         match (kind, arg) {
             ("piece", Some(a)) => {
                 if !self.loop_keys.is_empty() {
@@ -1599,6 +1611,226 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// table (Person p in people) [select chosen] { … } and list (…) { … }: the rows' source, the
+    /// field the picked row goes in, and then each row.
+    fn rows_piece(&mut self, kind: &str, style: &[StyleItem], children: &[Stmt], select: &Option<Expr>, ctx: &mut Ctx) {
+        let Some(Stmt::Loop {
+            kind: LoopKind::Each { vars, source },
+            body,
+            ..
+        }) = children.first()
+        else {
+            return;
+        };
+        ctx.scopes.push(HashMap::new());
+        let src = self.expr(source, ctx, None);
+        let example = if kind == "table" {
+            "table (Person p in people)"
+        } else {
+            "list (Item i in items)"
+        };
+        match &src {
+            Ty::Array(_) | Ty::CMap(_) | Ty::Table(_) | Ty::Query(_) | Ty::Error => self.each_typed(vars, source, src.clone(), ctx),
+            other => {
+                self.err(
+                    source.pos,
+                    format!(
+                        "a {kind}'s rows come from an array, a cMap or a database table, but {} is {}: {example}",
+                        describe(source),
+                        self.a(other)
+                    ),
+                );
+                for (t, name, p) in vars {
+                    let t = self.resolve(t);
+                    self.declare(ctx, name, t, *p, true);
+                }
+            }
+        }
+        // The picked row goes in a field that holds a row (its key, for a cMap or table).
+        let row = self.lookup(ctx, &vars[0].1).map(|l| l.ty).unwrap_or(Ty::Error);
+        let mut ok = true;
+        if let Some(s) = select {
+            let t = self.expr(s, ctx, None);
+            let local = matches!(s.kind, ExprKind::Name(_)) && self.info.names.get(&s.id) == Some(&NameRes::Local);
+            if t == Ty::Error || row == Ty::Error {
+                ok = false;
+            } else if local {
+                self.err(
+                    s.pos,
+                    format!(
+                        "{} is a variable of the view, made again each time it's drawn, so the pick would be lost. Keep it in a field.",
+                        describe(s)
+                    ),
+                );
+                ok = false;
+            } else if !matches!(s.kind, ExprKind::Name(_) | ExprKind::Field(..) | ExprKind::Index(..)) {
+                self.err(s.pos, format!("select puts the picked row in a field: {example} [select chosen]"));
+                ok = false;
+            } else if !self.fits(&row, &t) || matches!(t, Ty::Nothing) {
+                let what = if matches!(src, Ty::Array(_)) { "row" } else { "row's key" };
+                self.err(
+                    s.pos,
+                    format!(
+                        "select puts the picked {what} in {}, which holds {}, but each {what} is {}. Pick into a field like {} chosen;",
+                        describe(s),
+                        self.a(&t),
+                        self.a(&row),
+                        self.show(&row)
+                    ),
+                );
+                ok = false;
+            } else {
+                self.writable(s, ctx, s.pos);
+            }
+        }
+        self.eval_styles(style, ctx);
+        self.check_styles(style, kind);
+        // A piece in a row stays with its row: by the row's key in a cMap or table, and by the
+        // row itself in an array.
+        let key = match &src {
+            Ty::Array(_) => Some(crate::parser::ROW_KEY.to_string()),
+            Ty::CMap(cols) if matches!(cols[0].1, Ty::Int | Ty::Str) => Some(vars[0].1.clone()),
+            Ty::Table(t) | Ty::Query(t) if matches!(t.cols[0].1, Ty::Int | Ty::Str) => Some(vars[0].1.clone()),
+            _ => None,
+        };
+        if let Some(k) = &key {
+            self.loop_keys.push(k.clone());
+        }
+        let table = kind == "table";
+        self.tables += table as usize;
+        self.rows_ok.push(ok);
+        for s in body {
+            self.stmt(s, ctx);
+        }
+        self.rows_ok.pop();
+        self.tables -= table as usize;
+        if key.is_some() {
+            self.loop_keys.pop();
+        }
+        ctx.scopes.pop();
+    }
+
+    /// One row of a table or list: its columns or pieces, picking it, and opening it.
+    fn rows_row(
+        &mut self,
+        kind: &str,
+        picked: &Option<Expr>,
+        children: &[Stmt],
+        action: &Option<Vec<Stmt>>,
+        enter: &Option<Vec<Stmt>>,
+        ctx: &mut Ctx,
+    ) {
+        let ok = self.rows_ok.last().copied().unwrap_or(false);
+        if let (true, Some(p)) = (ok, picked) {
+            self.expr(p, ctx, None);
+        }
+        ctx.scopes.push(HashMap::new());
+        let mut columns = 0;
+        for s in children {
+            let column = matches!(s, Stmt::Element { kind, .. } if kind == "tablecolumn");
+            if kind == "tablerow" && !column {
+                self.err(
+                    s.pos(),
+                    "a table holds its columns, one for each thing it shows: column \"Name\" p.name; or column \"\" { button … }",
+                );
+                continue;
+            }
+            columns += column as usize;
+            self.stmt(s, ctx);
+        }
+        ctx.scopes.pop();
+        let pos = children.first().map(|s| s.pos());
+        if kind == "tablerow" && columns == 0 && children.is_empty() {
+            if let Some(p) = pos {
+                self.err(p, "a table needs at least one column: column \"Name\" p.name;");
+            }
+        }
+        for (block, run) in [(action, ok), (enter, true)] {
+            if let (Some(a), true) = (block, run) {
+                let was = std::mem::replace(&mut ctx.in_view, false);
+                ctx.scopes.push(HashMap::new());
+                for s in a {
+                    self.stmt(s, ctx);
+                }
+                ctx.scopes.pop();
+                ctx.in_view = was;
+            }
+        }
+    }
+
+    /// column "Age" p.age [width 60]; or column "" { button … }: one of a table's columns.
+    fn table_column(
+        &mut self,
+        header: &Option<Expr>,
+        value: &Option<Expr>,
+        style: &[StyleItem],
+        children: &[Stmt],
+        pos: Pos,
+        ctx: &mut Ctx,
+    ) {
+        if self.tables == 0 {
+            self.err(
+                pos,
+                "a column with a header is one of a table's columns, so it goes inside a table: table (Person p in people) { column \"Name\" p.name; }. To put pieces under each other, use column { … } without a header.",
+            );
+            return;
+        }
+        if let Some(h) = header {
+            if !matches!(h.kind, ExprKind::Str(_)) {
+                self.err(h.pos, "a column's header is text written in place: column \"Age\" p.age;");
+            }
+        }
+        let shown = |me: &mut Self, e: &Expr, what: &str, ctx: &mut Ctx| {
+            let t = me.expr(e, ctx, None);
+            if t == Ty::Void {
+                me.err(
+                    e.pos,
+                    format!(
+                        "{} doesn't give anything back, so there's nothing for the column to {what}.",
+                        describe(e)
+                    ),
+                );
+            } else if !matches!(
+                t,
+                Ty::Str | Ty::Int | Ty::Float | Ty::Sized(_) | Ty::Truth | Ty::State(_) | Ty::Error
+            ) {
+                me.err(
+                    e.pos,
+                    format!(
+                        "a column can {what} text, a number, a bool or a state, but {} is {}. Use one of its fields: column \"Name\" p.name;",
+                        describe(e),
+                        me.a(&t)
+                    ),
+                );
+            }
+        };
+        match (value, children.is_empty()) {
+            (Some(v), true) => shown(self, v, "show", ctx),
+            (Some(v), false) => self.err(v.pos, "a column shows a value or holds pieces in { }, not both."),
+            (None, true) => self.err(
+                pos,
+                "a column needs what it shows: column \"Age\" p.age; or pieces: column \"\" { button … }",
+            ),
+            (None, false) => {}
+        }
+        for it in style {
+            if it.name == "sort" {
+                match &it.value {
+                    StyleValue::Expr(e) => shown(self, e, "sort by", ctx),
+                    _ => self.err(it.pos, "sort takes the value the column is sorted by: [sort p.age]"),
+                }
+            }
+        }
+        let rest: Vec<StyleItem> = style.iter().filter(|it| it.name != "sort").cloned().collect();
+        self.eval_styles(&rest, ctx);
+        self.check_styles(&rest, "tablecolumn");
+        ctx.scopes.push(HashMap::new());
+        for s in children {
+            self.stmt(s, ctx);
+        }
+        ctx.scopes.pop();
+    }
+
     /// Works out the values in [ ], which can use fields and variables like any expression.
     fn eval_styles(&mut self, items: &[StyleItem], ctx: &mut Ctx) {
         for it in items {
@@ -1645,10 +1877,11 @@ impl<'a> Checker<'a> {
             "cell",
             "min",
             "max",
+            "rowHeight",
         ];
         const FLAGS: &[&str] = &[
             "tiny", "small", "large", "huge", "bold", "muted", "strike", "nowrap", "shadow", "pill", "left", "center", "right", "top",
-            "middle", "bottom", "spread", "subtle", "cover", "down", "open", "animate", "across",
+            "middle", "bottom", "spread", "subtle", "cover", "down", "open", "animate", "across", "stripes",
         ];
         const COLOURED: &[&str] = &["color", "background"];
         let window = kind == "view";
@@ -2734,6 +2967,11 @@ impl<'a> Checker<'a> {
 
     fn each(&mut self, vars: &[(TypeRef, String, Pos)], source: &Expr, ctx: &mut Ctx) {
         let src = self.expr(source, ctx, None);
+        self.each_typed(vars, source, src, ctx);
+    }
+
+    /// A loop's variables, for a source whose type is already worked out.
+    fn each_typed(&mut self, vars: &[(TypeRef, String, Pos)], source: &Expr, src: Ty, ctx: &mut Ctx) {
         let mut declared: Vec<Ty> = vars.iter().map(|(t, _, _)| self.resolve(t)).collect();
         let wanted: Option<Vec<Ty>> = match &src {
             Ty::Array(e) => Some(vec![(**e).clone()]),
