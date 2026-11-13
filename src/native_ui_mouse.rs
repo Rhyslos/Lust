@@ -383,6 +383,10 @@ impl<'a, 'b> Ui<'a, 'b> {
     fn menu_key(&mut self) -> Result<(), String> {
         let Some(focus) = self.st.focus.clone() else { return Ok(()) };
         let mut owner = None;
+        // The picked row is scrolled into view first, so its menu can open at it.
+        if let Some(p) = node_at(&self.tree, &focus).and_then(|n| n.list.as_ref()).and_then(|i| i.pick) {
+            self.pick_row(&focus, p, false)?;
+        }
         if let Some(n) = node_at(&self.tree, &focus).filter(|n| n.list.is_some()) {
             let pick = n.list.as_ref().and_then(|i| i.pick);
             if let Some((i, _)) = n.children.iter().enumerate().skip(first_row(n)).find(|(_, r)| Some(r.index) == pick && !r.ctx.is_empty()) {
