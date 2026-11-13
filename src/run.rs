@@ -283,6 +283,33 @@ fn ui_node(t: &mlua::Table, actions: &mut Vec<crate::native_ui::Action>) -> mlua
         }));
         n.action = Some(actions.len() - 1);
     }
+    // Blocks for the mouse: a canvas's press, drag, release and hover are given where the mouse
+    // is, a drop's block the files' paths, and a list's reorder where a row went from and to.
+    for (key, name) in [
+        ("P", "press"),
+        ("D", "drag"),
+        ("U", "release"),
+        ("H", "hover"),
+        ("X", "drop"),
+        ("R", "reorder"),
+    ] {
+        if let Some(f) = t.get::<Option<mlua::Function>>(key)? {
+            actions.push(Box::new(move || {
+                let r = match crate::native_ui::incoming() {
+                    crate::native_ui::SV::Point(x, y) => f.call::<()>((x, y)),
+                    crate::native_ui::SV::List(paths) => f.call::<()>(mlua::Variadic::from_iter(paths)),
+                    _ => f.call::<()>(()),
+                };
+                r.map_err(|e| raw_error(&e))
+            }));
+            n.mouse.push((name.to_string(), actions.len() - 1));
+        }
+    }
+    if let Some(m) = t.get::<Option<mlua::Table>>("m")? {
+        for item in m.sequence_values::<mlua::Table>() {
+            n.menu.push(ui_node(&item?, actions)?);
+        }
+    }
     n.whole = t.get::<Option<bool>>("i")?.unwrap_or(false);
     // A table or list: { id, rows, first made, picked (-1 for none) }.
     if let Some(l) = t.get::<Option<mlua::Table>>("L")? {
@@ -416,9 +443,10 @@ mod tests {
             if times[0].1.as_secs_f64() >= 0.016 {
                 return Some(format!("opening took {:?}", times[0].1));
             }
-            times.windows(2).find(|w| w[1].0 == "paint 1" && (w[0].1 + w[1].1).as_secs_f64() >= 0.016).map(|w| {
-                format!("{} then drawing took {:?}", w[0].0, w[0].1 + w[1].1)
-            })
+            times
+                .windows(2)
+                .find(|w| w[1].0 == "paint 1" && (w[0].1 + w[1].1).as_secs_f64() >= 0.016)
+                .map(|w| format!("{} then drawing took {:?}", w[0].0, w[0].1 + w[1].1))
         };
         let small = timed(1_000, &steps);
         let mut big = timed(100_000, &steps);
@@ -431,7 +459,11 @@ mod tests {
             big = timed(100_000, &steps);
         }
         for ((what, s), (_, b)) in small.iter().zip(&big) {
-            eprintln!("{what:<26} 1,000 rows: {:>6.2} ms   100,000 rows: {:>6.2} ms", s.as_secs_f64() * 1e3, b.as_secs_f64() * 1e3);
+            eprintln!(
+                "{what:<26} 1,000 rows: {:>6.2} ms   100,000 rows: {:>6.2} ms",
+                s.as_secs_f64() * 1e3,
+                b.as_secs_f64() * 1e3
+            );
         }
         assert_eq!(big.len(), steps.len() + 1);
         if !cfg!(debug_assertions) {

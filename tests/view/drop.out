@@ -1,0 +1,38 @@
+window "Drop" 360x260
+  column 0,0 360x111
+    text "Drop files here" 12,12 105x19
+    text 12,39 0x19
+    button "Ask" 12,66 56x33
+files held over the window
+window "Drop" 360x260
+  column 0,0 360x165
+    text "Drop files here" 12,12 105x19
+    text "C:/notes/a.txt" 12,39 97x19
+    text "C:/My pictures/cat.png" 12,66 164x19
+    text "2 dropped" 12,93 74x19
+    button "Ask" 12,120 56x33
+window "Drop" 360x260
+  column 0,0 360x165
+    text "Drop files here" 12,12 105x19
+    text "C:/notes/a.txt" 12,39 97x19
+    text "C:/My pictures/cat.png" 12,66 164x19
+    text "2 dropped" 12,93 74x19
+    button "Ask" 12,120 56x33
+window "Drop" 360x260
+  column 0,0 360x165
+    text "Drop files here" 12,12 105x19
+    text "C:/notes/a.txt" 12,39 97x19
+    text "C:/My pictures/cat.png" 12,66 164x19
+    text "2 dropped" 12,93 74x19
+    button "Ask" 12,120 56x33
+  layer "dialog" 0,0 360x260
+    dialog 109,101 142x59
+      text "Drop a picture" 129,121 102x19
+files held over the window
+window "Drop" 360x260
+  column 0,0 360x165
+    text "Drop files here" 12,12 105x19
+    text "C:/notes/a.txt" 12,39 97x19
+    text "C:/My pictures/cat.png" 12,66 164x19
+    text "the dialog got D:/sun.png" 12,93 180x19
+    button "Ask" 12,120 56x33

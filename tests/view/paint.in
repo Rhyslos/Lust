@@ -1,0 +1,17 @@
+dump
+move 50 50
+dump
+press 40 40
+move 60 45
+move 80 50
+move 400 300
+release 400 300
+dump
+press 230 50
+release 230 50
+dump
+rightclick 100 100
+dump
+snapshot paint.snap.png
+click Clear
+dump

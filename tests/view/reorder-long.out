@@ -1,0 +1,127 @@
+window "Long" 360x300
+  column 0,0 360x300
+    button "Fill" 8,8 49x33
+    list 100000 rows, showing 50001–50008 8,49 344x216 (reorder) (focus)
+      listrow 8,49 344x30
+        text "Row 50000" 8,55 99x19
+      listrow 8,79 344x30
+        text "Row 50001" 8,85 95x19
+      listrow 8,109 344x30
+        text "Row 50002" 8,115 98x19
+      listrow 8,139 344x30
+        text "Row 50003" 8,145 98x19
+      listrow 8,169 344x30
+        text "Row 50004" 8,175 99x19
+      listrow 8,199 344x30 (picked)
+        text "Row 50005" 8,205 98x19
+      listrow 8,229 344x30
+        text "Row 50006" 8,235 98x19
+      listrow 8,259 344x30
+        text "Row 50007" 8,265 98x19
+    text "Picked Row 50005, first Row 0, last Row 99999" 8,273 339x19
+window "Long" 360x300
+  column 0,0 360x300
+    button "Fill" 8,8 49x33
+    list 100000 rows, showing 50001–50008 8,49 344x216 (reorder) (focus)
+      listrow 8,49 344x30
+        text "Row 50000" 8,55 99x19
+      listrow 8,79 344x30
+        text "Row 50001" 8,85 95x19
+      listrow 8,109 344x30
+        text "Row 50002" 8,115 98x19
+      listrow 8,139 344x30 (picked)
+        text "Row 50005" 8,145 98x19
+      listrow 8,169 344x30
+        text "Row 50003" 8,175 98x19
+      listrow 8,199 344x30
+        text "Row 50004" 8,205 99x19
+      listrow 8,229 344x30
+        text "Row 50006" 8,235 98x19
+      listrow 8,259 344x30
+        text "Row 50007" 8,265 98x19
+    text "Picked Row 50005, first Row 0, last Row 99999" 8,273 339x19
+window "Long" 360x300
+  column 0,0 360x300
+    button "Fill" 8,8 49x33
+    list 100000 rows, showing 50001–50008 8,49 344x216 (reorder) (focus)
+      listrow 8,49 344x30
+        text "Row 50000" 8,55 99x19
+      listrow 8,79 344x30 (picked)
+        text "Row 50005" 8,85 98x19
+      listrow 8,109 344x30
+        text "Row 50001" 8,115 95x19
+      listrow 8,139 344x30
+        text "Row 50002" 8,145 98x19
+      listrow 8,169 344x30
+        text "Row 50003" 8,175 98x19
+      listrow 8,199 344x30
+        text "Row 50004" 8,205 99x19
+      listrow 8,229 344x30
+        text "Row 50006" 8,235 98x19
+      listrow 8,259 344x30
+        text "Row 50007" 8,265 98x19
+    text "Picked Row 50005, first Row 0, last Row 99999" 8,273 339x19
+window "Long" 360x300
+  column 0,0 360x300
+    button "Fill" 8,8 49x33
+    list 100000 rows, showing 50002–50009 8,49 344x216 (reorder) (focus)
+      listrow 8,26 344x30 (picked)
+        text "Row 50005" 8,32 98x19
+      listrow 8,56 344x30
+        text "Row 50001" 8,62 95x19
+      listrow 8,86 344x30
+        text "Row 50002" 8,92 98x19
+      listrow 8,116 344x30
+        text "Row 50003" 8,122 98x19
+      listrow 8,146 344x30
+        text "Row 50004" 8,152 99x19
+      listrow 8,176 344x30
+        text "Row 50006" 8,182 98x19
+      listrow 8,206 344x30
+        text "Row 50007" 8,212 98x19
+      listrow 8,236 344x30
+        text "Row 50008" 8,242 98x19
+    text "Picked Row 50005, first Row 0, last Row 99999" 8,273 339x19
+dragging row 50001, landing before row 50010
+window "Long" 360x300
+  column 0,0 360x300
+    button "Fill" 8,8 49x33
+    list 100000 rows, showing 50002–50009 8,49 344x216 (reorder) (focus)
+      listrow 8,25 344x30
+        text "Row 50001" 8,31 95x19
+      listrow 8,55 344x30
+        text "Row 50002" 8,61 98x19
+      listrow 8,85 344x30
+        text "Row 50003" 8,91 98x19
+      listrow 8,115 344x30
+        text "Row 50004" 8,121 99x19
+      listrow 8,145 344x30
+        text "Row 50006" 8,151 98x19
+      listrow 8,175 344x30
+        text "Row 50007" 8,181 98x19
+      listrow 8,205 344x30
+        text "Row 50008" 8,211 98x19
+      listrow 8,235 344x30 (picked)
+        text "Row 50000" 8,241 99x19
+    text "Picked Row 50000, first Row 0, last Row 99999" 8,273 339x19
+window "Long" 360x300
+  column 0,0 360x300
+    button "Fill" 8,8 49x33
+    list 100000 rows, showing 1–8 8,49 344x216 (reorder) (focus)
+      listrow 8,49 344x30
+        text "Row 1" 8,55 58x19
+      listrow 8,79 344x30 (picked)
+        text "Row 0" 8,85 61x19
+      listrow 8,109 344x30
+        text "Row 2" 8,115 61x19
+      listrow 8,139 344x30
+        text "Row 3" 8,145 61x19
+      listrow 8,169 344x30
+        text "Row 4" 8,175 61x19
+      listrow 8,199 344x30
+        text "Row 5" 8,205 61x19
+      listrow 8,229 344x30
+        text "Row 6" 8,235 61x19
+      listrow 8,259 344x30
+        text "Row 7" 8,265 60x19
+    text "Picked Row 0, first Row 1, last Row 99999" 8,273 298x19

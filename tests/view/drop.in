@@ -1,0 +1,12 @@
+dragover
+dump
+snapshot drop.snap.png
+drop C:/notes/a.txt "C:/My pictures/cat.png"
+dump
+drop
+dump
+click Ask
+dragover
+dump
+drop D:/sun.png
+dump

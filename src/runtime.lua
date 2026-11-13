@@ -651,6 +651,19 @@ function L.aremove(a, i)
   remove(a, i + 1)
   a.n = a.n - 1
 end
+-- Moves an item from place a to place b (from 0), the ones between shifting over: a row dragged
+-- to a new place in a list. Done by hand, since an item can be nothing.
+function L.amove(t, a, b)
+  local n = t.n
+  if a < 0 or b < 0 or a >= n or b >= n or a == b then return end
+  local v = t[a + 1]
+  if a < b then
+    for i = a + 1, b do t[i] = t[i + 1] end
+  else
+    for i = a + 1, b + 2, -1 do t[i] = t[i - 1] end
+  end
+  t[b + 1] = v
+end
 
 -- ----- maps: keys in the order they were added -----
 

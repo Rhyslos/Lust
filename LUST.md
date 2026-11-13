@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (alpha 69):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, tables and long lists, scrolling, pictures (SVG too), timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (alpha 70):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, tables and long lists, right-click menus, rows dragged to new places, dropped files, the mouse on a canvas, scrolling, pictures (SVG too), timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -799,6 +799,7 @@ An assembly with a `view` opens a window with `App:open();`, through `lust run` 
 - **Drawing and motion:** `canvas` with `box`, `circle` and `line` placed by `x` and `y`, for charts, maps and games, and `animate` for pieces that glide to where they go and fade in (see below).
 - **Things that show over the view:** `dropdown` lists to choose from, `menu`s of `item`s, `dialog`s that pop up while a bool is true, and `tip "…"` for a note when the mouse rests on a piece (see below).
 - **Tables and long lists:** `table` shows rows in columns that sort, pick and resize, and `list` is a scrolling column of rows; both stay quick with 100,000 rows (see below).
+- **The mouse:** a right-click `menu { }` after any piece, `[reorder]` for a list's rows to be dragged to new places, `drop` for files dropped on the window, and `press`, `drag`, `release` and `hover` on a canvas (see below).
 
 ```
 assembly App {
@@ -828,6 +829,10 @@ end
 | `click Add one` | clicks the button showing that text, or a row of an open list (`click Cupboard`, `click Save`), or a table's or list's row by words it shows (`click Ada`) |
 | `click Age` | clicks a table's header, sorting by it |
 | `dblclick Ada` | double-clicks the row of a table or list showing those words, opening it |
+| `rightclick Notes`, `rightclick Ada`, `rightclick 120 80` | right-clicks the piece or row showing those words, or a place, opening its right-click menu (a row is picked first); the menu shows in `dump` as an open list, and `click Copy` chooses from it |
+| `drag Ada Cleo`, `drag 2 5` | drags the row showing Ada onto the row showing Cleo, so it takes Cleo's place; with numbers, the second row on the screen of the first list that reorders onto the fifth. Words with spaces go in quotes: `drag "Row 5" "Row 9"`. While a row is held, `dump` ends with where it would land |
+| `drop C:/a.txt "C:/My files/b.png"` | drops files on the window (paths with spaces in quotes) |
+| `dragover` | holds files over the window without dropping them, showing its soft edge; `dump` ends with `files held over the window` |
 | `scroll table 1 2000`, `scroll list 1 -300` | scrolls the first table (or list) down 2000 (up with a minus) |
 | `open menu File`, `open dropdown 1` | clicks a menu or the first dropdown, opening its list |
 | `click Weapons`, `click Stats` | opens or shuts a branch, or shows a tab, by its name |
@@ -836,13 +841,13 @@ end
 | `hover Delete` | puts the mouse on the button showing that text, and shows its tip straight away |
 | `focus input 1` | gives the first input focus (also `textarea 1`, `checkbox 2`, `switch 1`, `radio 1`, `number 1`, `slider 1`, `button 3`, `table 1`, `list 1`) |
 | `type Hello` | types into the input that has focus |
-| `key ctrl+left` | presses a key: `backspace`, `delete`, `left`, `right`, `home`, `end`, `up`, `down`, `pageup`, `pagedown`, `tab`, `enter`, `space`, `escape`, with `shift+` or `ctrl+` in front, and `ctrl+a`, `ctrl+c`, `ctrl+x`, `ctrl+v`; any key a shortcut uses works too (`key ctrl+s`, `key f1`) |
+| `key ctrl+left` | presses a key: `backspace`, `delete`, `left`, `right`, `home`, `end`, `up`, `down`, `pageup`, `pagedown`, `tab`, `enter`, `space`, `escape`, with `shift+`, `ctrl+` or `alt+` in front, and `ctrl+a`, `ctrl+c`, `ctrl+x`, `ctrl+v`; `shift+f10` or `menu` (the Menu key) opens the right-click menu of what has focus; any key a shortcut uses works too (`key ctrl+s`, `key f1`) |
 | `check 1` | clicks the first checkbox |
 | `flip 1` | clicks the first switch |
 | `click Medium`, `click Sound` | clicks a radio button, or a checkbox or switch, by its words |
 | `wheel 1 up`, `wheel 1 down` | turns the mouse wheel one notch over the first number box (it changes only while the box has focus) |
 | `slide 1 70` | drags the first slider to 70 |
-| `press 40 20`, `move 90 20`, `release 90 20`, `dblclick 40 20` | the mouse, at a place in the window |
+| `press 40 20`, `move 90 20`, `release 90 20`, `dblclick 40 20` | the mouse, at a place in the window (a canvas's `press`, `drag`, `release` and `hover` run from these; `move` with nothing held is hovering) |
 | `scroll 1 100` | scrolls the first scroll down 100 (up with a minus) |
 | `wait 2.5` | lets 2.5 seconds go by on the test's own clock, running the timers that come due |
 | `size 800 600` | resizes the window |
@@ -990,7 +995,7 @@ assembly Settings {
 | Content | `text`, `button`, `input`, `textarea`, `checkbox`, `switch`, `number`, `slider`, `image`, `icon`, `progress` |
 | Choosing | `dropdown`, `radio`, `menu` with `item` and `divider` |
 | Over the view | `dialog` |
-| Time and keys | `every`, `key` |
+| Time, keys and files | `every`, `key`, `drop` |
 
 Questions and loops work inside a view: showing something only sometimes is an `is … ? then`, and a list is a `loop`.
 
@@ -1096,6 +1101,50 @@ canvas [width 320, height 160, background gray1, round 8] {
 ```
 
 A canvas is 300 by 150 unless it's given a `width` and `height`.
+
+**The mouse on a canvas.** Blocks written after a canvas's `{ }` run when the mouse does something on it, each given where the mouse is as a `vec2`, counted from the canvas's top left (inside its `pad`) like `x` and `y`:
+
+| | |
+| --- | --- |
+| `press (vec2 at) { … }` | the left button goes down on the canvas |
+| `drag (vec2 at) { … }` | the mouse moves with the left button held, after a press on this canvas. It keeps coming when the mouse leaves the canvas, until the button is let go, so `at` can be outside it (below 0, or past its width) |
+| `release (vec2 at) { … }` | the left button is let go, after a press on this canvas |
+| `hover (vec2 at) { … }` | the mouse moves over the canvas with no button held |
+
+Each is there only if it's written, and any of them can leave out its `( )` when it doesn't need the place: `release { strokes += 1; }`. A box or circle with its own `{ }` gets a click on it first, and then the canvas's `press` doesn't run. The right button doesn't press: it opens the canvas's right-click `menu { }`, if it has one. A paint program, with a dot wherever the mouse is dragged:
+
+```
+assembly Paint {
+    has {
+        vec2 array dots = [];
+        string where = "";
+    }
+
+    view [title "Paint", width 420, height 320] {
+        column [gap 8, pad 12] {
+            canvas [width 400, height 260, background gray1] {
+                loop (vec2 d in dots) {
+                    circle [x d.x, y d.y, radius 3, blue];
+                }
+            } press (vec2 at) {
+                dots:inject(at);
+            } drag (vec2 at) {
+                dots:inject(at);
+            } hover (vec2 at) {
+                where = at.x.text() + ", " + at.y.text();
+            } menu {
+                item "Clear" { dots = []; }
+            }
+            text where [muted];
+        }
+    }
+}
+
+Paint:open();
+end
+```
+
+The mouse pointer is a cross over a canvas that has `press`, `drag` or `release`.
 
 ### Motion: animate
 
@@ -1212,6 +1261,37 @@ row [gap 4] {
 
 A row of menus at the top of the window is a menu bar, but a menu can go anywhere, like a "⋯" menu on a row of a list. Items can come from a `loop`. The keyboard works as in a dropdown, and Down opens a menu too.
 
+### Right-click menus
+
+`menu { … }` written right after a piece, with no name, is that piece's right-click menu. It's written the way `enter { }` is: in place of the piece's `;`, or after its `{ }`. A right-click on the piece opens it at the mouse:
+
+```
+text note [width fill] menu {
+    item "Pin" { pinned = note; }
+    divider;
+    item "Delete" [disabled locked] { remove(); }
+}
+button "Save" { store(); } menu {
+    item "Save as…" { storeAs(); }
+}
+```
+
+- **The same menu.** Its `item`s, `divider`s, `disabled` items, items from a `loop` and its keys are those of `menu "File" { }`; only how it opens differs. A `menu` with a name is a menu of its own that shows on the screen; a `menu` with none, right after a piece, is that piece's right-click menu.
+- **Opening it.** The right button opens it where the mouse is let go: below and to the right of the mouse, or above or to the left near the window's edges. From the keyboard, Shift+F10 or the Menu key opens the menu of what has focus (or of the piece around it), at its bottom left, with its first item picked.
+- **Closing it.** Choosing an item, Escape, or a click anywhere else closes it. A right-click elsewhere closes it and opens the menu there instead.
+- **In a table or list,** the menu belongs to the rows, so its items can use the row's variable, and it's written after the table's `{ }` (and its `open { }`, if it has one). A right-click picks the row under the mouse first, as Windows Explorer does, so `select`'s field holds it too:
+
+```
+table (Person p in people) [select chosen] {
+    column "Name" p.name;
+} menu {
+    item "Forget " + p.name { forget(p); }
+}
+```
+
+- A `disabled` piece's menu doesn't open, and neither do the rows' menus of a disabled table or list. A right-click outside an open dialog does nothing.
+- A menu, item, divider, dropdown, dialog, tab, `key`, `every` or `drop` can't have one, and one with no items is a mistake before anything runs.
+
 ### Dialogs
 
 `dialog confirming { … }` pops up in the middle of the window while the bool it's bound to is true, over the rest of the view, which is dimmed. Only the dialog can be used while it's open. Setting the bool to false closes it, and so does Escape or a click outside it, which set the bool to false themselves:
@@ -1267,6 +1347,24 @@ is showHelp? then {
 
 - **Writing the keys:** `ctrl`, `shift` and `alt` in front of one key, joined with `+`: `"ctrl+shift+s"`. The key is a letter, number or sign (`"ctrl+1"`, `"ctrl+="`), `f1` to `f12`, or `enter`, `escape`, `tab`, `space`, `backspace`, `delete`, `up`, `down`, `left`, `right`, `home`, `end`, `pageup` or `pagedown`. On a Mac, `ctrl` means Cmd, so `"ctrl+s"` is Cmd+S there, as Mac users expect.
 - **Typing comes first.** While an input has focus, the keys it uses (letters, the arrows, Backspace, Escape, Ctrl+C and the rest) go to the input, so a shortcut like `"s"` doesn't fire while someone types an "s". Other shortcuts with Ctrl, and the F keys, work while typing. Enter and Space press the button that has focus, and Tab moves focus.
+
+### Files dropped on the window
+
+`drop (string array paths) { … }` runs when files are dragged from the computer's own folders and dropped on the window, given their whole paths. Like `key`, it takes no room, and it works only while it's in the view:
+
+```
+drop (string array paths) {
+    loop (string p in paths) {
+        is p:endsWith(".png")? then {
+            pictures:inject(p);
+        }
+    }
+}
+```
+
+- **One block for each drop,** given every file dropped together. While files are held over the window, a soft blue edge shows round it.
+- **Which block runs.** A drop runs one block: the first `drop` in the dialog opened last, if it has one, or else the first `drop` in the view, as they're written. The window's computer doesn't say where in the window the files were dropped, so a drop is for the whole window, not for a piece.
+- `drop` is given a `string array`: `drop (int x)` or `drop { }` without its paths is a mistake.
 
 ### Fonts
 
@@ -1335,6 +1433,22 @@ list (Message m in inbox) [rowHeight 48, select current] {
 ```
 
 It picks rows (`select`), opens them (`open { }`) and takes the same keys as a table, with no columns or headers. Like a table it fills the room it's given and scrolls by itself.
+
+### Dragging rows to new places: reorder
+
+`[reorder]` on a `list` or `table` lets the rows be dragged to new places with the mouse, and the array itself changes order, the way an input changes its field:
+
+```
+list (string job in jobs) [reorder, select current, rowHeight 32] {
+    text job [padX 8];
+}
+```
+
+- **Dragging.** Hold a row and move the mouse: once it has gone about 4 points, the row is dragged, and a blue line shows where it will land. Letting go moves it there in the array, and picks it. Near the list's top or bottom edge, the list scrolls by itself, faster the nearer the edge. Escape lets go without moving anything.
+- **The keyboard.** With the list (or table) focused, Alt+Up and Alt+Down move the picked row one place up or down.
+- **The picked row stays picked** wherever it moves, since it's the row that's picked, not its place. A list of 100,000 rows still makes only the rows on the screen.
+- **A sorted table can't be reordered.** While a header sorts it, the rows show in another order than the array's, so dragging and Alt+Up and Alt+Down do nothing. Clicking the header until it shows the array's own order again (the third click) lets the rows be dragged again.
+- **Only an array's rows** can be reordered: a cMap's or a database table's rows are found by their keys and have no order of their own, so `[reorder]` on one is a mistake before anything runs. A `disabled` list or table can't be reordered.
 
 ### Pictures
 
@@ -1423,7 +1537,7 @@ Short words in `[ ]`, in the spirit of Tailwind:
 | inputs and pictures | `placeholder "…"`, `from`, `to`, `step` (sliders), `min`, `max`, `step` (number boxes), `across` (radios), `cover` |
 | icons | `icon "trash"` on a button |
 | grids, splits, branches | `columns 3`, `cell 180`, `down`, `open` |
-| tables and lists | `select chosen`, `rowHeight 28`, `stripes`, and `sort p.age` on a column |
+| tables and lists | `select chosen`, `rowHeight 28`, `stripes`, `reorder`, and `sort p.age` on a column |
 | in a canvas | `x`, `y`, `toX`, `toY`, `radius`, `thick` |
 | motion | `animate` |
 | words | `font "file.ttf"` |

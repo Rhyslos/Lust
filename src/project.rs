@@ -463,11 +463,21 @@ fn value_names(p: &Program, out: &mut HashSet<String>) {
                     stmts(handler, out);
                 }
                 Stmt::Element {
-                    children, action, enter, ..
+                    children,
+                    action,
+                    enter,
+                    extra,
+                    ..
                 } => {
                     stmts(children, out);
                     for a in [action, enter].into_iter().flatten() {
                         stmts(a, out);
+                    }
+                    for a in extra {
+                        if let Some((_, n, _)) = &a.param {
+                            out.insert(n.clone());
+                        }
+                        stmts(&a.body, out);
                     }
                 }
                 _ => {}
@@ -751,6 +761,7 @@ impl<'a> Renamer<'a> {
                 action,
                 enter,
                 choices,
+                extra,
                 ..
             } => {
                 for a in [arg, choices].into_iter().flatten() {
@@ -760,6 +771,12 @@ impl<'a> Renamer<'a> {
                 self.stmts(children);
                 for a in [action, enter].into_iter().flatten() {
                     self.stmts(a);
+                }
+                for a in extra.iter_mut() {
+                    if let Some((t, _, _)) = &mut a.param {
+                        self.ty(t);
+                    }
+                    self.stmts(&mut a.body);
                 }
             }
             _ => {}

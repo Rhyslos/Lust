@@ -1,0 +1,145 @@
+window "Menus" 420x360
+  column 0,0 420x360
+    text "Notes" 12,12 44x19 (menu)
+    button "Save" 12,39 64x33 (menu)
+    table 3 rows, showing 1–3 12,80 396x150
+      thead 13,81 394x30
+        header "Name" 13,81 197x30
+        header "Age" 210,81 197x30
+      tablerow 13,111 394x31 (menu)
+        celltext "Ada" 13,111 197x31
+        celltext "36" 210,111 197x31
+      tablerow 13,142 394x31 (menu)
+        celltext "Bob" 13,142 197x31
+        celltext "7" 210,142 197x31
+      tablerow 13,173 394x31 (menu)
+        celltext "Cleo" 13,173 197x31
+        celltext "52" 210,173 197x31
+    text "Locked" 12,238 53x19 (disabled)
+    text 12,265 0x19
+  layer "popup" 0,0 420x360
+    scroll 36,24 160x79 (scrolled 0 of 0)
+      item "Copy" 40,28 152x31
+      divider 40,59 152x9
+      item "Paste" 40,68 152x31 (disabled)
+window "Menus" 420x360
+  column 0,0 420x360
+    text "Notes" 12,12 44x19 (menu)
+    button "Save" 12,39 64x33 (menu)
+    table 3 rows, showing 1–3 12,80 396x150 (focus)
+      thead 13,81 394x30
+        header "Name" 13,81 197x30
+        header "Age" 210,81 197x30
+      tablerow 13,111 394x31 (menu)
+        celltext "Ada" 13,111 197x31
+        celltext "36" 210,111 197x31
+      tablerow 13,142 394x31 (picked) (menu)
+        celltext "Bob" 13,142 197x31
+        celltext "7" 210,142 197x31
+      tablerow 13,173 394x31 (menu)
+        celltext "Cleo" 13,173 197x31
+        celltext "52" 210,173 197x31
+    text "Locked" 12,238 53x19 (disabled)
+    text "save as" 12,265 55x19
+  layer "popup" 0,0 420x360
+    scroll 114,160 160x70 (scrolled 0 of 0)
+      item "Forget Bob" 118,164 152x31
+      item "Older" 118,195 152x31
+window "Menus" 420x360
+  column 0,0 420x360
+    text "Notes" 12,12 44x19 (menu)
+    button "Save" 12,39 64x33 (menu)
+    table 3 rows, showing 1–3 12,80 396x150 (focus)
+      thead 13,81 394x30
+        header "Name" 13,81 197x30
+        header "Age" 210,81 197x30
+      tablerow 13,111 394x31 (menu)
+        celltext "Ada" 13,111 197x31
+        celltext "36" 210,111 197x31
+      tablerow 13,142 394x31 (menu)
+        celltext "Bob" 13,142 197x31
+        celltext "7" 210,142 197x31
+      tablerow 13,173 394x31 (picked) (menu)
+        celltext "Cleo" 13,173 197x31
+        celltext "52" 210,173 197x31
+    text "Locked" 12,238 53x19 (disabled)
+    text "forgot Bob" 12,265 76x19
+window "Menus" 420x360
+  column 0,0 420x360
+    text "Notes" 12,12 44x19 (menu)
+    button "Save" 12,39 64x33 (menu)
+    table 3 rows, showing 1–3 12,80 396x150 (focus)
+      thead 13,81 394x30
+        header "Name" 13,81 197x30
+        header "Age" 210,81 197x30
+      tablerow 13,111 394x31 (picked) (menu)
+        celltext "Ada" 13,111 197x31
+        celltext "36" 210,111 197x31
+      tablerow 13,142 394x31 (menu)
+        celltext "Bob" 13,142 197x31
+        celltext "7" 210,142 197x31
+      tablerow 13,173 394x31 (menu)
+        celltext "Cleo" 13,173 197x31
+        celltext "52" 210,173 197x31
+    text "Locked" 12,238 53x19 (disabled)
+    text "forgot Bob" 12,265 76x19
+window "Menus" 420x360
+  column 0,0 420x360
+    text "Notes" 12,12 44x19 (menu)
+    button "Save" 12,39 64x33 (menu)
+    table 3 rows, showing 1–3 12,80 396x150 (focus)
+      thead 13,81 394x30
+        header "Name" 13,81 197x30
+        header "Age" 210,81 197x30
+      tablerow 13,111 394x31 (menu)
+        celltext "Ada" 13,111 197x31
+        celltext "36" 210,111 197x31
+      tablerow 13,142 394x31 (picked) (menu)
+        celltext "Bob" 13,142 197x31
+        celltext "8" 210,142 197x31
+      tablerow 13,173 394x31 (menu)
+        celltext "Cleo" 13,173 197x31
+        celltext "52" 210,173 197x31
+    text "Locked" 12,238 53x19 (disabled)
+    text "forgot Bob" 12,265 76x19
+window "Menus" 420x360
+  column 0,0 420x360
+    text "Notes" 12,12 44x19 (menu)
+    button "Save" 12,39 64x33 (menu) (focus)
+    table 3 rows, showing 1–3 12,80 396x150
+      thead 13,81 394x30
+        header "Name" 13,81 197x30
+        header "Age" 210,81 197x30
+      tablerow 13,111 394x31 (menu)
+        celltext "Ada" 13,111 197x31
+        celltext "36" 210,111 197x31
+      tablerow 13,142 394x31 (picked) (menu)
+        celltext "Bob" 13,142 197x31
+        celltext "8" 210,142 197x31
+      tablerow 13,173 394x31 (menu)
+        celltext "Cleo" 13,173 197x31
+        celltext "52" 210,173 197x31
+    text "Locked" 12,238 53x19 (disabled)
+    text "forgot Bob" 12,265 76x19
+  layer "popup" 0,0 420x360
+    scroll 22,74 160x39 (scrolled 0 of 0)
+      item "Save as" 26,78 152x31
+window "Menus" 420x360
+  column 0,0 420x360
+    text "Notes" 12,12 44x19 (menu)
+    button "Save" 12,39 64x33 (menu) (focus)
+    table 3 rows, showing 1–3 12,80 396x150
+      thead 13,81 394x30
+        header "Name" 13,81 197x30
+        header "Age" 210,81 197x30
+      tablerow 13,111 394x31 (menu)
+        celltext "Ada" 13,111 197x31
+        celltext "36" 210,111 197x31
+      tablerow 13,142 394x31 (picked) (menu)
+        celltext "Bob" 13,142 197x31
+        celltext "8" 210,142 197x31
+      tablerow 13,173 394x31 (menu)
+        celltext "Cleo" 13,173 197x31
+        celltext "52" 210,173 197x31
+    text "Locked" 12,238 53x19 (disabled)
+    text "forgot Bob" 12,265 76x19

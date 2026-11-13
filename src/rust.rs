@@ -21,14 +21,17 @@ pub const NET_RUNTIME: &str = include_str!("native_net.rs");
 pub const DLG_RUNTIME: &str = include_str!("native_dlg.rs");
 pub const LOCALTIME_RUNTIME: &str = include_str!("native_localtime.rs");
 pub const TEXT_RUNTIME: &str = include_str!("native_text.rs");
-/// Views: the pieces, then the radio buttons, switches, number boxes and icons, then the icons'
-/// shapes, all in one module.
+/// Views: the pieces, then the radio buttons, switches, number boxes and icons, then tables, then
+/// the mouse (right-click menus, dragging rows, dropped files, canvases), then the icons' shapes,
+/// all in one module.
 pub const UI_RUNTIME: &str = concat!(
     include_str!("native_ui.rs"),
     "\n",
     include_str!("native_ui_pieces.rs"),
     "\n",
     include_str!("native_ui_table.rs"),
+    "\n",
+    include_str!("native_ui_mouse.rs"),
     "\n",
     include_str!("icons.rs")
 );
@@ -791,6 +794,7 @@ fn walk_stmts(stmts: &[Stmt], f: &mut dyn FnMut(&Expr)) {
                 action,
                 enter,
                 choices,
+                extra,
                 ..
             } => {
                 for a in [arg, choices].into_iter().flatten() {
@@ -803,6 +807,9 @@ fn walk_stmts(stmts: &[Stmt], f: &mut dyn FnMut(&Expr)) {
                 }
                 if let Some(a) = action {
                     walk_stmts(a, f);
+                }
+                for a in extra {
+                    walk_stmts(&a.body, f);
                 }
             }
             Stmt::Try { body, handler, .. } => {
@@ -1652,6 +1659,7 @@ impl<'a> W<'a> {
                 action,
                 enter,
                 choices,
+                extra,
                 ..
             } => {
                 let parent = self.view_parent.last().cloned().unwrap_or_else(|| "p0".into());
@@ -1699,6 +1707,7 @@ impl<'a> W<'a> {
                     ));
                     let s = self.styles(style);
                     out.push_str(&format!("{pad}    {v}.style = {s};\n"));
+                    self.attached(&v, extra, out, depth);
                     out.push_str(&format!("{pad}    {parent}.children.push({v});\n{pad}}}\n"));
                     return;
                 }
@@ -1767,6 +1776,7 @@ impl<'a> W<'a> {
                 if let Some(a) = enter {
                     self.view_action(a, None, &format!("{v}.enter"), out, depth);
                 }
+                self.attached(&v, extra, out, depth);
                 out.push_str(&format!("{pad}    {parent}.children.push({v});\n{pad}}}\n"));
             }
             Stmt::SaveDecl { .. } => {}
@@ -2744,6 +2754,7 @@ impl<'a> W<'a> {
             arg: picked,
             action,
             enter,
+            extra: row_extra,
             ..
         }) = body.first()
         else {
@@ -2858,6 +2869,12 @@ impl<'a> W<'a> {
         out.push_str(&format!(
             "{pad}    let (first, last) = rt::ui::list_range(id);\n{pad}    {v}.list = Some(rt::ui::ListInfo {{ id, count: n, first, pick }});\n"
         ));
+        // [reorder]: a row dragged from one place to another moves in the array itself.
+        if cmap_cols.is_none() && style.iter().any(|it| it.name == "reorder") {
+            out.push_str(&format!(
+                "{pad}    {{\n{pad}        let src = src.clone();\n{pad}        actions.push(Box::new(move || {{ let (a, b) = rt::ui::incoming_point(); rt::array_move(&src, a as usize, b as usize); Ok(()) }}));\n{pad}        {v}.mouse.push((\"reorder\".to_string(), actions.len() - 1));\n{pad}    }}\n"
+            ));
+        }
         // The headers, then the rows on the screen.
         for c in &columns {
             if let Stmt::Element {
@@ -2940,15 +2957,48 @@ impl<'a> W<'a> {
         if let Some(a) = enter {
             self.view_action(a, None, &format!("{r}.enter"), out, inner - 1);
         }
+        self.attached(&r, row_extra, out, inner - 1);
         out.push_str(&format!("{pad}        {v}.children.push({r});\n{pad}    }}\n"));
         out.push_str(&format!("{pad}    {parent}.children.push({v});\n{pad}}}\n"));
     }
 
     fn view_action(&mut self, a: &[Stmt], given: Option<&Expr>, slot: &str, out: &mut String, depth: usize) {
+        self.view_action_to(a, given, None, &format!("{slot} = Some(#);"), out, depth);
+    }
+
+    /// A piece's blocks for the mouse: its right-click menu's items go in `.menu`, and a canvas's
+    /// press, drag, release and hover (and a drop's block) are actions named in `.mouse`.
+    fn attached(&mut self, v: &str, extra: &[crate::ast::Attached], out: &mut String, depth: usize) {
+        let pad = "    ".repeat(depth + 1);
+        for a in extra {
+            if a.word == "menu" {
+                let m = format!("p{}", self.fresh());
+                out.push_str(&format!("{pad}{{\n{pad}    let mut {m} = rt::ui::Node::new(\"menu\");\n"));
+                self.view_parent.push(m.clone());
+                self.stmts(&a.body, out, depth + 2);
+                self.view_parent.pop();
+                out.push_str(&format!("{pad}    {v}.menu = {m}.children;\n{pad}}}\n"));
+                continue;
+            }
+            let param = a.param.as_ref().map(|(_, n, _)| {
+                let ty = if a.word == "drop" { Ty::Array(Box::new(Ty::Str)) } else { Ty::Vec2 };
+                (n.clone(), ty)
+            });
+            let set = format!("{v}.mouse.push(({:?}.to_string(), #));", a.word);
+            self.view_action_to(&a.body, None, param, &set, out, depth);
+        }
+    }
+
+    /// An action: `set` is the statement that keeps it, with # for its number. `param` is what
+    /// a block for the mouse is given, and its type: (vec2 at), (string array paths).
+    fn view_action_to(&mut self, a: &[Stmt], given: Option<&Expr>, param: Option<(String, Ty)>, set: &str, out: &mut String, depth: usize) {
         let inner = "    ".repeat(depth + 1);
         out.push_str(&format!("{inner}{{\n"));
-        let value = crate::parser::VALUE.to_string();
-        for c in captures(a, std::slice::from_ref(&value), self.info) {
+        let mut own = vec![crate::parser::VALUE.to_string()];
+        if let Some((n, _)) = &param {
+            own.push(n.clone());
+        }
+        for c in captures(a, &own, self.info) {
             out.push_str(&format!("{inner}    let v_{c} = v_{c}.clone();\n"));
         }
         out.push_str(&format!("{inner}    let this = this.clone();\n"));
@@ -2976,7 +3026,14 @@ impl<'a> W<'a> {
                 Ty::Int => "rt::ui::incoming_num().round() as i64",
                 _ => "rt::ui::incoming_num()",
             };
-            out.push_str(&format!("{inner}        let v_{value} = {get};\n"));
+            out.push_str(&format!("{inner}        let v_{} = {get};\n", crate::parser::VALUE));
+        }
+        match &param {
+            Some((n, Ty::Vec2)) => out.push_str(&format!(
+                "{inner}        let mut v_{n} = {{ let (x, y) = rt::ui::incoming_point(); rt::vec2(x, y) }};\n"
+            )),
+            Some((n, _)) => out.push_str(&format!("{inner}        let mut v_{n} = rt::arr(rt::ui::incoming_list());\n")),
+            None => {}
         }
         let saved = self.current_ret.take();
         self.stmts(a, out, depth + 3);
@@ -2984,7 +3041,7 @@ impl<'a> W<'a> {
         out.push_str(&format!(
             "{inner}    }}) {{\n{inner}        None => Ok(()),\n{inner}        Some(e) => Err(e),\n{inner}    }}));\n"
         ));
-        out.push_str(&format!("{inner}    {slot} = Some(actions.len() - 1);\n{inner}}}\n"));
+        out.push_str(&format!("{inner}    {}\n{inner}}}\n", set.replace('#', "actions.len() - 1")));
     }
 
     fn styles(&mut self, items: &[StyleItem]) -> String {

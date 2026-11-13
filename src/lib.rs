@@ -97,6 +97,7 @@ mod native_ui {
     include!("native_ui.rs");
     include!("native_ui_pieces.rs");
     include!("native_ui_table.rs");
+    include!("native_ui_mouse.rs");
 }
 #[cfg(feature = "cli")]
 mod run;

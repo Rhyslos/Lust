@@ -1,0 +1,3 @@
+view-mouse-place.lsc:9:9  press goes right after a canvas's { }, for the mouse on it: canvas [width 300, height 200] { … } press (vec2 at) { … }
+
+1 mistake. Nothing was run.

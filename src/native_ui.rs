@@ -23,6 +23,10 @@ pub enum SV {
     Text(String),
     Truth(bool),
     Nested(Vec<(String, SV)>),
+    /// Where the mouse is on a canvas, or a row dragged from one place to another.
+    Point(f64, f64),
+    /// The paths of files dropped on the window.
+    List(Vec<String>),
 }
 
 #[derive(Clone, Debug)]
@@ -43,6 +47,11 @@ pub struct Node {
     pub whole: bool,
     /// A table or list: which it is, how many rows it has, and which were made.
     pub list: Option<ListInfo>,
+    /// A right-click menu's items.
+    pub menu: Vec<Node>,
+    /// Actions for the mouse, by name: a canvas's press, drag, release and hover, a drop's
+    /// block, and a list's reorder.
+    pub mouse: Vec<(String, usize)>,
 }
 
 impl Node {
@@ -58,13 +67,15 @@ impl Node {
             options: vec![],
             whole: false,
             list: None,
+            menu: vec![],
+            mouse: vec![],
         }
     }
 }
 
 /// Pieces that take no room on the screen: timers and keyboard shortcuts.
 fn unseen(kind: &str) -> bool {
-    kind == "every" || kind == "key"
+    kind == "every" || kind == "key" || kind == "drop"
 }
 
 // ----- keyboard shortcuts -----
@@ -162,6 +173,20 @@ pub fn incoming_num() -> f64 {
 
 pub fn incoming_truth() -> bool {
     matches!(incoming(), SV::Truth(true))
+}
+
+pub fn incoming_point() -> (f64, f64) {
+    match incoming() {
+        SV::Point(x, y) => (x, y),
+        _ => (0.0, 0.0),
+    }
+}
+
+pub fn incoming_list() -> Vec<String> {
+    match incoming() {
+        SV::List(l) => l,
+        _ => vec![],
+    }
 }
 
 // ----- fonts -----
@@ -1220,6 +1245,10 @@ struct Laid {
     bad: bool,
     /// A table or list: which it is, its rows, and which were made.
     list: Option<ListInfo>,
+    /// Its right-click menu's items, and its actions for the mouse by name (a canvas's press,
+    /// drag, release and hover; a list's reorder). Both empty when it's disabled.
+    ctx: Vec<Laid>,
+    mouse: Vec<(String, usize)>,
     x: f32,
     y: f32,
     w: f32,
@@ -1325,6 +1354,8 @@ fn lay(n: &Node) -> Laid {
         key: String::new(),
         index: 0,
         ends: [0.0; 4],
+        ctx: if disabled { vec![] } else { n.menu.iter().filter(|c| !unseen(&c.kind)).map(lay).collect() },
+        mouse: if disabled { vec![] } else { n.mouse.clone() },
         children,
     };
     match n.kind.as_str() {
@@ -1958,9 +1989,26 @@ fn dialog_layer(mut d: Laid, w: f32, h: f32) -> Laid {
 /// A dropdown's or a menu's list of rows, below it (or above, if there's more room there).
 /// `hl` is the row picked with the keyboard.
 fn popup_layer(owner: &Laid, hl: Option<usize>, w: f32, h: f32) -> Laid {
-    let mut rows = owner.items.clone();
+    let (mut list, lw, tall) = popup_box(owner.items.clone(), hl, Some(owner.text.as_str()), owner.w, w);
+    let below = h - (owner.y + owner.h + 4.0) - 8.0;
+    let above = owner.y - 12.0;
+    let (y, lh) = if tall <= below || below >= above {
+        (owner.y + owner.h + 4.0, tall.min(below.max(40.0)))
+    } else {
+        let lh = tall.min(above);
+        (owner.y - 4.0 - lh, lh)
+    };
+    let x = owner.x.min(w - 8.0 - lw).max(8.0);
+    place(&mut list, x.round(), y.round(), lw, lh.round());
+    MEASURED.with(|m| m.borrow_mut().clear());
+    layer("popup", w, h, list)
+}
+
+/// The box of a pop-up list's rows, not yet placed: the box, how wide it is (at least `min_w`),
+/// and how tall it would like to be. `chosen` is what a dropdown shows, in bold in its list.
+fn popup_box(mut rows: Vec<Laid>, hl: Option<usize>, chosen: Option<&str>, min_w: f32, w: f32) -> (Laid, f32, f32) {
     for (i, r) in rows.iter_mut().enumerate() {
-        if r.kind == "option" && r.text == owner.text {
+        if r.kind == "option" && Some(r.text.as_str()) == chosen {
             r.look.weight = 600.0;
         }
         if r.action.is_some() && r.hover.is_none() {
@@ -1982,21 +2030,10 @@ fn popup_layer(owner: &Laid, hl: Option<usize>, w: f32, h: f32) -> Laid {
     list.look.pad = [4.0; 4];
     MEASURED.with(|m| m.borrow_mut().clear());
     let widest = rows.iter().map(|r| natural(r, f32::INFINITY).0).fold(0.0, f32::max);
-    let lw = (widest + 8.0).max(owner.w).min((w - 16.0).max(40.0)).round();
+    let lw = (widest + 8.0).max(min_w).min((w - 16.0).max(40.0)).round();
     let tall: f32 = rows.iter().map(|r| natural(r, lw - 8.0).1).sum::<f32>() + 8.0;
     list.children = rows;
-    let below = h - (owner.y + owner.h + 4.0) - 8.0;
-    let above = owner.y - 12.0;
-    let (y, lh) = if tall <= below || below >= above {
-        (owner.y + owner.h + 4.0, tall.min(below.max(40.0)))
-    } else {
-        let lh = tall.min(above);
-        (owner.y - 4.0 - lh, lh)
-    };
-    let x = owner.x.min(w - 8.0 - lw).max(8.0);
-    place(&mut list, x.round(), y.round(), lw, lh.round());
-    MEASURED.with(|m| m.borrow_mut().clear());
-    layer("popup", w, h, list)
+    (list, lw, tall)
 }
 
 /// The deepest piece with a tip at this point.
@@ -2227,6 +2264,10 @@ struct PaintState {
     pressed: Option<Vec<usize>>,
     /// Switches part way through sliding their knob (in a window), from 0 (off) to 1 (on).
     knobs: HashMap<Vec<usize>, f32>,
+    /// Drawn over everything: where a dragged row will land, and whether files are being
+    /// dragged over the window.
+    marks: Vec<[f32; 4]>,
+    files_over: bool,
 }
 
 const RING: f32 = 3.0;
@@ -2664,6 +2705,7 @@ fn render(tree: &Laid, w: usize, h: usize, scale: f32, st: &PaintState, backgrou
     let mut c = Canvas::new(w, h, scale);
     c.px.iter_mut().for_each(|p| *p = background);
     paint(&mut c, tree, st, &mut vec![]);
+    paint_marks(&mut c, tree, st);
     c
 }
 
@@ -2682,7 +2724,13 @@ fn hit(n: &Laid, x: f32, y: f32) -> Option<Vec<usize>> {
             return Some(p);
         }
     }
-    if (matches!(n.kind.as_str(), "tablerow" | "listrow") && (n.action.is_some() || n.enter.is_some())) || (n.kind == "header" && n.whole) {
+    if (matches!(n.kind.as_str(), "tablerow" | "listrow") && (n.action.is_some() || n.enter.is_some() || !n.mouse.is_empty()))
+        || (n.kind == "header" && n.whole)
+    {
+        return Some(vec![]);
+    }
+    // A canvas with press, drag or release takes the mouse where no shape of its own does.
+    if n.kind == "canvas" && n.mouse.iter().any(|(k, _)| k != "hover") {
         return Some(vec![]);
     }
     // A layer isn't clicked itself, only what's on it. A menu is clicked to open it, a tab's name
@@ -2873,6 +2921,8 @@ enum Nav {
     Paste,
     Undo,
     Redo,
+    /// Shift+F10 or the Menu key: opens the right-click menu of what has focus.
+    Menu,
 }
 
 /// One input's earlier texts, for undo and redo.
@@ -2899,6 +2949,10 @@ enum Drag {
     Column(Vec<usize>, usize, f32, f32),
     /// A table's or list's scroll bar knob: its place, where it was grabbed, and the scroll then.
     ListKnob(Vec<usize>, f32, f32),
+    /// A row of a list with [reorder], held down (native_ui_mouse.rs).
+    Row(RowDrag),
+    /// The mouse went down on a canvas with press, drag or release: its place.
+    Canvas(Vec<usize>),
 }
 
 /// The line between two panels of a split at this point: the split's place, which split it is in
@@ -3101,6 +3155,16 @@ struct Ui<'a, 'b> {
     flips: HashMap<Vec<usize>, f64>,
     /// The mouse wheel turned over a number box, kept until it adds up to a step.
     wheel_acc: (Option<Vec<usize>>, f32),
+    /// The open list is a right-click menu, at this place (the owner's `ctx` are its rows).
+    ctx_at: Option<(f32, f32)>,
+    /// What the right mouse button went down on, to open its menu when it's let go.
+    right: Option<(Vec<usize>, f32, f32)>,
+    /// Files are being dragged over the window.
+    files_over: bool,
+    /// Counts the times a canvas's block ran from the mouse moving, so the window draws again.
+    ran: u64,
+    /// When a list under a dragged row last scrolled by itself.
+    edge_last: Option<std::time::Instant>,
 }
 
 /// The program's tweens, moved on by the window's clock: given seconds, it gives back whether
@@ -3244,6 +3308,11 @@ impl<'a, 'b> Ui<'a, 'b> {
             draft: None,
             flips: HashMap::new(),
             wheel_acc: (None, 0.0),
+            ctx_at: None,
+            right: None,
+            files_over: false,
+            ran: 0,
+            edge_last: None,
         };
         ui.relayout();
         ui.settle()?;
@@ -3391,9 +3460,16 @@ impl<'a, 'b> Ui<'a, 'b> {
             add(&mut tree, dialog_layer(d, w, h), &mut self.scrolls);
         }
         if let Some((owner, hl)) = self.popup.clone() {
-            match node_at(&tree, &owner).filter(|n| matches!(n.kind.as_str(), "dropdown" | "menu") && !n.look.disabled) {
+            let ctx = self.ctx_at;
+            match node_at(&tree, &owner).filter(|n| match ctx {
+                Some(_) => !n.ctx.is_empty(),
+                None => matches!(n.kind.as_str(), "dropdown" | "menu") && !n.look.disabled,
+            }) {
                 Some(o) => {
-                    let l = popup_layer(o, hl, w, h);
+                    let l = match ctx {
+                        Some(at) => ctx_layer(o, at, hl, w, h),
+                        None => popup_layer(o, hl, w, h),
+                    };
                     add(&mut tree, l, &mut self.scrolls);
                 }
                 None => self.popup = None,
@@ -3615,6 +3691,8 @@ impl<'a, 'b> Ui<'a, 'b> {
             st.fades = Some(self.fades.clone());
         }
         st.pressed = self.pressed.clone();
+        st.marks = self.drag_marks();
+        st.files_over = self.files_over;
         let now = self.now();
         for (p, &start) in &self.flips {
             let t = ((now - start) / SWITCH_SECS) as f32;
@@ -3912,9 +3990,17 @@ impl<'a, 'b> Ui<'a, 'b> {
             // A row of an open list: it acts when the mouse is let go, and focus stays.
             "option" | "item" => {}
             "tabbtn" | "branchhead" => self.set_focus(Some(path.clone()), false),
-            // A row gives its table or list focus, for the keys, and is picked when let go.
-            "tablerow" | "listrow" => self.set_focus(Some(path[..path.len() - 1].to_vec()), false),
+            // A row gives its table or list focus, for the keys, and is picked when let go. In a
+            // list with [reorder], it can be dragged to a new place.
+            "tablerow" | "listrow" => {
+                self.set_focus(Some(path[..path.len() - 1].to_vec()), false);
+                self.row_press(&path, x, y);
+            }
             "header" => {}
+            "canvas" => {
+                self.set_focus(None, false);
+                return self.canvas_press(&path, x, y);
+            }
             // Buttons and checkboxes act when the mouse is let go over them. Clicking one takes
             // focus away from an input, without giving the button a ring.
             _ => self.set_focus(None, false),
@@ -3970,14 +4056,26 @@ impl<'a, 'b> Ui<'a, 'b> {
                     }
                 }
             }
+            Drag::Row(r) => self.row_moved(r, x, y, self.test_clock.is_some())?,
+            Drag::Canvas(p) => self.canvas_drag(&p, x, y)?,
+            Drag::None if self.pressed.is_none() => self.canvas_hover(x, y)?,
             Drag::None => {}
         }
         Ok(())
     }
 
     fn release(&mut self, x: f32, y: f32) -> Result<(), String> {
-        if let Drag::Scroll(..) | Drag::Split(..) | Drag::Column(..) | Drag::ListKnob(..) = std::mem::replace(&mut self.drag, Drag::None) {
-            return Ok(());
+        match std::mem::replace(&mut self.drag, Drag::None) {
+            Drag::Scroll(..) | Drag::Split(..) | Drag::Column(..) | Drag::ListKnob(..) => return Ok(()),
+            Drag::Row(r) if r.active => {
+                self.pressed = None;
+                return self.row_drop(r);
+            }
+            Drag::Canvas(p) => {
+                self.pressed = None;
+                return self.canvas_release(&p, x, y);
+            }
+            _ => {}
         }
         let at = self.hit_at(x, y);
         let pressed = self.pressed.take();
@@ -4221,7 +4319,7 @@ impl<'a, 'b> Ui<'a, 'b> {
     /// The rows of the open list that can be chosen.
     fn popup_rows(&self) -> Vec<bool> {
         let Some((owner, _)) = &self.popup else { return vec![] };
-        node_at(&self.tree, owner).map(|o| o.items.iter().map(|r| r.action.is_some()).collect()).unwrap_or_default()
+        node_at(&self.tree, owner).map(|o| self.popup_items(o).iter().map(|r| r.action.is_some()).collect()).unwrap_or_default()
     }
 
     /// Keys while a list is open: Up and Down pick a row, Enter or Space chooses it, Escape
@@ -4265,7 +4363,7 @@ impl<'a, 'b> Ui<'a, 'b> {
                 Ok(true)
             }
             Nav::Enter | Nav::Space => {
-                let row = hl.and_then(|h| node_at(&self.tree, &owner).and_then(|o| o.items.get(h)).cloned());
+                let row = hl.and_then(|h| node_at(&self.tree, &owner).and_then(|o| self.popup_items(o).get(h)).cloned());
                 match row {
                     Some(r) if r.action.is_some() => {
                         let v = if r.kind == "option" { SV::Text(r.text.clone()) } else { SV::Flag };
@@ -4301,12 +4399,22 @@ impl<'a, 'b> Ui<'a, 'b> {
             hl = n.items.iter().position(|r| r.action.is_some());
         }
         self.popup = Some((path.to_vec(), hl));
+        self.ctx_at = None;
         self.relayout();
     }
 
     fn nav(&mut self, k: Nav, mods: Mods) -> Result<(), String> {
         if self.popup_key(&k)? {
             return Ok(());
+        }
+        // Escape lets go of a row being dragged, leaving it where it was.
+        if k == Nav::Escape && matches!(self.drag, Drag::Row(_)) {
+            self.drag = Drag::None;
+            self.pressed = None;
+            return Ok(());
+        }
+        if k == Nav::Menu {
+            return self.menu_key();
         }
         match k {
             Nav::Tab => {
@@ -4357,6 +4465,10 @@ impl<'a, 'b> Ui<'a, 'b> {
                 let Some(path) = self.st.focus.clone() else { return Ok(()) };
                 let Some(n) = node_at(&self.tree, &path) else { return Ok(()) };
                 if n.list.is_some() {
+                    // Alt+Up and Alt+Down move the picked row of a list with [reorder].
+                    if mods.alt && matches!(k, Nav::Up | Nav::Down) {
+                        return self.row_nudge(&path, k == Nav::Up);
+                    }
                     self.list_key(&path, &k)?;
                     return Ok(());
                 }
@@ -4536,7 +4648,10 @@ impl<'a, 'b> Ui<'a, 'b> {
             "button" | "checkbox" | "switch" => plain && matches!(key, "enter" | "space"),
             "radio" => plain && matches!(key, "left" | "right" | "up" | "down" | "space"),
             "slider" => plain && matches!(key, "left" | "right" | "up" | "down" | "home" | "end"),
-            "table" | "list" => plain && matches!(key, "up" | "down" | "home" | "end" | "pageup" | "pagedown" | "enter"),
+            "table" | "list" => {
+                (plain && matches!(key, "up" | "down" | "home" | "end" | "pageup" | "pagedown" | "enter"))
+                    || (m.alt && !m.command && matches!(key, "up" | "down") && self.focused().is_some_and(reorders))
+            }
             _ => false,
         }
     }
@@ -4565,6 +4680,7 @@ impl<'a, 'b> Ui<'a, 'b> {
         }
         match self.hit_at(x, y).and_then(|p| node_at(&self.tree, &p)).map(|n| n.kind.as_str()) {
             Some("input" | "textarea" | "number") => 2,
+            Some("canvas") => 5,
             Some(_) => 1,
             None => 0,
         }
@@ -4588,6 +4704,9 @@ mod windowed {
         mouse: Option<(f32, f32)>,
         mods: ModifiersState,
         error: Option<String>,
+        /// Files dropped on the window: winit tells of them one at a time, and they're handed
+        /// over together once it has told of them all.
+        dropped: Vec<String>,
     }
 
     impl<'a, 'b> App<'a, 'b> {
@@ -4675,6 +4794,9 @@ mod windowed {
                 WKey::Named(NamedKey::Enter) => Some(Nav::Enter),
                 WKey::Named(NamedKey::Escape) => Some(Nav::Escape),
                 WKey::Named(NamedKey::Space) if !input => Some(Nav::Space),
+                // Shift+F10 and the Menu key open the right-click menu of what has focus.
+                WKey::Named(NamedKey::F10) if mods.shift => Some(Nav::Menu),
+                WKey::Named(NamedKey::ContextMenu) => Some(Nav::Menu),
                 _ => None,
             };
             if let Some(n) = nav {
@@ -4784,6 +4906,19 @@ mod windowed {
             if self.error.is_some() {
                 return;
             }
+            // All the files of one drop have been told of: the drop's block runs once, with them all.
+            if !self.dropped.is_empty() {
+                let paths = std::mem::take(&mut self.dropped);
+                let r = self.ui.drop_files(paths);
+                self.check(r, el);
+            }
+            // A row dragged near the top or bottom of its list scrolls it, even with the mouse still.
+            if self.ui.edge_speed() != 0.0 {
+                let r = self.ui.edge_scroll();
+                self.check(r, el);
+                el.set_control_flow(ControlFlow::WaitUntil(std::time::Instant::now() + std::time::Duration::from_millis(16)));
+                return;
+            }
             // Wake for the caret's next blink, the next timer, or a tip, whichever is soonest.
             let timer = self.ui.next_timer().map(|d| self.ui.started + std::time::Duration::from_secs_f64(d.max(0.0)));
             let step = self.ui.next_step().map(|d| self.ui.started + std::time::Duration::from_secs_f64(d.max(0.0)));
@@ -4812,8 +4947,9 @@ mod windowed {
                     let p = (position.x as f32 / scale, position.y as f32 / scale);
                     self.mouse = Some(p);
                     let before = (self.ui.hovered(), self.ui.pointer(p.0, p.1));
-                    let dragging = self.ui.drag != Drag::None;
+                    let ran = self.ui.ran;
                     let r = self.ui.moved(p.0, p.1);
+                    let dragging = self.ui.drag != Drag::None || self.ui.ran != ran;
                     if self.ui.track_tip() {
                         self.redraw();
                     }
@@ -4822,6 +4958,7 @@ mod windowed {
                             2 => CursorIcon::Text,
                             3 => CursorIcon::ColResize,
                             4 => CursorIcon::RowResize,
+                            5 => CursorIcon::Crosshair,
                             1 => CursorIcon::Pointer,
                             _ => CursorIcon::Default,
                         });
@@ -4868,6 +5005,30 @@ mod windowed {
                         ElementState::Released => self.ui.release(x, y),
                     };
                     self.check(r, el);
+                }
+                // The right button picks the row under it when it goes down, and opens the
+                // right-click menu when it's let go, as on Windows.
+                WindowEvent::MouseInput { state, button: MouseButton::Right, .. } => {
+                    let Some((x, y)) = self.mouse else { return };
+                    let r = match state {
+                        ElementState::Pressed => self.ui.right_press(x, y),
+                        ElementState::Released => self.ui.right_release(x, y),
+                    };
+                    self.check(r, el);
+                }
+                WindowEvent::HoveredFile(_) => {
+                    if !self.ui.files_over {
+                        self.ui.files_over = true;
+                        self.redraw();
+                    }
+                }
+                WindowEvent::HoveredFileCancelled => {
+                    self.ui.files_over = false;
+                    self.redraw();
+                }
+                WindowEvent::DroppedFile(path) => {
+                    self.ui.files_over = false;
+                    self.dropped.push(path.to_string_lossy().into_owned());
                 }
                 WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
                     let r = self.key(event);
@@ -4948,7 +5109,7 @@ mod windowed {
             None => new_loop()?,
         };
         let ui = Ui::new(s, build, true, step)?;
-        let mut app = App { ui, window: None, surface: None, mouse: None, mods: ModifiersState::default(), error: None };
+        let mut app = App { ui, window: None, surface: None, mouse: None, mods: ModifiersState::default(), error: None, dropped: vec![] };
         let ran = el.run_app_on_demand(&mut app);
         app.surface = None;
         app.window = None;
@@ -5207,6 +5368,7 @@ fn dump(n: &Laid, depth: usize, path: &mut Vec<usize>, st: &PaintState, out: &mu
     if n.look.disabled {
         focus.push_str(" (disabled)");
     }
+    focus.push_str(&mouse_dump(n));
     if n.kind == "scroll" || (n.kind == "textarea" && n.content_h > n.h + 0.5) {
         focus.push_str(&format!(" (scrolled {} of {})", n.scrolled as i64, (n.content_h - n.h).max(0.0) as i64));
     }
@@ -5283,6 +5445,7 @@ fn parse_key(spec: &str) -> Option<(Nav, Mods)> {
                 mods.command = true;
                 mods.word = true;
             }
+            "alt" => mods.alt = true,
             _ => name = part.trim(),
         }
     }
@@ -5301,6 +5464,8 @@ fn parse_key(spec: &str) -> Option<(Nav, Mods)> {
         "enter" => Nav::Enter,
         "space" => Nav::Space,
         "escape" => Nav::Escape,
+        "menu" => Nav::Menu,
+        "f10" if mods.shift => Nav::Menu,
         "a" if mods.command => Nav::Edit(Key::All),
         "c" if mods.command => Nav::Copy,
         "x" if mods.command => Nav::Cut,
@@ -5351,6 +5516,7 @@ fn test(s: Settings, build: &mut Build, step: Box<Step>) -> Result<(), String> {
                 for (i, c) in ui.tree.children.iter().enumerate() {
                     dump(c, 1, &mut vec![i], &st, &mut out);
                 }
+                out.push_str(&ui.mouse_dump_lines());
                 print!("{out}");
             }
             "click" => match find_button(&ui.tree, rest, &mut vec![]).or_else(|| find_row_text(&ui.tree, rest, &mut vec![])) {
@@ -5541,6 +5707,20 @@ fn test(s: Settings, build: &mut Build, step: Box<Step>) -> Result<(), String> {
                 }
             }
             "size" if nums.len() >= 2 => ui.resize(nums[0], nums[1])?,
+            // rightclick Ada: right-clicks the button or row showing those words, or a place.
+            "rightclick" => match right_target(&ui, rest, &nums) {
+                Some((x, y)) => {
+                    ui.right_press(x, y)?;
+                    ui.right_release(x, y)?;
+                }
+                None => println!("(there's nothing showing \"{rest}\" to right-click)"),
+            },
+            // drag Ada Cleo: drags the row showing Ada onto the row showing Cleo.
+            "drag" => test_drag(&mut ui, line.split_once(' ').map(|x| x.1).unwrap_or(""))?,
+            // drop C:/a.txt "C:/My files/b.png": drops files on the window.
+            "drop" => ui.drop_files(test_words(line.split_once(' ').map(|x| x.1).unwrap_or("")))?,
+            // dragover: files are held over the window, not dropped yet.
+            "dragover" => ui.files_over = true,
             // choose pictures/cat.png: the answer the next open or save box gives (or cancel).
             "choose" => {
                 let was = std::env::var("LUST_CHOSEN").unwrap_or_default();

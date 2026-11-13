@@ -1,0 +1,16 @@
+-- press goes right after a canvas, not on its own.
+assembly App {
+    has {
+        vec2 last = [0, 0];
+    }
+
+    view {
+        text "Paint";
+        press (vec2 at) {
+            last = at;
+        }
+    }
+}
+
+App:open();
+end

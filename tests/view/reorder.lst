@@ -1,0 +1,43 @@
+-- Dragging rows to new places: a list of words and a table of people, both with [reorder],
+-- with Alt+Up and Alt+Down, Escape, a sorted table and a disabled list.
+class Person {
+    has {
+        string name = "";
+        int age = 0;
+    }
+}
+
+assembly App {
+    has {
+        string array jobs = ["Wash", "Cook", "Shop", "Read", "Sleep"];
+        Person array people = [
+            new Person { name = "Ada", age = 36 },
+            new Person { name = "Bob", age = 7 },
+            new Person { name = "Cleo", age = 52 },
+            new Person { name = "Dan", age = 19 }
+        ];
+        Person chosen = nothing;
+        string pickedJob = "";
+        bool frozen = false;
+    }
+
+    view [title "Order", width 420, height 520] {
+        column [gap 8, pad 12] {
+            list (string j in jobs) [reorder, select pickedJob, rowHeight 28, height 150, disabled frozen] {
+                text j;
+            }
+            table (Person p in people) [reorder, select chosen, height 160] {
+                column "Name" p.name;
+                column "Age" p.age;
+            }
+            text jobs:join(", ");
+            button "Freeze" { frozen = not frozen; }
+            is chosen !== nothing? then {
+                text "Picked " + chosen.name;
+            }
+        }
+    }
+}
+
+App:open();
+end

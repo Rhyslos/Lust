@@ -1,0 +1,44 @@
+-- The mouse on a canvas: press, drag, release and hover, given where the mouse is, a shape's
+-- own click going first, and a right-click menu on the canvas.
+assembly App {
+    has {
+        vec2 array dots = [];
+        string log = "";
+        string over = "";
+        int strokes = 0;
+        bool picked = false;
+    }
+
+    view [title "Paint", width 400, height 320, dark] {
+        column [gap 8, pad 12] {
+            canvas [width 300, height 200, background gray1, pad 10] {
+                loop (vec2 d in dots) {
+                    circle [x d.x, y d.y, radius 3, blue];
+                }
+                box [x 200, y 10, width 40, height 40, red] { picked = true; }
+            } press (vec2 at) {
+                dots:inject(at);
+                log = "down at " + at.x.text() + ", " + at.y.text();
+            } drag (vec2 at) {
+                dots:inject(at);
+            } release (vec2 at) {
+                strokes += 1;
+                log = "up at " + at.x.text() + ", " + at.y.text();
+            } hover (vec2 at) {
+                over = at.x.text() + ", " + at.y.text();
+            } menu {
+                item "Clear" {
+                    dots = [];
+                    log = "cleared";
+                }
+            }
+            text log + " | over " + over + " | " + (#dots).text() + " dots, " + strokes.text() + " strokes";
+            is picked? then {
+                text "box clicked";
+            }
+        }
+    }
+}
+
+App:open();
+end

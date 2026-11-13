@@ -1,0 +1,62 @@
+-- Mistakes with right-click menus, dragging rows, dropped files and the mouse on a canvas.
+class Person {
+    has {
+        string name = "";
+    }
+}
+
+assembly App {
+    has {
+        Person array people = [];
+        cMap(int id, string name) shop = [];
+        string log = "";
+        vec2 last = [0, 0];
+    }
+
+    view {
+        column {
+            text "Hi" menu { }
+            text "Hi" menu {
+                text "not an item";
+            }
+            drop (int x) {
+                log = "dropped";
+            }
+            drop { log = "no paths"; }
+            canvas [width 100, height 100] {
+                box [x 1, y 1];
+            } press (string at) {
+                log = at;
+            } drag (vec2 at) {
+                last = at;
+            } drag (vec2 at) {
+                last = at;
+            } release {
+                log = "up";
+            }
+            button "Go" { log = "go"; } press (vec2 at) {
+                last = at;
+            }
+            canvas { } hover (vec2 at) {
+                at = [1, 1];
+            }
+            list (Person p in people) [reorder 2] {
+                text p.name;
+            }
+            table (int id, string name in shop) [reorder] {
+                column "Name" name;
+            }
+            button "Go" [reorder] { log = "go"; }
+            key "ctrl+s" { log = "saved"; } menu {
+                item "Save" { log = "saved"; }
+            }
+            text "Hi";
+            menu {
+                item "Copy" { log = "copied"; }
+            }
+        }
+    }
+}
+
+App:open();
+end

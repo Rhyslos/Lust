@@ -232,12 +232,18 @@ fn list_lay(n: &Node, laid: &mut Laid) {
             rows.push(c);
         }
     }
+    let reorder = laid.mouse.iter().find(|(k, _)| k == "reorder").cloned();
     for (k, r) in rows.iter_mut().enumerate() {
         let j = info.first + k;
-        // A disabled table or list can't be picked from.
+        // A disabled table or list can't be picked from, and its rows have no menus.
         if laid.look.disabled {
             r.action = None;
             r.enter = None;
+            r.ctx.clear();
+        }
+        // In a list with [reorder], every row can be held to drag it.
+        if let Some(a) = &reorder {
+            r.mouse.push(a.clone());
         }
         r.index = j;
         let picked = info.pick == Some(j);
