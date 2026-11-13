@@ -28,6 +28,8 @@ pub const UI_RUNTIME: &str = concat!(
     "\n",
     include_str!("native_ui_pieces.rs"),
     "\n",
+    include_str!("native_ui_table.rs"),
+    "\n",
     include_str!("icons.rs")
 );
 
@@ -1653,6 +1655,10 @@ impl<'a> W<'a> {
                 ..
             } => {
                 let parent = self.view_parent.last().cloned().unwrap_or_else(|| "p0".into());
+                if kind == "table" || kind == "list" {
+                    self.rows_piece(s.pos(), kind, style, children, choices, out, depth);
+                    return;
+                }
                 if let Some(Expr {
                     kind: ExprKind::New { class, inits, .. },
                     id,
@@ -1666,7 +1672,14 @@ impl<'a> W<'a> {
                         Some(keys) => format!(
                             "Some(format!(\"{}\", {}))",
                             vec!["{:?}"; keys.len()].join("|"),
-                            keys.iter().map(|k| format!("v_{k}")).collect::<Vec<_>>().join(", ")
+                            keys.iter()
+                                .map(|k| if k == crate::parser::ROW_KEY {
+                                    "rowkey".to_string()
+                                } else {
+                                    format!("v_{k}")
+                                })
+                                .collect::<Vec<_>>()
+                                .join(", ")
                         ),
                         None => "None".into(),
                     };
@@ -2704,6 +2717,233 @@ impl<'a> W<'a> {
     /// An action in a view (a button's click, an input's change, Enter), kept in `actions`, with
     /// its number put in `slot`. It keeps copies of the view's variables it uses, and the piece
     /// itself. `given` is what an input is bound to: the action gets its new value.
+    /// table (Person p in people) { … } and list (…) { … }: only the rows on the screen are made.
+    /// The view asks which those are (`list_range`), after the rows are put in the order shown
+    /// (sorted, when a header was clicked) and the picked row is found.
+    #[allow(clippy::too_many_arguments)]
+    fn rows_piece(
+        &mut self,
+        pos: crate::ast::Pos,
+        kind: &str,
+        style: &[StyleItem],
+        children: &[Stmt],
+        select: &Option<Expr>,
+        out: &mut String,
+        depth: usize,
+    ) {
+        let Some(Stmt::Loop {
+            kind: LoopKind::Each { vars, source },
+            body,
+            ..
+        }) = children.first()
+        else {
+            return;
+        };
+        let Some(Stmt::Element {
+            children: row_body,
+            arg: picked,
+            action,
+            enter,
+            ..
+        }) = body.first()
+        else {
+            return;
+        };
+        let pad = "    ".repeat(depth);
+        let parent = self.view_parent.last().cloned().unwrap_or_else(|| "p0".into());
+        let v = format!("p{}", self.fresh());
+        let site = pos.line as usize * 4096 + pos.col as usize;
+        let rest: Vec<StyleItem> = style.iter().filter(|it| it.name != "rowHeight").cloned().collect();
+        let row_h = match style.iter().find(|it| it.name == "rowHeight").map(|it| &it.value) {
+            Some(StyleValue::Expr(e)) => self.coerced(e, &Ty::Float),
+            _ => "0.0".into(),
+        };
+        let src_ty = match self.info.ty(source) {
+            Ty::Table(t) | Ty::Query(t) => Ty::CMap(t.cols.clone()),
+            x => x,
+        };
+        out.push_str(&format!("{pad}{{\n{pad}    let mut {v} = rt::ui::Node::new({kind:?});\n"));
+        let s = self.styles(&rest);
+        out.push_str(&format!("{pad}    {v}.style = {s};\n"));
+        let code = self.expr(source);
+        // The rows: an array's items, or a cMap's (or table's) rows, each found by its place.
+        let cmap_cols = match &src_ty {
+            Ty::CMap(cols) => {
+                out.push_str(&format!("{pad}    let src = rt::rows(&{code});\n{pad}    let n = src.len();\n"));
+                Some(cols.clone())
+            }
+            _ => {
+                out.push_str(&format!("{pad}    let src = {code};\n{pad}    let n = src.borrow().len();\n"));
+                None
+            }
+        };
+        // `let v_p = …;` for the row at place i (from 0), with every variable or only the first.
+        let declare = |i: &str, all: bool| -> String {
+            match &cmap_cols {
+                Some(cols) => {
+                    let k = if all { vars.len() } else { 1 };
+                    vars.iter()
+                        .take(k)
+                        .zip(cols.iter())
+                        .map(|((_, name, _), (c, _))| format!("let v_{name} = src[{i}].borrow().f_{c}.clone(); "))
+                        .collect()
+                }
+                None => format!("let v_{} = src.borrow()[{i}].clone(); ", vars[0].1),
+            }
+        };
+        out.push_str(&format!("{pad}    let id = rt::ui::list_begin({site}, n, {row_h});\n"));
+        let columns: Vec<&Stmt> = if kind == "table" {
+            row_body
+                .iter()
+                .filter(|c| matches!(c, Stmt::Element { kind, .. } if kind == "tablecolumn"))
+                .collect()
+        } else {
+            vec![]
+        };
+        // Sorted by a column: the order the rows show in.
+        let sorts: Vec<(usize, Expr)> = columns
+            .iter()
+            .enumerate()
+            .filter_map(|(i, c)| match c {
+                Stmt::Element { style, choices, .. } => {
+                    let by = style.iter().find_map(|it| match (&it.name[..], &it.value) {
+                        ("sort", StyleValue::Expr(e)) => Some(e.clone()),
+                        _ => None,
+                    });
+                    by.or_else(|| choices.clone()).map(|e| (i, e))
+                }
+                _ => None,
+            })
+            .collect();
+        out.push_str(&format!(
+            "{pad}    let (col, falling, kept) = rt::ui::list_sort(id);\n{pad}    let _ = falling;\n"
+        ));
+        out.push_str(&format!(
+            "{pad}    let order: Option<Vec<usize>> = if kept {{ rt::ui::list_kept(id) }} else {{ None }};\n{pad}    let order: Option<Vec<usize>> = if order.is_some() {{ order }} else {{ match col {{\n"
+        ));
+        for (c, e) in &sorts {
+            let val = self.expr(e);
+            let key = match self.info.ty(e) {
+                Ty::Truth => format!("rt::ui::SortKey::Num(if {val} {{ 1.0 }} else {{ 0.0 }})"),
+                Ty::Str => format!("rt::ui::SortKey::Text({val})"),
+                Ty::State(si) => {
+                    let o: Vec<String> = self.info.states[si].options.iter().map(|o| format!("{o:?}")).collect();
+                    format!(
+                        "rt::ui::SortKey::Num([{}].iter().position(|o| *o == {val}).unwrap_or(0) as f64)",
+                        o.join(", ")
+                    )
+                }
+                _ => format!("rt::ui::SortKey::Num(({val}) as f64)"),
+            };
+            let d = declare("i", true);
+            out.push_str(&format!(
+                "{pad}        {} => {{\n{pad}            let keys: Vec<rt::ui::SortKey> = (0..n).map(|i| {{ {d}{key} }}).collect();\n{pad}            Some(rt::ui::list_order(id, keys, falling))\n{pad}        }}\n",
+                c + 1
+            ));
+        }
+        out.push_str(&format!("{pad}        _ => None,\n{pad}    }} }};\n"));
+        // The picked row's place in the order shown: where it was last time, or looked for.
+        out.push_str(&format!("{pad}    let mut pick: Option<usize> = None;\n"));
+        if let (Some(sel), Some(pk)) = (select, picked) {
+            let something = match self.info.ty(sel) {
+                Ty::Class(_) => format!("{}.is_some()", self.expr(sel)),
+                _ => "true".into(),
+            };
+            let p = self.expr(pk);
+            let d = declare("i", false);
+            out.push_str(&format!(
+                "{pad}    if {something} {{\n{pad}        let at = |j: usize| -> bool {{ let i = order.as_ref().map_or(j, |o| o[j]); {d}{p} }};\n{pad}        let h = rt::ui::list_hint(id);\n{pad}        pick = if h >= 0 && (h as usize) < n && at(h as usize) {{ Some(h as usize) }} else {{ (0..n).find(|&j| at(j)) }};\n{pad}    }}\n"
+            ));
+        }
+        out.push_str(&format!(
+            "{pad}    let (first, last) = rt::ui::list_range(id);\n{pad}    {v}.list = Some(rt::ui::ListInfo {{ id, count: n, first, pick }});\n"
+        ));
+        // The headers, then the rows on the screen.
+        for c in &columns {
+            if let Stmt::Element {
+                arg: Some(h),
+                style,
+                choices,
+                ..
+            } = c
+            {
+                let sortable = choices.is_some() || style.iter().any(|it| it.name == "sort");
+                let hs: Vec<StyleItem> = style.iter().filter(|it| it.name != "sort").cloned().collect();
+                let hs = self.styles(&hs);
+                let ht = self.coerced(h, &Ty::Str);
+                out.push_str(&format!(
+                    "{pad}    {{\n{pad}        let mut h = rt::ui::Node::new(\"header\");\n{pad}        h.text = {ht};\n{pad}        h.style = {hs};\n{pad}        h.whole = {sortable};\n{pad}        {v}.children.push(h);\n{pad}    }}\n"
+                ));
+            }
+        }
+        let r = format!("p{}", self.fresh());
+        out.push_str(&format!(
+            "{pad}    for j in first..last {{\n{pad}        let i = order.as_ref().map_or(j, |o| o[j]);\n"
+        ));
+        out.push_str(&format!("{pad}        {}\n", declare("i", true)));
+        // What a piece in the row is known by: the row itself, for an array of things.
+        let key = match &src_ty {
+            Ty::Array(e) if matches!(**e, Ty::Class(_)) => {
+                format!("v_{}.as_ref().map(|r| Rc::as_ptr(r) as *const () as usize).unwrap_or(0)", vars[0].1)
+            }
+            _ => "i".into(),
+        };
+        out.push_str(&format!("{pad}        let rowkey: usize = {key};\n{pad}        let _ = rowkey;\n"));
+        out.push_str(&format!(
+            "{pad}        let mut {r} = rt::ui::Node::new({:?});\n",
+            format!("{kind}row")
+        ));
+        let inner = depth + 2;
+        let ipad = "    ".repeat(inner);
+        if kind == "table" {
+            for c in &columns {
+                let Stmt::Element {
+                    style,
+                    choices,
+                    children: pieces,
+                    ..
+                } = c
+                else {
+                    continue;
+                };
+                let cs: Vec<StyleItem> = style.iter().filter(|it| it.name != "sort" && it.name != "width").cloned().collect();
+                let cs = self.styles(&cs);
+                match choices {
+                    Some(val) => {
+                        let t = self.info.ty(val);
+                        let code = self.expr(val);
+                        let shown = self.show(&code, &t);
+                        out.push_str(&format!(
+                            "{ipad}{{\n{ipad}    let mut c = rt::ui::Node::new(\"celltext\");\n{ipad}    c.text = {shown};\n{ipad}    c.style = {cs};\n{ipad}    {r}.children.push(c);\n{ipad}}}\n"
+                        ));
+                    }
+                    None => {
+                        let cell = format!("p{}", self.fresh());
+                        out.push_str(&format!(
+                            "{ipad}{{\n{ipad}    let mut {cell} = rt::ui::Node::new(\"cell\");\n{ipad}    {cell}.style = {cs};\n"
+                        ));
+                        self.view_parent.push(cell.clone());
+                        self.stmts(pieces, out, inner + 1);
+                        self.view_parent.pop();
+                        out.push_str(&format!("{ipad}    {r}.children.push({cell});\n{ipad}}}\n"));
+                    }
+                }
+            }
+        } else {
+            self.view_parent.push(r.clone());
+            self.stmts(row_body, out, inner);
+            self.view_parent.pop();
+        }
+        if let Some(a) = action {
+            self.view_action(a, None, &format!("{r}.action"), out, inner - 1);
+        }
+        if let Some(a) = enter {
+            self.view_action(a, None, &format!("{r}.enter"), out, inner - 1);
+        }
+        out.push_str(&format!("{pad}        {v}.children.push({r});\n{pad}    }}\n"));
+        out.push_str(&format!("{pad}    {parent}.children.push({v});\n{pad}}}\n"));
+    }
+
     fn view_action(&mut self, a: &[Stmt], given: Option<&Expr>, slot: &str, out: &mut String, depth: usize) {
         let inner = "    ".repeat(depth + 1);
         out.push_str(&format!("{inner}{{\n"));

@@ -62,8 +62,12 @@ pub const RESERVED: &[&str] = &[
 pub const ELEMENTS: &[&str] = &[
     "column", "row", "stack", "scroll", "space", "text", "button", "input", "checkbox", "slider", "image", "every", "key", "textarea",
     "dropdown", "menu", "item", "divider", "dialog", "grid", "split", "tabs", "tab", "branch", "progress", "canvas", "box", "circle",
-    "line", "radio", "switch", "number", "icon",
+    "line", "radio", "switch", "number", "icon", "table", "list",
 ];
+
+/// What a piece in a table's or list's row is known by when the rows come from an array: the
+/// row itself. Lust code can't write this name.
+pub const ROW_KEY: &str = "\u{b7}row";
 
 /// The value an input hands over when it changes. Lust code can't write this name.
 pub const VALUE: &str = "·value";
@@ -969,6 +973,49 @@ impl<'a> Parser<'a> {
     fn element(&mut self) -> R<Stmt> {
         let t = self.next();
         let Tk::Ident(kind) = t.kind else { unreachable!() };
+        // table (Person p in people) [ … ] { … } and list (Item i in items) { … }: rows from an
+        // array, a cMap or a table, made only while they're on the screen.
+        if kind == "table" || kind == "list" {
+            if !self.at_sym("(") {
+                let example = if kind == "table" {
+                    "table (Person p in people) { column \"Name\" p.name; }"
+                } else {
+                    "list (Item i in items) { text i.name; }"
+                };
+                return self.fail(t.pos, format!("a {kind} shows a row for each item of an array: {example}"));
+            }
+            let d = self.depth;
+            self.deeper_by(3)?;
+            let r = self.rows_piece(t.pos, kind);
+            self.depth = d;
+            return r;
+        }
+        // column "Age" p.age; is one of a table's columns, with its header first.
+        if kind == "column" && !(self.at_sym("[") || self.at_sym("{") || self.at_sym(";")) {
+            let header = self.expr()?;
+            let value = if self.at_sym("[") || self.at_sym("{") || self.at_sym(";") {
+                None
+            } else {
+                Some(self.expr()?)
+            };
+            let style = if self.at_sym("[") { self.style_list()? } else { vec![] };
+            let children = if self.at_sym("{") {
+                self.block("the column")?
+            } else {
+                self.semi()?;
+                vec![]
+            };
+            return Ok(Stmt::Element {
+                kind: "tablecolumn".into(),
+                arg: Some(header),
+                style,
+                children,
+                action: None,
+                enter: None,
+                choices: value,
+                pos: t.pos,
+            });
+        }
         // Pieces that hold others in { }. A menu and a dialog take a value first too.
         let container = matches!(
             kind.as_str(),
@@ -1054,6 +1101,107 @@ impl<'a> Parser<'a> {
             enter,
             choices,
             pos: t.pos,
+        })
+    }
+
+    /// The rest of table (Person p in people) [select chosen] { … } open { … }, after its word.
+    /// It's kept as the table holding a loop over its rows, each row a piece of its own
+    /// ("tablerow" or "listrow") that picks itself (chosen = p) when clicked, and runs the open
+    /// block on a double-click or Enter. `select` comes out of the styles to make that.
+    fn rows_piece(&mut self, pos: Pos, kind: String) -> R<Stmt> {
+        let open = self.next(); // (
+        if !self.looks_like_each() {
+            return self.fail(
+                open.pos,
+                format!("a {kind}'s ( ) says what each row is and where the rows come from: {kind} (Person p in people)"),
+            );
+        }
+        let mut vars = Vec::new();
+        loop {
+            let ty = self.ty()?;
+            let (name, vpos) = self.ident("the row's variable")?;
+            check_name(self.diags, &name, vpos, NameKind::Value, "variable");
+            vars.push((ty, name, vpos));
+            if self.at_sym(",") {
+                self.next();
+                continue;
+            }
+            break;
+        }
+        if !self.at_word("in") {
+            let p = self.cur().pos;
+            return self.fail(p, format!("expected in: {kind} (Person p in people)"));
+        }
+        self.next();
+        let source = self.expr()?;
+        self.expect_sym(")", &format!("expected ) to close the {kind}'s ( )."))?;
+        let mut style = if self.at_sym("[") { self.style_list()? } else { vec![] };
+        let mut select = None;
+        style.retain(|it| {
+            if it.name == "select" {
+                if let StyleValue::Expr(e) = &it.value {
+                    select = Some(e.clone());
+                    return false;
+                }
+            }
+            true
+        });
+        if let Some(it) = style.iter().find(|it| it.name == "select") {
+            return self.fail(
+                it.pos,
+                format!("select takes the field that holds the picked row: {kind} (Person p in people) [select chosen]"),
+            );
+        }
+        let body = self.block(&format!("the {kind}"))?;
+        let mut enter = None;
+        if self.at_word("open") && self.peek(1).is_sym("{") {
+            self.next();
+            let was = std::mem::replace(&mut self.in_view, false);
+            let b = self.block("what opening a row does");
+            self.in_view = was;
+            enter = Some(b?);
+        }
+        let (_, first, fpos) = vars[0].clone();
+        let (action, picked) = match &select {
+            Some(s) => {
+                let value = self.mk(fpos, ExprKind::Name(first.clone()));
+                let mine = self.mk(fpos, ExprKind::Name(first.clone()));
+                let picked = self.mk(s.pos, ExprKind::Bin(BinOp::Eq, Box::new(mine), Box::new(s.clone()), s.pos));
+                (
+                    Some(vec![Stmt::Assign {
+                        target: s.clone(),
+                        value,
+                        pos: s.pos,
+                    }]),
+                    Some(picked),
+                )
+            }
+            None => (None, None),
+        };
+        let row = Stmt::Element {
+            kind: format!("{kind}row"),
+            arg: picked,
+            style: vec![],
+            children: body,
+            action,
+            enter,
+            choices: None,
+            pos,
+        };
+        let rows = Stmt::Loop {
+            kind: LoopKind::Each { vars, source },
+            body: vec![row],
+            pos,
+        };
+        Ok(Stmt::Element {
+            kind,
+            arg: None,
+            style,
+            children: vec![rows],
+            action: None,
+            enter: None,
+            choices: select,
+            pos,
         })
     }
 

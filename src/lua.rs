@@ -367,6 +367,271 @@ impl<'a> W<'a> {
         }
     }
 
+    /// table (Person p in people) { … } and list (…) { … }: only the rows on the screen are made.
+    /// Lust is asked which those are (`ui_list_range`), after the rows are put in the order shown
+    /// (sorted, when a header was clicked) and the picked row is found.
+    fn rows_piece(&mut self, ln: u32, pos: crate::ast::Pos, kind: &str, style: &[StyleItem], children: &[Stmt], select: &Option<Expr>) {
+        let Some(Stmt::Loop {
+            kind: LoopKind::Each { vars, source },
+            body,
+            ..
+        }) = children.first()
+        else {
+            return;
+        };
+        let Some(Stmt::Element {
+            children: row_body,
+            arg: picked,
+            action,
+            enter,
+            ..
+        }) = body.first()
+        else {
+            return;
+        };
+        let parent = self.view_parent.last().cloned().unwrap_or_else(|| "v0".into());
+        let v = self.fresh("v");
+        let rest: Vec<StyleItem> = style.iter().filter(|it| it.name != "rowHeight").cloned().collect();
+        let s = self.styles(&rest);
+        let row_h = match style.iter().find(|it| it.name == "rowHeight").map(|it| &it.value) {
+            Some(StyleValue::Expr(e)) => self.expr(e),
+            _ => "0".into(),
+        };
+        let names: Vec<String> = vars.iter().map(|(_, n, _)| lname(n)).collect();
+        let src_ty = match self.info.ty(source) {
+            Ty::Table(t) | Ty::Query(t) => Ty::CMap(t.cols.clone()),
+            x => x,
+        };
+        let src = self.fresh("src");
+        let n = self.fresh("n");
+        let id = self.fresh("id");
+        let order = self.fresh("order");
+        let first = self.fresh("first");
+        let last = self.fresh("last");
+        let pick = self.fresh("pick");
+        let site = pos.line as usize * 4096 + pos.col as usize;
+        self.line(ln, "do");
+        self.indent += 1;
+        self.line(
+            ln,
+            &format!("local {v} = {{k = {}, t = \"\", s = {s}, c = {{}}}}", lua_string(kind)),
+        );
+        self.line(ln, &format!("{parent}.c[#{parent}.c + 1] = {v}"));
+        let code = self.expr(source);
+        // The rows: an array's items, or a cMap's (or table's) rows, each found by its place.
+        let (cmap_cols, count) = match &src_ty {
+            Ty::CMap(cols) => {
+                self.line(ln, &format!("local {src} = _L.rows({code})"));
+                (Some(cols.clone()), format!("#{src}"))
+            }
+            _ => {
+                self.line(ln, &format!("local {src} = {code}"));
+                (None, format!("{src}.n"))
+            }
+        };
+        self.line(ln, &format!("local {n} = {count}"));
+        // `local p = …` for the row at place i (from 1), with every variable or only the first.
+        let declare = |i: &str, all: bool| -> String {
+            match &cmap_cols {
+                Some(cols) => {
+                    let k = if all { names.len() } else { 1 };
+                    let fields: Vec<String> = cols.iter().take(k).map(|(c, _)| format!("{src}[{i}].{}", lname(c))).collect();
+                    format!("local {} = {}", names[..k].join(", "), fields.join(", "))
+                }
+                None => format!("local {} = {src}[{i}]", names[0]),
+            }
+        };
+        self.line(ln, &format!("local {id} = _L.ui_list_begin({site}, {n}, {row_h})"));
+        // Sorted by a column: the order the rows show in.
+        let columns: Vec<&Stmt> = if kind == "table" {
+            row_body
+                .iter()
+                .filter(|c| matches!(c, Stmt::Element { kind, .. } if kind == "tablecolumn"))
+                .collect()
+        } else {
+            vec![]
+        };
+        self.line(ln, &format!("local {order} = nil"));
+        let sorts: Vec<(usize, Expr)> = columns
+            .iter()
+            .enumerate()
+            .filter_map(|(i, c)| match c {
+                Stmt::Element { style, choices, .. } => {
+                    let by = style.iter().find_map(|it| match (&it.name[..], &it.value) {
+                        ("sort", StyleValue::Expr(e)) => Some(e.clone()),
+                        _ => None,
+                    });
+                    by.or_else(|| choices.clone()).map(|e| (i, e))
+                }
+                _ => None,
+            })
+            .collect();
+        if !sorts.is_empty() {
+            let col = self.fresh("col");
+            let falling = self.fresh("falling");
+            let keys = self.fresh("keys");
+            let i = self.fresh("i");
+            let kept = self.fresh("kept");
+            self.line(ln, &format!("local {col}, {falling}, {kept} = _L.ui_list_sort({id})"));
+            self.line(ln, &format!("if {kept} then {order} = _L.ui_list_kept({id}) end"));
+            for (k, (c, e)) in sorts.iter().enumerate() {
+                let word = if k == 0 { "if" } else { "elseif" };
+                self.line(ln, &format!("{word} {order} == nil and {col} == {} then", c + 1));
+                self.indent += 1;
+                let opts = match self.info.ty(e) {
+                    Ty::State(si) => {
+                        let o: Vec<String> = self.info.states[si]
+                            .options
+                            .iter()
+                            .enumerate()
+                            .map(|(n, o)| format!("[{}] = {n}", lua_string(o)))
+                            .collect();
+                        let t = self.fresh("opts");
+                        self.line(ln, &format!("local {t} = {{{}}}", o.join(", ")));
+                        Some(t)
+                    }
+                    _ => None,
+                };
+                self.line(ln, &format!("local {keys} = {{}}"));
+                self.line(ln, &format!("for {i} = 1, {n} do"));
+                self.indent += 1;
+                self.line(ln, &declare(&i, true));
+                let val = self.expr(e);
+                let key = match (self.info.ty(e), &opts) {
+                    (Ty::Truth, _) => format!("({val}) and 1 or 0"),
+                    (_, Some(t)) => format!("{t}[{val}] or 0"),
+                    _ => val,
+                };
+                self.line(ln, &format!("{keys}[{i}] = {key}"));
+                self.indent -= 1;
+                self.line(ln, "end");
+                self.line(ln, &format!("{order} = _L.ui_list_order({id}, {keys}, {falling})"));
+                self.indent -= 1;
+            }
+            self.line(ln, "end");
+        }
+        // The picked row's place in the order shown: where it was last time, or looked for.
+        self.line(ln, &format!("local {pick} = -1"));
+        if let (Some(sel), Some(pk)) = (select, picked) {
+            let at = self.fresh("at");
+            let j = self.fresh("j");
+            let h = self.fresh("h");
+            let chosen = self.expr(sel);
+            self.line(ln, &format!("if {chosen} ~= nil then"));
+            self.indent += 1;
+            self.line(ln, &format!("local function {at}({j})"));
+            self.indent += 1;
+            self.line(ln, &declare(&format!("({order} and {order}[{j} + 1] or {j} + 1)"), false));
+            let p = self.expr(pk);
+            self.line(ln, &format!("return {p}"));
+            self.indent -= 1;
+            self.line(ln, "end");
+            self.line(ln, &format!("local {h} = _L.ui_list_hint({id})"));
+            self.line(ln, &format!("if {h} >= 0 and {h} < {n} and {at}({h}) then {pick} = {h} else"));
+            self.line(
+                ln,
+                &format!("  for {j} = 0, {n} - 1 do if {at}({j}) then {pick} = {j} break end end"),
+            );
+            self.line(ln, "end");
+            self.indent -= 1;
+            self.line(ln, "end");
+        }
+        self.line(ln, &format!("local {first}, {last} = _L.ui_list_range({id})"));
+        self.line(ln, &format!("{v}.L = {{{id}, {n}, {first}, {pick}}}"));
+        // The headers, then the rows on the screen.
+        for c in &columns {
+            if let Stmt::Element {
+                arg: Some(h),
+                style,
+                choices,
+                ..
+            } = c
+            {
+                let sortable = choices.is_some() || style.iter().any(|it| it.name == "sort");
+                let hs: Vec<StyleItem> = style.iter().filter(|it| it.name != "sort").cloned().collect();
+                let hs = self.styles(&hs);
+                let ht = self.expr(h);
+                self.line(
+                    ln,
+                    &format!("{v}.c[#{v}.c + 1] = {{k = \"header\", t = {ht}, s = {hs}, c = {{}}, i = {sortable}}}"),
+                );
+            }
+        }
+        let j = self.fresh("j");
+        let idx = self.fresh("idx");
+        let r = self.fresh("r");
+        self.line(ln, &format!("for {j} = {first}, {last} - 1 do"));
+        self.indent += 1;
+        self.line(ln, &format!("local {idx} = {order} and {order}[{j} + 1] or {j} + 1"));
+        self.line(ln, &declare(&idx, true));
+        // What a piece in the row is known by: the row itself, for an array of things.
+        let key = match &src_ty {
+            Ty::Array(e) if matches!(**e, Ty::Class(_)) => names[0].clone(),
+            _ => idx.clone(),
+        };
+        self.line(ln, &format!("local {} = {key}", lname(crate::parser::ROW_KEY)));
+        self.line(
+            ln,
+            &format!(
+                "local {r} = {{k = {}, t = \"\", s = {{}}, c = {{}}}}",
+                lua_string(&format!("{kind}row"))
+            ),
+        );
+        self.line(ln, &format!("{v}.c[#{v}.c + 1] = {r}"));
+        if kind == "table" {
+            for c in &columns {
+                let Stmt::Element {
+                    style,
+                    choices,
+                    children: pieces,
+                    ..
+                } = c
+                else {
+                    continue;
+                };
+                let cs: Vec<StyleItem> = style.iter().filter(|it| it.name != "sort" && it.name != "width").cloned().collect();
+                let cs = self.styles(&cs);
+                match choices {
+                    Some(val) => {
+                        let t = self.info.ty(val);
+                        let code = self.expr(val);
+                        let shown = self.text(&code, &t);
+                        self.line(
+                            ln,
+                            &format!("{r}.c[#{r}.c + 1] = {{k = \"celltext\", t = {shown}, s = {cs}, c = {{}}}}"),
+                        );
+                    }
+                    None => {
+                        let cell = self.fresh("cell");
+                        self.line(ln, "do");
+                        self.indent += 1;
+                        self.line(ln, &format!("local {cell} = {{k = \"cell\", t = \"\", s = {cs}, c = {{}}}}"));
+                        self.line(ln, &format!("{r}.c[#{r}.c + 1] = {cell}"));
+                        self.view_parent.push(cell);
+                        self.stmts(pieces);
+                        self.view_parent.pop();
+                        self.indent -= 1;
+                        self.line(ln, "end");
+                    }
+                }
+            }
+        } else {
+            self.view_parent.push(r.clone());
+            self.stmts(row_body);
+            self.view_parent.pop();
+        }
+        if let Some(a) = action {
+            self.action(ln, &format!("{r}.f"), "", a);
+        }
+        if let Some(a) = enter {
+            self.action(ln, &format!("{r}.e"), "", a);
+        }
+        self.indent -= 1;
+        self.line(ln, "end");
+        self.indent -= 1;
+        self.line(ln, "end");
+    }
+
     fn class_table(&self, c: usize) -> String {
         let ci = &self.info.classes[c];
         if ci.is_object {
@@ -859,6 +1124,10 @@ impl<'a> W<'a> {
                 ..
             } => {
                 let parent = self.view_parent.last().cloned().unwrap_or_else(|| "v0".into());
+                if kind == "table" || kind == "list" {
+                    self.rows_piece(ln, s.pos(), kind, style, children, choices);
+                    return;
+                }
                 if let Some(Expr {
                     kind: ExprKind::New { class, inits, .. },
                     id,

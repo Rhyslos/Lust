@@ -1,0 +1,6 @@
+dump
+click Cherry
+move 100 80
+click Price
+dump
+snapshot tables-dark.snap.png

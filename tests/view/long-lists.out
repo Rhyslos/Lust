@@ -1,0 +1,803 @@
+window "Big" 600x400
+  row 0,0 600x49
+    button "Fill" 8,8 49x33
+    button "Remove first" 65,8 119x33
+    text 192,15 0x19
+  split 0,49 600x351
+    list 0 rows 0,49 296x351
+    table 0 rows 304,49 296x351
+      thead 305,50 294x30
+        header "N" 305,50 80x30
+        header "Name" 385,50 214x30
+window "Big" 600x400
+  row 0,0 600x49
+    button "Fill" 8,8 49x33
+    button "Remove first" 65,8 119x33
+    text 192,15 0x19
+  split 0,49 600x351
+    list 100000 rows, showing 1–11 0,49 296x351
+      listrow 0,49 296x32
+        row 0,49 189x33
+          text "Item 0" 8,56 45x19
+          input "Item 0" 61,49 120x33
+      listrow 0,81 296x32
+        row 0,81 186x33
+          text "Item 1" 8,88 42x19
+          input "Item 1" 58,81 120x33
+      listrow 0,113 296x32
+        row 0,113 189x33
+          text "Item 2" 8,120 45x19
+          input "Item 2" 61,113 120x33
+      listrow 0,145 296x32
+        row 0,145 189x33
+          text "Item 3" 8,152 45x19
+          input "Item 3" 61,145 120x33
+      listrow 0,177 296x32
+        row 0,177 189x33
+          text "Item 4" 8,184 45x19
+          input "Item 4" 61,177 120x33
+      listrow 0,209 296x32
+        row 0,209 189x33
+          text "Item 5" 8,216 45x19
+          input "Item 5" 61,209 120x33
+      listrow 0,241 296x32
+        row 0,241 189x33
+          text "Item 6" 8,248 45x19
+          input "Item 6" 61,241 120x33
+      listrow 0,273 296x32
+        row 0,273 188x33
+          text "Item 7" 8,280 44x19
+          input "Item 7" 60,273 120x33
+      listrow 0,305 296x32
+        row 0,305 189x33
+          text "Item 8" 8,312 45x19
+          input "Item 8" 61,305 120x33
+      listrow 0,337 296x32
+        row 0,337 189x33
+          text "Item 9" 8,344 45x19
+          input "Item 9" 61,337 120x33
+      listrow 0,369 296x32
+        row 0,369 195x33
+          text "Item 10" 8,376 51x19
+          input "Item 10" 67,369 120x33
+    table 100000 rows, showing 1–11 304,49 296x351
+      thead 305,50 294x30
+        header "N" 305,50 80x30
+        header "Name" 385,50 214x30
+      tablerow 305,80 294x31
+        celltext "0" 305,80 80x31
+        celltext "Item 0" 385,80 214x31
+      tablerow 305,111 294x31
+        celltext "1" 305,111 80x31
+        celltext "Item 1" 385,111 214x31
+      tablerow 305,142 294x31
+        celltext "2" 305,142 80x31
+        celltext "Item 2" 385,142 214x31
+      tablerow 305,173 294x31
+        celltext "3" 305,173 80x31
+        celltext "Item 3" 385,173 214x31
+      tablerow 305,204 294x31
+        celltext "4" 305,204 80x31
+        celltext "Item 4" 385,204 214x31
+      tablerow 305,235 294x31
+        celltext "5" 305,235 80x31
+        celltext "Item 5" 385,235 214x31
+      tablerow 305,266 294x31
+        celltext "6" 305,266 80x31
+        celltext "Item 6" 385,266 214x31
+      tablerow 305,297 294x31
+        celltext "7" 305,297 80x31
+        celltext "Item 7" 385,297 214x31
+      tablerow 305,328 294x31
+        celltext "8" 305,328 80x31
+        celltext "Item 8" 385,328 214x31
+      tablerow 305,359 294x31
+        celltext "9" 305,359 80x31
+        celltext "Item 9" 385,359 214x31
+      tablerow 305,390 294x31
+        celltext "10" 305,390 80x31
+        celltext "Item 10" 385,390 214x31
+window "Big" 600x400
+  row 0,0 600x49
+    button "Fill" 8,8 49x33
+    button "Remove first" 65,8 119x33
+    text 192,15 0x19
+  split 0,49 600x351
+    list 100000 rows, showing 50001–50011 0,49 296x351
+      listrow 0,49 296x32
+        row 0,49 227x33
+          text "Item 50000" 8,56 83x19
+          input "Item 50000" 99,49 120x33
+      listrow 0,81 296x32
+        row 0,81 223x33
+          text "Item 50001" 8,88 79x19
+          input "Item 50001" 95,81 120x33
+      listrow 0,113 296x32
+        row 0,113 226x33
+          text "Item 50002" 8,120 82x19
+          input "Item 50002" 98,113 120x33
+      listrow 0,145 296x32
+        row 0,145 226x33
+          text "Item 50003" 8,152 82x19
+          input "Item 50003" 98,145 120x33
+      listrow 0,177 296x32
+        row 0,177 227x33
+          text "Item 50004" 8,184 83x19
+          input "Item 50004" 99,177 120x33
+      listrow 0,209 296x32
+        row 0,209 226x33
+          text "Item 50005" 8,216 82x19
+          input "Item 50005" 98,209 120x33
+      listrow 0,241 296x32
+        row 0,241 226x33
+          text "Item 50006" 8,248 82x19
+          input "Item 50006" 98,241 120x33
+      listrow 0,273 296x32
+        row 0,273 226x33
+          text "Item 50007" 8,280 82x19
+          input "Item 50007" 98,273 120x33
+      listrow 0,305 296x32
+        row 0,305 226x33
+          text "Item 50008" 8,312 82x19
+          input "Item 50008" 98,305 120x33
+      listrow 0,337 296x32
+        row 0,337 226x33
+          text "Item 50009" 8,344 82x19
+          input "Item 50009" 98,337 120x33
+      listrow 0,369 296x32
+        row 0,369 223x33
+          text "Item 50010" 8,376 79x19
+          input "Item 50010" 95,369 120x33
+    table 100000 rows, showing 48388–48398 304,49 296x351
+      thead 305,50 294x30
+        header "N" 305,50 80x30
+        header "Name" 385,50 214x30
+      tablerow 305,77 294x31
+        celltext "48387" 305,77 80x31
+        celltext "Item 48387" 385,77 214x31
+      tablerow 305,108 294x31
+        celltext "48388" 305,108 80x31
+        celltext "Item 48388" 385,108 214x31
+      tablerow 305,139 294x31
+        celltext "48389" 305,139 80x31
+        celltext "Item 48389" 385,139 214x31
+      tablerow 305,170 294x31
+        celltext "48390" 305,170 80x31
+        celltext "Item 48390" 385,170 214x31
+      tablerow 305,201 294x31
+        celltext "48391" 305,201 80x31
+        celltext "Item 48391" 385,201 214x31
+      tablerow 305,232 294x31
+        celltext "48392" 305,232 80x31
+        celltext "Item 48392" 385,232 214x31
+      tablerow 305,263 294x31
+        celltext "48393" 305,263 80x31
+        celltext "Item 48393" 385,263 214x31
+      tablerow 305,294 294x31
+        celltext "48394" 305,294 80x31
+        celltext "Item 48394" 385,294 214x31
+      tablerow 305,325 294x31
+        celltext "48395" 305,325 80x31
+        celltext "Item 48395" 385,325 214x31
+      tablerow 305,356 294x31
+        celltext "48396" 305,356 80x31
+        celltext "Item 48396" 385,356 214x31
+      tablerow 305,387 294x31
+        celltext "48397" 305,387 80x31
+        celltext "Item 48397" 385,387 214x31
+window "Big" 600x400
+  row 0,0 600x49
+    button "Fill" 8,8 49x33
+    button "Remove first" 65,8 119x33
+    text 192,15 0x19
+  split 0,49 600x351
+    list 100000 rows, showing 99990–100000 0,49 296x351
+      listrow 0,48 296x32
+        row 0,48 226x33
+          text "Item 99989" 8,55 82x19
+          input "Item 99989" 98,48 120x33
+      listrow 0,80 296x32
+        row 0,80 226x33
+          text "Item 99990" 8,87 82x19
+          input "Item 99990" 98,80 120x33
+      listrow 0,112 296x32
+        row 0,112 223x33
+          text "Item 99991" 8,119 79x19
+          input "Item 99991" 95,112 120x33
+      listrow 0,144 296x32
+        row 0,144 226x33
+          text "Item 99992" 8,151 82x19
+          input "Item 99992" 98,144 120x33
+      listrow 0,176 296x32
+        row 0,176 226x33
+          text "Item 99993" 8,183 82x19
+          input "Item 99993" 98,176 120x33
+      listrow 0,208 296x32
+        row 0,208 226x33
+          text "Item 99994" 8,215 82x19
+          input "Item 99994" 98,208 120x33
+      listrow 0,240 296x32
+        row 0,240 226x33
+          text "Item 99995" 8,247 82x19
+          input "Item 99995" 98,240 120x33
+      listrow 0,272 296x32
+        row 0,272 226x33
+          text "Item 99996" 8,279 82x19
+          input "Item 99996" 98,272 120x33
+      listrow 0,304 296x32
+        row 0,304 225x33
+          text "Item 99997" 8,311 81x19
+          input "Item 99997" 97,304 120x33
+      listrow 0,336 296x32
+        row 0,336 226x33
+          text "Item 99998" 8,343 82x19
+          input "Item 99998" 98,336 120x33
+      listrow 0,368 296x32
+        row 0,368 226x33
+          text "Item 99999" 8,375 82x19
+          input "Item 99999" 98,368 120x33
+    table 100000 rows, showing 99990–100000 304,49 296x351
+      thead 305,50 294x30
+        header "N" 305,50 80x30
+        header "Name" 385,50 214x30
+      tablerow 305,58 294x31
+        celltext "99989" 305,58 80x31
+        celltext "Item 99989" 385,58 214x31
+      tablerow 305,89 294x31
+        celltext "99990" 305,89 80x31
+        celltext "Item 99990" 385,89 214x31
+      tablerow 305,120 294x31
+        celltext "99991" 305,120 80x31
+        celltext "Item 99991" 385,120 214x31
+      tablerow 305,151 294x31
+        celltext "99992" 305,151 80x31
+        celltext "Item 99992" 385,151 214x31
+      tablerow 305,182 294x31
+        celltext "99993" 305,182 80x31
+        celltext "Item 99993" 385,182 214x31
+      tablerow 305,213 294x31
+        celltext "99994" 305,213 80x31
+        celltext "Item 99994" 385,213 214x31
+      tablerow 305,244 294x31
+        celltext "99995" 305,244 80x31
+        celltext "Item 99995" 385,244 214x31
+      tablerow 305,275 294x31
+        celltext "99996" 305,275 80x31
+        celltext "Item 99996" 385,275 214x31
+      tablerow 305,306 294x31
+        celltext "99997" 305,306 80x31
+        celltext "Item 99997" 385,306 214x31
+      tablerow 305,337 294x31
+        celltext "99998" 305,337 80x31
+        celltext "Item 99998" 385,337 214x31
+      tablerow 305,368 294x31
+        celltext "99999" 305,368 80x31
+        celltext "Item 99999" 385,368 214x31
+window "Big" 600x400
+  row 0,0 600x49
+    button "Fill" 8,8 49x33
+    button "Remove first" 65,8 119x33
+    text 192,15 0x19
+  split 0,49 600x351
+    list 99999 rows, showing 99989–99999 0,49 296x351
+      listrow 0,48 296x32
+        row 0,48 226x33
+          text "Item 99989" 8,55 82x19
+          input "Item 99989" 98,48 120x33
+      listrow 0,80 296x32
+        row 0,80 226x33
+          text "Item 99990" 8,87 82x19
+          input "Item 99990" 98,80 120x33
+      listrow 0,112 296x32
+        row 0,112 223x33
+          text "Item 99991" 8,119 79x19
+          input "Item 99991" 95,112 120x33
+      listrow 0,144 296x32
+        row 0,144 226x33
+          text "Item 99992" 8,151 82x19
+          input "Item 99992" 98,144 120x33
+      listrow 0,176 296x32
+        row 0,176 226x33
+          text "Item 99993" 8,183 82x19
+          input "Item 99993" 98,176 120x33
+      listrow 0,208 296x32
+        row 0,208 226x33
+          text "Item 99994" 8,215 82x19
+          input "Item 99994" 98,208 120x33
+      listrow 0,240 296x32
+        row 0,240 226x33
+          text "Item 99995" 8,247 82x19
+          input "Item 99995" 98,240 120x33
+      listrow 0,272 296x32
+        row 0,272 226x33
+          text "Item 99996" 8,279 82x19
+          input "Item 99996" 98,272 120x33
+      listrow 0,304 296x32
+        row 0,304 225x33
+          text "Item 99997" 8,311 81x19
+          input "Item 99997" 97,304 120x33
+      listrow 0,336 296x32
+        row 0,336 226x33
+          text "Item 99998" 8,343 82x19
+          input "Item 99998" 98,336 120x33
+      listrow 0,368 296x32 (picked)
+        row 0,368 226x33
+          text "Item 99999" 8,375 82x19
+          input "Item 99999" 98,368 120x33
+    table 99999 rows, showing 99989–99999 304,49 296x351
+      thead 305,50 294x30
+        header "N" 305,50 80x30
+        header "Name" 385,50 214x30
+      tablerow 305,58 294x31
+        celltext "99989" 305,58 80x31
+        celltext "Item 99989" 385,58 214x31
+      tablerow 305,89 294x31
+        celltext "99990" 305,89 80x31
+        celltext "Item 99990" 385,89 214x31
+      tablerow 305,120 294x31
+        celltext "99991" 305,120 80x31
+        celltext "Item 99991" 385,120 214x31
+      tablerow 305,151 294x31
+        celltext "99992" 305,151 80x31
+        celltext "Item 99992" 385,151 214x31
+      tablerow 305,182 294x31
+        celltext "99993" 305,182 80x31
+        celltext "Item 99993" 385,182 214x31
+      tablerow 305,213 294x31
+        celltext "99994" 305,213 80x31
+        celltext "Item 99994" 385,213 214x31
+      tablerow 305,244 294x31
+        celltext "99995" 305,244 80x31
+        celltext "Item 99995" 385,244 214x31
+      tablerow 305,275 294x31
+        celltext "99996" 305,275 80x31
+        celltext "Item 99996" 385,275 214x31
+      tablerow 305,306 294x31
+        celltext "99997" 305,306 80x31
+        celltext "Item 99997" 385,306 214x31
+      tablerow 305,337 294x31
+        celltext "99998" 305,337 80x31
+        celltext "Item 99998" 385,337 214x31
+      tablerow 305,368 294x31
+        celltext "99999" 305,368 80x31
+        celltext "Item 99999" 385,368 214x31
+window "Big" 600x400
+  row 0,0 600x49
+    button "Fill" 8,8 49x33
+    button "Remove first" 65,8 119x33
+    text "opened Item 99980" 192,15 140x19
+  split 0,49 600x351
+    list 99999 rows, showing 99978–99988 0,49 296x351 (focus)
+      listrow 0,49 296x32
+        row 0,49 225x33
+          text "Item 99978" 8,56 81x19
+          input "Item 99978" 97,49 120x33
+      listrow 0,81 296x32
+        row 0,81 225x33
+          text "Item 99979" 8,88 81x19
+          input "Item 99979" 97,81 120x33
+      listrow 0,113 296x32 (picked)
+        row 0,113 226x33
+          text "Item 99980" 8,120 82x19
+          input "Item 99980" 98,113 120x33
+      listrow 0,145 296x32
+        row 0,145 223x33
+          text "Item 99981" 8,152 79x19
+          input "Item 99981" 95,145 120x33
+      listrow 0,177 296x32
+        row 0,177 226x33
+          text "Item 99982" 8,184 82x19
+          input "Item 99982" 98,177 120x33
+      listrow 0,209 296x32
+        row 0,209 226x33
+          text "Item 99983" 8,216 82x19
+          input "Item 99983" 98,209 120x33
+      listrow 0,241 296x32
+        row 0,241 226x33
+          text "Item 99984" 8,248 82x19
+          input "Item 99984" 98,241 120x33
+      listrow 0,273 296x32
+        row 0,273 226x33
+          text "Item 99985" 8,280 82x19
+          input "Item 99985" 98,273 120x33
+      listrow 0,305 296x32
+        row 0,305 226x33
+          text "Item 99986" 8,312 82x19
+          input "Item 99986" 98,305 120x33
+      listrow 0,337 296x32
+        row 0,337 225x33
+          text "Item 99987" 8,344 81x19
+          input "Item 99987" 97,337 120x33
+      listrow 0,369 296x32
+        row 0,369 226x33
+          text "Item 99988" 8,376 82x19
+          input "Item 99988" 98,369 120x33
+    table 99999 rows, showing 99989–99999 304,49 296x351
+      thead 305,50 294x30
+        header "N" 305,50 80x30
+        header "Name" 385,50 214x30
+      tablerow 305,58 294x31
+        celltext "99989" 305,58 80x31
+        celltext "Item 99989" 385,58 214x31
+      tablerow 305,89 294x31
+        celltext "99990" 305,89 80x31
+        celltext "Item 99990" 385,89 214x31
+      tablerow 305,120 294x31
+        celltext "99991" 305,120 80x31
+        celltext "Item 99991" 385,120 214x31
+      tablerow 305,151 294x31
+        celltext "99992" 305,151 80x31
+        celltext "Item 99992" 385,151 214x31
+      tablerow 305,182 294x31
+        celltext "99993" 305,182 80x31
+        celltext "Item 99993" 385,182 214x31
+      tablerow 305,213 294x31
+        celltext "99994" 305,213 80x31
+        celltext "Item 99994" 385,213 214x31
+      tablerow 305,244 294x31
+        celltext "99995" 305,244 80x31
+        celltext "Item 99995" 385,244 214x31
+      tablerow 305,275 294x31
+        celltext "99996" 305,275 80x31
+        celltext "Item 99996" 385,275 214x31
+      tablerow 305,306 294x31
+        celltext "99997" 305,306 80x31
+        celltext "Item 99997" 385,306 214x31
+      tablerow 305,337 294x31
+        celltext "99998" 305,337 80x31
+        celltext "Item 99998" 385,337 214x31
+      tablerow 305,368 294x31
+        celltext "99999" 305,368 80x31
+        celltext "Item 99999" 385,368 214x31
+window "Big" 600x400
+  row 0,0 600x49
+    button "Fill" 8,8 49x33
+    button "Remove first" 65,8 119x33
+    text "opened Item 99980" 192,15 140x19
+  split 0,49 600x351
+    list 99999 rows, showing 1–11 0,49 296x351 (focus)
+      listrow 0,49 296x32
+        row 0,49 186x33
+          text "Item 1" 8,56 42x19
+          input "Item 1" 58,49 120x33
+      listrow 0,81 296x32
+        row 0,81 189x33
+          text "Item 2" 8,88 45x19
+          input "Item 2" 61,81 120x33
+      listrow 0,113 296x32
+        row 0,113 189x33
+          text "Item 3" 8,120 45x19
+          input "Item 3" 61,113 120x33
+      listrow 0,145 296x32
+        row 0,145 189x33
+          text "Item 4" 8,152 45x19
+          input "Item 4" 61,145 120x33
+      listrow 0,177 296x32
+        row 0,177 189x33
+          text "Item 5" 8,184 45x19
+          input "Item 5" 61,177 120x33
+      listrow 0,209 296x32
+        row 0,209 189x33
+          text "Item 6" 8,216 45x19
+          input "Item 6" 61,209 120x33
+      listrow 0,241 296x32
+        row 0,241 188x33
+          text "Item 7" 8,248 44x19
+          input "Item 7" 60,241 120x33
+      listrow 0,273 296x32
+        row 0,273 189x33
+          text "Item 8" 8,280 45x19
+          input "Item 8" 61,273 120x33
+      listrow 0,305 296x32
+        row 0,305 189x33
+          text "Item 9" 8,312 45x19
+          input "Item 9" 61,305 120x33
+      listrow 0,337 296x32 (picked)
+        row 0,337 195x33
+          text "Item 10" 8,344 51x19
+          input "Item 10" 67,337 120x33
+      listrow 0,369 296x32
+        row 0,369 192x33
+          text "Item 11" 8,376 48x19
+          input "Item 11" 64,369 120x33
+    table 99999 rows, showing 99989–99999 304,49 296x351
+      thead 305,50 294x30
+        header "N" 305,50 80x30
+        header "Name" 385,50 214x30
+      tablerow 305,58 294x31
+        celltext "99989" 305,58 80x31
+        celltext "Item 99989" 385,58 214x31
+      tablerow 305,89 294x31
+        celltext "99990" 305,89 80x31
+        celltext "Item 99990" 385,89 214x31
+      tablerow 305,120 294x31
+        celltext "99991" 305,120 80x31
+        celltext "Item 99991" 385,120 214x31
+      tablerow 305,151 294x31
+        celltext "99992" 305,151 80x31
+        celltext "Item 99992" 385,151 214x31
+      tablerow 305,182 294x31
+        celltext "99993" 305,182 80x31
+        celltext "Item 99993" 385,182 214x31
+      tablerow 305,213 294x31
+        celltext "99994" 305,213 80x31
+        celltext "Item 99994" 385,213 214x31
+      tablerow 305,244 294x31
+        celltext "99995" 305,244 80x31
+        celltext "Item 99995" 385,244 214x31
+      tablerow 305,275 294x31
+        celltext "99996" 305,275 80x31
+        celltext "Item 99996" 385,275 214x31
+      tablerow 305,306 294x31
+        celltext "99997" 305,306 80x31
+        celltext "Item 99997" 385,306 214x31
+      tablerow 305,337 294x31
+        celltext "99998" 305,337 80x31
+        celltext "Item 99998" 385,337 214x31
+      tablerow 305,368 294x31
+        celltext "99999" 305,368 80x31
+        celltext "Item 99999" 385,368 214x31
+window "Big" 600x400
+  row 0,0 600x49
+    button "Fill" 8,8 49x33
+    button "Remove first" 65,8 119x33
+    text "opened Item 99980" 192,15 140x19
+  split 0,49 600x351
+    list 99999 rows, showing 1–11 0,49 296x351
+      listrow 0,49 296x32
+        row 0,49 186x33
+          text "Item 1" 8,56 42x19
+          input "Item 1" 58,49 120x33
+      listrow 0,81 296x32
+        row 0,81 189x33
+          text "Item 2" 8,88 45x19
+          input "Item 2" 61,81 120x33
+      listrow 0,113 296x32
+        row 0,113 209x33
+          text "Item 3XY" 8,120 65x19
+          input "Item 3XY" 81,113 120x33 (focus, caret 8)
+      listrow 0,145 296x32
+        row 0,145 189x33
+          text "Item 4" 8,152 45x19
+          input "Item 4" 61,145 120x33
+      listrow 0,177 296x32
+        row 0,177 189x33
+          text "Item 5" 8,184 45x19
+          input "Item 5" 61,177 120x33
+      listrow 0,209 296x32
+        row 0,209 189x33
+          text "Item 6" 8,216 45x19
+          input "Item 6" 61,209 120x33
+      listrow 0,241 296x32
+        row 0,241 188x33
+          text "Item 7" 8,248 44x19
+          input "Item 7" 60,241 120x33
+      listrow 0,273 296x32
+        row 0,273 189x33
+          text "Item 8" 8,280 45x19
+          input "Item 8" 61,273 120x33
+      listrow 0,305 296x32
+        row 0,305 189x33
+          text "Item 9" 8,312 45x19
+          input "Item 9" 61,305 120x33
+      listrow 0,337 296x32 (picked)
+        row 0,337 195x33
+          text "Item 10" 8,344 51x19
+          input "Item 10" 67,337 120x33
+      listrow 0,369 296x32
+        row 0,369 192x33
+          text "Item 11" 8,376 48x19
+          input "Item 11" 64,369 120x33
+    table 99999 rows, showing 99989–99999 304,49 296x351
+      thead 305,50 294x30
+        header "N" 305,50 80x30
+        header "Name" 385,50 214x30
+      tablerow 305,58 294x31
+        celltext "99989" 305,58 80x31
+        celltext "Item 99989" 385,58 214x31
+      tablerow 305,89 294x31
+        celltext "99990" 305,89 80x31
+        celltext "Item 99990" 385,89 214x31
+      tablerow 305,120 294x31
+        celltext "99991" 305,120 80x31
+        celltext "Item 99991" 385,120 214x31
+      tablerow 305,151 294x31
+        celltext "99992" 305,151 80x31
+        celltext "Item 99992" 385,151 214x31
+      tablerow 305,182 294x31
+        celltext "99993" 305,182 80x31
+        celltext "Item 99993" 385,182 214x31
+      tablerow 305,213 294x31
+        celltext "99994" 305,213 80x31
+        celltext "Item 99994" 385,213 214x31
+      tablerow 305,244 294x31
+        celltext "99995" 305,244 80x31
+        celltext "Item 99995" 385,244 214x31
+      tablerow 305,275 294x31
+        celltext "99996" 305,275 80x31
+        celltext "Item 99996" 385,275 214x31
+      tablerow 305,306 294x31
+        celltext "99997" 305,306 80x31
+        celltext "Item 99997" 385,306 214x31
+      tablerow 305,337 294x31
+        celltext "99998" 305,337 80x31
+        celltext "Item 99998" 385,337 214x31
+      tablerow 305,368 294x31
+        celltext "99999" 305,368 80x31
+        celltext "Item 99999" 385,368 214x31
+window "Big" 600x400
+  row 0,0 600x49
+    button "Fill" 8,8 49x33
+    button "Remove first" 65,8 119x33
+    text "opened Item 99980" 192,15 140x19
+  split 0,49 600x351
+    list 99999 rows, showing 1–11 0,49 296x351
+      listrow 0,49 296x32
+        row 0,49 186x33
+          text "Item 1" 8,56 42x19
+          input "Item 1" 58,49 120x33
+      listrow 0,81 296x32
+        row 0,81 189x33
+          text "Item 2" 8,88 45x19
+          input "Item 2" 61,81 120x33
+      listrow 0,113 296x32
+        row 0,113 209x33
+          text "Item 3XY" 8,120 65x19
+          input "Item 3XY" 81,113 120x33 (focus, caret 8)
+      listrow 0,145 296x32
+        row 0,145 189x33
+          text "Item 4" 8,152 45x19
+          input "Item 4" 61,145 120x33
+      listrow 0,177 296x32
+        row 0,177 189x33
+          text "Item 5" 8,184 45x19
+          input "Item 5" 61,177 120x33
+      listrow 0,209 296x32
+        row 0,209 189x33
+          text "Item 6" 8,216 45x19
+          input "Item 6" 61,209 120x33
+      listrow 0,241 296x32
+        row 0,241 188x33
+          text "Item 7" 8,248 44x19
+          input "Item 7" 60,241 120x33
+      listrow 0,273 296x32
+        row 0,273 189x33
+          text "Item 8" 8,280 45x19
+          input "Item 8" 61,273 120x33
+      listrow 0,305 296x32
+        row 0,305 189x33
+          text "Item 9" 8,312 45x19
+          input "Item 9" 61,305 120x33
+      listrow 0,337 296x32 (picked)
+        row 0,337 195x33
+          text "Item 10" 8,344 51x19
+          input "Item 10" 67,337 120x33
+      listrow 0,369 296x32
+        row 0,369 192x33
+          text "Item 11" 8,376 48x19
+          input "Item 11" 64,369 120x33
+    table 99999 rows, showing 1–11 304,49 296x351
+      thead 305,50 294x30
+        header "N" (sorted falling) 305,50 80x30
+        header "Name" 385,50 214x30
+      tablerow 305,80 294x31
+        celltext "99999" 305,80 80x31
+        celltext "Item 99999" 385,80 214x31
+      tablerow 305,111 294x31
+        celltext "99998" 305,111 80x31
+        celltext "Item 99998" 385,111 214x31
+      tablerow 305,142 294x31
+        celltext "99997" 305,142 80x31
+        celltext "Item 99997" 385,142 214x31
+      tablerow 305,173 294x31
+        celltext "99996" 305,173 80x31
+        celltext "Item 99996" 385,173 214x31
+      tablerow 305,204 294x31
+        celltext "99995" 305,204 80x31
+        celltext "Item 99995" 385,204 214x31
+      tablerow 305,235 294x31
+        celltext "99994" 305,235 80x31
+        celltext "Item 99994" 385,235 214x31
+      tablerow 305,266 294x31
+        celltext "99993" 305,266 80x31
+        celltext "Item 99993" 385,266 214x31
+      tablerow 305,297 294x31
+        celltext "99992" 305,297 80x31
+        celltext "Item 99992" 385,297 214x31
+      tablerow 305,328 294x31
+        celltext "99991" 305,328 80x31
+        celltext "Item 99991" 385,328 214x31
+      tablerow 305,359 294x31
+        celltext "99990" 305,359 80x31
+        celltext "Item 99990" 385,359 214x31
+      tablerow 305,390 294x31
+        celltext "99989" 305,390 80x31
+        celltext "Item 99989" 385,390 214x31
+window "Big" 600x400
+  row 0,0 600x49
+    button "Fill" 8,8 49x33
+    button "Remove first" 65,8 119x33
+    text "opened Item 99980" 192,15 140x19
+  split 0,49 600x351
+    list 99999 rows, showing 1–11 0,49 296x351
+      listrow 0,49 296x32
+        row 0,49 186x33
+          text "Item 1" 8,56 42x19
+          input "Item 1" 58,49 120x33
+      listrow 0,81 296x32
+        row 0,81 189x33
+          text "Item 2" 8,88 45x19
+          input "Item 2" 61,81 120x33
+      listrow 0,113 296x32
+        row 0,113 209x33
+          text "Item 3XY" 8,120 65x19
+          input "Item 3XY" 81,113 120x33
+      listrow 0,145 296x32
+        row 0,145 189x33
+          text "Item 4" 8,152 45x19
+          input "Item 4" 61,145 120x33
+      listrow 0,177 296x32
+        row 0,177 189x33
+          text "Item 5" 8,184 45x19
+          input "Item 5" 61,177 120x33
+      listrow 0,209 296x32
+        row 0,209 189x33
+          text "Item 6" 8,216 45x19
+          input "Item 6" 61,209 120x33
+      listrow 0,241 296x32
+        row 0,241 188x33
+          text "Item 7" 8,248 44x19
+          input "Item 7" 60,241 120x33
+      listrow 0,273 296x32
+        row 0,273 189x33
+          text "Item 8" 8,280 45x19
+          input "Item 8" 61,273 120x33
+      listrow 0,305 296x32
+        row 0,305 189x33
+          text "Item 9" 8,312 45x19
+          input "Item 9" 61,305 120x33
+      listrow 0,337 296x32 (picked)
+        row 0,337 195x33
+          text "Item 10" 8,344 51x19
+          input "Item 10" 67,337 120x33
+      listrow 0,369 296x32
+        row 0,369 192x33
+          text "Item 11" 8,376 48x19
+          input "Item 11" 64,369 120x33
+    table 99999 rows, showing 1–11 304,49 296x351 (focus)
+      thead 305,50 294x30
+        header "N" (sorted falling) 305,50 80x30
+        header "Name" 385,50 214x30
+      tablerow 305,80 294x31
+        celltext "99999" 305,80 80x31
+        celltext "Item 99999" 385,80 214x31
+      tablerow 305,111 294x31 (picked)
+        celltext "99998" 305,111 80x31
+        celltext "Item 99998" 385,111 214x31
+      tablerow 305,142 294x31
+        celltext "99997" 305,142 80x31
+        celltext "Item 99997" 385,142 214x31
+      tablerow 305,173 294x31
+        celltext "99996" 305,173 80x31
+        celltext "Item 99996" 385,173 214x31
+      tablerow 305,204 294x31
+        celltext "99995" 305,204 80x31
+        celltext "Item 99995" 385,204 214x31
+      tablerow 305,235 294x31
+        celltext "99994" 305,235 80x31
+        celltext "Item 99994" 385,235 214x31
+      tablerow 305,266 294x31
+        celltext "99993" 305,266 80x31
+        celltext "Item 99993" 385,266 214x31
+      tablerow 305,297 294x31
+        celltext "99992" 305,297 80x31
+        celltext "Item 99992" 385,297 214x31
+      tablerow 305,328 294x31
+        celltext "99991" 305,328 80x31
+        celltext "Item 99991" 385,328 214x31
+      tablerow 305,359 294x31
+        celltext "99990" 305,359 80x31
+        celltext "Item 99990" 385,359 214x31
+      tablerow 305,390 294x31
+        celltext "99989" 305,390 80x31
+        celltext "Item 99989" 385,390 214x31

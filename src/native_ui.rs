@@ -39,13 +39,26 @@ pub struct Node {
     pub enter: Option<usize>,
     /// What a dropdown or radio chooses from.
     pub options: Vec<String>,
-    /// A number box bound to an int: it takes whole numbers only.
+    /// A number box bound to an int: it takes whole numbers only. A table's header: it sorts.
     pub whole: bool,
+    /// A table or list: which it is, how many rows it has, and which were made.
+    pub list: Option<ListInfo>,
 }
 
 impl Node {
     pub fn new(kind: &str) -> Node {
-        Node { kind: kind.to_string(), text: String::new(), style: vec![], children: vec![], action: None, value: None, enter: None, options: vec![], whole: false }
+        Node {
+            kind: kind.to_string(),
+            text: String::new(),
+            style: vec![],
+            children: vec![],
+            action: None,
+            value: None,
+            enter: None,
+            options: vec![],
+            whole: false,
+            list: None,
+        }
     }
 }
 
@@ -125,6 +138,7 @@ thread_local! {
 /// Runs an input's action with its new value.
 fn run_with(action: &mut Action, value: SV) -> Result<(), String> {
     INCOMING.with(|i| *i.borrow_mut() = value);
+    data_may_change();
     action()
 }
 
@@ -609,6 +623,8 @@ struct Look {
     num_step: f64,
     /// A radio's buttons go across in a row, instead of down.
     across: bool,
+    /// A table's or list's every other row is shaded.
+    stripes: bool,
     /// An icon on a button, by its name.
     icon: String,
 }
@@ -690,6 +706,7 @@ fn base_look(kind: &str) -> Look {
         max: f64::INFINITY,
         num_step: 1.0,
         across: false,
+        stripes: false,
         icon: String::new(),
     };
     match kind {
@@ -826,6 +843,32 @@ fn base_look(kind: &str) -> Look {
         }
         // A row's children sit in the middle, up and down.
         "row" => l.valign = Align::Center,
+        "table" => {
+            l.width = Size::Fill;
+            l.background = Some(0xffffff);
+            l.pad = [1.0; 4];
+            l.radius = 6.0;
+        }
+        "list" => {
+            l.width = Size::Fill;
+            l.background = Some(0xffffff);
+        }
+        "header" => {
+            l.pad = HEADER_PAD;
+            l.size = 13.0;
+            l.weight = 600.0;
+            l.color = 0x495057;
+            l.wrap = false;
+        }
+        "celltext" => {
+            l.pad = [6.0, 10.0, 6.0, 10.0];
+            l.wrap = false;
+        }
+        "cell" => {
+            l.pad = [4.0, 8.0, 4.0, 8.0];
+            l.valign = Align::Center;
+        }
+        "listrow" => l.valign = Align::Center,
         _ => {}
     }
     l.color = nt(l.color);
@@ -955,6 +998,7 @@ fn apply(l: &mut Look, kind: &str, style: &[(String, SV)]) {
                 _ => f64::INFINITY,
             },
             "across" => l.across = true,
+            "stripes" => l.stripes = true,
             "icon" => l.icon = text_of(v).unwrap_or("").to_string(),
             "font" => {
                 if let Some(f) = text_of(v).and_then(font_file) {
@@ -1174,6 +1218,8 @@ struct Laid {
     num: f64,
     whole: bool,
     bad: bool,
+    /// A table or list: which it is, its rows, and which were made.
+    list: Option<ListInfo>,
     x: f32,
     y: f32,
     w: f32,
@@ -1268,6 +1314,7 @@ fn lay(n: &Node) -> Laid {
         num: 0.0,
         whole: n.whole,
         bad: false,
+        list: None,
         x: 0.0,
         y: 0.0,
         w: 0.0,
@@ -1292,6 +1339,7 @@ fn lay(n: &Node) -> Laid {
             laid.value = Some(SV::Text(number_text(laid.num, n.whole)));
         }
         "checkbox" | "switch" => with_words(&mut laid),
+        "table" | "list" => list_lay(n, &mut laid),
         // A button with only an icon is square.
         "button" if laid.text.is_empty() && !laid.look.icon.is_empty() && !n.style.iter().any(|(k, _)| k.starts_with("pad")) => {
             laid.look.pad = [7.0; 4];
@@ -1396,7 +1444,20 @@ thread_local! {
 fn shows_text(kind: &str) -> bool {
     matches!(
         kind,
-        "text" | "button" | "dropdown" | "menu" | "option" | "item" | "tip" | "tabbtn" | "branchhead" | "radiobtn" | "checkbox" | "switch"
+        "text"
+            | "button"
+            | "dropdown"
+            | "menu"
+            | "option"
+            | "item"
+            | "tip"
+            | "tabbtn"
+            | "branchhead"
+            | "radiobtn"
+            | "checkbox"
+            | "switch"
+            | "header"
+            | "celltext"
     )
 }
 
@@ -1450,7 +1511,7 @@ fn flex(c: &Laid, row: bool) -> Option<f32> {
 
 /// Whether this is a scroll, or holds one (not counting scrolls inside scrolls).
 fn holds_scroll(n: &Laid) -> bool {
-    n.kind == "scroll" || n.kind == "split" || n.children.iter().any(holds_scroll)
+    matches!(n.kind.as_str(), "scroll" | "split" | "table" | "list") || n.children.iter().any(holds_scroll)
 }
 
 /// Rows told `center`, `right` or `spread`, and columns and stacks told `center` or `right`, are
@@ -1521,6 +1582,7 @@ fn measure(n: &Laid, max_w: f32) -> (f32, f32) {
             (w.ceil(), lh * lines.len().max(1) as f32)
         }
         "space" | "checkbox" | "slider" | "progress" | "canvas" | "box" | "line" => (0.0, 0.0),
+        "table" | "list" => list_natural(n, inner),
         "circle" => (2.0 * l.rad, 2.0 * l.rad),
         "grid" => {
             let (cols, cw) = grid_columns(l, inner);
@@ -1641,6 +1703,10 @@ fn place(n: &mut Laid, x: f32, y: f32, w: f32, h: f32) {
     let (iw, ih) = ((w - l.pad[1] - l.pad[3]).max(0.0), (h - l.pad[0] - l.pad[2]).max(0.0));
     if shows_text(&n.kind) {
         n.lines = wrap_lines(&n.text, l.size, l.face(), iw - icon_room(n), l.wrap);
+        return;
+    }
+    if n.list.is_some() {
+        place_list(n, x, y, w, h);
         return;
     }
     if n.kind == "textarea" {
@@ -2539,8 +2605,18 @@ fn paint(c: &mut Canvas, n: &Laid, st: &PaintState, path: &mut Vec<usize>) {
         let [x0, y0, x1, y1] = n.ends;
         c.line(n.x + x0, n.y + y0, n.x + x1, n.y + y1, l.thick, l.color);
     }
+    paint_list_part(c, n, l);
+    if n.list.is_some() {
+        paint_list(c, n, st, path);
+        if focused && st.ring {
+            ring_around(c, n, 0x1c7ed6);
+        }
+        c.alpha = was;
+        return;
+    }
     // What's in a scroll or a canvas is cut off at its edges.
-    let unclipped = if n.kind == "scroll" || n.kind == "canvas" { Some(c.clip_to(n.x, n.y, n.w, n.h)) } else { None };
+    // A table's cells cut off what doesn't fit, too, so long words don't run into the next column.
+    let unclipped = if matches!(n.kind.as_str(), "scroll" | "canvas" | "cell" | "celltext") { Some(c.clip_to(n.x, n.y, n.w, n.h)) } else { None };
     if shows_text(&n.kind) {
         let (_, lh) = line_metrics(l.size, l.face());
         let inner_w = n.w - l.pad[1] - l.pad[3];
@@ -2597,10 +2673,17 @@ fn hit(n: &Laid, x: f32, y: f32) -> Option<Vec<usize>> {
         return None;
     }
     for (i, c) in n.children.iter().enumerate().rev() {
+        // A table's rows that aren't on the screen can't be clicked, even behind its header.
+        if n.list.is_some() && i >= first_row(n) && !(row_shows(n, c) && y >= list_body(n).1) {
+            continue;
+        }
         if let Some(mut p) = hit(c, x, y) {
             p.insert(0, i);
             return Some(p);
         }
+    }
+    if (matches!(n.kind.as_str(), "tablerow" | "listrow") && (n.action.is_some() || n.enter.is_some())) || (n.kind == "header" && n.whole) {
+        return Some(vec![]);
     }
     // A layer isn't clicked itself, only what's on it. A menu is clicked to open it, a tab's name
     // to show it, and a branch's name to open or shut it.
@@ -2623,6 +2706,20 @@ fn focusable(n: &Laid, path: &mut Vec<usize>, out: &mut Vec<Vec<usize>>) {
     let can = matches!(n.kind.as_str(), "button" | "input" | "textarea" | "checkbox" | "slider" | "dropdown" | "radio" | "switch" | "number");
     if (n.action.is_some() && can) || (matches!(n.kind.as_str(), "menu" | "tabbtn" | "branchhead") && !n.look.disabled) {
         out.push(path.clone());
+    }
+    // A table or list is reached as one, and then what's in its rows on the screen.
+    if let Some(info) = &n.list {
+        if info.count > 0 && !n.look.disabled {
+            out.push(path.clone());
+        }
+        for (i, c) in n.children.iter().enumerate().skip(first_row(n)) {
+            if row_shows(n, c) {
+                path.push(i);
+                focusable(c, path, out);
+                path.pop();
+            }
+        }
+        return;
     }
     // A radio group is reached as one; its buttons aren't reached on their own.
     if n.kind == "radio" {
@@ -2720,6 +2817,7 @@ pub fn show(style: &[(String, SV)], build: &mut Build, step: Box<Step>) -> Resul
     let s = settings(style);
     PIECES.with(|p| p.borrow_mut().push(Pieces::default()));
     let kept = KEPT.with(|k| std::mem::take(&mut *k.borrow_mut()));
+    let lists = LISTS.with(|l| std::mem::take(&mut *l.borrow_mut()));
     // Each drawing starts the pieces' turns again, and forgets pieces that weren't drawn.
     let mut framed = || {
         PIECES.with(|p| {
@@ -2728,6 +2826,7 @@ pub fn show(style: &[(String, SV)], build: &mut Build, step: Box<Step>) -> Resul
                 st.turns.clear();
             }
         });
+        list_frame();
         let r = build();
         let gone: Vec<std::rc::Rc<dyn std::any::Any>> = PIECES.with(|p| {
             let mut p = p.borrow_mut();
@@ -2740,6 +2839,7 @@ pub fn show(style: &[(String, SV)], build: &mut Build, step: Box<Step>) -> Resul
     };
     let r = if std::env::var("LUST_VIEW_TEST").is_ok() { test(s, &mut framed, step) } else { windowed::run(s, &mut framed, step) };
     KEPT.with(|k| *k.borrow_mut() = kept);
+    LISTS.with(|l| *l.borrow_mut() = lists);
     let gone = PIECES.with(|p| p.borrow_mut().pop());
     drop(gone);
     r
@@ -2766,6 +2866,8 @@ enum Nav {
     Escape,
     Up,
     Down,
+    PageUp,
+    PageDown,
     Copy,
     Cut,
     Paste,
@@ -2792,6 +2894,11 @@ enum Drag {
     /// The line between two panels of a split: which split, which line, where the mouse went
     /// down, and how big the panels were then.
     Split(usize, usize, f32, Vec<f32>),
+    /// The edge of a table's header: the table's place, the column, where the mouse went down,
+    /// and how wide the column was then.
+    Column(Vec<usize>, usize, f32, f32),
+    /// A table's or list's scroll bar knob: its place, where it was grabbed, and the scroll then.
+    ListKnob(Vec<usize>, f32, f32),
 }
 
 /// The line between two panels of a split at this point: the split's place, which split it is in
@@ -3077,6 +3184,9 @@ fn hover_targets(n: &Laid, x: f32, y: f32, path: &mut Vec<usize>, out: &mut Vec<
         out.push(path.clone());
     }
     for (i, c) in n.children.iter().enumerate() {
+        if n.list.is_some() && i >= first_row(n) && !(row_shows(n, c) && y >= list_body(n).1) {
+            continue;
+        }
         path.push(i);
         hover_targets(c, x, y, path, out);
         path.pop();
@@ -3136,6 +3246,7 @@ impl<'a, 'b> Ui<'a, 'b> {
             wheel_acc: (None, 0.0),
         };
         ui.relayout();
+        ui.settle()?;
         ui.set_timers();
         ui.check_tweens()?;
         Ok(ui)
@@ -3248,6 +3359,7 @@ impl<'a, 'b> Ui<'a, 'b> {
             self.tween_last = now;
             dt
         };
+        data_may_change();
         (self.step)(dt)?;
         self.rebuild()
     }
@@ -3412,8 +3524,15 @@ impl<'a, 'b> Ui<'a, 'b> {
         }
     }
 
-    /// Draws the view again from the data as it is now. Focus stays where it was, if it can.
+    /// Draws the view again from the data as it is now. Focus stays where it was, if it can,
+    /// and tables make the rows that show.
     fn rebuild(&mut self) -> Result<(), String> {
+        self.remake()?;
+        self.settle()
+    }
+
+    fn rebuild_only(&mut self) -> Result<(), String> {
+        let rows = self.rows_before();
         let (node, actions) = (self.build)()?;
         let now = settings(&node.style);
         if now.title != self.s.title {
@@ -3423,6 +3542,7 @@ impl<'a, 'b> Ui<'a, 'b> {
         self.s.background = now.background;
         self.node = node;
         self.relayout();
+        self.follow_rows(rows);
         self.actions = actions;
         self.set_timers();
         if let Some(f) = self.st.focus.clone() {
@@ -3430,7 +3550,7 @@ impl<'a, 'b> Ui<'a, 'b> {
             let shut_out = modal_in(&self.tree).is_some_and(|m| f.first().is_some_and(|&i| i < m));
             match node_at(&self.tree, &f) {
                 _ if shut_out => self.st.focus = None,
-                Some(n) if n.action.is_some() || matches!(n.kind.as_str(), "menu" | "tabbtn" | "branchhead") => {
+                Some(n) if n.action.is_some() || n.list.is_some() || matches!(n.kind.as_str(), "menu" | "tabbtn" | "branchhead") => {
                     let t = value_text(n).to_string();
                     self.st.caret.fit(&t);
                 }
@@ -3703,6 +3823,29 @@ impl<'a, 'b> Ui<'a, 'b> {
                 return self.close_dialog(m);
             }
         }
+        // The edge of a table's header, grabbed to make a column wider or narrower.
+        if let Some((table, col)) = self.header_edge_here(x, y) {
+            if let Some(h) = node_at(&self.tree, &table).and_then(|t| t.children.first()).and_then(|h| h.children.get(col)) {
+                self.drag = Drag::Column(table, col, x, h.w);
+                self.pressed = None;
+                return Ok(());
+            }
+        }
+        // A table's or list's scroll bar knob.
+        let mut lists = Vec::new();
+        for i in self.reach() {
+            lists_at(&self.tree.children[i], x, y, &mut vec![i], &mut lists);
+        }
+        for p in lists.iter().rev() {
+            let Some(n) = node_at(&self.tree, p) else { continue };
+            if let Some((ky, kh)) = list_knob(n) {
+                if x >= n.x + n.w - 12.0 && y >= ky && y < ky + kh {
+                    self.drag = Drag::ListKnob(p.clone(), y, n.scrolled);
+                    self.pressed = None;
+                    return Ok(());
+                }
+            }
+        }
         // The line between two panels of a split, grabbed to drag.
         if let Some((path, which, i, down)) = self.split_here(x, y) {
             if let Some(s) = node_at(&self.tree, &path) {
@@ -3769,6 +3912,9 @@ impl<'a, 'b> Ui<'a, 'b> {
             // A row of an open list: it acts when the mouse is let go, and focus stays.
             "option" | "item" => {}
             "tabbtn" | "branchhead" => self.set_focus(Some(path.clone()), false),
+            // A row gives its table or list focus, for the keys, and is picked when let go.
+            "tablerow" | "listrow" => self.set_focus(Some(path[..path.len() - 1].to_vec()), false),
+            "header" => {}
             // Buttons and checkboxes act when the mouse is let go over them. Clicking one takes
             // focus away from an input, without giving the button a ring.
             _ => self.set_focus(None, false),
@@ -3813,13 +3959,24 @@ impl<'a, 'b> Ui<'a, 'b> {
                     self.slide_to(&p, x)?;
                 }
             }
+            Drag::Column(table, col, from_x, start) => self.drag_column(&table, col, from_x, start, x),
+            Drag::ListKnob(p, from_y, from) => {
+                if let Some(n) = node_at(&self.tree, &p) {
+                    if let Some((_, kh)) = list_knob(n) {
+                        let (_, _, _, bh) = list_body(n);
+                        let total = n.content_h - (list_body(n).1 - n.y - n.look.pad[0]);
+                        let per = (total - bh) / (bh - kh).max(1.0);
+                        self.list_scroll(&p, from + (y - from_y) * per)?;
+                    }
+                }
+            }
             Drag::None => {}
         }
         Ok(())
     }
 
     fn release(&mut self, x: f32, y: f32) -> Result<(), String> {
-        if let Drag::Scroll(..) | Drag::Split(..) = std::mem::replace(&mut self.drag, Drag::None) {
+        if let Drag::Scroll(..) | Drag::Split(..) | Drag::Column(..) | Drag::ListKnob(..) = std::mem::replace(&mut self.drag, Drag::None) {
             return Ok(());
         }
         let at = self.hit_at(x, y);
@@ -3852,8 +4009,25 @@ impl<'a, 'b> Ui<'a, 'b> {
                 self.pick(a, v)
             }
             "tabbtn" | "branchhead" => self.toggle(&path, None),
+            // A row is picked; a double click opens it too.
+            "tablerow" | "listrow" => {
+                let j = n.index;
+                let open = self.clicks.1 >= 2;
+                self.pick_row(&path[..path.len() - 1], j, open)
+            }
+            "header" => self.sort_by(&path),
             _ => Ok(()),
         }
+    }
+
+    /// The edge of a table's header at this point, that the mouse can reach.
+    fn header_edge_here(&self, x: f32, y: f32) -> Option<(Vec<usize>, usize)> {
+        for i in self.reach().rev() {
+            if let Some(found) = header_edge(&self.tree.children[i], x, y, &mut vec![i]) {
+                return Some(found);
+            }
+        }
+        None
     }
 
     /// Whether the split that's this one in the view has its panels going down.
@@ -4182,6 +4356,10 @@ impl<'a, 'b> Ui<'a, 'b> {
             _ => {
                 let Some(path) = self.st.focus.clone() else { return Ok(()) };
                 let Some(n) = node_at(&self.tree, &path) else { return Ok(()) };
+                if n.list.is_some() {
+                    self.list_key(&path, &k)?;
+                    return Ok(());
+                }
                 match (n.kind.as_str(), &k) {
                     // In a text box, Up and Down go a line, and Home and End to its line's ends.
                     ("textarea", Nav::Up | Nav::Down | Nav::Edit(Key::Home | Key::End)) if !mods.command => {
@@ -4358,6 +4536,7 @@ impl<'a, 'b> Ui<'a, 'b> {
             "button" | "checkbox" | "switch" => plain && matches!(key, "enter" | "space"),
             "radio" => plain && matches!(key, "left" | "right" | "up" | "down" | "space"),
             "slider" => plain && matches!(key, "left" | "right" | "up" | "down" | "home" | "end"),
+            "table" | "list" => plain && matches!(key, "up" | "down" | "home" | "end" | "pageup" | "pagedown" | "enter"),
             _ => false,
         }
     }
@@ -4380,6 +4559,9 @@ impl<'a, 'b> Ui<'a, 'b> {
     fn pointer(&self, x: f32, y: f32) -> u8 {
         if let Some((_, _, _, down)) = self.split_here(x, y) {
             return if down { 4 } else { 3 };
+        }
+        if self.header_edge_here(x, y).is_some() {
+            return 3;
         }
         match self.hit_at(x, y).and_then(|p| node_at(&self.tree, &p)).map(|n| n.kind.as_str()) {
             Some("input" | "textarea" | "number") => 2,
@@ -4487,6 +4669,8 @@ mod windowed {
                 WKey::Named(NamedKey::ArrowDown) if mac_line => Some(Nav::Edit(Key::End)),
                 WKey::Named(NamedKey::ArrowUp) => Some(Nav::Up),
                 WKey::Named(NamedKey::ArrowDown) => Some(Nav::Down),
+                WKey::Named(NamedKey::PageUp) => Some(Nav::PageUp),
+                WKey::Named(NamedKey::PageDown) => Some(Nav::PageDown),
                 WKey::Named(NamedKey::Tab) => Some(Nav::Tab),
                 WKey::Named(NamedKey::Enter) => Some(Nav::Enter),
                 WKey::Named(NamedKey::Escape) => Some(Nav::Escape),
@@ -4659,6 +4843,12 @@ mod windowed {
                         self.check(r, el);
                         return;
                     }
+                    // The wheel over a table or list scrolls its rows.
+                    if let Some(r) = self.ui.wheel_list(x, y, dy) {
+                        let _ = self.ui.moved(x, y);
+                        self.check(r, el);
+                        return;
+                    }
                     if self.ui.wheel(x, y, dy) {
                         let _ = self.ui.moved(x, y);
                         self.redraw();
@@ -4684,6 +4874,15 @@ mod windowed {
                     self.check(r, el);
                 }
                 WindowEvent::RedrawRequested => {
+                    // A table that came into view (a tab shown, a branch opened) makes its rows.
+                    if take_stale() {
+                        let r = self.ui.rebuild();
+                        if let Err(e) = r {
+                            self.error = Some(e);
+                            el.exit();
+                            return;
+                        }
+                    }
                     let (lw, lh, scale) = self.logical();
                     let (Some(win), Some(surface)) = (&self.window, &mut self.surface) else { return };
                     let size = win.inner_size();
@@ -4973,7 +5172,7 @@ fn num_text(x: f64) -> String {
 fn dump(n: &Laid, depth: usize, path: &mut Vec<usize>, st: &PaintState, out: &mut String) {
     let pad = "  ".repeat(depth);
     let shown = match (&n.value, n.kind.as_str()) {
-        (_, "dialog") => None,
+        (_, "dialog" | "tablerow" | "listrow") => None,
         (_, "tabbtn") if matches!(n.value, Some(SV::Truth(true))) => Some(format!("{} (showing)", n.text)),
         (_, "tabbtn") => Some(n.text.clone()),
         (_, "branchhead") => Some(format!("{} ({})", n.text, if matches!(n.value, Some(SV::Truth(true))) { "open" } else { "shut" })),
@@ -4987,13 +5186,15 @@ fn dump(n: &Laid, depth: usize, path: &mut Vec<usize>, st: &PaintState, out: &mu
         _ => None,
     };
     let text = match shown {
+        _ if n.list.is_some() => list_dump_line(n),
+        Some(t) if n.kind == "header" => format!(" {:?} (sorted {t})", n.text),
         Some(t) => format!(" {t:?}"),
         None if !n.text.is_empty() => format!(" {:?}", n.text),
         None => String::new(),
     };
     let mut focus = String::new();
     match (n.kind.as_str(), &n.value) {
-        ("radiobtn", Some(SV::Truth(true))) => focus.push_str(" (picked)"),
+        ("radiobtn" | "tablerow" | "listrow", Some(SV::Truth(true))) => focus.push_str(" (picked)"),
         ("checkbox" | "switch", Some(SV::Truth(on))) if !n.text.is_empty() => focus.push_str(if *on { " (on)" } else { " (off)" }),
         _ => {}
     }
@@ -5025,6 +5226,10 @@ fn dump(n: &Laid, depth: usize, path: &mut Vec<usize>, st: &PaintState, out: &mu
     }
     out.push_str(&format!("{pad}{}{text} {},{} {}x{}{focus}\n", n.kind, n.x as i64, n.y as i64, n.w as i64, n.h as i64));
     for (i, c) in n.children.iter().enumerate() {
+        // Only a table's or list's rows on the screen.
+        if n.list.is_some() && i >= first_row(n) && !row_shows(n, c) {
+            continue;
+        }
         path.push(i);
         dump(c, depth + 1, path, st, out);
         path.pop();
@@ -5045,7 +5250,8 @@ fn find_button(n: &Laid, text: &str, path: &mut Vec<usize>) -> Option<Vec<usize>
         }
     }
     let labelled = matches!(n.kind.as_str(), "checkbox" | "switch") && !n.text.is_empty();
-    if (labelled || matches!(n.kind.as_str(), "button" | "option" | "item" | "menu" | "tabbtn" | "branchhead" | "radiobtn")) && n.text == text {
+    let header = n.kind == "header" && n.whole;
+    if (labelled || header || matches!(n.kind.as_str(), "button" | "option" | "item" | "menu" | "tabbtn" | "branchhead" | "radiobtn")) && n.text == text {
         return Some(path.clone());
     }
     for (i, c) in n.children.iter().enumerate() {
@@ -5089,6 +5295,8 @@ fn parse_key(spec: &str) -> Option<(Nav, Mods)> {
         "end" => Nav::Edit(Key::End),
         "up" => Nav::Up,
         "down" => Nav::Down,
+        "pageup" => Nav::PageUp,
+        "pagedown" => Nav::PageDown,
         "tab" => Nav::Tab,
         "enter" => Nav::Enter,
         "space" => Nav::Space,
@@ -5109,11 +5317,29 @@ fn centre(ui: &Ui, path: &[usize]) -> (f32, f32) {
     node_at(&ui.tree, path).map(|n| (n.x + n.w / 2.0, n.y + n.h / 2.0)).unwrap_or((-1.0, -1.0))
 }
 
+thread_local! {
+    /// Commands for a test run from inside lust (its timing tests) instead of from what's typed
+    /// in, and how long each took.
+    static TEST_LINES: std::cell::RefCell<Option<Vec<String>>> = const { std::cell::RefCell::new(None) };
+    static TEST_TIMES: std::cell::RefCell<Vec<(String, std::time::Duration)>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
 fn test(s: Settings, build: &mut Build, step: Box<Step>) -> Result<(), String> {
     use std::io::BufRead;
+    let started = std::time::Instant::now();
     let mut ui = Ui::new(s, build, false, step)?;
-    for line in std::io::stdin().lock().lines() {
-        let line = line.unwrap_or_default();
+    TEST_TIMES.with(|t| t.borrow_mut().push(("open".into(), started.elapsed())));
+    let lines: Box<dyn Iterator<Item = String>> = match TEST_LINES.with(|t| t.borrow_mut().take()) {
+        Some(given) => Box::new(given.into_iter()),
+        None => Box::new(std::io::stdin().lock().lines().map(|l| l.unwrap_or_default())),
+    };
+    for line in lines {
+        // A table that came into view (a tab shown, a branch opened) makes its rows.
+        if take_stale() {
+            ui.rebuild()?;
+        }
+        let started = std::time::Instant::now();
+        let whole = line.clone();
         let line = line.trim();
         let (cmd, rest) = line.split_once(' ').unwrap_or((line, ""));
         let rest = rest.trim().trim_matches('"');
@@ -5127,7 +5353,7 @@ fn test(s: Settings, build: &mut Build, step: Box<Step>) -> Result<(), String> {
                 }
                 print!("{out}");
             }
-            "click" => match find_button(&ui.tree, rest, &mut vec![]) {
+            "click" => match find_button(&ui.tree, rest, &mut vec![]).or_else(|| find_row_text(&ui.tree, rest, &mut vec![])) {
                 Some(p) => {
                     let (x, y) = centre(&ui, &p);
                     ui.press(x, y, Mods::default())?;
@@ -5185,7 +5411,7 @@ fn test(s: Settings, build: &mut Build, step: Box<Step>) -> Result<(), String> {
                     Some(p) => {
                         let (x, y) = centre(&ui, p);
                         ui.st.hover = Some((x, y));
-                        match ui.wheel_number(x, y, dy) {
+                        match ui.wheel_number(x, y, dy).or_else(|| ui.wheel_list(x, y, dy)) {
                             Some(r) => r?,
                             None => {
                                 ui.wheel(x, y, dy);
@@ -5219,6 +5445,17 @@ fn test(s: Settings, build: &mut Build, step: Box<Step>) -> Result<(), String> {
                     None => println!("(Lust doesn't know the key {rest})"),
                 }
             }
+            // dblclick Ada: double-clicks the row of a table or list showing that text.
+            "dblclick" if nums.len() < 2 => match find_row_text(&ui.tree, rest, &mut vec![]) {
+                Some(p) => {
+                    let (x, y) = centre(&ui, &p);
+                    for _ in 0..2 {
+                        ui.press(x, y, Mods::default())?;
+                        ui.release(x, y)?;
+                    }
+                }
+                None => println!("(there's no row showing \"{rest}\")"),
+            },
             "press" | "move" | "release" | "dblclick" if nums.len() >= 2 => {
                 let (x, y) = (nums[0], nums[1]);
                 match cmd {
@@ -5234,6 +5471,30 @@ fn test(s: Settings, build: &mut Build, step: Box<Step>) -> Result<(), String> {
                 }
             }
             "wait" => ui.wait(nums.first().copied().unwrap_or(0.0) as f64)?,
+            // scroll table 1 2000: scrolls the first table (or list) down 2000.
+            "scroll" if rest.starts_with("table") || rest.starts_with("list") => {
+                let kind = if rest.starts_with("table") { "table" } else { "list" };
+                let mut all = Vec::new();
+                fn every_list(n: &Laid, kind: &str, path: &mut Vec<usize>, out: &mut Vec<Vec<usize>>) {
+                    if n.kind == kind {
+                        out.push(path.clone());
+                    }
+                    for (i, c) in n.children.iter().enumerate() {
+                        path.push(i);
+                        every_list(c, kind, path, out);
+                        path.pop();
+                    }
+                }
+                every_list(&ui.tree, kind, &mut vec![], &mut all);
+                match (all.get((nums.first().copied().unwrap_or(1.0) as usize).saturating_sub(1)), nums.get(1)) {
+                    (Some(p), Some(&dy)) => {
+                        let p = p.clone();
+                        let now = node_at(&ui.tree, &p).map(|n| n.scrolled).unwrap_or(0.0);
+                        ui.list_scroll(&p, now + dy)?;
+                    }
+                    _ => println!("(there's no {rest})"),
+                }
+            }
             "scroll" if nums.len() >= 2 => {
                 let mut all = Vec::new();
                 fn every_scroll(n: &Laid, path: &mut Vec<usize>, out: &mut Vec<Vec<usize>>) {
@@ -5304,6 +5565,8 @@ fn test(s: Settings, build: &mut Build, step: Box<Step>) -> Result<(), String> {
             }
             _ => {}
         }
+        TEST_TIMES.with(|t| t.borrow_mut().push((whole, started.elapsed())));
+
     }
     Ok(())
 }

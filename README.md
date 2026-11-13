@@ -43,7 +43,7 @@ Lust is written in Rust, and has one language with two outputs:
 | Rust, compiled to real programs | `.lst` | apps, tools and servers on Windows, macOS and Linux |
 | LustScript, turned into Lua | `.lsc` | scripting and modding inside other programs, like Garry's Mod, Aventail and Halberd |
 
-**What works today (alpha 68):** both outputs. Every file is checked before anything runs, with mistakes explained in plain words.
+**What works today (alpha 69):** both outputs. Every file is checked before anything runs, with mistakes explained in plain words.
 
 - `.lsc` files turn into plain Lua 5.1 that Garry's Mod (LuaJIT) and Luau can run.
 - `.lst` files turn into Rust, which builds into a real program (an `.exe` on Windows) that runs without Lust.
@@ -52,7 +52,7 @@ Lust is written in Rust, and has one language with two outputs:
 - Tweens: `tween hp to 0 over 0.5 [ease OutCubic];` glides a number, vector, colour or rotation to a new value, with the standard easing curves.
 - Saves, and databases on SQLite whose tables work like cMaps.
 - Servers: `route` blocks answered by methods, with `schema`s for the data coming in, and `Web:get`/`Web:post` for asking other sites.
-- Windows: an assembly with a `view` opens a window drawn entirely by Lust, with text, buttons, layout, styles, pieces of your own made from other assemblies, and inputs, checkboxes, switches, radio buttons, number boxes and sliders that change fields as you use them, icons, scrolling, pictures (SVG too) and timers.
+- Windows: an assembly with a `view` opens a window drawn entirely by Lust, with text, buttons, layout, styles, pieces of your own made from other assemblies, and inputs, checkboxes, switches, radio buttons, number boxes and sliders that change fields as you use them, icons, tables and long lists that stay quick with 100,000 rows, scrolling, pictures (SVG too) and timers.
 - Lust inside other programs: `lust build --library` makes a Rust library for a Rust program (like a game engine) to use, and `native` methods have their bodies in that program.
 - Lust inside a game engine: `component`s with `update`, `event`s handled with `on`, vectors, rotations and entities, and the compiler itself as a Rust library, so an engine can check a game's Lust, run it as Lua (or Luau) and swap in edits while the game runs (LUST.md, section 21).
 - `lust run` runs either kind straight away, with Lua built into `lust` itself, so nothing else needs installing. Building a real program needs Rust installed.

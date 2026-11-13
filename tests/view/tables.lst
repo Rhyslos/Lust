@@ -1,0 +1,46 @@
+-- A table of people: sorting, picking and opening rows.
+state Mood = [Happy, Calm, Grumpy];
+
+class Person {
+    has {
+        string name = "";
+        int age = 0;
+        Mood mood = Mood.Calm;
+    }
+}
+
+assembly App {
+    has {
+        Person array people = [
+            new Person { name = "Ada", age = 36, mood = Mood.Happy },
+            new Person { name = "bob", age = 7, mood = Mood.Grumpy },
+            new Person { name = "Cleo", age = 52, mood = Mood.Calm },
+            new Person { name = "dan", age = 7, mood = Mood.Happy }
+        ];
+        Person chosen = nothing;
+        string log = "";
+    }
+
+    view [title "People", width 480, height 320] {
+        column [gap 8, pad 12] {
+            table (Person p in people) [select chosen, height 200] {
+                column "Name" p.name [width 160];
+                column "Age" p.age;
+                column "Mood" p.mood;
+                column "" [width 50] {
+                    button [icon "trash", small] { log = "bin " + p.name; }
+                }
+            } open {
+                log = "opened " + chosen.name;
+            }
+            is chosen !== nothing? then {
+                text "Picked " + chosen.name + ". " + log;
+            } or {
+                text log;
+            }
+        }
+    }
+}
+
+App:open();
+end

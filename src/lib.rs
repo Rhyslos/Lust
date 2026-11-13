@@ -96,6 +96,7 @@ mod native_ui {
     use crate::icons::{ICONS, ICON_ALIASES};
     include!("native_ui.rs");
     include!("native_ui_pieces.rs");
+    include!("native_ui_table.rs");
 }
 #[cfg(feature = "cli")]
 mod run;

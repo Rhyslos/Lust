@@ -1,0 +1,36 @@
+dump
+click Fill
+dump
+scroll list 1 1600000
+scroll table 1 1500000
+dump
+scroll list 1 99999999
+scroll table 1 99999999
+dump
+click Item 99999
+click Remove first
+dump
+focus list 1
+key pageup
+key pageup
+key up
+key enter
+scroll list 1 -64
+dump
+key home
+key pagedown
+dump
+focus input 3
+type X
+scroll list 1 64
+type Y
+scroll list 1 -64
+dump
+click N
+click N
+scroll table 1 -99999999
+dump
+click Item 99998
+dblclick Item 99998
+dump
+snapshot long-lists.snap.png

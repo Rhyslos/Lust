@@ -1,0 +1,45 @@
+-- 100,000 rows in a list and a table: only the rows on the screen are made.
+class Item {
+    has {
+        int n = 0;
+        string name = "";
+    }
+}
+
+assembly App {
+    has {
+        Item array items = [];
+        Item chosen = nothing;
+        Item picked = nothing;
+        string log = "";
+    }
+
+    view [title "Big", width 600, height 400] {
+        row [gap 8, pad 8] {
+            button "Fill" {
+                loop (int i = 0; i < 100000; i += 1) {
+                    items:inject(new Item { n = i, name = "Item " + i.text() });
+                }
+            }
+            button "Remove first" { items:remove(0); }
+            text log;
+        }
+        split {
+            list (Item i in items) [rowHeight 32, select chosen] {
+                row [gap 8, padX 8] {
+                    text i.name;
+                    input i.name [width 120];
+                }
+            } open {
+                log = "opened " + chosen.name;
+            }
+            table (Item i in items) [select picked, stripes] {
+                column "N" i.n [width 80];
+                column "Name" i.name;
+            }
+        }
+    }
+}
+
+App:open();
+end
