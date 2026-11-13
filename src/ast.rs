@@ -224,6 +224,18 @@ pub struct ViewDecl {
     pub body: Vec<Stmt>,
 }
 
+/// A block written after a piece of a view: `menu { item … }` (its items are pieces), or
+/// `press (vec2 at) { … }` and the like, whose block is code given a value.
+#[derive(Clone)]
+pub struct Attached {
+    /// menu, press, drag, release, hover or drop.
+    pub word: String,
+    /// What the block is given, and what it calls it: (vec2 at).
+    pub param: Option<(TypeRef, String, Pos)>,
+    pub body: Vec<Stmt>,
+    pub pos: Pos,
+}
+
 /// route "/api/v1" { get "/user/:id" => getUser; }
 #[allow(dead_code)]
 pub struct RouteDecl {
@@ -389,6 +401,9 @@ pub enum Stmt {
         /// What a dropdown or radio chooses from: dropdown size in ["S", "M"]; or a checkbox's
         /// or switch's words: switch sound "Sound";
         choices: Option<Expr>,
+        /// Blocks written after the piece, for the mouse: a right-click `menu { … }`, a canvas's
+        /// `press (vec2 at) { … }`, and a `drop (string array paths) { … }`'s own block.
+        extra: Vec<Attached>,
         pos: Pos,
     },
     /// send Hit(me, 10.0) to target;

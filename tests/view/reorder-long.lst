@@ -1,0 +1,27 @@
+-- Dragging rows in a list of 100,000: only the rows on the screen are made, the list scrolls
+-- by itself near its edge, and the picked row stays picked as it moves.
+assembly App {
+    has {
+        string array names = [];
+        string chosen = "";
+    }
+
+    view [title "Long", width 360, height 300] {
+        column [gap 8, pad 8] {
+            button "Fill" {
+                loop (int i = 0; i < 100000; i += 1) {
+                    names:inject("Row " + i.text());
+                }
+            }
+            list (string n in names) [reorder, select chosen, rowHeight 30] {
+                text n [padX 8];
+            }
+            is #names > 0? then {
+                text "Picked " + chosen + ", first " + names[0] + ", last " + names[#names - 1];
+            }
+        }
+    }
+}
+
+App:open();
+end

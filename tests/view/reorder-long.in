@@ -1,0 +1,23 @@
+click Fill
+scroll list 1 1500000
+click Row 50005
+dump
+drag "Row 50005" "Row 50003"
+dump
+key alt+up
+key alt+up
+dump
+press 100 70
+move 100 80
+move 100 252
+move 100 255
+move 100 258
+dump
+release 100 258
+dump
+key end
+key alt+down
+key home
+key alt+up
+key alt+down
+dump

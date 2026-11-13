@@ -1,0 +1,48 @@
+-- Right-click menus: on a piece, on a table's rows (picking the row first), from the keyboard,
+-- disabled, and closing.
+class Person {
+    has {
+        string name = "";
+        int age = 0;
+    }
+}
+
+assembly App {
+    has {
+        Person array people = [
+            new Person { name = "Ada", age = 36 },
+            new Person { name = "Bob", age = 7 },
+            new Person { name = "Cleo", age = 52 }
+        ];
+        Person chosen = nothing;
+        string log = "";
+        bool locked = true;
+    }
+
+    view [title "Menus", width 420, height 360] {
+        column [gap 8, pad 12] {
+            text "Notes" [bold] menu {
+                item "Copy" { log = "copied notes"; }
+                divider;
+                item "Paste" [disabled] { log = "pasted"; }
+            }
+            button "Save" { log = "saved"; } menu {
+                item "Save as" { log = "save as"; }
+            }
+            table (Person p in people) [select chosen, height 150] {
+                column "Name" p.name;
+                column "Age" p.age;
+            } menu {
+                item "Forget " + p.name { log = "forgot " + p.name; }
+                item "Older" { p.age = p.age + 1; }
+            }
+            text "Locked" [disabled locked] menu {
+                item "Unlock" { log = "unlocked"; }
+            }
+            text log;
+        }
+    }
+}
+
+App:open();
+end

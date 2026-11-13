@@ -1451,7 +1451,10 @@ impl<'a> Checker<'a> {
                     self.err(pos, "an item needs what it does: item \"Open\" { … }");
                 }
             }
-            ("menu", None) => self.err(pos, "a menu needs its name: menu \"File\" { item \"Open\" { … } }"),
+            ("menu", None) => self.err(
+                pos,
+                "a menu needs its name: menu \"File\" { item \"Open\" { … } }. A right-click menu goes right after its piece, in place of the ;: text \"Hi\" menu { item \"Copy\" { … } }",
+            ),
             ("tabs", None) => ctx.scopes.push(HashMap::new()),
             ("tab" | "branch", Some(a)) => {
                 let t = self.expr(a, ctx, Some(&Ty::Str));
@@ -1611,6 +1614,104 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// The blocks written after a piece for the mouse: a right-click `menu { … }`, a canvas's
+    /// `press`, `drag`, `release` and `hover`, and a `drop`'s own block.
+    fn attached(&mut self, kind: &str, extra: &[Attached], _pos: Pos, ctx: &mut Ctx) {
+        let shown = match kind {
+            "tablerow" => "table",
+            "listrow" => "list",
+            "piece" => "piece",
+            k => k,
+        };
+        let mut seen: Vec<&str> = Vec::new();
+        for a in extra {
+            let word = a.word.as_str();
+            if seen.contains(&word) {
+                self.err(
+                    a.pos,
+                    format!("a {shown} has one {word} {{ }}, and this is a second one. Put what they do in one."),
+                );
+            }
+            seen.push(word);
+            match word {
+                "menu" => {
+                    if matches!(
+                        kind,
+                        "menu" | "dropdown" | "item" | "divider" | "key" | "every" | "dialog" | "tab" | "drop" | "space" | "tablecolumn"
+                    ) {
+                        self.err(
+                            a.pos,
+                            format!("a {shown} can't have a right-click menu. Put it after a piece that shows on the screen: text \"Notes\" menu {{ item \"Copy\" {{ … }} }}"),
+                        );
+                    }
+                    fn has_item(body: &[Stmt]) -> bool {
+                        body.iter().any(|s| match s {
+                            Stmt::Element { kind, .. } => kind == "item",
+                            Stmt::Loop { body, .. } => has_item(body),
+                            Stmt::If { branches, otherwise, .. } => {
+                                branches.iter().any(|(_, b)| has_item(b)) || otherwise.as_deref().is_some_and(has_item)
+                            }
+                            Stmt::Match { arms, .. } => arms.iter().any(|m| has_item(&m.body)),
+                            _ => false,
+                        })
+                    }
+                    if !has_item(&a.body) {
+                        self.err(a.pos, "a right-click menu needs at least one item: menu { item \"Copy\" { … } }");
+                    }
+                    ctx.scopes.push(HashMap::new());
+                    self.menus += 1;
+                    for s in &a.body {
+                        self.stmt(s, ctx);
+                    }
+                    self.menus -= 1;
+                    ctx.scopes.pop();
+                }
+                "drop" => self.attached_block(
+                    a,
+                    Ty::Array(Box::new(Ty::Str)),
+                    "the paths of the files dropped, as a string array",
+                    "drop (string array paths) { … }",
+                    ctx,
+                ),
+                _ => {
+                    if kind != "canvas" {
+                        self.err(
+                            a.pos,
+                            format!("{word} is for the mouse on a canvas, so it goes right after a canvas's {{ }}: canvas [width 300, height 200] {{ … }} {word} (vec2 at) {{ … }}"),
+                        );
+                    }
+                    let example = format!("{word} (vec2 at) {{ … }}");
+                    self.attached_block(a, Ty::Vec2, "where the mouse is on the canvas, as a vec2", &example, ctx);
+                }
+            }
+        }
+    }
+
+    /// A block for the mouse, given a value: press (vec2 at) { … } or drop (string array paths) { … }.
+    fn attached_block(&mut self, a: &Attached, want: Ty, what: &str, example: &str, ctx: &mut Ctx) {
+        let was = std::mem::replace(&mut ctx.in_view, false);
+        ctx.scopes.push(HashMap::new());
+        match &a.param {
+            Some((t, name, p)) => {
+                let t = self.resolve(t);
+                let fits = t == want || t == Ty::Error;
+                if !fits {
+                    self.err(*p, format!("{} gives {what}, but this is {}: {example}", a.word, self.a(&t)));
+                }
+                // A copy of its own, so changing it is fine. When its type is wrong, what uses it
+                // isn't checked against either.
+                self.declare(ctx, name, if fits { want.clone() } else { Ty::Error }, *p, false);
+            }
+            None if a.word == "drop" => self.err(a.pos, format!("drop gives {what}: {example}")),
+            None => {}
+        }
+        for s in &a.body {
+            self.stmt(s, ctx);
+        }
+        ctx.scopes.pop();
+        ctx.in_view = was;
+    }
+
     /// table (Person p in people) [select chosen] { … } and list (…) { … }: the rows' source, the
     /// field the picked row goes in, and then each row.
     fn rows_piece(&mut self, kind: &str, style: &[StyleItem], children: &[Stmt], select: &Option<Expr>, ctx: &mut Ctx) {
@@ -1685,6 +1786,23 @@ impl<'a> Checker<'a> {
         }
         self.eval_styles(style, ctx);
         self.check_styles(style, kind);
+        // Dragging rows to new places changes the array's order, so only an array's rows can.
+        if let Some(it) = style.iter().find(|it| it.name == "reorder") {
+            if matches!(src, Ty::CMap(_) | Ty::Table(_) | Ty::Query(_)) {
+                let what = if matches!(src, Ty::CMap(_)) {
+                    "a cMap, whose rows are found by their key"
+                } else {
+                    "a database table, whose rows are found by their key"
+                };
+                self.err(
+                    it.pos,
+                    format!(
+                        "reorder drags rows to new places in an array, but {} is {what}, so its rows have no order of their own to change. Show an array instead.",
+                        describe(source)
+                    ),
+                );
+            }
+        }
         // A piece in a row stays with its row: by the row's key in a cMap or table, and by the
         // row itself in an array.
         let key = match &src {
@@ -1923,6 +2041,12 @@ impl<'a> Checker<'a> {
                     }
                     _ => self.err(it.pos, "icon takes the icon's name: icon \"trash\"."),
                 },
+                ("reorder", StyleValue::Flag) if kind == "table" || kind == "list" => {}
+                ("reorder", StyleValue::Flag) if !window => self.err(
+                    it.pos,
+                    "reorder lets the rows of a list or table be dragged to new places: list (Item i in items) [reorder] { … }",
+                ),
+                ("reorder", _) if !window => self.err(it.pos, "reorder is a word on its own, without a value: [reorder]"),
                 ("disabled", StyleValue::Flag) if !window => {}
                 ("disabled", StyleValue::Expr(e)) if !window => {
                     let t = self.info.ty(e);
@@ -2025,6 +2149,7 @@ impl<'a> Checker<'a> {
                                     "tip",
                                     "dark",
                                     "icon",
+                                    "reorder",
                                 ]
                                 .iter(),
                             )
@@ -2853,8 +2978,12 @@ impl<'a> Checker<'a> {
                 action,
                 enter,
                 choices,
+                extra,
                 pos,
-            } => self.element(kind, arg, style, children, action, enter, choices, *pos, ctx),
+            } => {
+                self.element(kind, arg, style, children, action, enter, choices, *pos, ctx);
+                self.attached(kind, extra, *pos, ctx);
+            }
             Stmt::SaveDecl { name, items, pos } => {
                 let top = ctx.class.is_none() && ctx.ret.is_none() && !ctx.in_hook;
                 if !top {

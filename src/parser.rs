@@ -62,7 +62,7 @@ pub const RESERVED: &[&str] = &[
 pub const ELEMENTS: &[&str] = &[
     "column", "row", "stack", "scroll", "space", "text", "button", "input", "checkbox", "slider", "image", "every", "key", "textarea",
     "dropdown", "menu", "item", "divider", "dialog", "grid", "split", "tabs", "tab", "branch", "progress", "canvas", "box", "circle",
-    "line", "radio", "switch", "number", "icon", "table", "list",
+    "line", "radio", "switch", "number", "icon", "table", "list", "drop",
 ];
 
 /// What a piece in a table's or list's row is known by when the rows come from an array: the
@@ -1013,8 +1013,13 @@ impl<'a> Parser<'a> {
                 action: None,
                 enter: None,
                 choices: value,
+                extra: vec![],
                 pos: t.pos,
             });
+        }
+        // drop (string array paths) { … } runs when files are dropped on the window.
+        if kind == "drop" {
+            return self.drop_piece(t.pos);
         }
         // Pieces that hold others in { }. A menu and a dialog take a value first too.
         let container = matches!(
@@ -1043,6 +1048,8 @@ impl<'a> Parser<'a> {
         let style = if self.at_sym("[") { self.style_list()? } else { vec![] };
         let mut children = Vec::new();
         let mut action = None;
+        // Ended with its ;, so what follows is a piece of its own.
+        let mut ended = false;
         let editable = matches!(kind.as_str(), "input" | "textarea");
         let enter_next = |p: &Self| editable && p.at_word("enter") && p.peek(1).is_sym("{");
         if !editable && self.at_word("enter") && self.peek(1).is_sym("{") {
@@ -1063,17 +1070,26 @@ impl<'a> Parser<'a> {
             }
         } else if container {
             return self.fail(t.pos, format!("a {kind} holds other pieces in {{ }}: {kind} {{ text \"Hi\"; }}"));
-        } else if !enter_next(self) {
+        } else if !enter_next(self) && !self.attach_next() {
             self.semi()?;
+            ended = true;
         }
-        // input name enter { add(); } runs its block when Enter is pressed in it.
+        // input name enter { add(); } runs its block when Enter is pressed in it, and blocks for
+        // the mouse can follow any piece: text "Hi" menu { item "Copy" { … } }
         let mut enter = None;
-        if enter_next(self) {
-            self.next();
-            let was = std::mem::replace(&mut self.in_view, false);
-            let b = self.block("what Enter does");
-            self.in_view = was;
-            enter = Some(b?);
+        let mut extra = Vec::new();
+        while !ended {
+            if enter_next(self) && enter.is_none() {
+                self.next();
+                let was = std::mem::replace(&mut self.in_view, false);
+                let b = self.block("what Enter does");
+                self.in_view = was;
+                enter = Some(b?);
+            } else if self.attach_next() {
+                extra.push(self.attached()?);
+            } else {
+                break;
+            }
         }
         // An input changes what it's bound to, then runs its block: input name { … } is
         // name = (what was typed); …
@@ -1100,7 +1116,101 @@ impl<'a> Parser<'a> {
             action,
             enter,
             choices,
+            extra,
             pos: t.pos,
+        })
+    }
+
+    /// Whether a block for the mouse comes next, after a piece: menu { … }, or press (vec2 at) { … }
+    /// and the like (the canvas's). `menu "File"` is a menu of its own, not one of these.
+    fn attach_next(&self) -> bool {
+        let Tk::Ident(w) = &self.cur().kind else { return false };
+        match w.as_str() {
+            "menu" => self.peek(1).is_sym("{"),
+            "press" | "drag" | "release" | "hover" => {
+                self.peek(1).is_sym("{")
+                    || (self.peek(1).is_sym("(") && matches!(self.peek(2).kind, Tk::Ident(_)) && matches!(self.peek(3).kind, Tk::Ident(_)))
+            }
+            _ => false,
+        }
+    }
+
+    /// menu { item "Copy" { … } } or press (vec2 at) { … }, after a piece.
+    fn attached(&mut self) -> R<Attached> {
+        let (word, pos) = self.ident("menu, press, drag, release or hover")?;
+        if word == "menu" {
+            let body = self.block("the menu")?;
+            return Ok(Attached {
+                word,
+                param: None,
+                body,
+                pos,
+            });
+        }
+        let param = if self.at_sym("(") {
+            Some(self.attached_param(&word)?)
+        } else {
+            None
+        };
+        let was = std::mem::replace(&mut self.in_view, false);
+        let b = self.block(&format!("what {word} does"));
+        self.in_view = was;
+        Ok(Attached {
+            word,
+            param,
+            body: b?,
+            pos,
+        })
+    }
+
+    /// (vec2 at): what a block for the mouse is given, and its name.
+    fn attached_param(&mut self, word: &str) -> R<(TypeRef, String, Pos)> {
+        let example = if word == "drop" {
+            "drop (string array paths) { … }"
+        } else {
+            "press (vec2 at) { … }"
+        };
+        let open = self.expect_sym("(", &format!("expected ( here: {example}"))?;
+        if matches!(self.cur().kind, Tk::Ident(_)) && self.peek(1).is_sym(")") {
+            let p = self.cur().pos;
+            return self.fail(p, format!("{word} gives a value with its type and a name for it: {example}"));
+        }
+        let _ = open;
+        let ty = self.ty()?;
+        let (name, npos) = self.ident(&format!("a name for what {word} gives, like {example}"))?;
+        check_name(self.diags, &name, npos, NameKind::Value, "variable");
+        self.expect_sym(")", &format!("expected ) here: {example}"))?;
+        Ok((ty, name, npos))
+    }
+
+    /// drop (string array paths) { … }: runs when files are dropped on the window.
+    fn drop_piece(&mut self, pos: Pos) -> R<Stmt> {
+        if !self.at_sym("(") {
+            return self.fail(
+                pos,
+                "drop runs when files are dropped on the window, and is given their paths: drop (string array paths) { … }",
+            );
+        }
+        let param = Some(self.attached_param("drop")?);
+        let was = std::mem::replace(&mut self.in_view, false);
+        let b = self.block("what drop does");
+        self.in_view = was;
+        let body = b?;
+        Ok(Stmt::Element {
+            kind: "drop".into(),
+            arg: None,
+            style: vec![],
+            children: vec![],
+            action: None,
+            enter: None,
+            choices: None,
+            extra: vec![Attached {
+                word: "drop".into(),
+                param,
+                body,
+                pos,
+            }],
+            pos,
         })
     }
 
@@ -1154,12 +1264,26 @@ impl<'a> Parser<'a> {
         }
         let body = self.block(&format!("the {kind}"))?;
         let mut enter = None;
-        if self.at_word("open") && self.peek(1).is_sym("{") {
-            self.next();
-            let was = std::mem::replace(&mut self.in_view, false);
-            let b = self.block("what opening a row does");
-            self.in_view = was;
-            enter = Some(b?);
+        // A right-click menu belongs to the rows, so it can use the row's variable.
+        let mut row_extra = Vec::new();
+        let mut extra = Vec::new();
+        loop {
+            if self.at_word("open") && self.peek(1).is_sym("{") && enter.is_none() {
+                self.next();
+                let was = std::mem::replace(&mut self.in_view, false);
+                let b = self.block("what opening a row does");
+                self.in_view = was;
+                enter = Some(b?);
+            } else if self.attach_next() {
+                let a = self.attached()?;
+                if a.word == "menu" {
+                    row_extra.push(a);
+                } else {
+                    extra.push(a);
+                }
+            } else {
+                break;
+            }
         }
         let (_, first, fpos) = vars[0].clone();
         let (action, picked) = match &select {
@@ -1186,6 +1310,7 @@ impl<'a> Parser<'a> {
             action,
             enter,
             choices: None,
+            extra: row_extra,
             pos,
         };
         let rows = Stmt::Loop {
@@ -1201,6 +1326,7 @@ impl<'a> Parser<'a> {
             action: None,
             enter: None,
             choices: select,
+            extra,
             pos,
         })
     }
@@ -1214,7 +1340,14 @@ impl<'a> Parser<'a> {
         let inits = if self.at_sym("{") { self.new_inits(&class) } else { Ok(vec![]) };
         self.in_view = was;
         let inits = inits?;
-        self.semi()?;
+        let mut extra = Vec::new();
+        if self.attach_next() {
+            while self.attach_next() {
+                extra.push(self.attached()?);
+            }
+        } else {
+            self.semi()?;
+        }
         let made = self.mk(class_pos, ExprKind::New { class, class_pos, inits });
         Ok(Stmt::Element {
             kind: "piece".into(),
@@ -1224,6 +1357,7 @@ impl<'a> Parser<'a> {
             action: None,
             enter: None,
             choices: None,
+            extra,
             pos: class_pos,
         })
     }
@@ -1745,6 +1879,13 @@ impl<'a> Parser<'a> {
             let used = self.peek(1).is_sym("=") || self.peek(1).is_sym(".") || self.peek(1).is_sym(":");
             if self.in_view && ELEMENTS.contains(&w.as_str()) && !used {
                 return self.element();
+            }
+            // press (vec2 at) { … } on its own, not right after a canvas.
+            if self.in_view && matches!(w.as_str(), "press" | "drag" | "release" | "hover") && self.attach_next() {
+                return self.fail(
+                    t.pos,
+                    format!("{w} goes right after a canvas's {{ }}, for the mouse on it: canvas [width 300, height 200] {{ … }} {w} (vec2 at) {{ … }}"),
+                );
             }
             if self.in_view
                 && w.starts_with(|c: char| c.is_ascii_uppercase())

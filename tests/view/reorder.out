@@ -1,0 +1,412 @@
+window "Order" 420x520
+  column 0,0 420x520
+    list 5 rows, showing 1–5 12,12 396x150 (reorder)
+      listrow 12,12 396x28
+        text "Wash" 12,17 40x19
+      listrow 12,40 396x28
+        text "Cook" 12,45 38x19
+      listrow 12,68 396x28
+        text "Shop" 12,73 37x19
+      listrow 12,96 396x28
+        text "Read" 12,101 37x19
+      listrow 12,124 396x28
+        text "Sleep" 12,129 40x19
+    table 4 rows, showing 1–4 12,170 396x160 (reorder)
+      thead 13,171 394x30
+        header "Name" 13,171 197x30
+        header "Age" 210,171 197x30
+      tablerow 13,201 394x31
+        celltext "Ada" 13,201 197x31
+        celltext "36" 210,201 197x31
+      tablerow 13,232 394x31
+        celltext "Bob" 13,232 197x31
+        celltext "7" 210,232 197x31
+      tablerow 13,263 394x31
+        celltext "Cleo" 13,263 197x31
+        celltext "52" 210,263 197x31
+      tablerow 13,294 394x31
+        celltext "Dan" 13,294 197x31
+        celltext "19" 210,294 197x31
+    text "Wash, Cook, Shop, Read, Sleep" 12,338 224x19
+    button "Freeze" 12,365 78x33
+window "Order" 420x520
+  column 0,0 420x520
+    list 5 rows, showing 1–5 12,12 396x150 (reorder) (focus)
+      listrow 12,12 396x28
+        text "Cook" 12,17 38x19
+      listrow 12,40 396x28
+        text "Shop" 12,45 37x19
+      listrow 12,68 396x28 (picked)
+        text "Wash" 12,73 40x19
+      listrow 12,96 396x28
+        text "Read" 12,101 37x19
+      listrow 12,124 396x28
+        text "Sleep" 12,129 40x19
+    table 4 rows, showing 1–4 12,170 396x160 (reorder)
+      thead 13,171 394x30
+        header "Name" 13,171 197x30
+        header "Age" 210,171 197x30
+      tablerow 13,201 394x31
+        celltext "Ada" 13,201 197x31
+        celltext "36" 210,201 197x31
+      tablerow 13,232 394x31
+        celltext "Bob" 13,232 197x31
+        celltext "7" 210,232 197x31
+      tablerow 13,263 394x31
+        celltext "Cleo" 13,263 197x31
+        celltext "52" 210,263 197x31
+      tablerow 13,294 394x31
+        celltext "Dan" 13,294 197x31
+        celltext "19" 210,294 197x31
+    text "Cook, Shop, Wash, Read, Sleep" 12,338 224x19
+    button "Freeze" 12,365 78x33
+window "Order" 420x520
+  column 0,0 420x520
+    list 5 rows, showing 1–5 12,12 396x150 (reorder) (focus)
+      listrow 12,12 396x28 (picked)
+        text "Sleep" 12,17 40x19
+      listrow 12,40 396x28
+        text "Cook" 12,45 38x19
+      listrow 12,68 396x28
+        text "Shop" 12,73 37x19
+      listrow 12,96 396x28
+        text "Wash" 12,101 40x19
+      listrow 12,124 396x28
+        text "Read" 12,129 37x19
+    table 4 rows, showing 1–4 12,170 396x160 (reorder)
+      thead 13,171 394x30
+        header "Name" 13,171 197x30
+        header "Age" 210,171 197x30
+      tablerow 13,201 394x31
+        celltext "Ada" 13,201 197x31
+        celltext "36" 210,201 197x31
+      tablerow 13,232 394x31
+        celltext "Bob" 13,232 197x31
+        celltext "7" 210,232 197x31
+      tablerow 13,263 394x31
+        celltext "Cleo" 13,263 197x31
+        celltext "52" 210,263 197x31
+      tablerow 13,294 394x31
+        celltext "Dan" 13,294 197x31
+        celltext "19" 210,294 197x31
+    text "Sleep, Cook, Shop, Wash, Read" 12,338 224x19
+    button "Freeze" 12,365 78x33
+window "Order" 420x520
+  column 0,0 420x520
+    list 5 rows, showing 1–5 12,12 396x150 (reorder) (focus)
+      listrow 12,12 396x28 (picked)
+        text "Sleep" 12,17 40x19
+      listrow 12,40 396x28
+        text "Cook" 12,45 38x19
+      listrow 12,68 396x28
+        text "Shop" 12,73 37x19
+      listrow 12,96 396x28
+        text "Wash" 12,101 40x19
+      listrow 12,124 396x28
+        text "Read" 12,129 37x19
+    table 4 rows, showing 1–4 12,170 396x160 (reorder)
+      thead 13,171 394x30
+        header "Name" 13,171 197x30
+        header "Age" 210,171 197x30
+      tablerow 13,201 394x31
+        celltext "Ada" 13,201 197x31
+        celltext "36" 210,201 197x31
+      tablerow 13,232 394x31
+        celltext "Bob" 13,232 197x31
+        celltext "7" 210,232 197x31
+      tablerow 13,263 394x31
+        celltext "Cleo" 13,263 197x31
+        celltext "52" 210,263 197x31
+      tablerow 13,294 394x31
+        celltext "Dan" 13,294 197x31
+        celltext "19" 210,294 197x31
+    text "Sleep, Cook, Shop, Wash, Read" 12,338 224x19
+    button "Freeze" 12,365 78x33
+dragging row 1, landing before row 4
+window "Order" 420x520
+  column 0,0 420x520
+    list 5 rows, showing 1–5 12,12 396x150 (reorder) (focus)
+      listrow 12,12 396x28 (picked)
+        text "Sleep" 12,17 40x19
+      listrow 12,40 396x28
+        text "Cook" 12,45 38x19
+      listrow 12,68 396x28
+        text "Shop" 12,73 37x19
+      listrow 12,96 396x28
+        text "Wash" 12,101 40x19
+      listrow 12,124 396x28
+        text "Read" 12,129 37x19
+    table 4 rows, showing 1–4 12,170 396x160 (reorder)
+      thead 13,171 394x30
+        header "Name" 13,171 197x30
+        header "Age" 210,171 197x30
+      tablerow 13,201 394x31
+        celltext "Ada" 13,201 197x31
+        celltext "36" 210,201 197x31
+      tablerow 13,232 394x31
+        celltext "Bob" 13,232 197x31
+        celltext "7" 210,232 197x31
+      tablerow 13,263 394x31
+        celltext "Cleo" 13,263 197x31
+        celltext "52" 210,263 197x31
+      tablerow 13,294 394x31
+        celltext "Dan" 13,294 197x31
+        celltext "19" 210,294 197x31
+    text "Sleep, Cook, Shop, Wash, Read" 12,338 224x19
+    button "Freeze" 12,365 78x33
+window "Order" 420x520
+  column 0,0 420x520
+    list 5 rows, showing 1–5 12,12 396x150 (reorder) (focus)
+      listrow 12,12 396x28
+        text "Cook" 12,17 38x19
+      listrow 12,40 396x28
+        text "Shop" 12,45 37x19
+      listrow 12,68 396x28 (picked)
+        text "Sleep" 12,73 40x19
+      listrow 12,96 396x28
+        text "Wash" 12,101 40x19
+      listrow 12,124 396x28
+        text "Read" 12,129 37x19
+    table 4 rows, showing 1–4 12,170 396x160 (reorder)
+      thead 13,171 394x30
+        header "Name" 13,171 197x30
+        header "Age" 210,171 197x30
+      tablerow 13,201 394x31
+        celltext "Ada" 13,201 197x31
+        celltext "36" 210,201 197x31
+      tablerow 13,232 394x31
+        celltext "Bob" 13,232 197x31
+        celltext "7" 210,232 197x31
+      tablerow 13,263 394x31
+        celltext "Cleo" 13,263 197x31
+        celltext "52" 210,263 197x31
+      tablerow 13,294 394x31
+        celltext "Dan" 13,294 197x31
+        celltext "19" 210,294 197x31
+    text "Cook, Shop, Sleep, Wash, Read" 12,338 224x19
+    button "Freeze" 12,365 78x33
+window "Order" 420x520
+  column 0,0 420x520
+    list 5 rows, showing 1–5 12,12 396x150 (reorder)
+      listrow 12,12 396x28
+        text "Cook" 12,17 38x19
+      listrow 12,40 396x28
+        text "Shop" 12,45 37x19
+      listrow 12,68 396x28 (picked)
+        text "Sleep" 12,73 40x19
+      listrow 12,96 396x28
+        text "Wash" 12,101 40x19
+      listrow 12,124 396x28
+        text "Read" 12,129 37x19
+    table 4 rows, showing 1–4 12,170 396x160 (reorder) (focus)
+      thead 13,171 394x30
+        header "Name" 13,171 197x30
+        header "Age" 210,171 197x30
+      tablerow 13,201 394x31
+        celltext "Ada" 13,201 197x31
+        celltext "36" 210,201 197x31
+      tablerow 13,232 394x31
+        celltext "Cleo" 13,232 197x31
+        celltext "52" 210,232 197x31
+      tablerow 13,263 394x31
+        celltext "Dan" 13,263 197x31
+        celltext "19" 210,263 197x31
+      tablerow 13,294 394x31 (picked)
+        celltext "Bob" 13,294 197x31
+        celltext "7" 210,294 197x31
+    text "Cook, Shop, Sleep, Wash, Read" 12,338 224x19
+    button "Freeze" 12,365 78x33
+    text "Picked Bob" 12,406 81x19
+window "Order" 420x520
+  column 0,0 420x520
+    list 5 rows, showing 1–5 12,12 396x150 (reorder)
+      listrow 12,12 396x28
+        text "Cook" 12,17 38x19
+      listrow 12,40 396x28
+        text "Shop" 12,45 37x19
+      listrow 12,68 396x28 (picked)
+        text "Sleep" 12,73 40x19
+      listrow 12,96 396x28
+        text "Wash" 12,101 40x19
+      listrow 12,124 396x28
+        text "Read" 12,129 37x19
+    table 4 rows, showing 1–4 12,170 396x160 (reorder) (focus)
+      thead 13,171 394x30
+        header "Name" 13,171 197x30
+        header "Age" 210,171 197x30
+      tablerow 13,201 394x31
+        celltext "Ada" 13,201 197x31
+        celltext "36" 210,201 197x31
+      tablerow 13,232 394x31
+        celltext "Cleo" 13,232 197x31
+        celltext "52" 210,232 197x31
+      tablerow 13,263 394x31 (picked)
+        celltext "Bob" 13,263 197x31
+        celltext "7" 210,263 197x31
+      tablerow 13,294 394x31
+        celltext "Dan" 13,294 197x31
+        celltext "19" 210,294 197x31
+    text "Cook, Shop, Sleep, Wash, Read" 12,338 224x19
+    button "Freeze" 12,365 78x33
+    text "Picked Bob" 12,406 81x19
+window "Order" 420x520
+  column 0,0 420x520
+    list 5 rows, showing 1–5 12,12 396x150 (reorder)
+      listrow 12,12 396x28
+        text "Cook" 12,17 38x19
+      listrow 12,40 396x28
+        text "Shop" 12,45 37x19
+      listrow 12,68 396x28 (picked)
+        text "Sleep" 12,73 40x19
+      listrow 12,96 396x28
+        text "Wash" 12,101 40x19
+      listrow 12,124 396x28
+        text "Read" 12,129 37x19
+    table 4 rows, showing 1–4 12,170 396x160 (reorder) (focus)
+      thead 13,171 394x30
+        header "Name" 13,171 197x30
+        header "Age" 210,171 197x30
+      tablerow 13,201 394x31
+        celltext "Ada" 13,201 197x31
+        celltext "36" 210,201 197x31
+      tablerow 13,232 394x31
+        celltext "Cleo" 13,232 197x31
+        celltext "52" 210,232 197x31
+      tablerow 13,263 394x31 (picked)
+        celltext "Bob" 13,263 197x31
+        celltext "7" 210,263 197x31
+      tablerow 13,294 394x31
+        celltext "Dan" 13,294 197x31
+        celltext "19" 210,294 197x31
+    text "Cook, Shop, Sleep, Wash, Read" 12,338 224x19
+    button "Freeze" 12,365 78x33
+    text "Picked Bob" 12,406 81x19
+dragging row 1, landing before row 4
+window "Order" 420x520
+  column 0,0 420x520
+    list 5 rows, showing 1–5 12,12 396x150 (reorder)
+      listrow 12,12 396x28
+        text "Cook" 12,17 38x19
+      listrow 12,40 396x28
+        text "Shop" 12,45 37x19
+      listrow 12,68 396x28 (picked)
+        text "Sleep" 12,73 40x19
+      listrow 12,96 396x28
+        text "Wash" 12,101 40x19
+      listrow 12,124 396x28
+        text "Read" 12,129 37x19
+    table 4 rows, showing 1–4 12,170 396x160 (reorder) (focus)
+      thead 13,171 394x30
+        header "Name" 13,171 197x30
+        header "Age" 210,171 197x30
+      tablerow 13,201 394x31
+        celltext "Cleo" 13,201 197x31
+        celltext "52" 210,201 197x31
+      tablerow 13,232 394x31
+        celltext "Bob" 13,232 197x31
+        celltext "7" 210,232 197x31
+      tablerow 13,263 394x31 (picked)
+        celltext "Ada" 13,263 197x31
+        celltext "36" 210,263 197x31
+      tablerow 13,294 394x31
+        celltext "Dan" 13,294 197x31
+        celltext "19" 210,294 197x31
+    text "Cook, Shop, Sleep, Wash, Read" 12,338 224x19
+    button "Freeze" 12,365 78x33
+    text "Picked Ada" 12,406 81x19
+window "Order" 420x520
+  column 0,0 420x520
+    list 5 rows, showing 1–5 12,12 396x150 (reorder)
+      listrow 12,12 396x28
+        text "Cook" 12,17 38x19
+      listrow 12,40 396x28
+        text "Shop" 12,45 37x19
+      listrow 12,68 396x28 (picked)
+        text "Sleep" 12,73 40x19
+      listrow 12,96 396x28
+        text "Wash" 12,101 40x19
+      listrow 12,124 396x28
+        text "Read" 12,129 37x19
+    table 4 rows, showing 1–4 12,170 396x160 (reorder) (focus)
+      thead 13,171 394x30
+        header "Name" 13,171 197x30
+        header "Age" (sorted rising) 210,171 197x30
+      tablerow 13,201 394x31
+        celltext "Bob" 13,201 197x31
+        celltext "7" 210,201 197x31
+      tablerow 13,232 394x31
+        celltext "Dan" 13,232 197x31
+        celltext "19" 210,232 197x31
+      tablerow 13,263 394x31 (picked)
+        celltext "Ada" 13,263 197x31
+        celltext "36" 210,263 197x31
+      tablerow 13,294 394x31
+        celltext "Cleo" 13,294 197x31
+        celltext "52" 210,294 197x31
+    text "Cook, Shop, Sleep, Wash, Read" 12,338 224x19
+    button "Freeze" 12,365 78x33
+    text "Picked Ada" 12,406 81x19
+window "Order" 420x520
+  column 0,0 420x520
+    list 5 rows, showing 1–5 12,12 396x150 (reorder)
+      listrow 12,12 396x28
+        text "Cook" 12,17 38x19
+      listrow 12,40 396x28
+        text "Shop" 12,45 37x19
+      listrow 12,68 396x28 (picked)
+        text "Sleep" 12,73 40x19
+      listrow 12,96 396x28
+        text "Wash" 12,101 40x19
+      listrow 12,124 396x28
+        text "Read" 12,129 37x19
+    table 4 rows, showing 1–4 12,170 396x160 (reorder) (focus)
+      thead 13,171 394x30
+        header "Name" 13,171 197x30
+        header "Age" 210,171 197x30
+      tablerow 13,201 394x31
+        celltext "Cleo" 13,201 197x31
+        celltext "52" 210,201 197x31
+      tablerow 13,232 394x31
+        celltext "Bob" 13,232 197x31
+        celltext "7" 210,232 197x31
+      tablerow 13,263 394x31
+        celltext "Dan" 13,263 197x31
+        celltext "19" 210,263 197x31
+      tablerow 13,294 394x31 (picked)
+        celltext "Ada" 13,294 197x31
+        celltext "36" 210,294 197x31
+    text "Cook, Shop, Sleep, Wash, Read" 12,338 224x19
+    button "Freeze" 12,365 78x33
+    text "Picked Ada" 12,406 81x19
+window "Order" 420x520
+  column 0,0 420x520
+    list 5 rows, showing 1–5 12,12 396x150 (disabled)
+      listrow 12,12 396x28
+        text "Cook" 12,17 38x19
+      listrow 12,40 396x28
+        text "Shop" 12,45 37x19
+      listrow 12,68 396x28 (picked)
+        text "Sleep" 12,73 40x19
+      listrow 12,96 396x28
+        text "Wash" 12,101 40x19
+      listrow 12,124 396x28
+        text "Read" 12,129 37x19
+    table 4 rows, showing 1–4 12,170 396x160 (reorder)
+      thead 13,171 394x30
+        header "Name" 13,171 197x30
+        header "Age" 210,171 197x30
+      tablerow 13,201 394x31
+        celltext "Cleo" 13,201 197x31
+        celltext "52" 210,201 197x31
+      tablerow 13,232 394x31
+        celltext "Bob" 13,232 197x31
+        celltext "7" 210,232 197x31
+      tablerow 13,263 394x31
+        celltext "Dan" 13,263 197x31
+        celltext "19" 210,263 197x31
+      tablerow 13,294 394x31 (picked)
+        celltext "Ada" 13,294 197x31
+        celltext "36" 210,294 197x31
+    text "Cook, Shop, Sleep, Wash, Read" 12,338 224x19
+    button "Freeze" 12,365 78x33
+    text "Picked Ada" 12,406 81x19

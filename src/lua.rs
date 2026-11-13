@@ -367,6 +367,68 @@ impl<'a> W<'a> {
         }
     }
 
+    /// Like `action`, for a block given a value from the window: `params` are the Lua function's
+    /// own, `prologue` turns them into the block's variable, and `own` are its Lust names.
+    fn action_given(&mut self, ln: u32, slot: &str, params: &str, prologue: Option<String>, own: &[String], body: &[Stmt]) {
+        let copies: Vec<String> = crate::rust::captures(body, own, self.info).iter().map(|c| lname(c)).collect();
+        let c = copies.join(", ");
+        if copies.is_empty() {
+            self.line(ln, &format!("{slot} = function({params})"));
+        } else {
+            self.line(ln, &format!("{slot} = (function({c}) return function({params})"));
+        }
+        self.indent += 1;
+        if let Some(p) = prologue {
+            self.line(ln, &p);
+        }
+        let saved = std::mem::take(&mut self.loops);
+        self.stmts(body);
+        self.loops = saved;
+        self.indent -= 1;
+        if copies.is_empty() {
+            self.line(ln, "end");
+        } else {
+            self.line(ln, &format!("end end)({c})"));
+        }
+    }
+
+    /// A piece's blocks for the mouse: its right-click menu's items go in `.m`; a canvas's press,
+    /// drag, release and hover in `.P`, `.D`, `.U` and `.H`; and a drop's block in `.X`.
+    fn attached(&mut self, ln: u32, v: &str, extra: &[crate::ast::Attached]) {
+        for a in extra {
+            if a.word == "menu" {
+                let m = self.fresh("m");
+                self.line(ln, "do");
+                self.indent += 1;
+                self.line(ln, &format!("local {m} = {{k = \"menu\", t = \"\", s = {{}}, c = {{}}}}"));
+                self.view_parent.push(m.clone());
+                self.stmts(&a.body);
+                self.view_parent.pop();
+                self.line(ln, &format!("{v}.m = {m}.c"));
+                self.indent -= 1;
+                self.line(ln, "end");
+                continue;
+            }
+            let slot = match a.word.as_str() {
+                "press" => "P",
+                "drag" => "D",
+                "release" => "U",
+                "hover" => "H",
+                _ => "X",
+            };
+            let own: Vec<String> = a.param.iter().map(|(_, n, _)| n.clone()).collect();
+            let (params, prologue) = match &a.param {
+                Some((_, name, _)) if a.word == "drop" => (
+                    "...".to_string(),
+                    Some(format!("local {} = _L.arr({{...}}, select(\"#\", ...))", lname(name))),
+                ),
+                Some((_, name, _)) => ("_px, _py".to_string(), Some(format!("local {} = _L.vec2(_px, _py)", lname(name)))),
+                None => (String::new(), None),
+            };
+            self.action_given(ln, &format!("{v}.{slot}"), &params, prologue, &own, &a.body);
+        }
+    }
+
     /// table (Person p in people) { … } and list (…) { … }: only the rows on the screen are made.
     /// Lust is asked which those are (`ui_list_range`), after the rows are put in the order shown
     /// (sorted, when a header was clicked) and the picked row is found.
@@ -384,6 +446,7 @@ impl<'a> W<'a> {
             arg: picked,
             action,
             enter,
+            extra: row_extra,
             ..
         }) = body.first()
         else {
@@ -538,6 +601,10 @@ impl<'a> W<'a> {
         }
         self.line(ln, &format!("local {first}, {last} = _L.ui_list_range({id})"));
         self.line(ln, &format!("{v}.L = {{{id}, {n}, {first}, {pick}}}"));
+        // [reorder]: a row dragged from one place to another moves in the array itself.
+        if cmap_cols.is_none() && style.iter().any(|it| it.name == "reorder") {
+            self.line(ln, &format!("{v}.R = function(a, b) _L.amove({src}, a, b) end"));
+        }
         // The headers, then the rows on the screen.
         for c in &columns {
             if let Stmt::Element {
@@ -626,6 +693,7 @@ impl<'a> W<'a> {
         if let Some(a) = enter {
             self.action(ln, &format!("{r}.e"), "", a);
         }
+        self.attached(ln, &r, row_extra);
         self.indent -= 1;
         self.line(ln, "end");
         self.indent -= 1;
@@ -1121,6 +1189,7 @@ impl<'a> W<'a> {
                 action,
                 enter,
                 choices,
+                extra,
                 ..
             } => {
                 let parent = self.view_parent.last().cloned().unwrap_or_else(|| "v0".into());
@@ -1162,6 +1231,7 @@ impl<'a> W<'a> {
                             lua_string(crate::ast::shown(class))
                         ),
                     );
+                    self.attached(ln, &format!("{p}v"), extra);
                     self.line(ln, &format!("{parent}.c[#{parent}.c + 1] = {p}v"));
                     self.indent -= 1;
                     self.line(ln, "end");
@@ -1216,6 +1286,7 @@ impl<'a> W<'a> {
                 if let Some(a) = enter {
                     self.action(ln, &format!("{v}.e"), "", a);
                 }
+                self.attached(ln, &v, extra);
                 self.indent -= 1;
                 self.line(ln, "end");
             }

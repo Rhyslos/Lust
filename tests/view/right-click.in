@@ -1,0 +1,34 @@
+rightclick Notes
+dump
+click Copy
+rightclick Notes
+key down
+key down
+key enter
+rightclick Save
+key down
+key enter
+rightclick Bob
+dump
+click Forget Bob
+rightclick Cleo
+key escape
+dump
+rightclick Ada
+press 400 340
+release 400 340
+dump
+focus table 1
+key down
+key shift+f10
+key down
+key down
+key enter
+dump
+focus button 1
+key menu
+dump
+rightclick Locked
+rightclick 300 300
+dump
+snapshot right-click.snap.png

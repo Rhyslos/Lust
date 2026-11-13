@@ -1806,6 +1806,15 @@ pub fn text_slice(s: String, from: i64, to: i64) -> String {
 }
 
 // Arrays.
+/// Moves an item from place `from` to place `to`, the ones between shifting over: a row dragged to
+/// a new place in a list.
+pub fn array_move<T>(a: &Arr<T>, from: usize, to: usize) {
+    let mut v = a.borrow_mut();
+    if from < v.len() && to < v.len() && from != to {
+        let x = v.remove(from);
+        v.insert(to, x);
+    }
+}
 pub fn array_join(a: Arr<String>, sep: String) -> String {
     a.borrow().join(&sep)
 }

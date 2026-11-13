@@ -1,0 +1,39 @@
+-- Files dropped on the window: the drop block runs once with all their paths, the one in an
+-- open dialog first, and a soft edge shows while files are held over the window.
+assembly App {
+    has {
+        string array files = [];
+        string log = "";
+        bool asking = false;
+    }
+
+    view [title "Drop", width 360, height 260, dark asking] {
+        column [gap 8, pad 12] {
+            text "Drop files here";
+            drop (string array paths) {
+                loop (string p in paths) {
+                    files:inject(p);
+                }
+                log = (#paths).text() + " dropped";
+            }
+            loop (string f in files) {
+                text f;
+            }
+            text log;
+            button "Ask" { asking = true; }
+            dialog asking {
+                text "Drop a picture";
+                drop (string array paths) {
+                    log = "the dialog got " + paths[0];
+                    asking = false;
+                }
+            }
+        }
+        drop (string array paths) {
+            log = "the second drop block never runs";
+        }
+    }
+}
+
+App:open();
+end

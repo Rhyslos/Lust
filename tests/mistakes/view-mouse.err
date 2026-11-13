@@ -1,0 +1,14 @@
+view-mouse.lsc:18:23  a right-click menu needs at least one item: menu { item "Copy" { … } }
+view-mouse.lsc:19:23  a right-click menu needs at least one item: menu { item "Copy" { … } }
+view-mouse.lsc:22:23  drop gives the paths of the files dropped, as a string array, but this is an int: drop (string array paths) { … }
+view-mouse.lsc:25:13  drop runs when files are dropped on the window, and is given their paths: drop (string array paths) { … }
+view-mouse.lsc:28:29  press gives where the mouse is on the canvas, as a vec2, but this is a string: press (vec2 at) { … }
+view-mouse.lsc:32:15  a canvas has one drag { }, and this is a second one. Put what they do in one.
+view-mouse.lsc:37:41  press is for the mouse on a canvas, so it goes right after a canvas's { }: canvas [width 300, height 200] { … } press (vec2 at) { … }
+view-mouse.lsc:43:40  reorder is a word on its own, without a value: [reorder]
+view-mouse.lsc:46:50  reorder drags rows to new places in an array, but shop is a cMap, whose rows are found by their key, so its rows have no order of their own to change. Show an array instead.
+view-mouse.lsc:49:26  reorder lets the rows of a list or table be dragged to new places: list (Item i in items) [reorder] { … }
+view-mouse.lsc:50:45  a key can't have a right-click menu. Put it after a piece that shows on the screen: text "Notes" menu { item "Copy" { … } }
+view-mouse.lsc:54:13  a menu needs its name: menu "File" { item "Open" { … } }. A right-click menu goes right after its piece, in place of the ;: text "Hi" menu { item "Copy" { … } }
+
+12 mistakes. Nothing was run.

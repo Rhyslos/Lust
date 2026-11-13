@@ -1,0 +1,48 @@
+window "Paint" 400x320
+  column 0,0 400x251
+    canvas 12,12 300x200 (menu) (press, drag, release, hover)
+      box 222,32 40x40
+    text " | over  | 0 dots, 0 strokes" 12,220 183x19
+window "Paint" 400x320
+  column 0,0 400x251
+    canvas 12,12 300x200 (menu) (press, drag, release, hover)
+      box 222,32 40x40
+    text " | over 28.0, 28.0 | 0 dots, 0 strokes" 12,220 256x19
+window "Paint" 400x320
+  column 0,0 400x270
+    canvas 12,12 300x200 (menu) (press, drag, release, hover)
+      circle 37,37 6x6
+      circle 57,42 6x6
+      circle 77,47 6x6
+      circle 397,297 6x6
+      box 222,32 40x40
+    text "up at 378.0, 278.0 | over 28.0, 28.0 | 4 dots, 1 strokes" 12,220 326x38
+window "Paint" 400x320
+  column 0,0 400x297
+    canvas 12,12 300x200 (menu) (press, drag, release, hover)
+      circle 37,37 6x6
+      circle 57,42 6x6
+      circle 77,47 6x6
+      circle 397,297 6x6
+      box 222,32 40x40
+    text "up at 378.0, 278.0 | over 28.0, 28.0 | 4 dots, 1 strokes" 12,220 326x38
+    text "box clicked" 12,266 82x19
+window "Paint" 400x320
+  column 0,0 400x297
+    canvas 12,12 300x200 (menu) (press, drag, release, hover)
+      circle 37,37 6x6
+      circle 57,42 6x6
+      circle 77,47 6x6
+      circle 397,297 6x6
+      box 222,32 40x40
+    text "up at 378.0, 278.0 | over 28.0, 28.0 | 4 dots, 1 strokes" 12,220 326x38
+    text "box clicked" 12,266 82x19
+  layer "popup" 0,0 400x320
+    scroll 102,102 160x39 (scrolled 0 of 0)
+      item "Clear" 106,106 152x31
+window "Paint" 400x320
+  column 0,0 400x278
+    canvas 12,12 300x200 (menu) (press, drag, release, hover)
+      box 222,32 40x40
+    text "cleared | over 28.0, 28.0 | 0 dots, 1 strokes" 12,220 305x19
+    text "box clicked" 12,247 82x19
