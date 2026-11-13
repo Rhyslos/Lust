@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (alpha 70):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, tables and long lists, right-click menus, rows dragged to new places, dropped files, the mouse on a canvas, scrolling, pictures (SVG too), timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (alpha 71):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, tables and long lists, right-click menus, rows dragged to new places, dropped files, the mouse on a canvas, scrolling, pictures (SVG too), timers, keyboard shortcuts, fonts of your own, and date and colour pickers, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -785,6 +785,7 @@ An assembly with a `view` opens a window with `App:open();`, through `lust run` 
 - **Pieces:** `column`, `row`, `stack`, `space`, `text` and `button`. A button's `{ }` runs when it's clicked, and the window redraws afterwards. Like a hook, it keeps the values of the variables around it as they were when it was drawn, so a button made in a loop sees that time round's values.
 - **Scrolling, pictures and timers:** `scroll`, `image` and `every` (see below).
 - **Inputs:** `input`, `textarea` (several lines), `checkbox`, `switch`, `radio`, `number` and `slider`, each bound to a field (see below), with the mouse, the keyboard and the clipboard.
+- **Pickers:** `datePicker` for a date, with a month's calendar, and `colourPicker` for a colour, with a square of colours, a hue strip and swatches (see below).
 - **Icons:** `icon "trash"`, from a built-in set of about 150, on their own or in buttons (see below).
 - **Your own pieces:** any assembly with a view, used inside another view as `TodoRow { label = task };`, from the same file or fetched from files in `ui/` folders (see below).
 - **Styles and layout:** every word in the list below, `hover:[ … ]` included, plus named styles (`style chip = [pad 6, round];`). Text wraps onto more lines when it doesn't fit.
@@ -847,6 +848,11 @@ end
 | `click Medium`, `click Sound` | clicks a radio button, or a checkbox or switch, by its words |
 | `wheel 1 up`, `wheel 1 down` | turns the mouse wheel one notch over the first number box (it changes only while the box has focus) |
 | `slide 1 70` | drags the first slider to 70 |
+| `open datePicker 1`, `open colourPicker 2` | opens the first date picker's calendar (clicking its icon), or the second colour picker |
+| `today 2026-11-13` | the date a date picker takes as today, so a test gives the same every day |
+| `pickday 14` | clicks the 14th of the month the open calendar shows; `click Today`, `click ‹`, `click ›`, `click November 2026` (its title), `click Feb` and `click 2030` click its other parts |
+| `pickcolour 0.5 0.2`, `hue 0.6`, `alpha 0.5` | clicks the open colour picker's square (half way across, a fifth of the way down), its hue strip, or its alpha strip, by how far along each is from 0 to 1 |
+| `swatch 3` | clicks the open colour picker's third swatch |
 | `press 40 20`, `move 90 20`, `release 90 20`, `dblclick 40 20` | the mouse, at a place in the window (a canvas's `press`, `drag`, `release` and `hover` run from these; `move` with nothing held is hovering) |
 | `scroll 1 100` | scrolls the first scroll down 100 (up with a minus) |
 | `wait 2.5` | lets 2.5 seconds go by on the test's own clock, running the timers that come due |
@@ -979,7 +985,7 @@ assembly Settings {
 }
 ```
 
-- **What they change.** An `input` changes a string, a `checkbox` or `switch` a bool, a `radio` a string or a state (like a dropdown), and a `slider` or `number` an int or a float. It's bound to a field (or a field of something, like `todos[id].task`), not a variable of the view, because the view's variables are made again each time it's drawn.
+- **What they change.** An `input` changes a string, a `checkbox` or `switch` a bool, a `radio` a string or a state (like a dropdown), a `slider` or `number` an int or a float, a `datePicker` a string holding a date, and a `colourPicker` a colour. It's bound to a field (or a field of something, like `todos[id].task`), not a variable of the view, because the view's variables are made again each time it's drawn.
 - **Styles of their own:** `placeholder "…"` is what an empty input shows. A slider goes `from` one number `to` another, one `step` at a time (`step 0` slides smoothly). A colour word colours a checkbox's tick and a slider's bar: `slider volume [purple]`. Inputs are 220 wide and sliders 200 unless they're given a `width`.
 - **The mouse:** click to put the caret somewhere, drag to select, double-click for a word, three clicks for everything, Shift+click to select up to there. Drag a slider's knob, or click anywhere along it.
 - **The keyboard:** Tab and Shift+Tab move between inputs, checkboxes, sliders and buttons, and what has focus gets a ring. In an input: the arrows, Home and End (with Shift to select, and with Ctrl, or Option on a Mac, to go by words), Backspace and Delete, and Ctrl+A, C, X and V (Cmd on a Mac) to select all, copy, cut and paste. Space ticks a checkbox and presses a button, and so does Enter on a button. The arrows move a slider by one step. Escape takes focus away.
@@ -993,7 +999,7 @@ assembly Settings {
 | Showing parts | `tabs` with `tab`, `branch` |
 | Drawing | `canvas` with `box`, `circle`, `line` |
 | Content | `text`, `button`, `input`, `textarea`, `checkbox`, `switch`, `number`, `slider`, `image`, `icon`, `progress` |
-| Choosing | `dropdown`, `radio`, `menu` with `item` and `divider` |
+| Choosing | `dropdown`, `radio`, `menu` with `item` and `divider`, `datePicker`, `colourPicker` |
 | Over the view | `dialog` |
 | Time, keys and files | `every`, `key`, `drop` |
 
@@ -1210,6 +1216,44 @@ number price [step 0.5, min 0] { total = price * amount; }
 - **The arrows** (the up and down ones on the box, the Up and Down keys, and the mouse wheel over the box while it has focus) move the number one `step` up or down, 1 unless told otherwise, and keep it between `min` and `max`. The wheel only works on a box with focus, as on Windows, so scrolling down a long form doesn't change a number on the way past.
 - A number box is 120 wide unless it's given a `width`. `min` greater than `max`, written right there, is a mistake before anything runs.
 
+### Date pickers
+
+`datePicker due;` is a box for a date, bound to a string field holding the date the way `Time:date()` writes one: `"2026-11-13"`. An empty string is no date, and the box shows its `placeholder`.
+
+```
+string due = "";
+…
+datePicker due [placeholder "When?"] { reminded = false; }
+datePicker trip [min "2026-03-01", max "2026-08-31"];
+```
+
+- **Typing.** The date can be typed straight into the box. What isn't a real date (as `Time:isDate` says), or is outside `min` and `max`, gets a red edge and isn't written to the field; once it is one, it is. Leaving the box shows the field's date again. Emptying the box empties the field.
+- **The calendar.** Clicking the calendar icon on the right, Alt+Down, or Enter in an empty box opens a month's calendar below the box (above, near the window's bottom), the way a dropdown's list opens. Weeks start on Monday. Today has a ring, the chosen day is filled in blue (or in the picker's colour word: `datePicker due [purple]`), and days of the months before and after are paler. Clicking the month's name shows the year's twelve months, and clicking the year shows twelve years; ‹ and › go back and on. Today, at the bottom, chooses today.
+- **Keys while it's open:** the arrows move a day or a week; Page Up and Page Down a month, and with Shift a year; Home and End to the week's Monday and Sunday; Enter chooses the day; Escape or Alt+Up closes it without choosing. Clicking a day chooses it and closes the calendar, and a click anywhere else closes it too.
+- **`min` and `max`** are dates, written in place or from fields: days outside them are pale and can't be chosen. Written in place, one that isn't a real date is a mistake before anything runs, and so is a `min` after the `max`.
+- The `{ }` runs whenever the date changes, after the field holds it. A date picker is 150 wide unless given a `width`.
+
+### Colour pickers
+
+`colourPicker tint;` is a small button showing a colour field's colour and its hex text. Clicking it, or Enter or Space when it has focus, opens a pop-up to choose another:
+
+```
+colour tint = Colour:hex("#3b82f6");
+colour glass = [1, 1, 1, 0.5];
+…
+colourPicker tint { preview = tint:fade(0.3); }
+colourPicker glass [alpha, swatches [white, gray3, Colour:hex("#ffd43b80")]];
+```
+
+- **The pop-up** has a square of colours (more saturated to the right, brighter to the top), a strip of hues under it, a box with the hex text, and a row of swatches to choose from. Dragging in the square or along a strip changes the field as the mouse moves, and the `{ }` runs each time, as with a slider.
+- **See-through.** With `alpha`, an alpha strip shows too, and the hex can be `#rrggbbaa`. Without it, a colour chosen is always solid.
+- **The hex box** takes `#rrggbb`, `#rgb` (each digit twice), and with `alpha` `#rrggbbaa` and `#rgba`, with or without the #, in capitals or not. While what's typed isn't one of those, it has a red edge and the colour stays as it was.
+- **Swatches** are Lust's colour words at their middle shade (`white`, `gray5`, `black`, `red5`, `orange5`, `yellow5`, `green5`, `teal5`, `blue5`, `indigo5`, `purple5` and `pink5`), or a colour array of the program's own: `swatches [red5, myBrand]`.
+- **Closing.** Enter, or a click outside, keeps the colour. Escape puts back the colour it had when it opened.
+- **Keys while it's open:** Tab goes from the square to the hue strip, the alpha strip, the hex box and the swatches (Shift+Tab back). The arrows move the square's spot (Left and Right for saturation, Up and Down for brightness), the strips' knobs and the picked swatch, one step at a time, or ten with Shift.
+- **Exactly the same colour.** Opening and closing the pop-up never changes the field, not even by a rounding step, and the hue stays put while the colour is a grey. A colour chosen is the same in `lust run` and in a built program, to the bit: `#3b82f6` typed in the box is exactly `Colour:hex("#3b82f6")`.
+- The field has to be a `colour`. `colourPicker` is spelled like the type; `colorPicker` is a mistake that says so.
+
 ### Icons
 
 `icon "trash";` draws a small picture from Lust's own set, in the text's colour, sharp at any size. `size` sets how big it is (20 unless told), and a colour word colours it:
@@ -1318,7 +1362,7 @@ A dialog is a column with a white background, rounded corners and room around wh
 
 `dark` in the view's `[ ]` turns the whole window dark. It can depend on the data, so a checkbox or a setting can switch it: `view [title "Notes", dark darkMode]`.
 
-In dark mode the greys turn round: `white` backgrounds become dark ones, the `gray` shades swap ends (so `gray1`, the palest, becomes the darkest), and dark words become light. The window, inputs, buttons, lists and dialogs follow. Other colours stay as they are, except as backgrounds, where their palest shades (`blue1` to `blue3`, and so on) become deep tints of the colour, so a pale background stays a quiet one.
+In dark mode the greys turn round: `white` backgrounds become dark ones, the `gray` shades swap ends (so `gray1`, the palest, becomes the darkest), and dark words become light. The window, inputs, pickers and their pop-ups, buttons, lists and dialogs follow. Other colours stay as they are, except as backgrounds, where their palest shades (`blue1` to `blue3`, and so on) become deep tints of the colour, so a pale background stays a quiet one.
 
 `dark:[ … ]` on a piece holds styles it has only in dark mode, for anything that needs a different colour there: `text "New" [background green1, color green8, dark:[color green3]]`.
 
@@ -1534,7 +1578,7 @@ Short words in `[ ]`, in the spirit of Tailwind:
 | placement | `left`, `center`, `right` side to side; `top`, `middle`, `bottom` up and down; `spread` |
 | under the mouse | `hover:[ … ]`, `tip "…"` |
 | in dark mode | `dark:[ … ]` |
-| inputs and pictures | `placeholder "…"`, `from`, `to`, `step` (sliders), `min`, `max`, `step` (number boxes), `across` (radios), `cover` |
+| inputs and pictures | `placeholder "…"`, `from`, `to`, `step` (sliders), `min`, `max`, `step` (number boxes), `min`, `max` (date pickers, as dates), `alpha`, `swatches [ … ]` (colour pickers), `across` (radios), `cover` |
 | icons | `icon "trash"` on a button |
 | grids, splits, branches | `columns 3`, `cell 180`, `down`, `open` |
 | tables and lists | `select chosen`, `rowHeight 28`, `stripes`, `reorder`, and `sort p.age` on a column |

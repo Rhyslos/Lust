@@ -1,0 +1,34 @@
+-- Colour pickers: the square, the hue and alpha strips, the hex box, swatches, Escape and the keys.
+assembly App {
+    has {
+        colour tint = Colour:hex("#3b82f6");
+        colour glass = [1, 1, 1, 0.5];
+        colour grey = [0.5, 0.5, 0.5];
+        colour odd = [0.123456, 0.654321, 0.333333];
+        colour own = red5;
+        int changes = 0;
+    }
+
+    view [title "Colours", width 440, height 520] {
+        column [gap 10, pad 16] {
+            row [gap 8] {
+                colourPicker tint { changes += 1; }
+                colourPicker glass [alpha];
+                colourPicker grey;
+            }
+            row [gap 8] {
+                colourPicker odd;
+                colourPicker own [swatches [red5, Colour:hex("#123456"), [0.2, 0.4, 0.6, 0.5]]];
+                colourPicker tint [disabled];
+            }
+            text tint:hex() + " " + glass:hex() + " " + grey:hex() + " " + own:hex() + ", " + changes.text() + " changes";
+            text "odd " + odd.r.text() + " " + odd.g.text() + " " + odd.b.text();
+            button "Show" {
+                print(tint:hex(), glass:hex(), grey:hex(), own:hex(), odd:hex(), odd.r, odd.a, tint == Colour:hex("#3b82f6"));
+            }
+        }
+    }
+}
+
+App:open();
+end

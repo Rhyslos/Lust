@@ -1,0 +1,23 @@
+-- Date pickers: typing a date, the calendar from the mouse and the keys, min and max, and today.
+assembly App {
+    has {
+        string due = "2026-11-13";
+        string start = "";
+        string trip = "2026-03-15";
+        string log = "";
+        bool night = false;
+    }
+
+    view [title "Dates", width 420, height 420, dark night] {
+        column [gap 10, pad 16] {
+            datePicker due { log = "due " + due; }
+            datePicker start [placeholder "Pick a day", width 180];
+            datePicker trip [min "2026-03-10", max "2026-04-20"] { log = "trip " + trip; }
+            datePicker due [disabled];
+            text "Due " + due + ", start " + start + ", trip " + trip + ": " + log;
+        }
+    }
+}
+
+App:open();
+end

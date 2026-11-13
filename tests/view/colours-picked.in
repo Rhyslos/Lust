@@ -1,0 +1,70 @@
+dump
+open colourPicker 1
+dump
+snapshot colours-open.snap.png
+key enter
+click Show
+open colourPicker 4
+key escape
+open colourPicker 4
+press 400 500
+click Show
+dump
+open colourPicker 1
+pickcolour 1 0
+dump
+hue 0.5
+dump
+key escape
+dump
+click Show
+open colourPicker 3
+hue 0.6
+dump
+pickcolour 0.5 0.5
+dump
+key enter
+open colourPicker 2
+dump
+alpha 0.25
+dump
+snapshot colours-alpha.snap.png
+key tab
+dump
+key ctrl+a
+type #abc
+dump
+key backspace
+dump
+type c8
+dump
+key enter
+click Show
+open colourPicker 5
+dump
+swatch 2
+dump
+swatch 3
+dump
+key tab
+key tab
+key tab
+key tab
+dump
+key right
+dump
+key escape
+click Show
+focus colourPicker 1
+key space
+key left
+key left
+key shift+up
+dump
+key tab
+key shift+right
+dump
+key enter
+click Show
+open colourPicker 6
+dump

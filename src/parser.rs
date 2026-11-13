@@ -60,9 +60,44 @@ pub const RESERVED: &[&str] = &[
 ];
 /// The pieces a view is made of.
 pub const ELEMENTS: &[&str] = &[
-    "column", "row", "stack", "scroll", "space", "text", "button", "input", "checkbox", "slider", "image", "every", "key", "textarea",
-    "dropdown", "menu", "item", "divider", "dialog", "grid", "split", "tabs", "tab", "branch", "progress", "canvas", "box", "circle",
-    "line", "radio", "switch", "number", "icon", "table", "list", "drop",
+    "column",
+    "row",
+    "stack",
+    "scroll",
+    "space",
+    "text",
+    "button",
+    "input",
+    "checkbox",
+    "slider",
+    "image",
+    "every",
+    "key",
+    "textarea",
+    "dropdown",
+    "menu",
+    "item",
+    "divider",
+    "dialog",
+    "grid",
+    "split",
+    "tabs",
+    "tab",
+    "branch",
+    "progress",
+    "canvas",
+    "box",
+    "circle",
+    "line",
+    "radio",
+    "switch",
+    "number",
+    "icon",
+    "table",
+    "list",
+    "drop",
+    "datePicker",
+    "colourPicker",
 ];
 
 /// What a piece in a table's or list's row is known by when the rows come from an array: the
@@ -1095,7 +1130,18 @@ impl<'a> Parser<'a> {
         // name = (what was typed); …
         if matches!(
             kind.as_str(),
-            "input" | "textarea" | "checkbox" | "slider" | "dropdown" | "dialog" | "tabs" | "radio" | "switch" | "number"
+            "input"
+                | "textarea"
+                | "checkbox"
+                | "slider"
+                | "dropdown"
+                | "dialog"
+                | "tabs"
+                | "radio"
+                | "switch"
+                | "number"
+                | "datePicker"
+                | "colourPicker"
         ) {
             if let Some(a) = &arg {
                 let value = self.mk(a.pos, ExprKind::Name(VALUE.into()));
@@ -1879,6 +1925,10 @@ impl<'a> Parser<'a> {
             let used = self.peek(1).is_sym("=") || self.peek(1).is_sym(".") || self.peek(1).is_sym(":");
             if self.in_view && ELEMENTS.contains(&w.as_str()) && !used {
                 return self.element();
+            }
+            // The piece is spelled as the type is: colour.
+            if self.in_view && w == "colorPicker" && !used {
+                return self.fail(t.pos, "Lust spells it colourPicker, as in the colour type: colourPicker tint;");
             }
             // press (vec2 at) { … } on its own, not right after a canvas.
             if self.in_view && matches!(w.as_str(), "press" | "drag" | "release" | "hover") && self.attach_next() {

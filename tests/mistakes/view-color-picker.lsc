@@ -1,0 +1,12 @@
+assembly Form {
+    has {
+        colour tint = blue5;
+    }
+
+    view {
+        column {
+            colorPicker tint;
+        }
+    }
+}
+end

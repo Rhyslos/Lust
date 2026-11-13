@@ -1240,12 +1240,25 @@ impl<'a> W<'a> {
                 let v = self.fresh("v");
                 let bound = matches!(
                     kind.as_str(),
-                    "input" | "textarea" | "checkbox" | "slider" | "dropdown" | "dialog" | "tabs" | "radio" | "switch" | "number"
+                    "input"
+                        | "textarea"
+                        | "checkbox"
+                        | "slider"
+                        | "dropdown"
+                        | "dialog"
+                        | "tabs"
+                        | "radio"
+                        | "switch"
+                        | "number"
+                        | "datePicker"
+                        | "colourPicker"
                 );
                 let valued = bound || kind == "every" || kind == "progress";
                 // A checkbox's or switch's words come after its field.
                 let label = choices.as_ref().filter(|_| kind == "checkbox" || kind == "switch");
                 let t = match (arg, label) {
+                    // A date picker is told today's date, by the computer's clock.
+                    _ if kind == "datePicker" => "_L.time_date()".to_string(),
                     (_, Some(l)) => self.expr(l),
                     (Some(a), _) if !valued => self.expr(a),
                     _ => "\"\"".into(),
@@ -1280,8 +1293,22 @@ impl<'a> W<'a> {
                 self.stmts(children);
                 self.view_parent.pop();
                 if let Some(a) = action {
-                    let param = if bound { lname(crate::parser::VALUE) } else { String::new() };
-                    self.action(ln, &format!("{v}.f"), &param, a);
+                    if kind == "colourPicker" {
+                        // A colour comes from the window as its four parts, each already an f32.
+                        let value = lname(crate::parser::VALUE);
+                        let prologue = format!("local {value} = _L.colour(__cr, __cg, __cb, __ca)");
+                        self.action_given(
+                            ln,
+                            &format!("{v}.f"),
+                            "__cr, __cg, __cb, __ca",
+                            Some(prologue),
+                            &[crate::parser::VALUE.to_string()],
+                            a,
+                        );
+                    } else {
+                        let param = if bound { lname(crate::parser::VALUE) } else { String::new() };
+                        self.action(ln, &format!("{v}.f"), &param, a);
+                    }
                 }
                 if let Some(a) = enter {
                     self.action(ln, &format!("{v}.e"), "", a);

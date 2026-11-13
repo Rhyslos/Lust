@@ -1,0 +1,15 @@
+-- A colour picker's pop-up in dark mode, with see-through.
+assembly App {
+    has {
+        colour tint = [0.2, 0.6, 0.4, 0.75];
+    }
+
+    view [title "Dark colours", width 320, height 420, dark] {
+        column [pad 16] {
+            colourPicker tint [alpha] { print(tint:hex()); }
+        }
+    }
+}
+
+App:open();
+end

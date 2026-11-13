@@ -228,6 +228,30 @@ mod same_as_the_drawing {
     }
 
     #[test]
+    fn dates_as_the_runtime_says() {
+        for s in [
+            "2026-11-13",
+            "2024-02-29",
+            "2000-02-29",
+            "1900-02-29",
+            "2100-02-29",
+            "2026-02-30",
+            "2026-13-01",
+            "2026-00-01",
+            "2026-01-00",
+            "0000-01-01",
+            "9999-12-31",
+            "2026-1-01",
+            "2026/01/01",
+            "",
+            "tomorrow",
+            "2026-01-011",
+        ] {
+            assert_eq!(super::is_date(s), crate::native_rt::time_isDate(s.to_string()), "{s}");
+        }
+    }
+
+    #[test]
     fn shortcuts() {
         for s in [
             "ctrl+s",
@@ -245,4 +269,27 @@ mod same_as_the_drawing {
             assert_eq!(super::parse_shortcut(s), crate::native_ui::parse_shortcut(s).map(|_| ()), "{s}");
         }
     }
+}
+
+/// Whether text is a real date written like "2026-11-13", as Time:isDate says: a datePicker's
+/// min and max written in place are checked with it.
+pub fn is_date(s: &str) -> bool {
+    let b = s.as_bytes();
+    if b.len() != 10 || b[4] != b'-' || b[7] != b'-' || !b.iter().enumerate().all(|(i, c)| i == 4 || i == 7 || c.is_ascii_digit()) {
+        return false;
+    }
+    let (y, m, d): (u32, u32, u32) = (
+        s[0..4].parse().unwrap_or(0),
+        s[5..7].parse().unwrap_or(0),
+        s[8..10].parse().unwrap_or(0),
+    );
+    let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+    let days = match m {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if leap => 29,
+        2 => 28,
+        _ => return false,
+    };
+    (1..=days).contains(&d)
 }

@@ -1,0 +1,17 @@
+view-pickers.lsc:12:24  datePicker changes a date, held as text like "2026-11-13", but count is an int: datePicker due;
+view-pickers.lsc:13:24  datePicker changes a date, held as text like "2026-11-13", but tint is a colour: datePicker due; For a colour, use colourPicker tint.
+view-pickers.lsc:14:26  colourPicker changes a colour, but name is a string: colourPicker tint;
+view-pickers.lsc:15:26  colourPicker changes a colour, but count is an int: colourPicker tint;
+view-pickers.lsc:16:13  a datePicker needs the field it changes: datePicker name;
+view-pickers.lsc:17:13  a colourPicker needs the field it changes: colourPicker name;
+view-pickers.lsc:18:33  min is a date written like "2026-01-01", but "2026-02-30" isn't a real date.
+view-pickers.lsc:18:51  max is a date written like "2026-01-01", but "tomorrow" isn't a real date.
+view-pickers.lsc:19:29  a datePicker's min is a date written as text: [min "2026-01-01"].
+view-pickers.lsc:20:29  min "2026-12-01" is after max "2026-01-01", so no date fits between them. Swap them: [min "2026-01-01", max "2026-12-01"].
+view-pickers.lsc:21:32  alpha is a word on its own, without a value: [alpha]
+view-pickers.lsc:23:48  every item is a colour, but this is a string. A colour word goes without quotes: blue
+view-pickers.lsc:24:41  swatches takes a colour array, like swatches [red5, blue5], but this is a string.
+view-pickers.lsc:25:25  alpha lets a colourPicker choose how see-through a colour is: colourPicker tint [alpha];
+view-pickers.lsc:26:25  swatches are the colours a colourPicker offers: colourPicker tint [swatches [red5, blue5]];
+
+15 mistakes. Nothing was run.

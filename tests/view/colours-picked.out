@@ -1,0 +1,329 @@
+window "Colours" 440x520
+  column 0,0 440x224
+    row 16,16 368x31
+      colourPicker "#3b82f6" 16,16 111x31
+      colourPicker "#ffffff80" 135,16 129x31
+      colourPicker "#808080" 272,16 112x31
+    row 16,57 349x31
+      colourPicker "#1fa755" 16,57 111x31
+      colourPicker "#ff6b6b" 135,57 111x31
+      colourPicker "#3b82f6" 254,57 111x31 (disabled)
+    text "#3b82f6 #ffffff80 #808080 #ff6b6b, 0 changes" 16,98 342x19
+    text "odd 0.123456001281738 0.654321014881134 0.333332985639572" 16,127 321x38
+    button "Show" 16,175 69x33
+window "Colours" 440x520
+  column 0,0 440x224
+    row 16,16 368x31
+      colourPicker "#3b82f6" 16,16 111x31 (open) (focus)
+      colourPicker "#ffffff80" 135,16 129x31
+      colourPicker "#808080" 272,16 112x31
+    row 16,57 349x31
+      colourPicker "#1fa755" 16,57 111x31
+      colourPicker "#ff6b6b" 135,57 111x31
+      colourPicker "#3b82f6" 254,57 111x31 (disabled)
+    text "#3b82f6 #ffffff80 #808080 #ff6b6b, 0 changes" 16,98 342x19
+    text "odd 0.123456001281738 0.654321014881134 0.333332985639572" 16,127 321x38
+    button "Show" 16,175 69x33
+  layer "picker" 0,0 440x520
+    colourpop "#3b82f6" 16,51 240x300 (hue 217, saturation 76%, brightness 96%, at square)
+#3b82f6 #ffffff80 #808080 #ff6b6b #1fa755 0.123456001281738 1.0 true
+#3b82f6 #ffffff80 #808080 #ff6b6b #1fa755 0.123456001281738 1.0 true
+window "Colours" 440x520
+  column 0,0 440x224
+    row 16,16 368x31
+      colourPicker "#3b82f6" 16,16 111x31
+      colourPicker "#ffffff80" 135,16 129x31
+      colourPicker "#808080" 272,16 112x31
+    row 16,57 349x31
+      colourPicker "#1fa755" 16,57 111x31
+      colourPicker "#ff6b6b" 135,57 111x31
+      colourPicker "#3b82f6" 254,57 111x31 (disabled)
+    text "#3b82f6 #ffffff80 #808080 #ff6b6b, 0 changes" 16,98 342x19
+    text "odd 0.123456001281738 0.654321014881134 0.333332985639572" 16,127 321x38
+    button "Show" 16,175 69x33
+window "Colours" 440x520
+  column 0,0 440x224
+    row 16,16 368x31
+      colourPicker "#0061ff" 16,16 111x31 (open) (focus)
+      colourPicker "#ffffff80" 135,16 129x31
+      colourPicker "#808080" 272,16 112x31
+    row 16,57 349x31
+      colourPicker "#1fa755" 16,57 111x31
+      colourPicker "#ff6b6b" 135,57 111x31
+      colourPicker "#0061ff" 254,57 111x31 (disabled)
+    text "#0061ff #ffffff80 #808080 #ff6b6b, 1 changes" 16,98 332x19
+    text "odd 0.123456001281738 0.654321014881134 0.333332985639572" 16,127 321x38
+    button "Show" 16,175 69x33
+  layer "picker" 0,0 440x520
+    colourpop "#0061ff" 16,51 240x300 (hue 217, saturation 100%, brightness 100%, at square)
+window "Colours" 440x520
+  column 0,0 440x224
+    row 16,16 368x31
+      colourPicker "#00ffff" 16,16 111x31 (open) (focus)
+      colourPicker "#ffffff80" 135,16 129x31
+      colourPicker "#808080" 272,16 112x31
+    row 16,57 349x31
+      colourPicker "#1fa755" 16,57 111x31
+      colourPicker "#ff6b6b" 135,57 111x31
+      colourPicker "#00ffff" 254,57 111x31 (disabled)
+    text "#00ffff #ffffff80 #808080 #ff6b6b, 2 changes" 16,98 331x19
+    text "odd 0.123456001281738 0.654321014881134 0.333332985639572" 16,127 321x38
+    button "Show" 16,175 69x33
+  layer "picker" 0,0 440x520
+    colourpop "#00ffff" 16,51 240x300 (hue 180, saturation 100%, brightness 100%, at hue)
+window "Colours" 440x520
+  column 0,0 440x224
+    row 16,16 368x31
+      colourPicker "#3b82f6" 16,16 111x31 (focus)
+      colourPicker "#ffffff80" 135,16 129x31
+      colourPicker "#808080" 272,16 112x31
+    row 16,57 349x31
+      colourPicker "#1fa755" 16,57 111x31
+      colourPicker "#ff6b6b" 135,57 111x31
+      colourPicker "#3b82f6" 254,57 111x31 (disabled)
+    text "#3b82f6 #ffffff80 #808080 #ff6b6b, 3 changes" 16,98 342x19
+    text "odd 0.123456001281738 0.654321014881134 0.333332985639572" 16,127 321x38
+    button "Show" 16,175 69x33
+#3b82f6 #ffffff80 #808080 #ff6b6b #1fa755 0.123456001281738 1.0 true
+window "Colours" 440x520
+  column 0,0 440x224
+    row 16,16 368x31
+      colourPicker "#3b82f6" 16,16 111x31
+      colourPicker "#ffffff80" 135,16 129x31
+      colourPicker "#808080" 272,16 112x31 (open) (focus)
+    row 16,57 349x31
+      colourPicker "#1fa755" 16,57 111x31
+      colourPicker "#ff6b6b" 135,57 111x31
+      colourPicker "#3b82f6" 254,57 111x31 (disabled)
+    text "#3b82f6 #ffffff80 #808080 #ff6b6b, 3 changes" 16,98 342x19
+    text "odd 0.123456001281738 0.654321014881134 0.333332985639572" 16,127 321x38
+    button "Show" 16,175 69x33
+  layer "picker" 0,0 440x520
+    colourpop "#808080" 192,51 240x300 (hue 216, saturation 0%, brightness 50%, at hue)
+window "Colours" 440x520
+  column 0,0 440x224
+    row 16,16 368x31
+      colourPicker "#3b82f6" 16,16 111x31
+      colourPicker "#ffffff80" 135,16 129x31
+      colourPicker "#405980" 272,16 112x31 (open) (focus)
+    row 16,57 349x31
+      colourPicker "#1fa755" 16,57 111x31
+      colourPicker "#ff6b6b" 135,57 111x31
+      colourPicker "#3b82f6" 254,57 111x31 (disabled)
+    text "#3b82f6 #ffffff80 #405980 #ff6b6b, 3 changes" 16,98 342x19
+    text "odd 0.123456001281738 0.654321014881134 0.333332985639572" 16,127 321x38
+    button "Show" 16,175 69x33
+  layer "picker" 0,0 440x520
+    colourpop "#405980" 192,51 240x300 (hue 216, saturation 50%, brightness 50%, at square)
+window "Colours" 440x520
+  column 0,0 440x224
+    row 16,16 368x31
+      colourPicker "#3b82f6" 16,16 111x31
+      colourPicker "#ffffff80" 135,16 129x31 (open) (focus)
+      colourPicker "#405980" 272,16 112x31
+    row 16,57 349x31
+      colourPicker "#1fa755" 16,57 111x31
+      colourPicker "#ff6b6b" 135,57 111x31
+      colourPicker "#3b82f6" 254,57 111x31 (disabled)
+    text "#3b82f6 #ffffff80 #405980 #ff6b6b, 3 changes" 16,98 342x19
+    text "odd 0.123456001281738 0.654321014881134 0.333332985639572" 16,127 321x38
+    button "Show" 16,175 69x33
+  layer "picker" 0,0 440x520
+    colourpop "#ffffff80" 135,51 240x324 (hue 0, saturation 0%, brightness 100%, alpha 50%, at square)
+window "Colours" 440x520
+  column 0,0 440x224
+    row 16,16 368x31
+      colourPicker "#3b82f6" 16,16 111x31
+      colourPicker "#ffffff40" 135,16 129x31 (open) (focus)
+      colourPicker "#405980" 272,16 112x31
+    row 16,57 349x31
+      colourPicker "#1fa755" 16,57 111x31
+      colourPicker "#ff6b6b" 135,57 111x31
+      colourPicker "#3b82f6" 254,57 111x31 (disabled)
+    text "#3b82f6 #ffffff40 #405980 #ff6b6b, 3 changes" 16,98 342x19
+    text "odd 0.123456001281738 0.654321014881134 0.333332985639572" 16,127 321x38
+    button "Show" 16,175 69x33
+  layer "picker" 0,0 440x520
+    colourpop "#ffffff40" 135,51 240x324 (hue 0, saturation 0%, brightness 100%, alpha 25%, at alpha)
+window "Colours" 440x520
+  column 0,0 440x224
+    row 16,16 368x31
+      colourPicker "#3b82f6" 16,16 111x31
+      colourPicker "#ffffff40" 135,16 129x31 (open) (focus)
+      colourPicker "#405980" 272,16 112x31
+    row 16,57 349x31
+      colourPicker "#1fa755" 16,57 111x31
+      colourPicker "#ff6b6b" 135,57 111x31
+      colourPicker "#3b82f6" 254,57 111x31 (disabled)
+    text "#3b82f6 #ffffff40 #405980 #ff6b6b, 3 changes" 16,98 342x19
+    text "odd 0.123456001281738 0.654321014881134 0.333332985639572" 16,127 321x38
+    button "Show" 16,175 69x33
+  layer "picker" 0,0 440x520
+    colourpop "#ffffff40" 135,51 240x324 (hue 0, saturation 0%, brightness 100%, alpha 25%, typed "#ffffff40", at hex)
+window "Colours" 440x520
+  column 0,0 440x224
+    row 16,16 368x31
+      colourPicker "#3b82f6" 16,16 111x31
+      colourPicker "#aabbcc" 135,16 129x31 (open) (focus)
+      colourPicker "#405980" 272,16 112x31
+    row 16,57 349x31
+      colourPicker "#1fa755" 16,57 111x31
+      colourPicker "#ff6b6b" 135,57 111x31
+      colourPicker "#3b82f6" 254,57 111x31 (disabled)
+    text "#3b82f6 #aabbcc #405980 #ff6b6b, 3 changes" 16,98 342x19
+    text "odd 0.123456001281738 0.654321014881134 0.333332985639572" 16,127 321x38
+    button "Show" 16,175 69x33
+  layer "picker" 0,0 440x520
+    colourpop "#aabbcc" 135,51 240x324 (hue 210, saturation 17%, brightness 80%, alpha 100%, typed "#abc", at hex)
+window "Colours" 440x520
+  column 0,0 440x224
+    row 16,16 368x31
+      colourPicker "#3b82f6" 16,16 111x31
+      colourPicker "#aabbcc" 135,16 129x31 (open) (focus)
+      colourPicker "#405980" 272,16 112x31
+    row 16,57 349x31
+      colourPicker "#1fa755" 16,57 111x31
+      colourPicker "#ff6b6b" 135,57 111x31
+      colourPicker "#3b82f6" 254,57 111x31 (disabled)
+    text "#3b82f6 #aabbcc #405980 #ff6b6b, 3 changes" 16,98 342x19
+    text "odd 0.123456001281738 0.654321014881134 0.333332985639572" 16,127 321x38
+    button "Show" 16,175 69x33
+  layer "picker" 0,0 440x520
+    colourpop "#aabbcc" 135,51 240x324 (hue 210, saturation 17%, brightness 80%, alpha 100%, typed "#ab", at hex)
+window "Colours" 440x520
+  column 0,0 440x224
+    row 16,16 368x31
+      colourPicker "#3b82f6" 16,16 111x31
+      colourPicker "#aabbcc88" 135,16 129x31 (open) (focus)
+      colourPicker "#405980" 272,16 112x31
+    row 16,57 349x31
+      colourPicker "#1fa755" 16,57 111x31
+      colourPicker "#ff6b6b" 135,57 111x31
+      colourPicker "#3b82f6" 254,57 111x31 (disabled)
+    text "#3b82f6 #aabbcc88 #405980 #ff6b6b, 3 changes" 16,98 361x19
+    text "odd 0.123456001281738 0.654321014881134 0.333332985639572" 16,127 321x38
+    button "Show" 16,175 69x33
+  layer "picker" 0,0 440x520
+    colourpop "#aabbcc88" 135,51 240x324 (hue 210, saturation 17%, brightness 80%, alpha 53%, typed "#abc8", at hex)
+#3b82f6 #aabbcc88 #405980 #ff6b6b #1fa755 0.123456001281738 1.0 true
+window "Colours" 440x520
+  column 0,0 440x224
+    row 16,16 368x31
+      colourPicker "#3b82f6" 16,16 111x31
+      colourPicker "#aabbcc88" 135,16 129x31
+      colourPicker "#405980" 272,16 112x31
+    row 16,57 349x31
+      colourPicker "#1fa755" 16,57 111x31
+      colourPicker "#ff6b6b" 135,57 111x31 (open) (focus)
+      colourPicker "#3b82f6" 254,57 111x31 (disabled)
+    text "#3b82f6 #aabbcc88 #405980 #ff6b6b, 3 changes" 16,98 361x19
+    text "odd 0.123456001281738 0.654321014881134 0.333332985639572" 16,127 321x38
+    button "Show" 16,175 69x33
+  layer "picker" 0,0 440x520
+    colourpop "#ff6b6b" 135,92 240x274 (hue 0, saturation 58%, brightness 100%, at square)
+window "Colours" 440x520
+  column 0,0 440x224
+    row 16,16 368x31
+      colourPicker "#3b82f6" 16,16 111x31
+      colourPicker "#aabbcc88" 135,16 129x31
+      colourPicker "#405980" 272,16 112x31
+    row 16,57 349x31
+      colourPicker "#1fa755" 16,57 111x31
+      colourPicker "#123456" 135,57 111x31 (open) (focus)
+      colourPicker "#3b82f6" 254,57 111x31 (disabled)
+    text "#3b82f6 #aabbcc88 #405980 #123456, 3 changes" 16,98 365x19
+    text "odd 0.123456001281738 0.654321014881134 0.333332985639572" 16,127 321x38
+    button "Show" 16,175 69x33
+  layer "picker" 0,0 440x520
+    colourpop "#123456" 135,92 240x274 (hue 210, saturation 79%, brightness 34%, at swatches)
+window "Colours" 440x520
+  column 0,0 440x224
+    row 16,16 368x31
+      colourPicker "#3b82f6" 16,16 111x31
+      colourPicker "#aabbcc88" 135,16 129x31
+      colourPicker "#405980" 272,16 112x31
+    row 16,57 350x31
+      colourPicker "#1fa755" 16,57 111x31
+      colourPicker "#336699" 135,57 112x31 (open) (focus)
+      colourPicker "#3b82f6" 255,57 111x31 (disabled)
+    text "#3b82f6 #aabbcc88 #405980 #336699, 3 changes" 16,98 368x19
+    text "odd 0.123456001281738 0.654321014881134 0.333332985639572" 16,127 321x38
+    button "Show" 16,175 69x33
+  layer "picker" 0,0 440x520
+    colourpop "#336699" 135,92 240x274 (hue 210, saturation 67%, brightness 60%, at swatches)
+window "Colours" 440x520
+  column 0,0 440x224
+    row 16,16 368x31
+      colourPicker "#3b82f6" 16,16 111x31
+      colourPicker "#aabbcc88" 135,16 129x31
+      colourPicker "#405980" 272,16 112x31
+    row 16,57 350x31
+      colourPicker "#1fa755" 16,57 111x31
+      colourPicker "#336699" 135,57 112x31 (open) (focus)
+      colourPicker "#3b82f6" 255,57 111x31 (disabled)
+    text "#3b82f6 #aabbcc88 #405980 #336699, 3 changes" 16,98 368x19
+    text "odd 0.123456001281738 0.654321014881134 0.333332985639572" 16,127 321x38
+    button "Show" 16,175 69x33
+  layer "picker" 0,0 440x520
+    colourpop "#336699" 135,92 240x274 (hue 210, saturation 67%, brightness 60%, at swatches)
+window "Colours" 440x520
+  column 0,0 440x224
+    row 16,16 368x31
+      colourPicker "#3b82f6" 16,16 111x31
+      colourPicker "#aabbcc88" 135,16 129x31
+      colourPicker "#405980" 272,16 112x31
+    row 16,57 350x31
+      colourPicker "#1fa755" 16,57 111x31
+      colourPicker "#336699" 135,57 112x31 (open) (focus)
+      colourPicker "#3b82f6" 255,57 111x31 (disabled)
+    text "#3b82f6 #aabbcc88 #405980 #336699, 3 changes" 16,98 368x19
+    text "odd 0.123456001281738 0.654321014881134 0.333332985639572" 16,127 321x38
+    button "Show" 16,175 69x33
+  layer "picker" 0,0 440x520
+    colourpop "#336699" 135,92 240x274 (hue 210, saturation 67%, brightness 60%, at swatches)
+#3b82f6 #aabbcc88 #405980 #ff6b6b #1fa755 0.123456001281738 1.0 true
+window "Colours" 440x520
+  column 0,0 440x224
+    row 16,16 368x31
+      colourPicker "#428aff" 16,16 111x31 (open) (focus)
+      colourPicker "#aabbcc88" 135,16 129x31
+      colourPicker "#405980" 272,16 112x31
+    row 16,57 349x31
+      colourPicker "#1fa755" 16,57 111x31
+      colourPicker "#ff6b6b" 135,57 111x31
+      colourPicker "#428aff" 254,57 111x31 (disabled)
+    text "#428aff #aabbcc88 #405980 #ff6b6b, 6 changes" 16,98 357x19
+    text "odd 0.123456001281738 0.654321014881134 0.333332985639572" 16,127 321x38
+    button "Show" 16,175 69x33
+  layer "picker" 0,0 440x520
+    colourpop "#428aff" 16,51 240x300 (hue 217, saturation 74%, brightness 100%, at square)
+window "Colours" 440x520
+  column 0,0 440x224
+    row 16,16 368x31
+      colourPicker "#426aff" 16,16 111x31 (open) (focus)
+      colourPicker "#aabbcc88" 135,16 129x31
+      colourPicker "#405980" 272,16 112x31
+    row 16,57 349x31
+      colourPicker "#1fa755" 16,57 111x31
+      colourPicker "#ff6b6b" 135,57 111x31
+      colourPicker "#426aff" 254,57 111x31 (disabled)
+    text "#426aff #aabbcc88 #405980 #ff6b6b, 7 changes" 16,98 356x19
+    text "odd 0.123456001281738 0.654321014881134 0.333332985639572" 16,127 321x38
+    button "Show" 16,175 69x33
+  layer "picker" 0,0 440x520
+    colourpop "#426aff" 16,51 240x300 (hue 227, saturation 74%, brightness 100%, at hue)
+#426aff #aabbcc88 #405980 #ff6b6b #1fa755 0.123456001281738 1.0 false
+(there's no colourPicker 6 to open)
+window "Colours" 440x520
+  column 0,0 440x224
+    row 16,16 368x31
+      colourPicker "#426aff" 16,16 111x31
+      colourPicker "#aabbcc88" 135,16 129x31
+      colourPicker "#405980" 272,16 112x31
+    row 16,57 349x31
+      colourPicker "#1fa755" 16,57 111x31
+      colourPicker "#ff6b6b" 135,57 111x31
+      colourPicker "#426aff" 254,57 111x31 (disabled)
+    text "#426aff #aabbcc88 #405980 #ff6b6b, 7 changes" 16,98 356x19
+    text "odd 0.123456001281738 0.654321014881134 0.333332985639572" 16,127 321x38
+    button "Show" 16,175 69x33

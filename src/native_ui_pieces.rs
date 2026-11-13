@@ -189,6 +189,9 @@ impl<'a, 'b> Ui<'a, 'b> {
     /// and changes its field only when it's a number that fits.
     fn set_text(&mut self, path: &[usize], text: String) -> Result<(), String> {
         let Some(n) = node_at(&self.tree, path) else { return Ok(()) };
+        if n.kind == "datePicker" {
+            return self.set_date_text(path, text);
+        }
         if n.kind != "number" {
             return self.run(path, SV::Text(text));
         }
