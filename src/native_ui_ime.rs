@@ -249,7 +249,11 @@ mod ime_tests {
     #[test]
     fn missing_letters_come_from_system_fonts() {
         // Only where a CJK font is installed, and not while view tests turn them off.
-        if !system_fonts_allowed() || !fallback_files().iter().any(|(p, _)| std::path::Path::new(p).exists()) {
+        use ab_glyph::Font;
+        let has_cjk = fallback_files().iter().any(|(p, i)| {
+            std::fs::read(p).ok().and_then(|b| ab_glyph::FontVec::try_from_vec_and_index(b, *i).ok()).is_some_and(|f| f.glyph_id('日').0 != 0)
+        });
+        if !system_fonts_allowed() || !has_cjk {
             return;
         }
         let w = text_width("日本", 20.0, 0);
