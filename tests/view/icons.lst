@@ -1,0 +1,29 @@
+-- Icons: on their own, in buttons, coloured and sized, and one from a name that's worked out.
+assembly App {
+    has {
+        string log = "";
+        string which = "star";
+        bool dark = false;
+    }
+
+    view [title "Icons", width 420, height 260, dark dark] {
+        column [gap 10, pad 16] {
+            row [gap 8] {
+                icon "trash" [size 18, red6];
+                icon "home";
+                icon "chevron-right" [size 48];
+                icon which [tip "Worked out"];
+                icon "not-" + which;
+            }
+            row [gap 8] {
+                button "Delete" [icon "trash", red] { log = "deleted"; }
+                button [icon "settings", tip "Settings"] { log = "settings"; }
+                button "Next" [icon "arrow-right", small, disabled log == ""] { which = "heart"; }
+            }
+            text log;
+        }
+    }
+}
+
+App:open();
+end

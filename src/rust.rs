@@ -21,7 +21,15 @@ pub const NET_RUNTIME: &str = include_str!("native_net.rs");
 pub const DLG_RUNTIME: &str = include_str!("native_dlg.rs");
 pub const LOCALTIME_RUNTIME: &str = include_str!("native_localtime.rs");
 pub const TEXT_RUNTIME: &str = include_str!("native_text.rs");
-pub const UI_RUNTIME: &str = include_str!("native_ui.rs");
+/// Views: the pieces, then the radio buttons, switches, number boxes and icons, then the icons'
+/// shapes, all in one module.
+pub const UI_RUNTIME: &str = concat!(
+    include_str!("native_ui.rs"),
+    "\n",
+    include_str!("native_ui_pieces.rs"),
+    "\n",
+    include_str!("icons.rs")
+);
 
 fn uses(info: &Info, funcs: &[&str]) -> bool {
     info.libs.values().any(|l| funcs.contains(&l.func.as_str()))
@@ -1685,8 +1693,19 @@ impl<'a> W<'a> {
                 out.push_str(&format!("{pad}{{\n{pad}    let mut {v} = rt::ui::Node::new({kind:?});\n"));
                 let bound = matches!(
                     kind.as_str(),
-                    "input" | "textarea" | "checkbox" | "slider" | "dropdown" | "dialog" | "tabs"
+                    "input" | "textarea" | "checkbox" | "slider" | "dropdown" | "dialog" | "tabs" | "radio" | "switch" | "number"
                 );
+                // A checkbox's or switch's words come after its field.
+                if let Some(l) = choices.as_ref().filter(|_| kind == "checkbox" || kind == "switch") {
+                    let t = self.coerced(l, &Ty::Str);
+                    out.push_str(&format!("{pad}    {v}.text = {t};\n"));
+                }
+                // A number box bound to an int takes whole numbers only.
+                if let (Some(a), "number") = (arg, kind.as_str()) {
+                    if self.info.ty(a) == Ty::Int {
+                        out.push_str(&format!("{pad}    {v}.whole = true;\n"));
+                    }
+                }
                 match arg {
                     Some(a) if kind == "every" || kind == "progress" => {
                         let secs = self.coerced(a, &Ty::Float);
@@ -1695,7 +1714,7 @@ impl<'a> W<'a> {
                     Some(a) if bound => {
                         // What the input shows: the value it's bound to, as it is now.
                         let shown = self.expr(a);
-                        if kind == "dropdown" {
+                        if kind == "dropdown" || kind == "radio" {
                             // What it chooses from: its list, or its state's options.
                             let opts = match (self.info.ty(a), choices) {
                                 (Ty::State(s), _) => {

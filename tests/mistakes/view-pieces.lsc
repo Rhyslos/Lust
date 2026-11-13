@@ -1,33 +1,38 @@
-assembly Card {
-    has {
-        string title = "";
-    }
+state Size = [Small, Large];
 
-    view {
-        text title;
-    }
-}
-
-assembly Plain {
+assembly Form {
     has {
-        int n = 0;
-    }
-}
-
-assembly Page {
-    has {
+        string name = "";
         int count = 0;
+        bool ok = false;
+        Size size = Size.Small;
+        string pick = "";
     }
 
     view {
         column {
-            Card { title = count };
-            Card { heading = "Hi" };
-            Plain { n = 1 };
-            Nope { };
+            switch count;
+            switch name;
+            number name;
+            number ok;
+            radio ok;
+            radio pick;
+            radio size in ["A"];
+            radio name in [1, 2];
+            switch ok 5;
+            number count [min 10, max 2];
+            number count [min -1, max -5.5];
+            number count [min 0, max 9, from 1];
+            slider count [min 0];
+            icon "trsh";
+            icon "not-an-icon-at-all";
+            icon 5;
+            icon;
+            button "Delete" [icon "trash-3"];
+            text "Hi" [icon "trash"];
+            button;
+            switch;
         }
     }
 }
-
-Card { title = "outside" };
 end

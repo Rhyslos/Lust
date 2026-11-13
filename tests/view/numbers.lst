@@ -1,0 +1,22 @@
+-- Number boxes: typing, the arrows, the wheel, min and max, and text that isn't a number.
+assembly App {
+    has {
+        int count = 5;
+        float price = 1.5;
+        int locked = 3;
+        int changes = 0;
+    }
+
+    view [title "Numbers", width 400, height 240] {
+        column [gap 10, pad 16] {
+            number count [min 0, max 10, step 2] { changes = changes + 1; }
+            number price [step 0.1, min -1];
+            number locked [disabled];
+            text count.text() + " / " + price.text() + " / " + changes.text();
+            button "Reset" { count = 7; price = 0.0; }
+        }
+    }
+}
+
+App:open();
+end

@@ -1,0 +1,17 @@
+-- SVG pictures: drawn sharp at any size, and their own size when given none.
+assembly App {
+    view [title "Pictures", width 360, height 240] {
+        column [gap 10, pad 16] {
+            image "badge.svg";
+            image "badge.svg" [width 200];
+            row [gap 8] {
+                image "badge.svg" [width 48, height 48, cover, round 24];
+                image "broken.svg" [width 48];
+                image "missing.svg" [width 48];
+            }
+        }
+    }
+}
+
+App:open();
+end

@@ -1,7 +1,23 @@
-view-pieces.lsc:24:28  title is a string, but this is an int. Use .text() to turn it into text.
-view-pieces.lsc:25:20  Card has no field called heading.
-view-pieces.lsc:26:13  Plain has no view, so it can't be a piece of a screen. Give it one: view { … }
-view-pieces.lsc:27:13  there's no class called Nope.
-view-pieces.lsc:32:1  Card { … } puts a piece on the screen, so it goes inside a view. To make one here: new Card { … }
+view-pieces.lsc:14:20  switch changes a bool, but count is an int: switch sound; For a number, use number count.
+view-pieces.lsc:15:20  switch changes a bool, but name is a string: switch sound; To choose one of several, use radio name.
+view-pieces.lsc:16:20  number changes a number, but name is a string: number count [min 0, max 99]; For text, use input name.
+view-pieces.lsc:17:20  number changes a number, but ok is a bool: number count [min 0, max 99]; For on and off, use switch ok.
+view-pieces.lsc:18:19  radio changes text or a state, but ok is a bool: radio size; For on and off, use switch ok or checkbox ok.
+view-pieces.lsc:19:19  a radio of text needs what to choose from: radio pick in ["Small", "Large"];
+view-pieces.lsc:20:27  size is a Size, so its radio chooses from Size's options. Leave out in …
+view-pieces.lsc:21:27  a radio chooses from a string array, but this is an int array.
+view-pieces.lsc:22:23  the words after a switch's field are text, but this is an int: switch ok "Sound";
+view-pieces.lsc:23:27  min 10 is more than max 2, so no number fits between them. Swap them: [min 2, max 10].
+view-pieces.lsc:24:27  min -1 is more than max -5.5, so no number fits between them. Swap them: [min -5.5, max -1].
+view-pieces.lsc:25:41  a number box is kept between min and max: number count [min 0, max 99]. from and to are for a slider.
+view-pieces.lsc:26:27  a slider goes from one number to another: slider volume [from 0, to 100]. min and max are for a number box.
+view-pieces.lsc:27:18  Lust has no icon called "trsh". Did you mean "trash"? The icons are listed in the rulebook, LUST.md, under Icons.
+view-pieces.lsc:28:18  Lust has no icon called "not-an-icon-at-all". The icons are listed in the rulebook, LUST.md, under Icons.
+view-pieces.lsc:29:18  icon takes the icon's name, but this is an int: icon "star";
+view-pieces.lsc:30:13  icon needs the icon's name: icon "star";
+view-pieces.lsc:31:35  Lust has no icon called "trash-3". Did you mean "trash-2"? The icons are listed in the rulebook, LUST.md, under Icons.
+view-pieces.lsc:32:24  only a button has an icon in its [ ]. Put an icon next to a text instead: row { icon "star"; … }
+view-pieces.lsc:33:13  a button needs its words, or an icon: button "Start" { … }, button [icon "play"] { … }
+view-pieces.lsc:34:13  a switch needs the field it changes: switch name;
 
-5 mistakes. Nothing was run.
+21 mistakes. Nothing was run.

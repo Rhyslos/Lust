@@ -386,7 +386,8 @@ pub enum Stmt {
         action: Option<Vec<Stmt>>,
         /// What an input does when Enter is pressed in it: input name enter { … }
         enter: Option<Vec<Stmt>>,
-        /// What a dropdown chooses from: dropdown size in ["S", "M"];
+        /// What a dropdown or radio chooses from: dropdown size in ["S", "M"]; or a checkbox's
+        /// or switch's words: switch sound "Sound";
         choices: Option<Expr>,
         pos: Pos,
     },

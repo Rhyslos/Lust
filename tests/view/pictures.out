@@ -1,0 +1,8 @@
+window "Pictures" 360x240
+  column 0,0 360x220
+    image "badge.svg" 16,16 40x20
+    image "badge.svg" 16,46 200x100
+    row 16,156 160x48
+      image "badge.svg" 16,156 48x48
+      image "broken.svg" 72,156 48x48
+      image "missing.svg" 128,156 48x48

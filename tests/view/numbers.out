@@ -1,0 +1,112 @@
+window "Numbers" 400x240
+  column 0,0 400x223
+    number "5" 16,16 120x33
+    number "1.5" 16,59 120x33
+    number "3" 16,102 120x33 (disabled)
+    text "5 / 1.5 / 0" 16,145 66x19
+    button "Reset" 16,174 69x33
+window "Numbers" 400x240
+  column 0,0 400x223
+    number "10" 16,16 120x33 (focus, caret 2)
+    number "1.5" 16,59 120x33
+    number "3" 16,102 120x33 (disabled)
+    text "10 / 1.5 / 3" 16,145 73x19
+    button "Reset" 16,174 69x33
+window "Numbers" 400x240
+  column 0,0 400x223
+    number "87" 16,16 120x33 (refused) (focus, caret 2)
+    number "1.5" 16,59 120x33
+    number "3" 16,102 120x33 (disabled)
+    text "8 / 1.5 / 4" 16,145 67x19
+    button "Reset" 16,174 69x33
+window "Numbers" 400x240
+  column 0,0 400x223
+    number "12" 16,16 120x33 (refused) (focus, caret 2)
+    number "1.5" 16,59 120x33
+    number "3" 16,102 120x33 (disabled)
+    text "8 / 1.5 / 4" 16,145 67x19
+    button "Reset" 16,174 69x33
+window "Numbers" 400x240
+  column 0,0 400x223
+    number "1x" 16,16 120x33 (refused) (focus, caret 2)
+    number "1.5" 16,59 120x33
+    number "3" 16,102 120x33 (disabled)
+    text "1 / 1.5 / 5" 16,145 63x19
+    button "Reset" 16,174 69x33
+window "Numbers" 400x240
+  column 0,0 400x223
+    number "1.5" 16,16 120x33 (refused) (focus, caret 3)
+    number "1.5" 16,59 120x33
+    number "3" 16,102 120x33 (disabled)
+    text "1 / 1.5 / 5" 16,145 63x19
+    button "Reset" 16,174 69x33
+window "Numbers" 400x240
+  column 0,0 400x223
+    number "1" 16,16 120x33 (focus, caret 1)
+    number "1.5" 16,59 120x33
+    number "3" 16,102 120x33 (disabled)
+    text "1 / 1.5 / 5" 16,145 63x19
+    button "Reset" 16,174 69x33
+window "Numbers" 400x240
+  column 0,0 400x223
+    number "1" 16,16 120x33
+    number "1.5" 16,59 120x33 (focus, selected 0..3)
+    number "3" 16,102 120x33 (disabled)
+    text "1 / 1.5 / 5" 16,145 63x19
+    button "Reset" 16,174 69x33
+window "Numbers" 400x240
+  column 0,0 400x223
+    number "1" 16,16 120x33
+    number "2.55" 16,59 120x33 (focus, caret 4)
+    number "3" 16,102 120x33 (disabled)
+    text "1 / 2.55 / 5" 16,145 75x19
+    button "Reset" 16,174 69x33
+window "Numbers" 400x240
+  column 0,0 400x223
+    number "1" 16,16 120x33
+    number "2.55" 16,59 120x33
+    number "3" 16,102 120x33 (disabled)
+    text "1 / 2.55 / 5" 16,145 75x19
+    button "Reset" 16,174 69x33 (focus)
+window "Numbers" 400x240
+  column 0,0 400x223
+    number "1" 16,16 120x33
+    number "2.55" 16,59 120x33
+    number "3" 16,102 120x33 (disabled)
+    text "1 / 2.55 / 5" 16,145 75x19
+    button "Reset" 16,174 69x33 (focus)
+window "Numbers" 400x240
+  column 0,0 400x223
+    number "5" 16,16 120x33
+    number "2.45" 16,59 120x33 (focus, caret 4)
+    number "3" 16,102 120x33 (disabled)
+    text "5 / 2.45 / 7" 16,145 78x19
+    button "Reset" 16,174 69x33
+window "Numbers" 400x240
+  column 0,0 400x223
+    number "3" 16,16 120x33 (focus, caret 1)
+    number "2.45" 16,59 120x33
+    number "3" 16,102 120x33 (disabled)
+    text "3 / 2.45 / 10" 16,145 85x19
+    button "Reset" 16,174 69x33
+window "Numbers" 400x240
+  column 0,0 400x223
+    number "3" 16,16 120x33
+    number "-2" 16,59 120x33 (refused) (focus, caret 2)
+    number "3" 16,102 120x33 (disabled)
+    text "3 / 2.45 / 10" 16,145 85x19
+    button "Reset" 16,174 69x33
+window "Numbers" 400x240
+  column 0,0 400x223
+    number "3" 16,16 120x33
+    number "1.5" 16,59 120x33 (focus, selected 0..3)
+    number "3" 16,102 120x33 (disabled)
+    text "3 / 1.5 / 10" 16,145 73x19
+    button "Reset" 16,174 69x33
+window "Numbers" 400x240
+  column 0,0 400x223
+    number "7" 16,16 120x33
+    number "0" 16,59 120x33
+    number "3" 16,102 120x33 (disabled)
+    text "7 / 0.0 / 10" 16,145 75x19
+    button "Reset" 16,174 69x33

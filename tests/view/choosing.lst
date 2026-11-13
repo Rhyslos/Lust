@@ -1,0 +1,33 @@
+-- Radio buttons and switches: choosing one of a few, and on or off.
+state Size = [Small, Medium, Large];
+
+assembly App {
+    has {
+        Size size = Size.Medium;
+        string fruit = "Pear";
+        string array fruits = ["Apple", "Pear", "Plum"];
+        bool sound = true;
+        bool music = false;
+        bool locked = false;
+        string log = "";
+    }
+
+    view [title "Choosing", width 420, height 360] {
+        column [gap 10, pad 16] {
+            radio size { log = "size " + size.text(); }
+            radio fruit in fruits [across, purple];
+            radio fruit in fruits [across, disabled locked];
+            row [gap 16] {
+                switch sound "Sound" { log = "sound " + sound.text(); }
+                switch music;
+                checkbox locked "Locked";
+            }
+            text size.text() + ", " + fruit + ", " + sound.text() + ", " + music.text() + ": " + log;
+            button "Big" { size = Size.Large; sound = false; fruit = "Plum"; }
+            button "Lock" { locked = true; }
+        }
+    }
+}
+
+App:open();
+end

@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (alpha 67):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, sliders, scrolling, pictures, timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (alpha 68):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, scrolling, pictures (SVG too), timers, keyboard shortcuts and fonts of your own, all drawn by Lust itself. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -784,7 +784,8 @@ An assembly with a `view` opens a window with `App:open();`, through `lust run` 
 
 - **Pieces:** `column`, `row`, `stack`, `space`, `text` and `button`. A button's `{ }` runs when it's clicked, and the window redraws afterwards. Like a hook, it keeps the values of the variables around it as they were when it was drawn, so a button made in a loop sees that time round's values.
 - **Scrolling, pictures and timers:** `scroll`, `image` and `every` (see below).
-- **Inputs:** `input`, `textarea` (several lines), `checkbox` and `slider`, each bound to a field (see below), with the mouse, the keyboard and the clipboard.
+- **Inputs:** `input`, `textarea` (several lines), `checkbox`, `switch`, `radio`, `number` and `slider`, each bound to a field (see below), with the mouse, the keyboard and the clipboard.
+- **Icons:** `icon "trash"`, from a built-in set of about 150, on their own or in buttons (see below).
 - **Your own pieces:** any assembly with a view, used inside another view as `TodoRow { label = task };`, from the same file or fetched from files in `ui/` folders (see below).
 - **Styles and layout:** every word in the list below, `hover:[ … ]` included, plus named styles (`style chip = [pad 6, round];`). Text wraps onto more lines when it doesn't fit.
 - **Questions and loops** inside a view.
@@ -829,10 +830,13 @@ end
 | `press 184 200`, `move 260 200`, `release 260 200` | drags the line between a split's panels, like any drag |
 | `choose cat.png`, `choose cancel` | the answer the next `Files:chooseOpen`, `chooseSave` or `chooseFolder` box gives |
 | `hover Delete` | puts the mouse on the button showing that text, and shows its tip straight away |
-| `focus input 1` | gives the first input focus (also `textarea 1`, `checkbox 2`, `slider 1`, `button 3`) |
+| `focus input 1` | gives the first input focus (also `textarea 1`, `checkbox 2`, `switch 1`, `radio 1`, `number 1`, `slider 1`, `button 3`) |
 | `type Hello` | types into the input that has focus |
 | `key ctrl+left` | presses a key: `backspace`, `delete`, `left`, `right`, `home`, `end`, `up`, `down`, `tab`, `enter`, `space`, `escape`, with `shift+` or `ctrl+` in front, and `ctrl+a`, `ctrl+c`, `ctrl+x`, `ctrl+v`; any key a shortcut uses works too (`key ctrl+s`, `key f1`) |
 | `check 1` | clicks the first checkbox |
+| `flip 1` | clicks the first switch |
+| `click Medium`, `click Sound` | clicks a radio button, or a checkbox or switch, by its words |
+| `wheel 1 up`, `wheel 1 down` | turns the mouse wheel one notch over the first number box (it changes only while the box has focus) |
 | `slide 1 70` | drags the first slider to 70 |
 | `press 40 20`, `move 90 20`, `release 90 20`, `dblclick 40 20` | the mouse, at a place in the window |
 | `scroll 1 100` | scrolls the first scroll down 100 (up with a minus) |
@@ -966,7 +970,7 @@ assembly Settings {
 }
 ```
 
-- **What they change.** An `input` changes a string, a `checkbox` a bool, and a `slider` an int or a float. It's bound to a field (or a field of something, like `todos[id].task`), not a variable of the view, because the view's variables are made again each time it's drawn.
+- **What they change.** An `input` changes a string, a `checkbox` or `switch` a bool, a `radio` a string or a state (like a dropdown), and a `slider` or `number` an int or a float. It's bound to a field (or a field of something, like `todos[id].task`), not a variable of the view, because the view's variables are made again each time it's drawn.
 - **Styles of their own:** `placeholder "…"` is what an empty input shows. A slider goes `from` one number `to` another, one `step` at a time (`step 0` slides smoothly). A colour word colours a checkbox's tick and a slider's bar: `slider volume [purple]`. Inputs are 220 wide and sliders 200 unless they're given a `width`.
 - **The mouse:** click to put the caret somewhere, drag to select, double-click for a word, three clicks for everything, Shift+click to select up to there. Drag a slider's knob, or click anywhere along it.
 - **The keyboard:** Tab and Shift+Tab move between inputs, checkboxes, sliders and buttons, and what has focus gets a ring. In an input: the arrows, Home and End (with Shift to select, and with Ctrl, or Option on a Mac, to go by words), Backspace and Delete, and Ctrl+A, C, X and V (Cmd on a Mac) to select all, copy, cut and paste. Space ticks a checkbox and presses a button, and so does Enter on a button. The arrows move a slider by one step. Escape takes focus away.
@@ -978,8 +982,8 @@ assembly Settings {
 | Layout | `column`, `row`, `stack` (layers), `scroll`, `space`, `grid`, `split` |
 | Showing parts | `tabs` with `tab`, `branch` |
 | Drawing | `canvas` with `box`, `circle`, `line` |
-| Content | `text`, `button`, `input`, `textarea`, `checkbox`, `slider`, `image`, `progress` |
-| Choosing | `dropdown`, `menu` with `item` and `divider` |
+| Content | `text`, `button`, `input`, `textarea`, `checkbox`, `switch`, `number`, `slider`, `image`, `icon`, `progress` |
+| Choosing | `dropdown`, `radio`, `menu` with `item` and `divider` |
 | Over the view | `dialog` |
 | Time and keys | `every`, `key` |
 
@@ -1116,6 +1120,73 @@ dropdown size in ["Small", "Medium", "Large"] { price = priceOf(size); }
 
 The list opens below the dropdown (above, near the bottom of the window), scrolls when it's long, and closes when something is chosen, when Escape is pressed, or when the mouse goes down anywhere else. From the keyboard, Enter or Space opens it, Up and Down pick a row and Enter chooses it; with the list closed, Up and Down choose the one before or after straight away. A dropdown is as wide as its longest choice, so it doesn't change size as the choice changes.
 
+### Radio buttons
+
+`radio size;` shows every choice at once, each with a round button, and the one picked is filled in. It works like a dropdown: bound to a state, its choices are the state's options; bound to a string, it chooses from a list written after `in`. Clicking a button or its words picks it:
+
+```
+state Size = [Small, Medium, Large];
+…
+Size size = Size.Medium;
+string fruit = "Pear";
+…
+radio size { price = priceOf(size); }
+radio fruit in ["Apple", "Pear", "Plum"] [across];
+```
+
+The buttons go down in a column, or with `across` side by side in a row. A colour word colours the picked one: `radio size [purple]`. From the keyboard, Tab reaches the group as one piece, with a ring round the picked button; the arrows pick the one before or after (going round at the ends, as on Windows), and Space picks the first when none is picked yet. A radio is for a few choices that should all be seen; for many, use a dropdown.
+
+### Switches
+
+`switch sound;` is an on and off switch for a bool, like a light switch: a knob that slides right when it's on. Words after the field go beside it, and clicking them flips it too: `switch sound "Sound";`. A checkbox can have words the same way: `checkbox done "Done";`. Space or Enter flips the switch that has focus. A colour word colours it when it's on: `switch sound [green]`. Use a switch for a setting that takes effect straight away, and a checkbox for choices in a form.
+
+`switch` is a piece only inside a view. Outside one it's still the word other languages use for `check`, and Lust says so.
+
+### Number boxes
+
+`number count;` is a box for an int or a float, with small up and down arrows on its right:
+
+```
+number count [min 0, max 99, step 1];
+number price [step 0.5, min 0] { total = price * amount; }
+```
+
+- **Typing** works as in an input. While what's typed isn't a number that fits, the box gets a red edge and the field keeps its last good number; when focus leaves the box (or Enter is pressed) it shows the field's number again. So the field only ever holds numbers that fit.
+- **What fits:** a number written with digits, and a minus in front if it's below zero. Bound to an int, it's a whole number: `2.5` doesn't fit. With `min` and `max`, it's between them (both are kept: `[min 0, max 10]` takes 0 and 10).
+- **The arrows** (the up and down ones on the box, the Up and Down keys, and the mouse wheel over the box while it has focus) move the number one `step` up or down, 1 unless told otherwise, and keep it between `min` and `max`. The wheel only works on a box with focus, as on Windows, so scrolling down a long form doesn't change a number on the way past.
+- A number box is 120 wide unless it's given a `width`. `min` greater than `max`, written right there, is a mistake before anything runs.
+
+### Icons
+
+`icon "trash";` draws a small picture from Lust's own set, in the text's colour, sharp at any size. `size` sets how big it is (20 unless told), and a colour word colours it:
+
+```
+row [gap 8] {
+    icon "star" [size 18, yellow6];
+    text "Favourites";
+}
+button "Delete" [icon "trash", red] { remove(); }
+button [icon "settings", tip "Settings"] { showSettings = true; }
+```
+
+On a button, `icon` in its `[ ]` puts the icon before the words, or on its own when the button has no words. An icon's name is usually written in place, and then a name Lust doesn't have is a mistake before running, with the nearest name it does have; a name worked out while running that isn't one shows as an empty grey box.
+
+The icons are a subset of [Lucide](https://lucide.dev) (ISC licence, see `LICENSES/lucide.txt`), drawn from their shapes by Lust itself. These are the names:
+
+| | |
+| --- | --- |
+| arrows | `arrow-up`, `arrow-down`, `arrow-left`, `arrow-right`, `arrow-up-right`, `arrow-up-down`, `arrow-left-right`, `undo`, `redo`, `corner-down-left`, `move`, `maximize`, `minimize`, `external-link`, `log-in`, `log-out` |
+| chevrons | `chevron-up`, `chevron-down`, `chevron-left`, `chevron-right`, `chevrons-up`, `chevrons-down`, `chevrons-left`, `chevrons-right` |
+| marks | `check`, `x`, `plus`, `minus`, `circle-check`, `circle-x`, `circle-plus`, `circle-minus`, `circle-alert`, `circle-help`, `info`, `triangle-alert`, `ban`, `circle`, `square` |
+| editing | `trash`, `trash-2`, `pencil`, `square-pen`, `scissors`, `copy`, `clipboard`, `paperclip`, `bold`, `italic`, `type`, `align-left` |
+| finding your way | `house`, `menu`, `ellipsis`, `ellipsis-vertical`, `search`, `zoom-in`, `zoom-out`, `settings`, `funnel`, `list-filter`, `list`, `layout-grid`, `panel-left`, `grip-vertical` |
+| people and files | `user`, `users`, `folder`, `folder-open`, `file`, `file-text`, `save`, `download`, `upload`, `cloud`, `archive`, `inbox`, `printer`, `share`, `link` |
+| media | `play`, `pause`, `skip-back`, `skip-forward`, `volume-2`, `volume-x`, `mic`, `camera`, `image`, `video`, `music` |
+| state | `refresh-cw`, `refresh-ccw`, `rotate-cw`, `rotate-ccw`, `loader`, `eye`, `eye-off`, `lock`, `lock-open`, `key`, `shield`, `shield-check`, `bell`, `star`, `heart`, `thumbs-up`, `bookmark`, `flag`, `tag`, `map-pin`, `globe`, `wifi`, `zap`, `power` |
+| time and talking | `calendar`, `clock`, `timer`, `history`, `mail`, `send`, `message-circle`, `phone` |
+| things | `sun`, `moon`, `gift`, `shopping-cart`, `chart-column`, `chart-line`, `activity`, `code`, `terminal`, `database`, `monitor`, `gamepad-2`, `trophy`, `sword`, `coins`, `rocket`, `palette`, `book`, `bug`, `wrench`, `lightbulb`, `layers`, `box`, `puzzle` |
+| other names | `edit` (`square-pen`), `home` (`house`), `unlock` (`lock-open`), `more-horizontal` (`ellipsis`), `more-vertical` (`ellipsis-vertical`), `alert-triangle` (`triangle-alert`), `alert-circle` (`circle-alert`), `help-circle` and `help` (`circle-help`), `check-circle`, `x-circle`, `plus-circle` and `minus-circle` (`circle-…`), `filter` (`funnel`), `refresh` (`refresh-cw`), `sort` (`arrow-up-down`), `stop` (`square`), `close` (`x`), `delete` (`trash-2`) |
+
 ### Menus
 
 `menu "File" { … }` is a word that opens a list of `item`s, each running its block when it's chosen. `divider;` draws a line between items, and an item can be `disabled`:
@@ -1215,7 +1286,9 @@ A scroll is as wide as it can be, and in a column it takes the room that's left 
 
 ### Pictures
 
-`image "cat.png";` shows a PNG or JPEG file, found the way `Files` finds files: from the folder the program runs in, or anywhere with its whole path. Without a size it's as big as its file, shrinking to fit if there isn't room. Give it a `width` or a `height` and the other follows, keeping its shape. Give both and it fits inside that box; add `cover` and it fills the box instead, cut to fit. `round` rounds its corners, so `[width 48, height 48, cover, round 24]` makes a round picture. A file that isn't there shows as a grey box.
+`image "cat.png";` shows a PNG, JPEG or SVG file, found the way `Files` finds files: from the folder the program runs in, or anywhere with its whole path. Without a size it's as big as its file, shrinking to fit if there isn't room. Give it a `width` or a `height` and the other follows, keeping its shape. Give both and it fits inside that box; add `cover` and it fills the box instead, cut to fit. `round` rounds its corners, so `[width 48, height 48, cover, round 24]` makes a round picture. A file that isn't there shows as a grey box.
+
+An SVG picture is drawn again at the size it shows, so it's sharp at any size, and without a size it's as big as the SVG says. Everything in SVG's own rules is drawn (shapes, paths, colours, gradients, see-through, groups and transforms) except words written in the SVG and pictures inside it, which are left out.
 
 ### Timers
 
@@ -1295,7 +1368,8 @@ Short words in `[ ]`, in the spirit of Tailwind:
 | placement | `left`, `center`, `right` side to side; `top`, `middle`, `bottom` up and down; `spread` |
 | under the mouse | `hover:[ … ]`, `tip "…"` |
 | in dark mode | `dark:[ … ]` |
-| inputs and pictures | `placeholder "…"`, `from`, `to`, `step`, `cover` |
+| inputs and pictures | `placeholder "…"`, `from`, `to`, `step` (sliders), `min`, `max`, `step` (number boxes), `across` (radios), `cover` |
+| icons | `icon "trash"` on a button |
 | grids, splits, branches | `columns 3`, `cell 180`, `down`, `open` |
 | in a canvas | `x`, `y`, `toX`, `toY`, `radius`, `thick` |
 | motion | `animate` |
@@ -1318,7 +1392,7 @@ Name a style to reuse it: `style card = [pad 16, round, shadow];`, then `[card]`
 
 ### Underneath
 
-Lust draws everything itself, from the pixels up: layout, every piece, text editing, focus, scrolling, styles and animation. Small permissive libraries only open the window (winit), hand over the pixels (softbuffer), read font files (ab_glyph), show the computer's own boxes for choosing files (rfd), reach the system clipboard (arboard) and read PNG and JPEG files (png, jpeg-decoder). Views are for `.lst` programs on Windows, macOS and Linux. Web pages stay HTML, CSS and JavaScript.
+Lust draws everything itself, from the pixels up: layout, every piece, text editing, focus, scrolling, styles and animation. Small permissive libraries only open the window (winit), hand over the pixels (softbuffer), read font files (ab_glyph), show the computer's own boxes for choosing files (rfd), reach the system clipboard (arboard), read PNG and JPEG files (png, jpeg-decoder) and draw SVG files (resvg). Icons are Lucide's shapes, drawn by Lust. Views are for `.lst` programs on Windows, macOS and Linux. Web pages stay HTML, CSS and JavaScript.
 
 ---
 
@@ -1656,7 +1730,7 @@ An engine can use Lust's compiler itself, as a Rust library: to check a game's L
 
 ```
 [dependencies]
-lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.67", default-features = false }
+lust = { git = "https://github.com/Rhyslos/Lust", tag = "v2.0.0-alpha.68", default-features = false }
 ```
 
 Without its default features it needs nothing but Rust's own library (the default ones are the `lust` command). Lust doesn't open any files: the engine reads them, and hands over each one's path and text, with `/` between folders.
@@ -1870,6 +1944,8 @@ print      wait       ask
 Neither can the built-in objects: `Maths`, `Files`, `Time`, `Json`, `Web`, `Random`, `Rotation`, `Colour` and `Ease` (which is a state of easing curves too). (`Rotation` and `Colour` with a capital are the objects; `rotation` and `colour` are the types.)
 
 `tween`, `to` and `over` are words only in a tween (and `to` after `send`), so they can still be names.
+
+The pieces of a view (`text`, `button`, `radio`, `switch`, `number`, `icon` and the rest) are words only at the start of a line inside a view, so they can still be names: `int number = 3;` works anywhere.
 
 ---
 

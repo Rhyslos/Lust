@@ -96,7 +96,7 @@ dependencies = [
 
 [[package]]
 name = "lust"
-version = "2.0.0-alpha.67"
+version = "2.0.0-alpha.68"
 
 [[package]]
 name = "memchr"

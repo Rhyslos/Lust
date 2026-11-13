@@ -901,11 +901,14 @@ impl<'a> W<'a> {
                 let v = self.fresh("v");
                 let bound = matches!(
                     kind.as_str(),
-                    "input" | "textarea" | "checkbox" | "slider" | "dropdown" | "dialog" | "tabs"
+                    "input" | "textarea" | "checkbox" | "slider" | "dropdown" | "dialog" | "tabs" | "radio" | "switch" | "number"
                 );
                 let valued = bound || kind == "every" || kind == "progress";
-                let t = match arg {
-                    Some(a) if !valued => self.expr(a),
+                // A checkbox's or switch's words come after its field.
+                let label = choices.as_ref().filter(|_| kind == "checkbox" || kind == "switch");
+                let t = match (arg, label) {
+                    (_, Some(l)) => self.expr(l),
+                    (Some(a), _) if !valued => self.expr(a),
                     _ => "\"\"".into(),
                 };
                 let s = self.styles(style);
@@ -917,8 +920,12 @@ impl<'a> W<'a> {
                     // What the input shows: the value it's bound to, as it is now.
                     let shown = self.expr(a);
                     self.line(ln, &format!("{v}.v = {shown}"));
-                    // What a dropdown chooses from: its list, or its state's options.
-                    if kind == "dropdown" {
+                    // A number box bound to an int takes whole numbers only.
+                    if kind == "number" && self.info.ty(a) == Ty::Int {
+                        self.line(ln, &format!("{v}.i = true"));
+                    }
+                    // What a dropdown or radio chooses from: its list, or its state's options.
+                    if kind == "dropdown" || kind == "radio" {
                         let opts = match (self.info.ty(a), choices) {
                             (Ty::State(s), _) => {
                                 let o: Vec<String> = self.info.states[s].options.iter().map(|o| lua_string(o)).collect();
