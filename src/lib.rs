@@ -99,6 +99,7 @@ mod native_ui {
     include!("native_ui_table.rs");
     include!("native_ui_mouse.rs");
     include!("native_ui_pickers.rs");
+    include!("native_ui_windows.rs");
 }
 #[cfg(feature = "cli")]
 mod run;

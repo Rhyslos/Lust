@@ -1,0 +1,9 @@
+-- App:notify() and toasts without a window: in a test, the notification prints; a toast has
+-- nowhere to show, and App:quit() has no window to close.
+App:notify("Backup", "Your notes are saved.");
+toast "Nobody sees this";
+App:quit();
+string toast = "a variable can be called toast";
+print(toast);
+print("done");
+end

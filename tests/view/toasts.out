@@ -1,0 +1,98 @@
+window "Toasts" 420x300
+  column 0,0 420x180
+    button "Save" 12,12 64x33
+    button "Oops" 12,53 66x33
+    button "Plain" 12,94 63x33
+    button "More" 12,135 66x33
+  layer "toast" 0,0 420x300
+    toast "Saved 1" 297,198 107x39
+      icon "check" 311,210 16x16
+      text "Saved 1" 335,208 55x19
+    toast "Something went wrong" 187,245 217x39
+      icon "triangle-alert" 201,257 16x16
+      text "Something went wrong" 225,255 165x19
+window "Toasts" 420x300
+  column 0,0 420x180
+    button "Save" 12,12 64x33
+    button "Oops" 12,53 66x33
+    button "Plain" 12,94 63x33
+    button "More" 12,135 66x33
+  layer "toast" 0,0 420x300
+    toast "Saved 1" 297,151 107x39
+      icon "check" 311,163 16x16
+      text "Saved 1" 335,161 55x19
+    toast "Something went wrong" 187,198 217x39
+      icon "triangle-alert" 201,210 16x16
+      text "Something went wrong" 225,208 165x19
+    toast "Hello" 339,245 65x39
+      text "Hello" 353,255 37x19
+window "Toasts" 420x300
+  column 0,0 420x180
+    button "Save" 12,12 64x33
+    button "Oops" 12,53 66x33
+    button "Plain" 12,94 63x33
+    button "More" 12,135 66x33
+  layer "toast" 0,0 420x300
+    toast "Something went wrong" 187,198 217x39
+      icon "triangle-alert" 201,210 16x16
+      text "Something went wrong" 225,208 165x19
+    toast "Hello" 339,245 65x39
+      text "Hello" 353,255 37x19
+window "Toasts" 420x300
+  column 0,0 420x180
+    button "Save" 12,12 64x33
+    button "Oops" 12,53 66x33
+    button "Plain" 12,94 63x33
+    button "More" 12,135 66x33
+window "Toasts" 420x300
+  column 0,0 420x180
+    button "Save" 12,12 64x33
+    button "Oops" 12,53 66x33
+    button "Plain" 12,94 63x33
+    button "More" 12,135 66x33
+window "Toasts" 420x300
+  column 0,0 420x180
+    button "Save" 12,12 64x33
+    button "Oops" 12,53 66x33
+    button "Plain" 12,94 63x33
+    button "More" 12,135 66x33
+  layer "toast" 0,0 420x300
+    toast "Saved 3" 294,57 110x39
+      icon "check" 308,69 16x16
+      text "Saved 3" 332,67 58x19
+    toast "Saved 4" 293,104 111x39
+      icon "check" 307,116 16x16
+      text "Saved 4" 331,114 59x19
+    toast "Saved 5" 294,151 110x39
+      icon "check" 308,163 16x16
+      text "Saved 5" 332,161 58x19
+    toast "Saved 6" 294,198 110x39
+      icon "check" 308,210 16x16
+      text "Saved 6" 332,208 58x19
+    toast "Saved 7" 294,245 110x39
+      icon "check" 308,257 16x16
+      text "Saved 7" 332,255 58x19
+window "Toasts" 420x300
+  column 0,0 420x180
+    button "Save" 12,12 64x33
+    button "Oops" 12,53 66x33
+    button "Plain" 12,94 63x33
+    button "More" 12,135 66x33
+window "More" 300x200
+  button "Save here" 0,0 101x33
+  layer "toast" 0,0 300x200
+    toast "Saved 8" 174,145 110x39
+      icon "check" 188,157 16x16
+      text "Saved 8" 212,155 58x19
+window "Toasts" 420x300
+  column 0,0 420x180
+    button "Save" 12,12 64x33
+    button "Oops" 12,53 66x33
+    button "Plain" 12,94 63x33
+    button "More" 12,135 66x33
+window "More" 300x200
+  button "Save here" 0,0 101x33
+  layer "toast" 0,0 300x200
+    toast "Saved 8" 174,145 110x39
+      icon "check" 188,157 16x16
+      text "Saved 8" 212,155 58x19

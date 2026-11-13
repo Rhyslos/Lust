@@ -1,0 +1,41 @@
+window "Notes" 320x200
+  column 0,0 320x125
+    text "Clicks: 0" 12,12 61x19
+    button "Notify" 12,39 72x33
+    button "Hide" 12,80 62x33
+tray "Notes" (3 items)
+window "Notes" 320x200 (fullscreen)
+  column 0,0 320x125
+    text "Clicks: 0" 12,12 61x19
+    button "Notify" 12,39 72x33
+    button "Hide" 12,80 62x33
+tray "Notes" (3 items)
+notify: Notes — Saved 0 times
+window "Notes" 320x200 (hidden)
+  column 0,0 320x125
+    text "Clicks: 0" 12,12 61x19
+    button "Notify" 12,39 72x33
+    button "Hide" 12,80 62x33
+tray "Notes" (3 items)
+(the tray's item "Count" is disabled)
+window "Notes" 320x200
+  column 0,0 320x125
+    text "Clicks: 1" 12,12 58x19
+    button "Notify" 12,39 72x33
+    button "Hide" 12,80 62x33
+tray "Notes" (3 items)
+window "Notes" 320x200
+  column 0,0 320x125
+    text "Clicks: 1" 12,12 58x19
+    button "Notify" 12,39 72x33
+    button "Hide" 12,80 62x33
+  layer "dialog" 0,0 320x200
+    dialog 65,48 190x104
+      text "Save first?" 85,68 75x19
+      row 85,99 150x33
+        button "Save" 85,99 64x33
+        button "Cancel" 157,99 78x33
+tray "Notes" (3 items)
+(the tray has no item "Nope")
+the window closed, and the program goes on
+App:quit() with no window open does nothing

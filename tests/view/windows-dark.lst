@@ -1,0 +1,28 @@
+-- A second window and toasts in dark mode. The window takes dark mode from the view, unless it
+-- says otherwise.
+assembly App {
+    has {
+        bool showingSettings = true;
+        bool showingLight = true;
+        bool sound = true;
+    }
+
+    view [title "Dark", width 320, height 200, dark] {
+        column [gap 8, pad 12] {
+            text "The main window";
+            button "Save" { toast "Saved" [icon "check"]; }
+        }
+        window showingSettings [title "Settings", width 280, height 180] {
+            column [gap 8, pad 12] {
+                switch sound "Sound";
+                button "Try" { toast "Sound is " + (either sound? "on" or "off") [green]; }
+            }
+        }
+        window showingLight [title "Light", width 200, height 100, dark false] {
+            text "A light window" [pad 12];
+        }
+    }
+}
+
+App:open();
+end

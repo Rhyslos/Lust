@@ -130,3 +130,11 @@ An engine moving from alpha 48 to alpha 67 or later reads everything below.
 - **Removing an entity:** Lust has no hook to hear that an entity or component is gone, so its tweens keep running until they end: they move a component nobody ticks any more, and their done blocks still run. A `send` from one of those done blocks names an entity the engine has removed; the engine should ignore it. A way to stop a component's tweens can come later if Solis needs it.
 - `Ease` becomes a built-in object and state, so a game can't use it as a name. A component's field can hold an `Ease` like any state (its schema kind is `state`, with the curves as options).
 - **The engine does:** calls `tickTweens(dt)` (Lua) or `tick_tweens(dt)` (Rust) once a tick between the objects and the components, and ignores events sent to entities it has removed.
+
+## alpha 72: toasts, App:quit() and App:notify()
+
+- Game code can now write `toast "Saved";`, `App:quit()` and `App:notify("Title", "Body")`. They're for Lust's own windows (views), which an engine doesn't use.
+- **Lua (Luau):** all three do nothing: the runtime only calls them when the host gives `ui_toast`, `app_quit` or `app_notify`, and an engine's host doesn't. Nothing is refused, so shared code still loads.
+- **Rust (`lust build --library`):** a library without a view writes `toast` and `App:quit()` as nothing. `App:notify` brings in the view runtime (and winit), so leave it out of game code.
+- `App` isn't reserved: a game's own class can still be called `App`.
+- **The engine does:** nothing, unless it wants to show toasts or notifications its own way, which can come later if Solis needs it.

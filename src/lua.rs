@@ -409,11 +409,18 @@ impl<'a> W<'a> {
                 self.line(ln, "end");
                 continue;
             }
+            // fullscreen's field is set from whether the window is full screen.
+            if a.word == "fullscreen" {
+                self.action(ln, &format!("{v}.F"), &lname(crate::parser::VALUE), &a.body);
+                continue;
+            }
             let slot = match a.word.as_str() {
                 "press" => "P",
                 "drag" => "D",
                 "release" => "U",
                 "hover" => "H",
+                "click" => "C",
+                "close" => "Q",
                 _ => "X",
             };
             let own: Vec<String> = a.param.iter().map(|(_, n, _)| n.clone()).collect();
@@ -1197,6 +1204,18 @@ impl<'a> W<'a> {
                     self.rows_piece(ln, s.pos(), kind, style, children, choices);
                     return;
                 }
+                // toast "Saved" [green];: a message in the corner of the window that ran it.
+                if kind == "toast" {
+                    let text = arg.as_ref().map(|a| self.expr(a)).unwrap_or_else(|| "\"\"".into());
+                    let st = self.styles(style);
+                    self.line(ln, &format!("_L.toast({text}, {st})"));
+                    return;
+                }
+                // The view's own blocks: close { … }, and setting fullscreen's field.
+                if kind == "viewroot" {
+                    self.attached(ln, &parent, extra);
+                    return;
+                }
                 if let Some(Expr {
                     kind: ExprKind::New { class, inits, .. },
                     id,
@@ -1252,6 +1271,7 @@ impl<'a> W<'a> {
                         | "number"
                         | "datePicker"
                         | "colourPicker"
+                        | "window"
                 );
                 let valued = bound || kind == "every" || kind == "progress";
                 // A checkbox's or switch's words come after its field.
@@ -1259,6 +1279,8 @@ impl<'a> W<'a> {
                 let t = match (arg, label) {
                     // A date picker is told today's date, by the computer's clock.
                     _ if kind == "datePicker" => "_L.time_date()".to_string(),
+                    // A window is known by where it's written.
+                    (Some(a), _) if kind == "window" => lua_string(&a.id.to_string()),
                     (_, Some(l)) => self.expr(l),
                     (Some(a), _) if !valued => self.expr(a),
                     _ => "\"\"".into(),
@@ -2104,6 +2126,11 @@ impl<'a> W<'a> {
                 let t = self.expr(&args[0]);
                 let dec = self.jdec(&lib.ret);
                 format!("_L.json_read({t}, {dec})")
+            }
+            // App isn't a value: only what's in the ( ) goes over.
+            "app_quit" | "app_notify" => {
+                let a: Vec<String> = args.iter().map(|x| self.expr(x)).collect();
+                format!("_L.{}({})", lib.func, a.join(", "))
             }
             f => {
                 let mut a: Vec<String> = target.map(|t| self.expr(t)).into_iter().collect();

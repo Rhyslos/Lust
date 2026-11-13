@@ -1,0 +1,22 @@
+-- Mistakes with App's built-in methods, when the program has no assembly called App.
+assembly Notes {
+    has {
+        int count = 0;
+    }
+
+    view [title "Notes"] {
+        button "Go" {
+            App:frob();
+            App:quit(3);
+            App:notify(1, "Body");
+            App:notify("Title", "Body", "More");
+        }
+        toast "Not here";
+        close {
+            count = 1;
+        }
+    }
+}
+
+Notes:open();
+end

@@ -1,0 +1,97 @@
+window "Notes" 360x240
+  column 0,0 360x111
+    text "Hello " 12,12 41x19
+    text "ticks 0, saves 0" 12,39 111x19
+    row 12,66 157x33
+      button "Settings" 12,66 87x33
+      button "Help" 107,66 62x33
+window "Notes" 360x240
+  column 0,0 360x111
+    text "Hello " 12,12 41x19
+    text "ticks 0, saves 0" 12,39 111x19
+    row 12,66 157x33
+      button "Settings" 12,66 87x33
+      button "Help" 107,66 62x33
+window "Settings" 300x200
+  column 0,0 300x139
+    input "" 12,12 220x33
+    button "Forget" 12,53 75x33
+    button "Done" 12,94 66x33
+window "Notes" 360x240
+  column 0,0 360x111
+    text "Hello Ada" 12,12 69x19
+    text "ticks 0, saves 0" 12,39 111x19
+    row 12,66 157x33
+      button "Settings" 12,66 87x33
+      button "Help" 107,66 62x33
+window "Settings" 300x200
+  column 0,0 300x139
+    input "Ada" 12,12 220x33 (focus, caret 3)
+    button "Forget" 12,53 75x33
+    button "Done" 12,94 66x33
+window "Notes" 360x240
+  column 0,0 360x111
+    text "Hello Ada" 12,12 69x19
+    text "ticks 2, saves 101" 12,39 123x19
+    row 12,66 157x33
+      button "Settings" 12,66 87x33
+      button "Help" 107,66 62x33
+window "Settings" 300x200
+  column 0,0 300x139
+    input "Ada" 12,12 220x33 (focus, caret 3)
+    button "Forget" 12,53 75x33
+    button "Done" 12,94 66x33
+window "Notes" 360x240
+  column 0,0 360x111
+    text "Hello Ada" 12,12 69x19
+    text "ticks 2, saves 101" 12,39 123x19
+    row 12,66 157x33
+      button "Settings" 12,66 87x33
+      button "Help" 107,66 62x33
+window "Settings" 300x200
+  column 0,0 300x139
+    input "Ada" 12,12 220x33 (focus, caret 3)
+    button "Forget" 12,53 75x33
+    button "Done" 12,94 66x33
+window "Help Ada" 240x120
+  text "Type your name in Settings." 0,0 199x19
+window "Notes" 360x240
+  column 0,0 360x111
+    text "Hello Ada" 12,12 69x19
+    text "ticks 2, saves 101" 12,39 123x19
+    row 12,66 157x33
+      button "Settings" 12,66 87x33
+      button "Help" 107,66 62x33
+window "Settings" 300x200
+  column 0,0 300x139
+    input "Ada" 12,12 220x33
+    button "Forget" 12,53 75x33
+    button "Done" 12,94 66x33
+  layer "dialog" 0,0 300x200
+    dialog 68,48 165x104
+      text "Forget the name?" 88,68 125x19
+      button "Yes" 88,99 56x33
+window "Notes" 360x240
+  column 0,0 360x111
+    text "Hello " 12,12 41x19
+    text "ticks 2, saves 101" 12,39 123x19
+    row 12,66 157x33
+      button "Settings" 12,66 87x33
+      button "Help" 107,66 62x33
+(there's no open window "Settings")
+(there's no open window "Nowhere")
+window "Notes" 360x240
+  column 0,0 360x111
+    text "Hello " 12,12 41x19
+    text "ticks 2, saves 101" 12,39 123x19
+    row 12,66 157x33
+      button "Settings" 12,66 87x33
+      button "Help" 107,66 62x33
+window "Notes" 360x240
+  column 0,0 360x111
+    text "Hello " 12,12 41x19
+    text "ticks 2, saves 101" 12,39 123x19
+    row 12,66 157x33
+      button "Settings" 12,66 87x33
+      button "Help" 107,66 62x33
+the windows closed

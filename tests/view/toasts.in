@@ -1,0 +1,26 @@
+click Save
+click Oops
+dump
+snapshot toasts.snap.png
+wait 2
+click Plain
+dump
+wait 2.5
+dump
+click Something went wrong
+click Hello
+dump
+wait 6
+dump
+click Save
+click Save
+click Save
+click Save
+click Save
+click Save
+dump
+wait 5
+click More
+in More click Save here
+dump
+in More dump

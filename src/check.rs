@@ -276,6 +276,8 @@ pub struct Checker<'a> {
     /// How many menus and canvases the piece being checked is inside.
     menus: usize,
     canvases: usize,
+    /// The trays written in the view being checked: a view has one.
+    trays: usize,
     /// The tables whose rows are being checked, and for each table or list, whether its
     /// select fits its rows (when it doesn't, that's said once, not again for each row).
     tables: usize,
@@ -299,6 +301,7 @@ pub fn check(prog: &Program, diags: &mut Diags, is_script: bool) -> Info {
         loop_keys: vec![],
         menus: 0,
         canvases: 0,
+        trays: 0,
         tables: 0,
         rows_ok: vec![],
         compound: prog.compound.clone(),
@@ -1263,6 +1266,7 @@ impl<'a> Checker<'a> {
         };
         self.eval_styles(&v.settings, &mut ctx);
         self.check_styles(&v.settings, "view");
+        self.trays = 0;
         self.block_in(&v.body, &mut ctx, true);
     }
 
@@ -1280,9 +1284,24 @@ impl<'a> Checker<'a> {
         pos: Pos,
         ctx: &mut Ctx,
     ) {
+        if kind == "toast" {
+            return self.toast(arg, style, ctx);
+        }
+        if kind == "viewroot" {
+            return;
+        }
         if !ctx.in_view {
             self.err(pos, format!("{kind} is a piece of a screen, so it goes inside a view {{ }}."));
             return;
+        }
+        if kind == "tray" {
+            self.trays += 1;
+            if self.trays == 2 {
+                self.err(
+                    pos,
+                    "a view has one tray icon, and this is a second one. Put all its items in one tray { }.",
+                );
+            }
         }
         match kind {
             "table" | "list" => return self.rows_piece(kind, style, children, choices, ctx),
@@ -1333,7 +1352,8 @@ impl<'a> Checker<'a> {
                 | "switch"
                 | "number"
                 | "datePicker"
-                | "colourPicker",
+                | "colourPicker"
+                | "window",
                 Some(a),
             ) => {
                 let t = self.expr(a, ctx, None);
@@ -1343,6 +1363,7 @@ impl<'a> Checker<'a> {
                     "checkbox" => ("a bool", "checkbox done;"),
                     "dropdown" => ("text or a state", "dropdown size in [\"Small\", \"Large\"];"),
                     "dialog" => ("a bool", "dialog confirming { … }"),
+                    "window" => ("a bool", "window showingSettings [title \"Settings\"] { … }"),
                     "tabs" => ("text: the name of the tab that shows", "tabs page { tab \"Home\" { … } }"),
                     "radio" => ("text or a state", "radio size;"),
                     "switch" => ("a bool", "switch sound;"),
@@ -1353,7 +1374,7 @@ impl<'a> Checker<'a> {
                 };
                 let fits = match kind {
                     "input" | "textarea" | "tabs" => t == Ty::Str,
-                    "checkbox" | "dialog" | "switch" => t == Ty::Truth,
+                    "checkbox" | "dialog" | "switch" | "window" => t == Ty::Truth,
                     "dropdown" | "radio" => matches!(t, Ty::Str | Ty::State(_)),
                     "datePicker" => t == Ty::Str,
                     "colourPicker" => t == Ty::Colour,
@@ -1401,11 +1422,11 @@ impl<'a> Checker<'a> {
                         _ => {}
                     }
                 }
-                if !fits && t != Ty::Error && kind == "dialog" {
+                if !fits && t != Ty::Error && (kind == "dialog" || kind == "window") {
                     self.err(
                         a.pos,
                         format!(
-                            "a dialog is open while a bool is true, but {} is {}: {example}",
+                            "a {kind} is open while a bool is true, but {} is {}: {example}",
                             describe(a),
                             self.a(&t)
                         ),
@@ -1508,6 +1529,13 @@ impl<'a> Checker<'a> {
                 self.err(pos, "a dialog needs the bool that opens it: dialog confirming { … }");
                 ctx.scopes.push(HashMap::new());
             }
+            ("window", None) => {
+                self.err(
+                    pos,
+                    "a window needs the bool that opens it: window showingSettings [title \"Settings\"] { … }",
+                );
+                ctx.scopes.push(HashMap::new());
+            }
             ("input" | "textarea" | "checkbox" | "slider" | "dropdown" | "radio" | "switch" | "number" | "datePicker" | "colourPicker", None) => {
                 let an = if kind == "input" { "an" } else { "a" };
                 self.err(pos, format!("{an} {kind} needs the field it changes: {kind} name;"));
@@ -1590,12 +1618,16 @@ impl<'a> Checker<'a> {
         self.check_styles(style, kind);
         if !children.is_empty() {
             ctx.scopes.push(HashMap::new());
-            let menu = kind == "menu";
-            self.menus += menu as usize;
+            let menu = kind == "menu" || kind == "tray";
             let canvas = kind == "canvas";
             self.canvases += canvas as usize;
-            // A dialog's own pieces are its, not inside a menu around it.
-            let outer = if kind == "dialog" { std::mem::take(&mut self.menus) } else { 0 };
+            // A dialog's or window's own pieces are its, not inside a menu around it.
+            let outer = if kind == "dialog" || kind == "window" {
+                std::mem::take(&mut self.menus)
+            } else {
+                0
+            };
+            self.menus += menu as usize;
             for s in children {
                 self.stmt(s, ctx);
             }
@@ -1618,6 +1650,7 @@ impl<'a> Checker<'a> {
                 | "number"
                 | "datePicker"
                 | "colourPicker"
+                | "window"
         );
         if kind == "datePicker" {
             self.info.uses_dates = true;
@@ -1672,7 +1705,19 @@ impl<'a> Checker<'a> {
                 "menu" => {
                     if matches!(
                         kind,
-                        "menu" | "dropdown" | "item" | "divider" | "key" | "every" | "dialog" | "tab" | "drop" | "space" | "tablecolumn"
+                        "menu"
+                            | "dropdown"
+                            | "item"
+                            | "divider"
+                            | "key"
+                            | "every"
+                            | "dialog"
+                            | "tab"
+                            | "drop"
+                            | "space"
+                            | "tablecolumn"
+                            | "window"
+                            | "tray"
                     ) {
                         self.err(
                             a.pos,
@@ -1701,6 +1746,30 @@ impl<'a> Checker<'a> {
                     self.menus -= 1;
                     ctx.scopes.pop();
                 }
+                "close" => {
+                    if kind != "viewroot" {
+                        let fix = if kind == "window" {
+                            ". A window closes by its bool, which its X sets to false."
+                        } else {
+                            ""
+                        };
+                        self.err(
+                            a.pos,
+                            format!("close {{ }} goes right after the view's {{ }}, for when its window's X is clicked: view [title \"Notes\"] {{ … }} close {{ … }}{fix}"),
+                        );
+                    }
+                    self.attached_block(a, Ty::Void, "", "close { … }", ctx);
+                }
+                "click" => {
+                    if kind != "tray" {
+                        self.err(
+                            a.pos,
+                            format!("click {{ }} is for a click on a tray icon, so it goes right after a tray's {{ }}: tray [icon \"bell\"] {{ … }} click {{ … }}. A {shown} runs its own {{ }} when it's clicked."),
+                        );
+                    }
+                    self.attached_block(a, Ty::Void, "", "click { … }", ctx);
+                }
+                "fullscreen" => self.fullscreen_setter(a, ctx),
                 "drop" => self.attached_block(
                     a,
                     Ty::Array(Box::new(Ty::Str)),
@@ -1717,6 +1786,102 @@ impl<'a> Checker<'a> {
                     }
                     let example = format!("{word} (vec2 at) {{ … }}");
                     self.attached_block(a, Ty::Vec2, "where the mouse is on the canvas, as a vec2", &example, ctx);
+                }
+            }
+        }
+    }
+
+    /// The block that sets `fullscreen`'s field when the window leaves full screen by itself:
+    /// isFull = (whether it's full screen). Only checked when the field is a bool, since
+    /// check_styles has said so otherwise.
+    fn fullscreen_setter(&mut self, a: &Attached, ctx: &mut Ctx) {
+        let Some(Stmt::Assign { target, .. }) = a.body.first() else {
+            return;
+        };
+        if self.info.ty(target) != Ty::Truth {
+            return;
+        }
+        let local = matches!(target.kind, ExprKind::Name(_)) && self.info.names.get(&target.id) == Some(&NameRes::Local);
+        if local {
+            self.err(
+                target.pos,
+                format!(
+                    "{} is a variable of the view, made again each time it's drawn, so leaving full screen couldn't change it. Bind fullscreen to a field.",
+                    describe(target)
+                ),
+            );
+            return;
+        }
+        if !matches!(target.kind, ExprKind::Name(_) | ExprKind::Field(..) | ExprKind::Index(..)) {
+            self.err(
+                target.pos,
+                "fullscreen is bound to a bool field, which changes when the window leaves full screen: view [fullscreen isFull].",
+            );
+            return;
+        }
+        let was = std::mem::replace(&mut ctx.in_view, false);
+        ctx.scopes.push(HashMap::new());
+        ctx.scopes.last_mut().unwrap().insert(
+            crate::parser::VALUE.to_string(),
+            Local {
+                ty: Ty::Truth,
+                readonly: true,
+                locked: false,
+                pos: target.pos,
+            },
+        );
+        for s in &a.body {
+            self.stmt(s, ctx);
+        }
+        ctx.scopes.pop();
+        ctx.in_view = was;
+    }
+
+    /// toast "Saved" [green, icon "check", seconds 8];: a statement in any block.
+    fn toast(&mut self, arg: &Option<Expr>, style: &[StyleItem], ctx: &mut Ctx) {
+        if let Some(a) = arg {
+            let t = self.expr(a, ctx, Some(&Ty::Str));
+            if t == Ty::Void {
+                self.err(
+                    a.pos,
+                    format!("{} doesn't give anything back, so there's nothing for toast to show.", describe(a)),
+                );
+            } else if t != Ty::Str && t != Ty::Error {
+                let fix = if matches!(t, Ty::Int | Ty::Float | Ty::Truth | Ty::State(_)) || t.is_vector() {
+                    format!(" Put it in text: toast \"{{{}}}\";", describe(a))
+                } else {
+                    String::new()
+                };
+                self.err(a.pos, format!("toast shows text, but this is {}.{fix}", self.a(&t)));
+            }
+        }
+        self.eval_styles(style, ctx);
+        for it in style {
+            let n = it.name.as_str();
+            match (n, &it.value) {
+                (c, StyleValue::Flag) if crate::words::COLOURS.contains(&c) => {}
+                ("icon", StyleValue::Expr(e)) if matches!(self.info.ty(e), Ty::Str | Ty::Error) => {
+                    let e = e.clone();
+                    self.icon_name(&e);
+                }
+                ("icon", _) => self.err(it.pos, "icon takes the icon's name: toast \"Saved\" [icon \"check\"];"),
+                ("seconds", StyleValue::Expr(e)) => {
+                    let t = self.info.ty(e);
+                    if !matches!(t, Ty::Int | Ty::Float | Ty::Error) {
+                        self.err(e.pos, format!("seconds takes a number, like seconds 8. This is {}.", self.a(&t)));
+                    } else if literal_number(e).is_some_and(|x| x <= 0.0) {
+                        self.err(e.pos, "a toast shows for some time, so seconds is more than 0: [seconds 8].");
+                    }
+                }
+                ("seconds", _) => self.err(it.pos, "seconds takes a number, like seconds 8."),
+                _ => {
+                    let mut known: Vec<String> = vec!["icon".into(), "seconds".into()];
+                    known.extend(crate::words::COLOURS.iter().map(|s| s.to_string()));
+                    let s = suggest(n, known);
+                    self.err(
+                        it.pos,
+                        format!("a toast has a colour word, icon and seconds: toast \"Saved\" [green, icon \"check\", seconds 8];{s}"),
+                    );
                 }
             }
         }
@@ -2041,7 +2206,7 @@ impl<'a> Checker<'a> {
             "middle", "bottom", "spread", "subtle", "cover", "down", "open", "animate", "across", "stripes",
         ];
         const COLOURED: &[&str] = &["color", "background"];
-        let window = kind == "view";
+        let window = kind == "view" || kind == "window";
         for it in items {
             let n = it.name.as_str();
             let named = self.info.styles.contains(n);
@@ -2058,6 +2223,44 @@ impl<'a> Checker<'a> {
             };
             match (n, &it.value) {
                 ("title", StyleValue::Expr(_)) if window => {}
+                ("fullscreen", StyleValue::Flag) if window => {}
+                ("fullscreen", StyleValue::Expr(e)) if window => {
+                    let t = self.info.ty(e);
+                    if !matches!(t, Ty::Truth | Ty::Error) {
+                        self.err(
+                            e.pos,
+                            format!("fullscreen is bound to a bool, like fullscreen isFull. This is {}.", self.a(&t)),
+                        );
+                    }
+                }
+                ("visible", StyleValue::Expr(e)) if kind == "view" => {
+                    let t = self.info.ty(e);
+                    if !matches!(t, Ty::Truth | Ty::Error) {
+                        self.err(e.pos, format!("visible takes a bool, like visible shown. This is {}.", self.a(&t)));
+                    }
+                }
+                ("visible", _) if kind == "window" => self.err(
+                    it.pos,
+                    "a window shows while its bool is true, so it has no visible: window showingSettings [title \"Settings\"] { … }",
+                ),
+                ("visible", _) if kind == "view" => self.err(it.pos, "visible takes a bool, like visible shown."),
+                ("escape", StyleValue::Flag) if kind == "window" => {}
+                ("escape", _) if kind == "window" => self.err(it.pos, "escape is a word on its own, without a value: [escape]"),
+                ("escape", StyleValue::Flag) if kind == "view" => self.err(
+                    it.pos,
+                    "escape lets Escape close a second window: window showingSettings [escape] { … }. Escape doesn't close the main window.",
+                ),
+                // A tray's icon: one of Lust's icons, or a picture file; and its tip.
+                ("icon", StyleValue::Expr(e)) if kind == "tray" && matches!(self.info.ty(e), Ty::Str | Ty::Error) => {
+                    let e = e.clone();
+                    self.icon_name(&e);
+                }
+                ("picture", StyleValue::Expr(e)) if kind == "tray" && matches!(self.info.ty(e), Ty::Str | Ty::Error) => {}
+                ("tip", StyleValue::Expr(e)) if kind == "tray" && matches!(self.info.ty(e), Ty::Str | Ty::Error) => {}
+                (_, _) if kind == "tray" => self.err(
+                    it.pos,
+                    format!("a tray has an icon, a picture or a tip: tray [icon \"bell\", tip \"Notes\"] {{ … }}. {n} isn't one of those."),
+                ),
                 // A date picker's min and max are dates, written as text.
                 ("min" | "max", v) if kind == "datePicker" => match v {
                     StyleValue::Expr(e) if matches!(self.info.ty(e), Ty::Str | Ty::Error) => {
@@ -2211,6 +2414,8 @@ impl<'a> Checker<'a> {
                             "background".into(),
                             "font".into(),
                             "dark".into(),
+                            "fullscreen".into(),
+                            if kind == "window" { "escape".into() } else { "visible".into() },
                         ]
                     } else {
                         NUMS.iter()
@@ -2243,10 +2448,15 @@ impl<'a> Checker<'a> {
                         known.extend(crate::words::COLOURS.iter().map(|s| s.to_string()));
                     }
                     let s = suggest(n, known.clone());
-                    if window {
+                    if kind == "window" {
                         self.err(
                             it.pos,
-                            format!("a window's view has title, width, height, minWidth, minHeight, background, font and dark.{s}"),
+                            format!("a window has title, width, height, minWidth, minHeight, background, font, dark, fullscreen and escape.{s}"),
+                        );
+                    } else if window {
+                        self.err(
+                            it.pos,
+                            format!("a window's view has title, width, height, minWidth, minHeight, background, font, dark, fullscreen and visible.{s}"),
                         );
                     } else if FLAGS.contains(&n) || colour_word || named {
                         self.err(it.pos, format!("{n} is a word on its own, without a value."));
@@ -4286,6 +4496,52 @@ impl<'a> Checker<'a> {
 
     /// Maths:sqrt(2.0), Files:read("notes.txt"), Json:read(text) and the rest.
     #[allow(clippy::too_many_arguments)]
+    /// App:quit() ends the program, and App:notify("Title", "Body") shows the computer's own
+    /// notification.
+    fn app_call(&mut self, e: &Expr, m: &str, args: &[Expr], mpos: Pos, ctx: &mut Ctx) -> Ty {
+        let types: Vec<Ty> = args.iter().map(|a| self.expr(a, ctx, Some(&Ty::Str))).collect();
+        let params: Vec<(&'static str, Ty)> = match m {
+            "quit" => vec![],
+            "notify" => vec![("title", Ty::Str), ("body", Ty::Str)],
+            _ => {
+                let s = suggest(m, ["quit".to_string(), "notify".to_string()]);
+                self.err(
+                    mpos,
+                    format!("App has no method called {m}.{s} It has quit and notify: App:quit(), App:notify(\"Saved\", \"Your notes are safe.\")."),
+                );
+                return Ty::Error;
+            }
+        };
+        if m == "quit" && !args.is_empty() {
+            self.err(e.pos, "App:quit takes nothing in its ( ): App:quit();");
+        } else if args.len() != params.len() {
+            let example = "App:notify(\"Title\", \"Body\");";
+            self.err(
+                e.pos,
+                format!(
+                    "App:{m} takes {} value{}, but gets {}: {example}",
+                    params.len(),
+                    if params.len() == 1 { "" } else { "s" },
+                    args.len()
+                ),
+            );
+        } else {
+            for ((a, got), (pn, pt)) in args.iter().zip(&types).zip(&params) {
+                self.expect_fits(a, got, pt, &format!("App:{m}'s {pn} is {}", self.a(pt)));
+            }
+        }
+        self.info.calls.insert(e.id, CallRes::Builtin);
+        self.info.libs.insert(
+            e.id,
+            crate::stdlib::Lib {
+                func: format!("app_{m}"),
+                params,
+                ret: Ty::Void,
+            },
+        );
+        Ty::Void
+    }
+
     fn object_call(&mut self, e: &Expr, obj: &str, m: &str, args: &[Expr], mpos: Pos, ctx: &mut Ctx, expected: Option<&Ty>) -> Ty {
         use crate::stdlib::Lib;
         if obj == "Json" {
@@ -4835,6 +5091,15 @@ impl<'a> Checker<'a> {
 
     fn method_call(&mut self, e: &Expr, target: &Expr, m: &str, args: &[Expr], mpos: Pos, ctx: &mut Ctx, expected: Option<&Ty>) -> Ty {
         if let ExprKind::Name(n) = &target.kind {
+            // App:quit() and App:notify(…) are built in. A class of the program's own called App
+            // (like the assembly with the view) keeps them, unless it has methods of those names.
+            if n == "App" && self.lookup(ctx, n).is_none() {
+                let own = self.info.class_index.get(n).copied();
+                let mine = own.is_some_and(|c| self.info.method(c, m).is_some());
+                if !mine && (matches!(m, "quit" | "notify") || (own.is_none() && m != "open")) {
+                    return self.app_call(e, m, args, mpos, ctx);
+                }
+            }
             if crate::stdlib::OBJECTS.contains(&n.as_str()) {
                 return self.object_call(e, n, m, args, mpos, ctx, expected);
             }

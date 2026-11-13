@@ -1,0 +1,18 @@
+windows.lst:9:40  fullscreen is bound to a bool, like fullscreen isFull. This is a string.
+windows.lst:9:54  visible takes a bool, like visible shown. This is an int.
+windows.lst:9:61  escape lets Escape close a second window: window showingSettings [escape] { … }. Escape doesn't close the main window.
+windows.lst:10:16  a window is open while a bool is true, but count is an int: window showingSettings [title "Settings"] { … }
+windows.lst:13:37  a window shows while its bool is true, so it has no visible: window showingSettings [title "Settings"] { … }
+windows.lst:13:51  a window has title, width, height, minWidth, minHeight, background, font, dark, fullscreen and escape.
+windows.lst:15:11  close { } goes right after the view's { }, for when its window's X is clicked: view [title "Notes"] { … } close { … }. A window closes by its bool, which its X sets to false.
+windows.lst:18:19  close { } goes right after the view's { }, for when its window's X is clicked: view [title "Notes"] { … } close { … }
+windows.lst:22:19  toast shows text, but this is an int. Put it in text: toast "{count}";
+windows.lst:23:31  a toast has a colour word, icon and seconds: toast "Saved" [green, icon "check", seconds 8];
+windows.lst:23:47  a toast shows for some time, so seconds is more than 0: [seconds 8].
+windows.lst:24:13  App:notify takes 2 values, but gets 1: App:notify("Title", "Body");
+windows.lst:25:13  App is a class. Make one with new App, or ask about one with is x like App?
+windows.lst:27:39  a tray has an icon, a picture or a tip: tray [icon "bell", tip "Notes"] { … }. colour isn't one of those.
+windows.lst:30:9  a view has one tray icon, and this is a second one. Put all its items in one tray { }.
+windows.lst:35:39  click { } is for a click on a tray icon, so it goes right after a tray's { }: tray [icon "bell"] { … } click { … }. A button runs its own { } when it's clicked.
+
+16 mistakes. Nothing was run.

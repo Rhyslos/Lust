@@ -1,0 +1,17 @@
+window "Dark" 320x200
+  column 0,0 320x84
+    text "The main window" 12,12 126x19
+    button "Save" 12,39 64x33
+  layer "toast" 0,0 320x200
+    toast "Saved" 207,145 97x39
+      icon "check" 221,157 16x16
+      text "Saved" 245,155 45x19
+window "Settings" 280x180
+  column 0,0 280x85
+    switch "Sound" 12,12 90x20 (on)
+    button "Try" 12,40 53x33
+  layer "toast" 0,0 280x180
+    toast "Sound is on" 152,125 112x39
+      text "Sound is on" 166,135 84x19
+window "Light" 200x100
+  text "A light window" 0,0 129x43
