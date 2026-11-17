@@ -138,3 +138,9 @@ An engine moving from alpha 48 to alpha 67 or later reads everything below.
 - **Rust (`lust build --library`):** a library without a view writes `toast` and `App:quit()` as nothing. `App:notify` brings in the view runtime (and winit), so leave it out of game code.
 - `App` isn't reserved: a game's own class can still be called `App`.
 - **The engine does:** nothing, unless it wants to show toasts or notifications its own way, which can come later if Solis needs it.
+
+## alpha 74: states are set with =
+
+- A state is set with `=` now, like any value: `now = Mood.Busy;`, and `state = Mood.Calm;` in a `has` or a method. `is` only asks questions. Game files that set a state with `is` (`state is Mood.Calm;`) get a mistake that shows the `=` way.
+- Nothing changes in the Lua or Rust that's written: an object's state still changes through the same call, which ends what was made in the option it leaves.
+- **The engine does:** changes `is` to `=` wherever its own Lust files, or the examples and templates it ships, set a state.

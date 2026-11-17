@@ -22,7 +22,7 @@ class Player {
         int level = 1;
         float speed = 1.5;
         bool alive = true;
-        state is Action.Idle;
+        state = Action.Idle;
         Mood mood = Mood.Cheerful;
         Player friend = nothing;
         string array titles = [];
@@ -39,7 +39,7 @@ class Player {
         is hp <= 0? then {
             hp = 0;
             alive = false;
-            state is Action.KnockedOut;
+            state = Action.KnockedOut;
             print(name + " is knocked out!");
         } or is hp < maxHp / 2? then {
             mood = Mood.Grumpy;
@@ -50,7 +50,7 @@ class Player {
     }
 
     method int attack() {
-        state is Action.Fighting.Attacking;
+        state = Action.Fighting.Attacking;
         return level + dice(6);
     }
 

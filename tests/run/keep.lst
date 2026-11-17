@@ -9,7 +9,7 @@ class Item {
 
 class Hero {
     has {
-        state is Phase.Calm;
+        state = Phase.Calm;
         Item array bag = [];
         Item hand = nothing;
         Item lastLoot = nothing;
@@ -31,7 +31,7 @@ class Hero {
     }
 
     method fight() {
-        state is Phase.Battle.Melee;
+        state = Phase.Battle.Melee;
     }
 }
 
@@ -44,7 +44,7 @@ h:grab("sword");
 h:hold("torch");
 Item b = h:loot("bandage");
 keep b;
-h.state is Phase.Battle.Ranged;
+h.state = Phase.Battle.Ranged;
 -- Melee is over, so the arrow made during it has ended.
 try {
     print(a.name);
@@ -52,7 +52,7 @@ try {
     print(e);
 }
 Item c = h:loot("quiver");
-h.state is Phase.Calm;
+h.state = Phase.Calm;
 -- The stick was made while the hero was Calm. Calm ended when the fight began.
 try {
     print(early.name);

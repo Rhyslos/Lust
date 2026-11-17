@@ -361,6 +361,7 @@ pub fn load(entry: &Path, src: String, is_script: bool, diags: &mut Diags, mem: 
     let mut body = Vec::new();
     let mut uses_lua = false;
     let mut compound = HashMap::new();
+    let mut old_is = HashSet::new();
     let mut this_ids = HashSet::new();
     for (f, file) in files.into_iter().enumerate() {
         let mut r = Renamer {
@@ -381,6 +382,7 @@ pub fn load(entry: &Path, src: String, is_script: bool, diags: &mut Diags, mem: 
         }
         uses_lua |= prog.uses_lua;
         compound.extend(prog.compound.drain());
+        old_is.extend(prog.old_is.drain());
         this_ids.extend(prog.this_ids.drain());
         if f == 0 {
             r.stmts(&mut prog.body);
@@ -397,6 +399,7 @@ pub fn load(entry: &Path, src: String, is_script: bool, diags: &mut Diags, mem: 
             passes: exports,
             next_id,
             compound,
+            old_is,
             host_files,
             this_ids,
             shared,
@@ -676,7 +679,7 @@ impl<'a> Renamer<'a> {
                 self.ty(ty);
                 self.expr(value);
             }
-            Stmt::Assign { target, value, .. } | Stmt::SetState { target, option: value, .. } => {
+            Stmt::Assign { target, value, .. } => {
                 self.expr(target);
                 self.expr(value);
             }

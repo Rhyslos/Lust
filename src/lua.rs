@@ -1089,7 +1089,7 @@ impl<'a> W<'a> {
                 let v = self.made(ty, value);
                 self.line(ln, &format!("local {} = {v}", lname(name)));
             }
-            Stmt::Assign { target, value, .. } | Stmt::SetState { target, option: value, .. } => {
+            Stmt::Assign { target, value, .. } => {
                 let v = self.expr(value);
                 self.assign(ln, target, v);
             }

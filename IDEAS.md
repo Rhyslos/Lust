@@ -47,7 +47,7 @@ Talked through and liked, but the exact syntax still needs working out:
   with player {
       hp 20;
       gold 5;
-      state is idle;
+      state = Action.Idle;
   }
   ```
 
@@ -113,8 +113,8 @@ The biggest idea: states that do things, not just hold a value. Sketches only:
 ```
 when fighting { print("Shields up!"); }       // runs on entering fighting
 when leaving fighting { hp = hp + 5; }        // runs on leaving it
-state is stunned for 2;                       // goes back to before after 2 seconds
-when hp <= 0 { state is dead; }               // a rule that watches by itself
+state = Action.Stunned for 2;                 // goes back to before after 2 seconds
+when hp <= 0 { state = Action.Dead; }         // a rule that watches by itself
 ```
 
 To work out: how `when` fits with `tick()`, what happens with states inside states (entering `fighting.blocking` also enters `fighting`?), and the order rules run in.

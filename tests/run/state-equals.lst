@@ -1,0 +1,55 @@
+-- A state is set with =: in has, in a method, from outside, with new, and from another value.
+state Light = [Off, On [Dim, Bright]];
+
+class Item {
+    has {
+        string name = "thing";
+    }
+}
+
+class Lamp {
+    has {
+        state = Light.Off;
+        Item bulb = nothing;
+        Item spark = nothing;
+    }
+
+    method switchTo(Light next) {
+        state = next;
+    }
+
+    method fit() {
+        Item made = new Item { name = "bulb" };
+        keep made in bulb;
+        Item s = new Item { name = "spark" };
+        hold(s);
+    }
+
+    method hold(Item s) {
+        spark = s;
+    }
+}
+
+Lamp a = new Lamp {};
+print(a.state);
+Lamp b = new Lamp { state = Light.On.Dim };
+print(b.state);
+is b.state == Light.On? then { print("b is on"); }
+
+b:fit();
+-- Set from a variable: the spark made while Dim ends when Dim does.
+Light wanted = Light.On.Bright;
+b:switchTo(wanted);
+print(b.state);
+try {
+    print(b.spark.name);
+} error (string e) {
+    print(e);
+}
+print(b.bulb.name);
+a.state = b.state;
+print(a.state);
+Light now = Light.Off;
+now = a.state;
+print(now === Light.On.Bright);
+end

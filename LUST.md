@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (alpha 73):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, tables and long lists, right-click menus, rows dragged to new places, dropped files, the mouse on a canvas, scrolling, pictures (SVG too), timers, keyboard shortcuts, fonts of your own, date and colour pickers, second windows, full screen, toasts, notifications and a tray icon, all drawn by Lust itself, sharp at any screen scaling, with input methods for typing any language and a tree for screen readers. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (alpha 74):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options, set with `=`), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, tables and long lists, right-click menus, rows dragged to new places, dropped files, the mouse on a canvas, scrolling, pictures (SVG too), timers, keyboard shortcuts, fonts of your own, date and colour pickers, second windows, full screen, toasts, notifications and a tray icon, all drawn by Lust itself, sharp at any screen scaling, with input methods for typing any language and a tree for screen readers. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -100,7 +100,7 @@ bool alive = true;
 | `hook ...` | a method kept as a value | `hook int(int n)` |
 
 - A variable keeps its type forever.
-- **`lock`** makes a variable keep the value it starts with: `lock int maxLives = 3;`. Giving it a new value (`=`, `+=`, `is`) is a mistake, caught before anything runs. A field can be locked too, in `has { lock int maxHp = 20; }`. It gets its value when the thing is made (its starting value, or one given in `new Player { maxHp = 30 }`) and keeps it.
+- **`lock`** makes a variable keep the value it starts with: `lock int maxLives = 3;`. Giving it a new value (`=`, `+=` and the like) is a mistake, caught before anything runs. A field can be locked too, in `has { lock int maxHp = 20; }`. It gets its value when the thing is made (its starting value, or one given in `new Player { maxHp = 30 }`) and keeps it.
   - Locking a thing (`lock Bag bag = new Bag;`) means `bag` is always that same bag, but its fields can still change: `bag.size += 4;` is fine. The same goes for a locked array's or map's items.
   - A class's own `state` changes as it goes, so it can't be locked.
 - An `int` fits where a `float` goes. The other way needs `.int()`.
@@ -145,6 +145,8 @@ is hp == 0? then {
     print("Fine");
 }
 ```
+
+- **`is` only asks questions:** `is hp > 0? then { … }`, `is alive?`, `is hero like Wizard?`, `is saved gameSession?`. It never changes anything. Every value is changed with `=`, states too: `mood = Mood.Busy;`. Writing `mood is Mood.Busy;` is a mistake that shows the `=` way.
 
 ### check
 
@@ -439,18 +441,19 @@ state GameState = [
 ];
 ```
 
-- A variable holding a state option changes with `is`: `now is GameState.ActiveGame.Combat;` (or with `=`, like any variable).
-- A class or object can have a state of its own, written `state is GameState.MainMenu;` in its `has`. Inside its methods, `state is GameState.ActiveGame.Combat;` changes it, and `state` reads it. Outside a class or object there's no `state` to change; use a variable.
+- A state is set with `=`, like any value. A variable holding a state option changes like any variable: `now = GameState.ActiveGame.Combat;`.
+- A class or object can have a state of its own, written `state = GameState.MainMenu;` in its `has`, always with the state's name in front of the option. Inside its methods, `state = GameState.ActiveGame.Combat;` changes it, and `state` reads it; from outside, `player.state = GameState.MainMenu;`. Outside a class or object there's no `state` to change; use a variable.
+- `is` is only for questions (section 5). The old way of setting a state, `now is GameState.MainMenu;` or `state is GameState.MainMenu;`, is a mistake: `a state is set with =, so write state = GameState.MainMenu;`.
 - A question about an option includes everything inside it: during `Combat`, `is state == GameState.ActiveGame?` is yes, whichever side the option is written on. `===` asks for that very option (section 5).
 
 ### Things made in a state end with it
 
-An object with a state of its own (`state is …;` in its `has`) owns what its methods make. Anything made with `new` in one of its methods belongs to the option the object is in at that moment, and **ends when the object leaves that option**:
+An object with a state of its own (`state = …;` in its `has`) owns what its methods make. Anything made with `new` in one of its methods belongs to the option the object is in at that moment, and **ends when the object leaves that option**:
 
 ```
 class Hero {
     has {
-        state is Phase.Calm;
+        state = Phase.Calm;
         Item array bag = [];
     }
 
@@ -464,6 +467,7 @@ class Hero {
 - Once something has ended, its fields are let go, and using it stops the program with a message that says why: `this was made during Battle.Melee, and ended with it.` It isn't `nothing`, and it's no longer `like` anything.
 - **`keep thing in place;`** holds onto it: it no longer belongs to the state, and it goes into the place. The place can be an array (it's added to the end), a field or a variable.
 - **`keep thing;`** holds onto it without putting it anywhere.
+- Every change of the object's state ends what belongs to the options it leaves, however it's written: `state = …;` in a method, `hero.state = …;` from outside, or a value from a variable (`state = next;`). `lust run` and built programs do exactly the same.
 - Options inside options count separately: something made during `Battle.Melee` ends when the object moves on to `Battle.Ranged`.
 - Starting values in `has`, and anything made by code outside a class's methods, belong to no state.
 - If one ended thing owned things of its own, those end with it.
@@ -532,11 +536,13 @@ Sword blade = Loot:create(Sword);
 ## 10. Classes, objects and like
 
 ```
+state Mood = [Happy, Grumpy];
+
 class Dog {
     has {
         string name = "Rex";
         int hp = 10;
-        state is Happy;
+        state = Mood.Happy;
     }
 
     method bark() {

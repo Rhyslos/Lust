@@ -735,7 +735,7 @@ fn walk_stmts(stmts: &[Stmt], f: &mut dyn FnMut(&Expr)) {
     for s in stmts {
         match s {
             Stmt::Var { value, .. } => walk_expr(value, f),
-            Stmt::Assign { target, value, .. } | Stmt::SetState { target, option: value, .. } => {
+            Stmt::Assign { target, value, .. } => {
                 walk_expr(target, f);
                 walk_expr(value, f);
             }
@@ -1521,7 +1521,7 @@ impl<'a> W<'a> {
                     out.push_str(&format!("{pad}let mut v_{name}: {rt} = {v};\n"));
                 }
             }
-            Stmt::Assign { target, value, .. } | Stmt::SetState { target, option: value, .. } => {
+            Stmt::Assign { target, value, .. } => {
                 let want = self.info.ty(target);
                 let v = self.coerced(value, &want);
                 self.assign(target, v, out, &pad);

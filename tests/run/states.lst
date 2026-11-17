@@ -2,7 +2,7 @@
 state GameState = [MainMenu, ActiveGame [Exploration, Combat]];
 
 GameState now = GameState.MainMenu;
-now is GameState.ActiveGame.Combat;
+now = GameState.ActiveGame.Combat;
 print(now);
 print(now == GameState.ActiveGame);
 print(GameState.ActiveGame == now);

@@ -1,0 +1,47 @@
+-- A state is set with =, like any value. The old way, with is, is a mistake that shows the new way.
+state Mood = [Calm, Busy];
+
+-- A variable holding a state.
+Mood now = Mood.Calm;
+now is Mood.Busy;
+
+-- is never changed other values either.
+int hp = 3;
+hp is 5;
+
+-- A class's own state, in its has.
+class Cat {
+    has {
+        state is Mood.Calm;
+    }
+
+    -- And in a method.
+    method rest() {
+        state is Mood.Busy;
+    }
+}
+
+-- The short form, with no state's name.
+class Dog {
+    has {
+        state is Calm;
+    }
+}
+
+-- Filled in with new, and changed from outside.
+Cat tom = new Cat { state is Mood.Busy };
+tom.state is Mood.Calm;
+
+-- The list of options itself can't be set.
+Mood = Mood.Calm;
+
+-- Questions still start with is, and none of these is a mistake.
+bool alive = true;
+is alive? then { print("alive"); }
+is now == Mood.Calm? then { print("calm"); }
+is tom.state == Mood.Busy? then { print("busy"); }
+is tom like Cat? then { print("a cat"); }
+hp = 4;
+is hp > 3
+    && alive? then { print("both"); }
+end

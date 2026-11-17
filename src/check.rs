@@ -175,7 +175,7 @@ pub struct Info {
 }
 
 impl Info {
-    /// Does this class have a state of its own (state is …; in its has)? Things its methods
+    /// Does this class have a state of its own (state = …; in its has)? Things its methods
     /// make belong to that state.
     pub fn stateful(&self, c: usize) -> bool {
         self.field(c, "state").is_some()
@@ -284,6 +284,8 @@ pub struct Checker<'a> {
     rows_ok: Vec<bool>,
     /// The + of each hp += 5, and what was written; and the one being checked now.
     compound: HashMap<usize, &'static str>,
+    /// Values written after the old `is` (now is Mood.Calm;): each is a mistake.
+    old_is: std::collections::HashSet<usize>,
     compound_now: Option<&'static str>,
 }
 
@@ -305,6 +307,7 @@ pub fn check(prog: &Program, diags: &mut Diags, is_script: bool) -> Info {
         tables: 0,
         rows_ok: vec![],
         compound: prog.compound.clone(),
+        old_is: prog.old_is.clone(),
         compound_now: None,
         this_ids: prog.this_ids.clone(),
     };
@@ -387,6 +390,29 @@ impl<'a> Checker<'a> {
     }
     fn show(&self, t: &Ty) -> String {
         self.names().show(t)
+    }
+
+    /// The mistake for the old `x is Y;`, showing it written with =. A bare option (Happy) is
+    /// shown with its state's name in front when there's a state that has it.
+    fn old_is_msg(&self, target: &str, value: &Expr, is_state: bool) -> String {
+        let shown = match &value.kind {
+            ExprKind::Name(n) => self
+                .info
+                .states
+                .iter()
+                .find(|st| st.options.iter().any(|o| o == n))
+                .map(|st| format!("{}.{n}", st.name))
+                .unwrap_or_else(|| n.clone()),
+            ExprKind::Field(..) => describe(value),
+            ExprKind::Int(n) => n.to_string(),
+            ExprKind::Bool(b) => b.to_string(),
+            _ => "…".into(),
+        };
+        if is_state {
+            format!("a state is set with =, so write {target} = {shown};")
+        } else {
+            format!("is only asks questions. To change {target}, use =: {target} = {shown};")
+        }
     }
     fn a(&self, t: &Ty) -> String {
         self.names().with_article(t)
@@ -691,7 +717,13 @@ impl<'a> Checker<'a> {
                         self.resolve(t)
                     }
                     None => {
-                        // state is GameState.Idle;
+                        // state = GameState.Idle;
+                        let d = f.default.as_ref().unwrap();
+                        let old = self.old_is.contains(&d.id);
+                        if old {
+                            let msg = self.old_is_msg("state", d, true);
+                            self.err(d.pos, msg);
+                        }
                         let mut ctx = Ctx {
                             class: None,
                             ret: None,
@@ -703,12 +735,13 @@ impl<'a> Checker<'a> {
                             in_view: false,
                             top: false,
                         };
-                        let d = f.default.as_ref().unwrap();
-                        match self.expr(d, &mut ctx, None) {
+                        // The old short form (state is Happy;) has already been reported.
+                        let bare = old && matches!(d.kind, ExprKind::Name(_));
+                        match if bare { Ty::Error } else { self.expr(d, &mut ctx, None) } {
                             Ty::State(s) if self.info.options.contains_key(&d.id) => Ty::State(s),
                             Ty::Error => Ty::Error,
                             _ => {
-                                self.err(d.pos, "state is … needs one of a state's options: state is Mood.Happy;");
+                                self.err(d.pos, "state = … needs one of a state's options: state = Mood.Happy;");
                                 Ty::Error
                             }
                         }
@@ -2809,7 +2842,7 @@ impl<'a> Checker<'a> {
         );
     }
 
-    /// Does this class have a state of its own (state is …; in its has)?
+    /// Does this class have a state of its own (state = …; in its has)?
     pub fn stateful(&self, c: usize) -> bool {
         self.info.field(c, "state").is_some()
     }
@@ -3104,6 +3137,18 @@ impl<'a> Checker<'a> {
             }
             Stmt::Assign { target, value, pos } => {
                 let mut want = self.expr(target, ctx, None);
+                if let Ty::StateList(st) = want {
+                    let sn = self.info.states[st].name.clone();
+                    self.err(*pos, format!("{sn} is the list of options itself, so there's nothing to set here. Something has to be in it: a class with state = {sn}.…; in its has block, or a variable like {sn} now = {sn}.…;"));
+                    return;
+                }
+                if self.old_is.contains(&value.id) {
+                    let own = matches!(&target.kind, ExprKind::Name(n) | ExprKind::Field(_, n, _) if n == "state");
+                    let is_state = own || matches!(want, Ty::State(_));
+                    let msg = self.old_is_msg(&describe(target), value, is_state);
+                    self.err(*pos, msg);
+                    return;
+                }
                 // Where it's kept, not what reading it gives: int8 hp = …; checks the new value fits.
                 if let Some(w) = self.info.narrow_reads.get(&target.id) {
                     want = Ty::Sized(*w);
@@ -3135,44 +3180,6 @@ impl<'a> Checker<'a> {
                     }
                 } else {
                     self.store_check(value, &describe(target), false, ctx);
-                }
-            }
-            Stmt::SetState { target, option, pos } => {
-                let t = self.expr(target, ctx, None);
-                match t {
-                    Ty::State(s) => {
-                        self.writable(target, ctx, *pos);
-                        let o = self.expr(option, ctx, Some(&Ty::State(s)));
-                        let is_option = self.info.options.contains_key(&option.id);
-                        if o != Ty::Error && (o != Ty::State(s) || !is_option) {
-                            let sn = self.info.states[s].name.clone();
-                            let first = self.info.states[s].options[0].clone();
-                            self.err(
-                                option.pos,
-                                format!(
-                                    "{} is a {sn}, so it's set to one of {sn}'s options: {} is {sn}.{first};",
-                                    describe(target),
-                                    describe(target)
-                                ),
-                            );
-                        }
-                    }
-                    Ty::StateList(s) => {
-                        let sn = self.info.states[s].name.clone();
-                        self.err(*pos, format!("{sn} is the list of options itself, so there's nothing to set here. Something has to be in it: a class with state is {sn}.…; in its has block, or a variable like {sn} now = {sn}.…;"));
-                    }
-                    Ty::Error => {}
-                    other => {
-                        self.err(
-                            *pos,
-                            format!(
-                                "is sets a state to one of its options, but {} is {}. To change a value, use =: {} = …;",
-                                describe(target),
-                                self.a(&other),
-                                describe(target)
-                            ),
-                        );
-                    }
                 }
             }
             Stmt::Expr(e) => {
@@ -3958,6 +3965,11 @@ impl<'a> Checker<'a> {
                     );
                 }
                 for (f, fpos, v) in inits {
+                    if self.old_is.contains(&v.id) {
+                        let msg = self.old_is_msg(f, v, true);
+                        self.err(*fpos, msg);
+                        continue;
+                    }
                     match self.info.field(c, f).map(|x| x.ty.clone()) {
                         Some(ft) => {
                             let got = self.expr(v, ctx, Some(&ft));

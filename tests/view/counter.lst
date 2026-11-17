@@ -6,7 +6,7 @@ style chip = [pad 6, round, background gray2];
 assembly App {
     has {
         int count = 0;
-        state is Clock.Stopped;
+        state = Clock.Stopped;
         string array log = [];
     }
 
@@ -24,7 +24,7 @@ assembly App {
                 }
                 button "Reset" [subtle] {
                     count = 0;
-                    state is Clock.Stopped;
+                    state = Clock.Stopped;
                 }
             }
             is count >= 3? then {

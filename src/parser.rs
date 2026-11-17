@@ -234,6 +234,7 @@ pub struct Parser<'a> {
     depth: usize,
     /// The + of each hp += 5, and what was written.
     compound: std::collections::HashMap<usize, &'static str>,
+    old_is: std::collections::HashSet<usize>,
     this_ids: std::collections::HashSet<usize>,
 }
 
@@ -258,6 +259,7 @@ pub fn parse(toks: Vec<Token>, diags: &mut Diags, is_script: bool, first_id: usi
         in_loop_step: false,
         depth: 0,
         compound: Default::default(),
+        old_is: Default::default(),
         this_ids: Default::default(),
         last_field: None,
     };
@@ -498,6 +500,7 @@ impl<'a> Parser<'a> {
             passes: std::mem::take(&mut self.passes),
             next_id: self.next_id + 1,
             compound: std::mem::take(&mut self.compound),
+            old_is: std::mem::take(&mut self.old_is),
             host_files: Default::default(),
             this_ids: std::mem::take(&mut self.this_ids),
             shared: Default::default(),
@@ -1510,11 +1513,14 @@ impl<'a> Parser<'a> {
     }
 
     fn field(&mut self) -> R<()> {
-        // state is GameState.Idle;
-        if self.at_word("state") && self.peek(1).is_word("is") {
+        // state = GameState.Idle; (or the old state is GameState.Idle;, which is a mistake now)
+        if self.at_word("state") && (self.peek(1).is_sym("=") || self.peek(1).is_word("is")) {
             let t = self.next();
-            self.next();
+            let old = self.next().is_word("is");
             let opt = self.expr()?;
+            if old {
+                self.old_is.insert(opt.id);
+            }
             self.semi()?;
             self.last_field = Some(FieldDecl {
                 ty: None,
@@ -2267,15 +2273,13 @@ impl<'a> Parser<'a> {
             self.semi()?;
             return Ok(Stmt::Assign { target, value, pos: t.pos });
         }
+        // now is Mood.Calm;: the old way of setting a state, kept only to show the new way.
         if self.at_word("is") && self.cur().pos.line == self.prev_end().line {
             self.next();
-            let option = self.expr()?;
+            let value = self.expr()?;
             self.semi()?;
-            return Ok(Stmt::SetState {
-                target,
-                option,
-                pos: t.pos,
-            });
+            self.old_is.insert(value.id);
+            return Ok(Stmt::Assign { target, value, pos: t.pos });
         }
         if let ExprKind::MethodRef(_, m, _) = &target.kind {
             let m = m.clone();
@@ -3172,7 +3176,9 @@ impl<'a> Parser<'a> {
                 let (name, pos) = self.ident("a field's name")?;
                 let value = if self.at_word("is") && name == "state" {
                     self.next();
-                    self.expr()?
+                    let v = self.expr()?;
+                    self.old_is.insert(v.id);
+                    v
                 } else {
                     if !self.at_sym("=") {
                         let at = self.cur().pos;
