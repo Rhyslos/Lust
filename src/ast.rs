@@ -138,6 +138,9 @@ pub struct Program {
     /// hp += 5 is hp = hp + 5: the ids of those + expressions, with what was written (+=), so
     /// mistakes speak of +=.
     pub compound: std::collections::HashMap<usize, &'static str>,
+    /// The values written after the old `is` (now is Mood.Calm;, state is Mood.Calm;), by id:
+    /// a state is set with = now, so each one is a mistake that shows the new way.
+    pub old_is: std::collections::HashSet<usize>,
     /// The files in the engine's own folders (its host folders, like solis/), by number: only
     /// they may give `entity` methods.
     pub host_files: std::collections::HashSet<usize>,
@@ -293,7 +296,7 @@ pub struct ClassDecl {
 }
 
 pub struct FieldDecl {
-    /// None for `state is GameState.Idle;`, whose type comes from the option.
+    /// None for `state = GameState.Idle;`, whose type comes from the option.
     pub ty: Option<TypeRef>,
     pub name: String,
     pub pos: Pos,
@@ -339,11 +342,6 @@ pub enum Stmt {
     Assign {
         target: Expr,
         value: Expr,
-        pos: Pos,
-    },
-    SetState {
-        target: Expr,
-        option: Expr,
         pos: Pos,
     },
     Expr(Expr),
@@ -437,7 +435,6 @@ impl Stmt {
         match self {
             Stmt::Var { pos, .. }
             | Stmt::Assign { pos, .. }
-            | Stmt::SetState { pos, .. }
             | Stmt::If { pos, .. }
             | Stmt::Match { pos, .. }
             | Stmt::Loop { pos, .. }

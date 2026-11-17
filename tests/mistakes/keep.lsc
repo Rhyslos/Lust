@@ -8,7 +8,7 @@ class Item {
 
 class Hero {
     has {
-        state is Phase.Calm;
+        state = Phase.Calm;
         Item array bag = [];
         Item hand = nothing;
     }

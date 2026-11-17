@@ -88,17 +88,17 @@ print("calm: " + calm.text());
 -- A class's own state.
 class Guard {
     has {
-        state is Mood.Calm;
+        state = Mood.Calm;
         int alarms = 0;
     }
 
     method react() {
         check state {
             when Calm {
-                state is Mood.Busy;
+                state = Mood.Busy;
             }
             when Busy {
-                state is Mood.Angry;
+                state = Mood.Angry;
             }
             when Angry {
                 alarms = alarms + 1;

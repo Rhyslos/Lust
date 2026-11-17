@@ -1268,3 +1268,63 @@ mod vector_json {
         assert!(!rt::tween_step(0.0));
     }
 }
+
+#[cfg(test)]
+mod state_set_with_equals {
+    //! A state is set with =. The old way, with is, is a mistake that shows the new way, and
+    //! questions that start with is are never taken for it.
+
+    fn files(src: &str) -> Vec<(String, String)> {
+        vec![("main.lst".to_string(), format!("state Mood = [Calm, Busy];\n{src}\nend\n"))]
+    }
+
+    fn messages(src: &str) -> Vec<String> {
+        match crate::check("main.lst", &files(src)) {
+            Ok(()) => vec![],
+            Err(p) => p.into_iter().map(|p| p.message).collect(),
+        }
+    }
+
+    const LAMP: &str = "class Lamp {\n    has {\n        state = Mood.Calm;\n    }\n    method rush() {\n        state = Mood.Busy;\n    }\n}\nmethod go() {\n    Lamp l = new Lamp {};\n    l:rush();\n    l.state = Mood.Calm;\n}\npass go;";
+
+    #[test]
+    fn equals_changes_an_objects_state_in_both_outputs() {
+        assert!(messages(LAMP).is_empty());
+        let lua = crate::to_lua("main.lst", &files(LAMP)).unwrap().code;
+        assert_eq!(lua.matches("_L.setstate(").count(), 2, "{lua}");
+        let rust = crate::to_rust_library("main.lst", &files(LAMP)).unwrap();
+        assert!(rust.matches("rt::set_state(").count() >= 2, "{rust}");
+    }
+
+    #[test]
+    fn the_old_way_shows_the_new_way() {
+        let cases = [
+            (
+                "Mood now = Mood.Calm;\nnow is Mood.Busy;",
+                "a state is set with =, so write now = Mood.Busy;",
+            ),
+            (
+                "class A {\n    has {\n        state is Mood.Calm;\n    }\n}",
+                "a state is set with =, so write state = Mood.Calm;",
+            ),
+            (
+                "class A {\n    has {\n        state is Busy;\n    }\n}",
+                "a state is set with =, so write state = Mood.Busy;",
+            ),
+            (
+                "class A {\n    has {\n        state = Mood.Calm;\n    }\n    method go() {\n        state is Mood.Busy;\n    }\n}",
+                "a state is set with =, so write state = Mood.Busy;",
+            ),
+            ("int hp = 3;\nhp is 4;", "is only asks questions. To change hp, use =: hp = 4;"),
+        ];
+        for (src, want) in cases {
+            assert_eq!(messages(src), vec![want.to_string()], "{src}");
+        }
+    }
+
+    #[test]
+    fn questions_are_never_the_old_way() {
+        let src = "Mood now = Mood.Calm;\nbool on = true;\nis now == Mood.Calm? then { print(\"a\"); }\nis on? then { print(\"b\"); }\nis now\n    == Mood.Busy? then { print(\"c\"); }";
+        assert!(messages(src).is_empty(), "{:?}", messages(src));
+    }
+}
