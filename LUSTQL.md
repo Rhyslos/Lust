@@ -10,7 +10,8 @@ The aim is everything SQLite can do, in Lust's style, with SQL's own words where
 
 | Question | Choice |
 | --- | --- |
-| Where it's written | The database's **shape and its big questions** are in a `.lql` file; `.lst` code uses them. Quick questions can still be written in code with today's `:where` chain. |
+| Where it's written | The database's **shape and its named questions** are in a `.lql` file. In `.lst` code, **every read and write is a `query Shop { }` block**, the only way code touches a database, so Lust and LustQL never mix |
+| How a query is laid out | **A block, one step per line**, read top to bottom, for reading and writing alike |
 | The words in questions | **SQL's own words** (`from`, `where`, `group by`, `select`, `order by`, `limit`), lowercase, checked by Lust like the rest of Lust |
 | Removing a row something links to | **Refused, with a clear message**, unless the link says otherwise |
 | A table's shape changes | **Safe changes happen by themselves**; ones that could lose data are written out on purpose |
@@ -29,12 +30,13 @@ database Shop in "shop.db" {
     table Item (string name, float price must price >= 0.0, int stock = 0, image picture);
     table Order (int id, Customer who, Item item, int amount must amount > 0);
 
-    question bestCustomers(int top) =
+    question bestCustomers(int top) {
         from Order
         group by who
         select who.name, sum(item.price * amount) as spent
         order by spent desc
-        limit top;
+        limit top
+    }
 }
 
 pass Shop;
@@ -97,10 +99,11 @@ Broken rules are refused with a plain message, and nothing is changed.
 ```
 table Note (int id, string title, string body searchable);
 
-question find(string words) =
+question find(string words) {
     from Note
     where body matches words
-    order by match desc;
+    order by match desc
+}
 ```
 
 ### Media: images, sounds and files
@@ -108,7 +111,10 @@ question find(string words) =
 `image`, `sound` and `file` columns keep media. **The files stay beside the database**, in a folder named after it (`shop.db` keeps them in `shop.media/`), and the table holds a link to each.
 
 ```
-Shop.Item:inject(["Rain", 2.5, 10, Image:file("rain.png")]);
+query Shop {
+    insert into Item
+    set name = "Rain", price = 2.5, stock = 10, picture = Image:file("rain.png")
+}
 -- Lust copies rain.png into shop.media/ and keeps the link
 ```
 
@@ -119,15 +125,18 @@ Shop.Item:inject(["Rain", 2.5, 10, Image:file("rain.png")]);
 
 ## Questions
 
-A question is written in SQL's words, lowercase, and gets a name. Lust checks every name and type in it, so a mistake shows up before the program runs, in plain English.
+A question is written in SQL's words, lowercase, one step per line, read from top to bottom. Lust checks every name and type in it, so a mistake shows up before the program runs, in plain English. The same steps are used in a named `question` in a `.lql` file and in a `query` block in code (below).
 
 ```
-question cheapInStock(float under) =
+question cheapInStock(float under) {
     from Item
     where price < under and stock > 0
     order by price
-    limit 10;
+    limit 10
+}
 ```
+
+- **One step per line**, and no `;` inside: the block's `}` ends it.
 
 | Word | Does | |
 | --- | --- | --- |
@@ -151,45 +160,97 @@ question cheapInStock(float under) =
 A view is a question that acts like a table, so other questions can use it in `from` and `join`. It takes no values.
 
 ```
-view RichCustomers =
+view RichCustomers {
     from Order
     group by who
     having sum(item.price * amount) > 1000.0
-    select who;
+    select who
+}
 ```
 
-## Using it from Lust
+## Using it from Lust: query blocks
+
+In a `.lst` file, **a `query` block is the only way to touch a database.** Outside it is Lust; inside it is LustQL. So it's always clear which language a line is in, and a database never changes without a `query` saying so.
 
 ```
 fetch "data/shop":Shop;
 
--- tables work as they do today
-Shop.Customer:inject(["Ada", "ada@example.com"]);     -- the id counts up by itself
-Shop.Item["tea"].stock = 9;
+float under = 3.0;
 
--- named questions are called like methods, and looped through
-loop (string name, float spent in Shop.bestCustomers(5)) {
-    print(name);
-}
-
--- quick questions can still be written in code
-loop (Item it in Shop.Item:where(stock == 0)) {
+-- reading: the block gives back rows, and the loop around it is Lust
+loop (Item it in query Shop {
+    from Item
+    where price < under and stock > 0
+    order by price
+    limit 5
+}) {
     print(it.name);
 }
 
--- all or nothing
-Customer ada = Shop.Customer[1];
-transaction {
-    Shop.Item["tea"].stock -= 1;
-    Shop.Order:inject([ada, Shop.Item["tea"], 1]);
+-- a named question from the .lql file
+loop (string name, float spent in query Shop { bestCustomers(5) }) {
+    print(name);
+}
+
+-- changing rows
+query Shop {
+    update Item
+    set stock = stock - 1
+    where name == "tea"
+}
+
+-- adding a row (the id counts up by itself)
+query Shop {
+    insert into Customer
+    set name = "Ada", email = "ada@example.com"
+}
+
+-- removing rows
+query Shop {
+    delete from Item
+    where stock == 0
 }
 ```
 
-- **Tables** keep what they do today: `:inject`, `[key]`, `:has`, `:remove`, `#`, and the `:where`, `:orderBy`, `:first` chain (LUST.md section 14).
-- **A row** found by its key reads and changes the database itself, and links are followed with a dot.
-- **`transaction { }`**: everything inside happens fully, or not at all. If something inside fails or the program stops halfway, the database is left as it was before the block. Transactions can't be put inside each other.
-- **Arrays stay arrays.** Nothing in a class is ever stored in a database without being written there. To keep an array, a program puts its rows into a table itself.
-- **Today's `database { }` blocks in `.lst` files move to `.lql` files.** Once LustQL is built, one in a `.lst` file is a mistake saying how to move it.
+| A block that | Starts with | Then |
+| --- | --- | --- |
+| reads | `from Table` | the steps in the table above, or a named question on its own: `bestCustomers(5)` |
+| changes rows | `update Table` | `set column = value, …`, then `where` for which rows (left out, every row) |
+| adds a row | `insert into Table` | `set column = value, …`; a column left out gets its starting value |
+| removes rows | `delete from Table` | `where` for which rows. Removing every row needs `where true`, written on purpose |
+
+- **One thing per block:** one read, or one change. Several changes that belong together go in a `transaction` (below).
+- **Lust's values are used by name** inside a block: `where price < under`. Lust checks their types, and they're never pasted in as text, so a name a player types can never break the database.
+- **What a reading block gives back** is rows, looped through or put in a variable. Put in a single row's variable (`Item tea = query Shop { from Item where name == "tea" };`), it's the first answer, or `nothing` if there isn't one.
+- **A row read into Lust is a copy.** Changing `tea.stock` in code changes the copy, not the database: the database only changes in a `query`.
+- **`insert into … set …`** isn't how SQLite writes it (`insert into Item (name, price) values ("Rain", 2.5)`), but it reads the same way as `update`, keeps each value next to its column, and Lust turns it into SQLite's form.
+
+### All or nothing
+
+```
+Customer ada = query Shop { from Customer where name == "Ada" };
+Item tea = query Shop { from Item where name == "tea" };
+
+transaction {
+    query Shop {
+        update Item
+        set stock = stock - 1
+        where name == "tea"
+    }
+    query Shop {
+        insert into Order
+        set who = ada, item = tea, amount = 1
+    }
+}
+```
+
+- Everything inside happens fully, or not at all. If something inside fails or the program stops halfway, the database is left as it was before the block. Lust code can go between the queries.
+- Transactions can't be put inside each other.
+
+### What changes from today
+
+- **Today's `database { }` blocks in `.lst` files move to `.lql` files,** and today's table methods (`Shop.items:inject`, `Shop.items["tea"].stock = 9`, `:where`, `:orderBy`, `:first`) are replaced by `query` blocks. Once LustQL is built, the old ways are mistakes that show the `query` block to write instead.
+- **Arrays stay arrays.** Nothing in a class is ever stored in a database without a `query` writing it there.
 
 ## When a table's shape changes
 
@@ -228,10 +289,10 @@ Media columns link to the project's assets by their IDs (above). Solis's runtime
 
 Each step is one pull request, with its tests, LUST.md section, ROADMAP row and alpha.
 
-1. **`.lql` files:** databases and tables move out of `.lst` files, with keys (two-column ones too), starting values and `fetch`.
+1. **`.lql` files and `query` blocks:** databases and tables move out of `.lst` files, with keys (two-column ones too), starting values and `fetch`; `query` blocks with `insert`, `update`, `delete` and a simple `from … where`, replacing today's table methods.
 2. **Links:** link columns, following them with dots, `optional`, and what happens on removing.
 3. **Rules and speed:** `unique`, `must` and `fast`.
-4. **Questions:** `from`, `where`, `select`, `order by`, `limit`, `offset`, `distinct` and `join`, with values, called from code.
+4. **Questions:** `select`, `order by`, `limit`, `offset`, `distinct` and `join`, and named `question`s in `.lql` files.
 5. **Groups and views:** `group by`, `having`, the totals, and `view`.
 6. **Transactions and shape changes:** `transaction { }`, the safe changes, and `change` blocks.
 7. **Word search:** `searchable` and `matches`.
@@ -244,6 +305,8 @@ Each step is one pull request, with its tests, LUST.md section, ROADMAP row and 
 These get settled while building, and each answer is recorded here before it's built:
 
 - How a question's answers are named when looping: the `select` names in order, as in the examples above, or a row type made from them.
+- Whether a reading block's rows can be kept in an array variable, and which kind.
+- How a view's `table` and `list` show a database's rows (LUST.md section 17, which takes a table today): most likely a `query` block as the rows' source.
 - Whether `join` is needed at all once links have dots, or only for tables that don't link.
 - Text columns that only hold a few choices: whether a state option is always the better way, so Lust suggests it.
 - How `lust run` and LustScript inside other programs (Garry's Mod) reach SQLite, where the host has its own.
