@@ -246,7 +246,7 @@ const RUNTIME_DEPS: &str = "rusqlite = { version = \"0.40\", features = [\"bundl
 
 /// Changes when the way the runtime is compiled or described (ready.txt) changes, so a runtime
 /// made the old way is made again.
-const RUNTIME_FORMAT: &str = "lust-runtime 2\n";
+const RUNTIME_FORMAT: &str = "lust-runtime 3\n";
 
 /// The shared runtime, compiled: the library a program is built against, and where Rust finds
 /// the libraries it uses.
@@ -360,7 +360,12 @@ fn cargo_made(messages: &str) -> CargoMade {
     for line in messages.lines() {
         if line.contains("\"reason\":\"compiler-artifact\"") {
             let Some(id) = text_field(line, "package_id") else { continue };
-            for file in list_field(line, "filenames").into_iter().filter(|f| f.ends_with(".rlib")) {
+            // Libraries (.rlib), and macros that run while compiling (a .dll, .so or .dylib),
+            // which Rust needs again to read the libraries that use them.
+            for file in list_field(line, "filenames")
+                .into_iter()
+                .filter(|f| [".rlib", ".dll", ".so", ".dylib"].iter().any(|e| f.ends_with(e)))
+            {
                 made.rlibs.push((id.clone(), file));
             }
         } else if line.contains("\"reason\":\"build-script-executed\"") {
@@ -377,10 +382,9 @@ fn rlibs_wanted(made: &CargoMade, wanted: &[(String, String)]) -> Vec<(String, S
     for (name, version) in wanted {
         let crate_name = name.replace('-', "_");
         // registry+https://…#jpeg-decoder@0.3.1, or (older Cargo) jpeg-decoder 0.3.1 (registry+…)
-        let file = made
-            .rlibs
-            .iter()
-            .find(|(id, _)| id.contains(&format!("#{name}@{version}")) || id.starts_with(&format!("{name} {version}")));
+        let file = made.rlibs.iter().find(|(id, f)| {
+            f.ends_with(".rlib") && (id.contains(&format!("#{name}@{version}")) || id.starts_with(&format!("{name} {version}")))
+        });
         if let Some((_, file)) = file {
             found.push((crate_name, file.clone()));
         }
@@ -1005,7 +1009,8 @@ mod shared_runtime {
             r#"{"reason":"build-finished","success":true}"#,
         );
         let made = cargo_made(messages);
-        assert_eq!(made.rlibs.len(), 3);
+        assert_eq!(made.rlibs.len(), 4);
+        assert_eq!(made.rlibs[3].1, "/c/deps/libserde_derive-1.so");
         assert_eq!(made.link_paths, vec!["native=/c/build/sqlite/abc/out".to_string()]);
         assert_eq!(made.rlibs[2].1, "C:\\Users\\a\\deps\\libjpeg_decoder-1.rlib");
         let wanted = vec![
