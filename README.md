@@ -43,7 +43,7 @@ Lust is written in Rust, and has one language with two outputs:
 | Rust, compiled to real programs | `.lst` | apps, tools and servers on Windows, macOS and Linux |
 | LustScript, turned into Lua | `.lsc` | scripting and modding inside other programs, like Garry's Mod, Aventail and Halberd |
 
-**What works today (alpha 76):** both outputs. Every file is checked before anything runs, with mistakes explained in plain words.
+**What works today (alpha 77):** both outputs. Every file is checked before anything runs, with mistakes explained in plain words.
 
 - `.lsc` files turn into plain Lua 5.1 that Garry's Mod (LuaJIT) and Luau can run.
 - `.lst` files turn into Rust, which builds into a real program (an `.exe` on Windows) that runs without Lust.
@@ -68,7 +68,7 @@ The full rules are in **[LUST.md](LUST.md)**, and what gets built next is in **[
 On Windows, download **lust-setup.exe** from the newest [release](https://github.com/Rhyslos/Lust/releases) and run it. It needs no administrator: it puts Lust in your own programs folder and adds it to your PATH, so `lust` works in any new terminal. Lust is still a test version (alpha), so things can change between releases.
 
 - **Updates:** `lust update` gets the newest Lust, after checking the download against the release's checksums. `lust update check` only looks. When you run, build or check a file, Lust says at most once a day when a newer one is out; `lust update off` stops that.
-- **Building real programs** (`lust build`) also needs [Rust](https://rustup.rs). `lust run` doesn't. The first `lust build` without Rust says how to get it. Lust's libraries for built programs are compiled once per computer (a few minutes); after that a build takes about a second.
+- **Building real programs** (`lust build`) also needs [Rust](https://rustup.rs). `lust run` doesn't. The first `lust build` without Rust says how to get it. The installer also gets Lust's libraries for built programs ready, downloading them ready-made (about 150 MB), so even the first build takes seconds, not minutes; after that a build takes about a second. Lust builds with Rust 1.97.0, which rustup gets by itself the first time.
 - **Uninstalling:** Windows' Settings → Apps → Lust. It takes Lust off your PATH too.
 
 A new release comes out by itself whenever a new version of Lust reaches `main`.

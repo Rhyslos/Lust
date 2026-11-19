@@ -80,6 +80,26 @@ jobs:
           name: lust-release
           path: dist/
 
+      # The ready-made libraries for built programs (lust_rt and what it uses), compiled with the
+      # one Rust Lust builds with, so they fit every computer. Published as a release of their own,
+      # runtime-<name>, only when that name isn't out yet: most Lust versions don't change them.
+      # Before Lust's own release, so the new Lust finds them straight away.
+      - name: Ready-made libraries
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          key=$(target/release/lust.exe runtime-key)
+          if gh release view "runtime-$key" > /dev/null 2>&1; then
+            echo "runtime-$key is out already."
+            exit 0
+          fi
+          target/release/lust.exe runtime-pack dist-runtime
+          gh release create "runtime-$key" dist-runtime/lust-runtime.tar.gz dist-runtime/SHA256SUMS \
+            --target "$GITHUB_SHA" --title "Lust's libraries for built programs ($key)" \
+            --notes "Downloaded by lust build and the installer, so the first build doesn't compile them. Not a version of Lust." \
+            --prerelease --latest=false
+
       - name: Publish the release
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         env:

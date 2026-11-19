@@ -106,6 +106,20 @@ fn command(args: Vec<String>) -> ExitCode {
             return ExitCode::SUCCESS;
         }
         [c] if c == "warm-up" => return warm_up(),
+        // For Lust's release workflow: the ready-made libraries' name, and the libraries packed.
+        [c] if c == "runtime-key" => {
+            return match runtime_key() {
+                Ok(k) => {
+                    println!("{k}");
+                    ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    ExitCode::from(1)
+                }
+            }
+        }
+        [c, out] if c == "runtime-pack" => return runtime_pack(Path::new(out)),
         [c] if c == "version" || c == "--version" => {
             println!("Lust {VERSION}");
             return ExitCode::SUCCESS;
@@ -248,6 +262,66 @@ const RUNTIME_DEPS: &str = "rusqlite = { version = \"0.40\", features = [\"bundl
 /// made the old way is made again.
 const RUNTIME_FORMAT: &str = "lust-runtime 3\n";
 
+/// The Rust Lust builds programs with, when rustup (Rust's installer) is on the computer. One
+/// version for everyone, so the ready-made libraries Lust's releases carry fit every computer.
+const RUST_FOR_BUILDS: &str = "1.97.0";
+
+/// Whether builds use RUST_FOR_BUILDS: rustup is here, and has it (or has just got it, when
+/// `get` is true). Without rustup, builds use whatever Rust is installed.
+fn pinned_rust(get: bool) -> bool {
+    static HAS: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    if let Some(h) = HAS.get() {
+        return *h;
+    }
+    let quiet = |c: &mut std::process::Command| c.stdin(std::process::Stdio::null()).output().ok().filter(|o| o.status.success());
+    let Some(list) = quiet(std::process::Command::new("rustup").args(["toolchain", "list"])) else {
+        return *HAS.get_or_init(|| false);
+    };
+    if String::from_utf8_lossy(&list.stdout)
+        .lines()
+        .any(|l| l.starts_with(&format!("{RUST_FOR_BUILDS}-")))
+    {
+        return *HAS.get_or_init(|| true);
+    }
+    // A try that failed (no internet, say) is tried again a day later, not on every build.
+    let tried = cache_dir().join(format!("rust-{RUST_FOR_BUILDS}-not-got"));
+    let recently = std::fs::metadata(&tried)
+        .and_then(|m| m.modified())
+        .map(|t| t.elapsed().map(|e| e.as_secs() < 24 * 3600).unwrap_or(true))
+        .unwrap_or(false);
+    if !get || recently {
+        return false;
+    }
+    eprintln!(
+        "Getting Rust {RUST_FOR_BUILDS}, the version Lust builds programs with. This happens once, and is a download of a few hundred MB."
+    );
+    let got = std::process::Command::new("rustup")
+        .args(["toolchain", "install", RUST_FOR_BUILDS, "--profile", "minimal", "--no-self-update"])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if got {
+        let _ = std::fs::remove_file(&tried);
+    } else {
+        eprintln!("Rust {RUST_FOR_BUILDS} couldn't be downloaded, so programs are built with the Rust that's installed.");
+        let _ = std::fs::create_dir_all(cache_dir());
+        let _ = std::fs::write(&tried, "");
+    }
+    *HAS.get_or_init(|| got)
+}
+
+/// `rustc` or `cargo`, as Lust's builds run them: with RUST_FOR_BUILDS where rustup has it.
+fn rust_tool(tool: &str, get: bool) -> std::process::Command {
+    let mut c = std::process::Command::new(tool);
+    if pinned_rust(get) {
+        c.arg(format!("+{RUST_FOR_BUILDS}"));
+    }
+    c
+}
+
 /// The shared runtime, compiled: the library a program is built against, and where Rust finds
 /// the libraries it uses.
 struct Runtime {
@@ -264,10 +338,12 @@ struct Runtime {
 /// and which Rust compiles it, since pieces compiled by one version of Rust can't be used by
 /// another). A new Lust whose runtime is the same uses the one already compiled.
 fn runtime_key() -> Result<String, String> {
-    let out = std::process::Command::new("rustc")
-        .arg("-vV")
-        .output()
-        .map_err(|_| NEEDS_RUST.to_string())?;
+    runtime_key_with(true)
+}
+
+/// runtime_key, getting RUST_FOR_BUILDS first only when `get` is true.
+fn runtime_key_with(get: bool) -> Result<String, String> {
+    let out = rust_tool("rustc", get).arg("-vV").output().map_err(|_| NEEDS_RUST.to_string())?;
     let text = format!(
         "{RUNTIME_FORMAT}{}{}{}",
         String::from_utf8_lossy(&out.stdout),
@@ -424,10 +500,107 @@ fn ensure_runtime() -> Result<Runtime, String> {
         }
         std::thread::sleep(std::time::Duration::from_millis(500));
     }
-    let made = compile_runtime(&dir);
+    let made = match download_runtime(&dir) {
+        Ok(()) => Ok(()),
+        Err(why) => {
+            if !why.is_empty() {
+                eprintln!("Lust's ready-made libraries couldn't be used ({why}), so they're compiled here instead.");
+            }
+            compile_runtime(&dir)
+        }
+    };
     let _ = std::fs::remove_file(&lock);
     made?;
     read_runtime(&dir).ok_or_else(|| format!("Lust's runtime was built, but {} can't be read.", dir.join("ready.txt").display()))
+}
+
+/// Where Lust's releases keep the ready-made libraries for a runtime, by its name. They're made
+/// for Windows (the computers Lust's programs are for); LUST_RUNTIME_DOWNLOADS points elsewhere,
+/// for trying it.
+fn runtime_downloads(key: &str) -> Option<String> {
+    if let Ok(base) = std::env::var("LUST_RUNTIME_DOWNLOADS") {
+        return Some(format!("{}/runtime-{key}", base.trim_end_matches('/')));
+    }
+    (cfg!(windows) && cfg!(target_arch = "x86_64")).then(|| format!("https://github.com/Rhyslos/Lust/releases/download/runtime-{key}"))
+}
+
+/// Gets the ready-made runtime for `dir` from Lust's releases, checked against their SHA256SUMS,
+/// and unpacks it there. Err("") when there's none for this computer; Err(why) when it failed.
+fn download_runtime(dir: &Path) -> Result<(), String> {
+    let key = dir.file_name().unwrap_or_default().to_string_lossy().to_string();
+    let Some(base) = runtime_downloads(&key) else {
+        return Err(String::new());
+    };
+    eprintln!("Getting Lust's ready-made libraries for built programs (a download of a few hundred MB, once on this computer)…");
+    let file = match crate::update::download_checked(&base, PACK) {
+        Ok(f) => f,
+        // None made for this Rust (no rustup, or another version): compile, quietly.
+        Err(e) if e.contains("404") => return Err(String::new()),
+        Err(e) => return Err(e),
+    };
+    let pack = dir.join(PACK);
+    std::fs::write(&pack, file).map_err(|e| format!("couldn't save it: {e}"))?;
+    // tar unpacks .tar.gz on Windows 10 and later, as everywhere else. The file's name is given
+    // from its own folder: some tars read C:\… as another computer's name.
+    let unpacked = std::process::Command::new("tar")
+        .args(["-xzf", PACK])
+        .current_dir(dir)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    let _ = std::fs::remove_file(&pack);
+    if !unpacked || read_runtime(dir).is_none() {
+        let _ = std::fs::remove_file(dir.join("ready.txt"));
+        return Err("it didn't unpack".into());
+    }
+    Ok(())
+}
+
+/// The ready-made runtime's file in a release.
+const PACK: &str = "lust-runtime.tar.gz";
+
+/// `lust runtime-pack <folder>`: the runtime for this computer, compiled (never downloaded),
+/// packed as PACK with a SHA256SUMS, for a release. Prints the runtime's name.
+fn runtime_pack(out: &Path) -> ExitCode {
+    let made = (|| -> Result<String, String> {
+        let dir = runtime_dir()?;
+        if read_runtime(&dir).is_none() {
+            std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+            compile_runtime(&dir)?;
+        }
+        std::fs::create_dir_all(out).map_err(|e| format!("couldn't make {}: {e}", out.display()))?;
+        let pack = out.join(PACK);
+        // Written from inside the runtime's folder, so no path in it has a drive letter.
+        let packed = std::process::Command::new("tar")
+            .args(["-czf", PACK, "ready.txt", "lib", "native", "assets"])
+            .current_dir(&dir)
+            .status()
+            .map_err(|e| format!("couldn't run tar: {e}"))?;
+        if !packed.success() {
+            return Err("tar couldn't pack the runtime.".into());
+        }
+        std::fs::rename(dir.join(PACK), &pack)
+            .or_else(|_| std::fs::copy(dir.join(PACK), &pack).map(|_| ()))
+            .map_err(|e| format!("couldn't move the pack to {}: {e}", pack.display()))?;
+        let _ = std::fs::remove_file(dir.join(PACK));
+        let bytes = std::fs::read(&pack).map_err(|e| e.to_string())?;
+        let sum: String = {
+            use sha2::{Digest, Sha256};
+            Sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect()
+        };
+        std::fs::write(out.join("SHA256SUMS"), format!("{sum}  {PACK}\n")).map_err(|e| e.to_string())?;
+        runtime_key()
+    })();
+    match made {
+        Ok(key) => {
+            println!("{key}");
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("{e}");
+            ExitCode::from(1)
+        }
+    }
 }
 
 /// Compiles the runtime with Cargo into `dir`, then writes ready.txt.
@@ -454,7 +627,7 @@ fn compile_runtime(dir: &Path) -> Result<(), String> {
         }
     }
     let target = dir.join("target");
-    let out = std::process::Command::new("cargo")
+    let out = rust_tool("cargo", true)
         .args(["build", "--release", "--quiet", "--message-format=json", "--manifest-path"])
         .arg(dir.join("Cargo.toml"))
         .env("CARGO_TARGET_DIR", &target)
@@ -575,7 +748,7 @@ fn build_with_runtime(path: &Path, rust: &str, exe: &Path, release: bool) -> Res
     }
     let mut deps_arg = std::ffi::OsString::from("dependency=");
     deps_arg.push(&rt.deps);
-    let mut cmd = std::process::Command::new("rustc");
+    let mut cmd = rust_tool("rustc", true);
     // Without symbols: they only name Rust functions, and make the program several times bigger.
     cmd.args([
         "--edition",
@@ -725,7 +898,10 @@ fn new_project(name: &str, app: bool) -> ExitCode {
 
 /// Whether the shared libraries built programs use are compiled on this computer already.
 fn warm_ready() -> bool {
-    runtime_dir().map(|d| read_runtime(&d).is_some()).unwrap_or(false)
+    // Never downloads Rust itself: lust new stays instant, and the warm-up does that.
+    runtime_key_with(false)
+        .map(|k| read_runtime(&cache_dir().join("runtime").join(k)).is_some())
+        .unwrap_or(false)
 }
 
 fn which(tool: &str) -> bool {
@@ -743,8 +919,13 @@ fn which(tool: &str) -> bool {
 /// lust new (or the editor that ran it) is done.
 fn start_warm_up() -> bool {
     let Ok(me) = std::env::current_exe() else { return false };
+    start_warm_up_of(&me)
+}
+
+/// Starts `lust warm-up` with the Lust at `me`, as start_warm_up does.
+pub fn start_warm_up_of(me: &Path) -> bool {
     let spawn = |flags: u32| {
-        let mut c = std::process::Command::new(&me);
+        let mut c = std::process::Command::new(me);
         c.arg("warm-up")
             .current_dir(std::env::temp_dir())
             .stdin(std::process::Stdio::null())
@@ -949,7 +1130,7 @@ pub fn build_native_with(path: &Path, rust: &str, release: bool) -> Result<std::
     let src = dir.join(format!("{stem}-{}.rs", std::process::id()));
     std::fs::write(&src, rust).map_err(|e| format!("couldn't write {}: {e}", src.display()))?;
     let exe = path.with_extension(std::env::consts::EXE_EXTENSION);
-    let result = std::process::Command::new("rustc")
+    let result = rust_tool("rustc", false)
         .args([
             "--edition",
             "2021",
