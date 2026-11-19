@@ -25,6 +25,54 @@ pub const TEXT_RUNTIME: &str = include_str!("native_text.rs");
 /// the mouse (right-click menus, dragging rows, dropped files, canvases), then date and colour
 /// pickers, then more windows, toasts, the tray and notifications, then input methods and fonts
 /// for missing letters, then screen readers, then the icons' shapes, all in one module.
+/// The lines around a program's own copy of the runtime, so `lust build` can swap it for the one
+/// compiled once (prebuilt) instead.
+pub const RUNTIME_START: &str = "// The runtime starts here.\n";
+pub const RUNTIME_END: &str = "// The runtime ends here.\n";
+
+/// The runtime as a library of its own, `lust_rt`: every part a program can use, compiled once per
+/// Lust and Rust version and shared by every program `lust build` makes. What a program's own copy
+/// decides in its text (whether it has views, whether it reads the computer's time zone) is set
+/// when it starts instead, by `rt::set_options`.
+pub fn runtime_library() -> String {
+    format!(
+        "// Lust's runtime for programs of their own, written by Lust {ver}. It's compiled once and shared.\n#![allow(warnings)]\n#![recursion_limit = \"1024\"]\n\npub mod rt {{\n{RUNTIME}\n\
+static UI_PROGRAM: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);\n\
+static LOCAL_TIME: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);\n\
+/// Set by the program before anything else: whether it has views, and whether it reads the time zone.\n\
+pub fn set_options(ui: bool, local_time: bool) {{\n    UI_PROGRAM.store(ui, std::sync::atomic::Ordering::Relaxed);\n    LOCAL_TIME.store(local_time, std::sync::atomic::Ordering::Relaxed);\n}}\n\
+pub fn ui_program() -> bool {{\n    UI_PROGRAM.load(std::sync::atomic::Ordering::Relaxed)\n}}\n\
+mod localtime {{\n{LOCALTIME_RUNTIME}\n}}\n\
+fn local_fields(t: i64) -> Option<[i32; 9]> {{\n    if LOCAL_TIME.load(std::sync::atomic::Ordering::Relaxed) {{ localtime::local_fields(t) }} else {{ None }}\n}}\n\
+pub mod db {{\nuse super::*;\nuse std::rc::Rc;\n{DB_RUNTIME}\n}}\n\
+pub mod web {{\nuse super::*;\n{WEB_RUNTIME}\n}}\n\
+pub mod dlg {{\nuse super::*;\n{DLG_RUNTIME}\n}}\n\
+pub mod net {{\nuse super::*;\n{NET_RUNTIME}\n}}\n\
+pub mod ui {{\nuse super::*;\n{UI_RUNTIME}\n}}\n\
+pub mod pat {{\nuse super::*;\n{TEXT_RUNTIME}\n}}\n}}\n",
+        ver = crate::VERSION
+    )
+}
+
+/// A program's Rust, changed to use the shared `lust_rt` instead of its own copy of the runtime.
+/// None for Rust that has no copy of its own (a library for an engine keeps it).
+pub fn with_prebuilt_runtime(rust: &str) -> Option<String> {
+    let start = rust.find(RUNTIME_START)?;
+    let end = rust[start..].find(RUNTIME_END)? + start;
+    let own = &rust[start..end];
+    let ui = own.contains("fn ui_program() -> bool {\n    true\n}");
+    let local_time = own.contains("_localtime64_s") || own.contains("localtime_r");
+    let main = "fn main() {\n    rt::main(";
+    let at = rust.rfind(main)?;
+    let mut out = String::with_capacity(rust.len() - own.len() + 128);
+    out.push_str(&rust[..start]);
+    out.push_str("use lust_rt::rt;\n");
+    out.push_str(&rust[end + RUNTIME_END.len()..at]);
+    out.push_str(&format!("fn main() {{\n    rt::set_options({ui}, {local_time});\n    rt::main("));
+    out.push_str(&rust[at + main.len()..]);
+    Some(out)
+}
+
 pub const UI_RUNTIME: &str = concat!(
     include_str!("native_ui.rs"),
     "\n",
@@ -522,9 +570,9 @@ pub fn write(prog: &Program, info: &Info, files: &[String], library: bool) -> St
         "// No unsafe code: Rust checks it.\n#![forbid(unsafe_code)]\n"
     };
     format!(
-        "// Written by Lust from {file}, as {what}. It's rewritten on every build, so don't edit it.\n#![allow(warnings)]\n{forbid}// Arrays inside arrays are types inside types; Lust allows them deeper than Rust does by default.\n#![recursion_limit = \"1024\"]\nuse std::cell::RefCell;\nuse std::rc::Rc;\n\nmod rt {{\n{RUNTIME}\n{db}}}\n\n{rows}{defs}{ending}",
+        "// Written by Lust from {file}, as {what}. It's rewritten on every build, so don't edit it.\n#![allow(warnings)]\n{forbid}// Arrays inside arrays are types inside types; Lust allows them deeper than Rust does by default.\n#![recursion_limit = \"1024\"]\nuse std::cell::RefCell;\nuse std::rc::Rc;\n\n{RUNTIME_START}mod rt {{\n{RUNTIME}\n{db}}}\n{RUNTIME_END}\n{rows}{defs}{ending}",
         db = {
-            let mut m = format!("pub const UI_PROGRAM: bool = {};\n", views(info));
+            let mut m = format!("pub fn ui_program() -> bool {{\n    {}\n}}\n", views(info));
             // The time zone: from the computer (unsafe, so only when Time:date() or Time:time()
             // is used), from the engine in a library, or none (UTC).
             let local = uses(info, &["time_date", "time_time"]) || info.uses_dates;
@@ -3514,5 +3562,61 @@ fn coerce(code: String, got: &Ty, want: &Ty) -> String {
         (Ty::Int, Ty::Float) => format!("({code} as f64)"),
         (Ty::Nothing, Ty::Entity) => "0u64".into(),
         _ => code,
+    }
+}
+
+#[cfg(test)]
+mod prebuilt {
+    //! Swapping a program's own copy of the runtime for the shared one (lust build).
+    use super::*;
+
+    fn program(own: &str, body: &str) -> String {
+        format!(
+            "#![allow(warnings)]\nuse std::rc::Rc;\n\n{RUNTIME_START}mod rt {{\n{RUNTIME}\n{own}}}\n{RUNTIME_END}\nstruct Row1 {{}}\nfn program() {{\n{body}}}\n\nfn main() {{\n    rt::main(program, &[\"main.lst\"]);\n}}\n"
+        )
+    }
+
+    #[test]
+    fn swaps_the_runtime_and_keeps_the_rest() {
+        let rust = program("pub fn ui_program() -> bool {\n    false\n}\n", "    rt::print(\"hi\");\n");
+        let out = with_prebuilt_runtime(&rust).unwrap();
+        assert!(out.contains("use lust_rt::rt;\n"));
+        assert!(!out.contains("mod rt {"));
+        assert!(!out.contains(RUNTIME_START) && !out.contains(RUNTIME_END));
+        assert!(out.contains("struct Row1 {}\nfn program() {\n    rt::print(\"hi\");\n}"));
+        assert!(out.contains("fn main() {\n    rt::set_options(false, false);\n    rt::main(program, &[\"main.lst\"]);\n}"));
+    }
+
+    #[test]
+    fn views_and_the_time_zone_carry_over() {
+        let ui = program("pub fn ui_program() -> bool {\n    true\n}\n", "");
+        assert!(with_prebuilt_runtime(&ui).unwrap().contains("rt::set_options(true, false);"));
+        let local = program(&format!("pub fn ui_program() -> bool {{\n    false\n}}\n{LOCALTIME_RUNTIME}"), "");
+        assert!(with_prebuilt_runtime(&local).unwrap().contains("rt::set_options(false, true);"));
+    }
+
+    #[test]
+    fn the_programs_own_text_cant_confuse_it() {
+        // A program that prints the marker's words keeps them: only the first pair is the runtime.
+        let rust = program("pub fn ui_program() -> bool {\n    false\n}\n", "    rt::print(\"// The runtime ends here.\");\n");
+        let out = with_prebuilt_runtime(&rust).unwrap();
+        assert!(out.contains("rt::print(\"// The runtime ends here.\");"));
+    }
+
+    #[test]
+    fn a_library_keeps_its_own_runtime() {
+        assert_eq!(with_prebuilt_runtime("pub fn start() {}\n"), None);
+        let no_main = format!("{RUNTIME_START}mod rt {{}}\n{RUNTIME_END}pub fn start() {{}}\n");
+        assert_eq!(with_prebuilt_runtime(&no_main), None);
+    }
+
+    #[test]
+    fn the_shared_runtime_has_every_part() {
+        let lib = runtime_library();
+        for m in ["pub mod db {", "pub mod web {", "pub mod dlg {", "pub mod net {", "pub mod ui {", "pub mod pat {"] {
+            assert!(lib.contains(m), "{m} is missing");
+        }
+        assert!(lib.contains("pub fn set_options(ui: bool, local_time: bool)"));
+        assert!(lib.contains(crate::VERSION));
     }
 }

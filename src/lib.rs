@@ -51,7 +51,9 @@ mod icons {
 #[allow(dead_code, non_snake_case)]
 mod native_rt {
     // lust itself runs LustScript views on its own main thread.
-    pub const UI_PROGRAM: bool = false;
+    pub fn ui_program() -> bool {
+        false
+    }
     include!("native_rt.rs");
     include!("native_localtime.rs");
 }

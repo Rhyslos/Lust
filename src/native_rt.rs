@@ -68,7 +68,7 @@ fn payload_text(p: &(dyn std::any::Any + Send)) -> String {
 /// macOS only opens windows from the main thread, so programs with views run there.
 pub fn main(program: fn(), files: &'static [&'static str]) {
     std::panic::set_hook(Box::new(|_| {}));
-    if cfg!(target_os = "macos") && UI_PROGRAM {
+    if cfg!(target_os = "macos") && ui_program() {
         std::process::exit(run_program(program, files));
     }
     let t = std::thread::Builder::new()

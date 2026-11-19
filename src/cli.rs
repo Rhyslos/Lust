@@ -209,7 +209,6 @@ fn command(args: Vec<String>) -> ExitCode {
     }
 }
 
-/// Turns the Rust for a program into a real program next to the .lst file, with rustc.
 /// Where Lust keeps what it builds with: the libraries built programs use, compiled once per computer.
 fn cache_dir() -> std::path::PathBuf {
     if let Ok(d) = std::env::var("LUST_CACHE") {
@@ -227,13 +226,9 @@ fn cache_dir() -> std::path::PathBuf {
     std::env::temp_dir().join("lust-cache")
 }
 
-/// The tray icon and notifications, for a library with views: per system, as in CARGO_TOML.
+/// The tray icon and notifications: per system, for the shared runtime and a library with views.
 const UI_TARGET_DEPS: &str = "\n[target.'cfg(windows)'.dependencies]\ntray-icon = { version = \"0.25\", default-features = false }\ntauri-winrt-notification = \"0.8\"\n\n[target.'cfg(target_os = \"linux\")'.dependencies]\nzbus = { version = \"5\", default-features = false, features = [\"async-io\", \"blocking-api\"] }\n";
 
-const CARGO_TOML: &str = "[package]\nname = \"lust_program\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nrusqlite = { version = \"0.40\", features = [\"bundled\"] }\ntiny_http = \"0.12\"\nureq = \"3\"\nregex = \"1\"\nwinit = \"0.30\"\naccesskit = \"0.25\"\naccesskit_winit = \"0.34\"\nsoftbuffer = \"0.4\"\nab_glyph = \"0.2\"\nrfd = \"0.16\"\narboard = { version = \"3\", default-features = false }\npng = \"0.17\"\njpeg-decoder = { version = \"0.3\", default-features = false }\nresvg = { version = \"0.49\", default-features = false }\n\n[target.'cfg(windows)'.dependencies]\ntray-icon = { version = \"0.25\", default-features = false }\ntauri-winrt-notification = \"0.8\"\n\n[target.'cfg(target_os = \"linux\")'.dependencies]\nzbus = { version = \"5\", default-features = false, features = [\"async-io\", \"blocking-api\"] }\n\n[profile.release]\noverflow-checks = true\n\n[workspace]\n";
-
-/// Builds a program that needs outside libraries with Cargo, in a folder of Lust's own. The
-/// libraries are shared, so they're only compiled the first time on each computer.
 /// What lust build says when Rust isn't on the computer.
 const NEEDS_RUST: &str = "building a real program needs Rust, which isn't on this computer yet. lust run works without it.
 To get Rust: download rustup-init.exe from https://rustup.rs and run it. On Windows it also offers the Visual Studio build tools Rust needs: say yes. It's a few GB, and takes a while.
@@ -244,65 +239,188 @@ const NEEDS_TOOLS: &str = "Rust is here, but Windows' build tools aren't, and Ru
 Get them by running rustup-init.exe from https://rustup.rs again and saying yes to the Visual Studio build tools, or install \"Build Tools for Visual Studio\" with \"Desktop development with C++\" from https://visualstudio.microsoft.com/downloads/
 Then open a new terminal, and build again.";
 
-fn build_with_cargo(path: &Path, rust: &str, exe: &Path) -> Result<(), String> {
-    let cache = cache_dir();
-    let stem = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
-    let full = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+/// The libraries the shared runtime is built with, as Cargo.toml writes them.
+const RUNTIME_DEPS: &str = "rusqlite = { version = \"0.40\", features = [\"bundled\"] }\ntiny_http = \"0.12\"\nureq = \"3\"\nregex = \"1\"\nwinit = \"0.30\"\naccesskit = \"0.25\"\naccesskit_winit = \"0.34\"\nsoftbuffer = \"0.4\"\nab_glyph = \"0.2\"\nrfd = \"0.16\"\narboard = { version = \"3\", default-features = false }\npng = \"0.17\"\njpeg-decoder = { version = \"0.3\", default-features = false }\nresvg = { version = \"0.49\", default-features = false }\n";
+
+/// The shared runtime, compiled: the library a program is built against, and where Rust finds
+/// the libraries it uses.
+struct Runtime {
+    rlib: PathBuf,
+    deps: PathBuf,
+    search: Vec<String>,
+}
+
+/// Which Rust is on this computer, as a short name for the runtime's folder: pieces compiled by
+/// one version of Rust can't be used by another.
+fn rustc_id() -> Result<String, String> {
+    let out = std::process::Command::new("rustc").arg("-vV").output().map_err(|_| NEEDS_RUST.to_string())?;
+    let text = String::from_utf8_lossy(&out.stdout);
     let mut hash: u64 = 1469598103934665603;
-    for b in full.to_string_lossy().bytes() {
+    for b in text.bytes() {
         hash = (hash ^ b as u64).wrapping_mul(1099511628211);
     }
-    let project = cache.join("projects").join(format!("{stem}-{hash:016x}"));
-    let target = cache.join("target");
-    std::fs::create_dir_all(project.join("src")).map_err(|e| format!("couldn't make a build folder: {e}"))?;
-    let toml = project.join("Cargo.toml");
-    // Each project's program has a name of its own in the shared target folder, so two builds at
-    // once can't copy out each other's program.
-    let bin = format!("lust_{hash:016x}");
-    let manifest = format!("{CARGO_TOML}\n[[bin]]\nname = \"{bin}\"\npath = \"src/main.rs\"\n");
-    if std::fs::read_to_string(&toml).ok().as_deref() != Some(manifest.as_str()) {
-        std::fs::write(&toml, &manifest).map_err(|e| format!("couldn't write {}: {e}", toml.display()))?;
+    Ok(format!("{hash:016x}"))
+}
+
+/// The folder for this Lust and this Rust's runtime.
+fn runtime_dir() -> Result<PathBuf, String> {
+    Ok(cache_dir().join("runtime").join(format!("{VERSION}-{}", rustc_id()?)))
+}
+
+/// What a finished runtime folder says about itself, in ready.txt: the library, then one line
+/// per place Rust looks for the libraries it links.
+fn read_runtime(dir: &Path) -> Option<Runtime> {
+    let text = std::fs::read_to_string(dir.join("ready.txt")).ok()?;
+    let mut lines = text.lines();
+    let rlib = dir.join(lines.next()?);
+    let deps = dir.join("target").join("release").join("deps");
+    let search = lines.map(str::to_string).collect();
+    (rlib.exists()).then_some(Runtime { rlib, deps, search })
+}
+
+/// The runtime for this Lust and this Rust, compiled now if it isn't yet. Compiling it takes a
+/// few minutes, once per computer and version; a second build at the same time waits for it.
+fn ensure_runtime() -> Result<Runtime, String> {
+    let dir = runtime_dir()?;
+    if let Some(r) = read_runtime(&dir) {
+        return Ok(r);
     }
-    std::fs::write(project.join("src").join("main.rs"), rust).map_err(|e| format!("couldn't write the program: {e}"))?;
-    // Views draw with Lust's font, which goes into the program.
-    let fonts = project.join("assets").join("fonts");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("couldn't make {}: {e}", dir.display()))?;
+    let lock = dir.join("building.lock");
+    loop {
+        if std::fs::OpenOptions::new().write(true).create_new(true).open(&lock).is_ok() {
+            // Another build may have finished it while this one waited.
+            if let Some(r) = read_runtime(&dir) {
+                let _ = std::fs::remove_file(&lock);
+                return Ok(r);
+            }
+            break;
+        }
+        // Another build is compiling it: wait, unless its lock is old (one that was stopped).
+        let old = std::fs::metadata(&lock)
+            .and_then(|m| m.modified())
+            .map(|t| t.elapsed().map(|e| e.as_secs() > 1800).unwrap_or(false))
+            .unwrap_or(true);
+        if old {
+            let _ = std::fs::remove_file(&lock);
+            continue;
+        }
+        if let Some(r) = read_runtime(&dir) {
+            return Ok(r);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+    let made = compile_runtime(&dir);
+    let _ = std::fs::remove_file(&lock);
+    made?;
+    read_runtime(&dir).ok_or_else(|| format!("Lust's runtime was built, but {} can't be read.", dir.join("ready.txt").display()))
+}
+
+/// Compiles the runtime with Cargo into `dir`, then writes ready.txt.
+fn compile_runtime(dir: &Path) -> Result<(), String> {
+    eprintln!("Getting Lust's libraries ready for built programs. This happens once on this computer, and takes a few minutes.");
+    std::fs::create_dir_all(dir.join("src")).map_err(|e| format!("couldn't make a build folder: {e}"))?;
+    let toml = format!(
+        "[package]\nname = \"lust_rt\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[lib]\npath = \"src/lib.rs\"\n\n[dependencies]\n{RUNTIME_DEPS}{UI_TARGET_DEPS}\n[profile.release]\noverflow-checks = true\n\n[workspace]\n"
+    );
+    // Written only when they change, so Cargo doesn't compile the runtime again for nothing.
+    let write = |file: PathBuf, text: String| -> Result<(), String> {
+        if std::fs::read_to_string(&file).ok().as_deref() != Some(text.as_str()) {
+            std::fs::write(&file, text).map_err(|e| format!("couldn't write {}: {e}", file.display()))?;
+        }
+        Ok(())
+    };
+    write(dir.join("Cargo.toml"), toml)?;
+    write(dir.join("src").join("lib.rs"), rust::runtime_library())?;
+    // Views draw with Lust's font, which goes into the runtime.
+    let fonts = dir.join("assets").join("fonts");
     std::fs::create_dir_all(&fonts).map_err(|e| format!("couldn't make a build folder: {e}"))?;
     for (name, bytes) in native_ui::FONT_FILES.iter().zip(native_ui::FONTS.iter()) {
         let f = fonts.join(name);
         if std::fs::metadata(&f).map(|m| m.len() as usize != bytes.len()).unwrap_or(true) {
-            std::fs::write(&f, bytes).map_err(|e| format!("couldn't write {}: {e}", f.display()))?;
+            std::fs::write(&f, bytes).map_err(|e| format!("couldn't write the font {name}: {e}"))?;
         }
     }
-    let first = !target
-        .join("release")
-        .join("deps")
-        .read_dir()
-        .map(|d| d.flatten().any(|e| e.file_name().to_string_lossy().contains("rusqlite")))
-        .unwrap_or(false);
-    if first {
-        eprintln!("Getting SQLite ready for built programs. This happens once on this computer, and takes a minute or two.");
-    }
+    let target = dir.join("target");
     let out = std::process::Command::new("cargo")
         .args(["build", "--release", "--quiet", "--manifest-path"])
-        .arg(&toml)
+        .arg(dir.join("Cargo.toml"))
         .env("CARGO_TARGET_DIR", &target)
         .output()
         .map_err(|_| NEEDS_RUST.to_string())?;
     if !out.status.success() {
         let said = String::from_utf8_lossy(&out.stderr);
-        // No linker: Rust without Windows' build tools.
         if said.contains("link.exe") && (said.contains("not found") || said.contains("could not be found")) {
             return Err(NEEDS_TOOLS.to_string());
         }
-        return Err(format!(
-            "Lust made Rust that doesn't build, or Cargo couldn't get SQLite. Rust said:\n{}\nThe Rust is in {}.",
-            String::from_utf8_lossy(&out.stderr),
-            project.join("src").join("main.rs").display()
-        ));
+        return Err(format!("Lust's libraries for built programs didn't build, or Cargo couldn't get them. Rust said:\n{said}"));
     }
-    let built = target.join("release").join(format!("{bin}{}", std::env::consts::EXE_SUFFIX));
-    std::fs::copy(&built, exe).map_err(|e| format!("couldn't copy the program to {}: {e}", exe.display()))?;
-    Ok(())
+    let release = target.join("release");
+    let rlib = std::fs::read_dir(release.join("deps"))
+        .map_err(|e| format!("couldn't look in {}: {e}", release.display()))?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            let n = p.file_name().unwrap_or_default().to_string_lossy();
+            n.starts_with("liblust_rt-") && n.ends_with(".rlib")
+        })
+        .max_by_key(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok())
+        .ok_or("Lust's runtime built, but its library isn't where Cargo puts it.")?;
+    let mut ready = rlib.strip_prefix(dir).unwrap_or(&rlib).to_string_lossy().replace('\\', "/");
+    ready.push('\n');
+    // The places build scripts told Cargo to look for the libraries they link (SQLite's, and
+    // Windows' own on Windows): Rust needs them again for each program.
+    for entry in std::fs::read_dir(release.join("build")).into_iter().flatten().flatten() {
+        let Ok(text) = std::fs::read_to_string(entry.path().join("output")) else { continue };
+        for line in text.lines() {
+            if let Some(at) = line.strip_prefix("cargo:rustc-link-search=").or_else(|| line.strip_prefix("cargo::rustc-link-search=")) {
+                ready.push_str(at);
+                ready.push('\n');
+            }
+        }
+    }
+    std::fs::write(dir.join("ready.txt"), ready).map_err(|e| format!("couldn't write {}: {e}", dir.join("ready.txt").display()))
+}
+
+/// Builds a program that uses outside libraries (databases, views, the web) against the shared
+/// runtime, so only the program's own code is compiled.
+fn build_with_runtime(path: &Path, rust: &str, exe: &Path) -> Result<(), String> {
+    let program = rust::with_prebuilt_runtime(rust).ok_or("this Rust has no runtime to share, so it can't be built as a program.")?;
+    let rt = ensure_runtime()?;
+    let stem = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
+    let dir = std::env::temp_dir().join("lust-build");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("couldn't make a build folder: {e}"))?;
+    let src = dir.join(format!("{stem}-{}.rs", std::process::id()));
+    std::fs::write(&src, &program).map_err(|e| format!("couldn't write {}: {e}", src.display()))?;
+    let mut extern_arg = std::ffi::OsString::from("lust_rt=");
+    extern_arg.push(&rt.rlib);
+    let mut deps_arg = std::ffi::OsString::from("dependency=");
+    deps_arg.push(&rt.deps);
+    let mut cmd = std::process::Command::new("rustc");
+    // Without symbols: they only name Rust functions, and make the program several times bigger.
+    cmd.args(["--edition", "2021", "-O", "-C", "overflow-checks=on", "-C", "strip=symbols", "--crate-name", "lust_program", "--extern"])
+        .arg(extern_arg)
+        .arg("-L")
+        .arg(deps_arg);
+    for at in &rt.search {
+        cmd.arg("-L").arg(at);
+    }
+    let result = cmd.arg("-o").arg(exe).arg(&src).output();
+    let _ = std::fs::remove_file(&src);
+    match result {
+        Err(_) => Err(NEEDS_RUST.into()),
+        Ok(o) if !o.status.success() && String::from_utf8_lossy(&o.stderr).contains("link.exe") => Err(NEEDS_TOOLS.into()),
+        Ok(o) if !o.status.success() => {
+            let keep = dir.join(format!("{stem}.rs"));
+            let _ = std::fs::write(&keep, &program);
+            Err(format!(
+                "Lust made Rust that doesn't build. That's a bug in Lust, not your program.\nThe Rust is in {}. Rust said:\n{}",
+                keep.display(),
+                String::from_utf8_lossy(&o.stderr)
+            ))
+        }
+        Ok(_) => Ok(()),
+    }
 }
 
 /// lust new name: a folder with a main.lst to start from, and the libraries made ready.
@@ -416,13 +534,7 @@ fn new_project(name: &str, app: bool) -> ExitCode {
 
 /// Whether the shared libraries built programs use are compiled on this computer already.
 fn warm_ready() -> bool {
-    cache_dir()
-        .join("target")
-        .join("release")
-        .join("deps")
-        .read_dir()
-        .map(|d| d.flatten().any(|e| e.file_name().to_string_lossy().contains("rusqlite")))
-        .unwrap_or(false)
+    runtime_dir().map(|d| read_runtime(&d).is_some()).unwrap_or(false)
 }
 
 fn which(tool: &str) -> bool {
@@ -493,39 +605,9 @@ fn keep_output_to_myself() {
 /// libraries built programs share are compiled. One at a time; quietly does nothing when they're
 /// ready already.
 fn warm_up() -> ExitCode {
-    if warm_ready() {
-        return ExitCode::SUCCESS;
-    }
-    let cache = cache_dir();
-    let _ = std::fs::create_dir_all(&cache);
-    let lock = cache.join("warm-up.lock");
-    // Another warm-up is running (a lock younger than half an hour).
-    let fresh = std::fs::metadata(&lock)
-        .and_then(|m| m.modified())
-        .map(|t| t.elapsed().map(|e| e.as_secs() < 1800).unwrap_or(true))
-        .unwrap_or(false);
-    if fresh {
-        return ExitCode::SUCCESS;
-    }
-    let _ = std::fs::remove_file(&lock); // an old one, from a warm-up that was stopped
-    if std::fs::OpenOptions::new().write(true).create_new(true).open(&lock).is_err() {
-        return ExitCode::SUCCESS; // another one started just now
-    }
-    let dir = std::env::temp_dir().join(format!("lust-warm-up-{}", std::process::id()));
-    let _ = std::fs::create_dir_all(&dir);
-    let warm = dir.join("lust-warm-up.lst");
-    let src = "database Warm in \"warm.db\" {\n    cMap(int id, string name) things;\n}\nprint(#Warm.things);\nend\n";
-    let ok = std::fs::write(&warm, src).is_ok()
-        && compile(&warm, true)
-            .and_then(|c| c.rust)
-            .map(|r| build_native(&warm, &r).is_ok())
-            .unwrap_or(false);
-    let _ = std::fs::remove_dir_all(&dir);
-    let _ = std::fs::remove_file(&lock);
-    if ok {
-        ExitCode::SUCCESS
-    } else {
-        ExitCode::from(1)
+    match ensure_runtime() {
+        Ok(_) => ExitCode::SUCCESS,
+        Err(_) => ExitCode::from(1),
     }
 }
 
@@ -661,7 +743,7 @@ pub fn build_native(path: &Path, rust: &str) -> Result<std::path::PathBuf, Strin
         .any(|m| rust.contains(&format!("\npub mod {m} {{\n")))
     {
         let exe = path.with_extension(std::env::consts::EXE_EXTENSION);
-        build_with_cargo(path, rust, &exe)?;
+        build_with_runtime(path, rust, &exe)?;
         return Ok(exe);
     }
     let stem = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
