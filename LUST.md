@@ -20,7 +20,7 @@ This is the single source of truth for Lust v2. Things still being designed are 
 | Rust, compiled to real machine code | `.lst` | Programs, apps and servers, on Windows, macOS and Linux |
 | LustScript, turned into Lua | `.lsc` | Scripting and modding inside other programs (Garry's Mod, Aventail, Halberd) |
 
-Plus **LustQL** (`.lql`) for stored data **(to design)**.
+Plus **LustQL** (`.lql`) for stored data: designed in [LUSTQL.md](LUSTQL.md), not built yet.
 
 **Why Rust:** Lust writes readable Rust, and Rust's compiler does the rest: real machine code through LLVM, every desktop platform, and WebAssembly if it's ever wanted. Rust's libraries (crates) give Lust its standard library: files, HTTP, JSON, SQLite, sound, and windows and graphics through winit and wgpu. Lust checks everything itself, so nobody ever sees a Rust error. Programs need Rust installed to build, the way v1 needs .NET.
 
@@ -2355,7 +2355,7 @@ The pieces of a view (`text`, `button`, `radio`, `switch`, `number`, `icon`, `ta
 
 ## 23. Still to design
 
-- **LustQL (`.lql`):** a query language of its own, for later. Queries are written in Lust code for now (section 14).
+- **LustQL (`.lql`):** designed (2026-11-19) in [LUSTQL.md](LUSTQL.md), and built one step at a time. Until then, databases and their questions are written in Lust code (section 14).
 - **Ready-made host files:** the files describing Garry's Mod's or Aventail's functions as native methods (section 21), so LustScript there is checked like the rest of Lust.
 - **More for engines** (Solis): vectors as real value types, typed events, leaner Rust for code that runs every frame, and rebuilding a game's Lust in a couple of seconds.
 - **The standard library:** which Rust crates Lust wraps for files, networking, JSON, dates and sound, and how they look from Lust.

@@ -63,17 +63,7 @@ Talked through and liked, but the exact syntax still needs working out:
   ```
 
   This and "States that react" below both want the word `when`, so one of them needs to give way. Left open for now: the language may get a bigger redesign first.
-- **LustQL: a cArray that lives in SQLite.** Practical, not a second language to learn:
-
-  ```
-  cArray(string title, bool done) notes in "notes.db";
-
-  loop (int id, string title, bool done in notes where done not true) {
-      print(title);
-  }
-  ```
-
-  Adding and removing rows works like any cArray, and the file is kept up to date by itself.
+- **LustQL** is designed now: see [LUSTQL.md](LUSTQL.md). (The sketch that was here, a cArray kept in SQLite, wasn't chosen: arrays stay arrays, and stored data lives in tables in a `.lql` file.)
 
 ### Hooks: functions kept as values
 
