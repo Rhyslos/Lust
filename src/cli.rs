@@ -252,11 +252,20 @@ struct Runtime {
     search: Vec<String>,
 }
 
-/// Which Rust is on this computer, as a short name for the runtime's folder: pieces compiled by
-/// one version of Rust can't be used by another.
-fn rustc_id() -> Result<String, String> {
-    let out = std::process::Command::new("rustc").arg("-vV").output().map_err(|_| NEEDS_RUST.to_string())?;
-    let text = String::from_utf8_lossy(&out.stdout);
+/// The runtime's name: a hash of everything that goes into it (its code, the libraries it uses,
+/// and which Rust compiles it, since pieces compiled by one version of Rust can't be used by
+/// another). A new Lust whose runtime is the same uses the one already compiled.
+fn runtime_key() -> Result<String, String> {
+    let out = std::process::Command::new("rustc")
+        .arg("-vV")
+        .output()
+        .map_err(|_| NEEDS_RUST.to_string())?;
+    let text = format!(
+        "{}{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        runtime_toml(),
+        rust::runtime_library()
+    );
     let mut hash: u64 = 1469598103934665603;
     for b in text.bytes() {
         hash = (hash ^ b as u64).wrapping_mul(1099511628211);
@@ -264,19 +273,32 @@ fn rustc_id() -> Result<String, String> {
     Ok(format!("{hash:016x}"))
 }
 
-/// The folder for this Lust and this Rust's runtime.
+/// The folder for this runtime, compiled by this Rust.
 fn runtime_dir() -> Result<PathBuf, String> {
-    Ok(cache_dir().join("runtime").join(format!("{VERSION}-{}", rustc_id()?)))
+    Ok(cache_dir().join("runtime").join(runtime_key()?))
+}
+
+/// The runtime's Cargo.toml.
+fn runtime_toml() -> String {
+    format!(
+        "[package]\nname = \"lust_rt\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[lib]\npath = \"src/lib.rs\"\n\n[dependencies]\n{RUNTIME_DEPS}{UI_TARGET_DEPS}\n[profile.release]\noverflow-checks = true\n\n[workspace]\n"
+    )
 }
 
 /// What a finished runtime folder says about itself, in ready.txt: the library, then one line
-/// per place Rust looks for the libraries it links.
+/// per place Rust looks for the libraries it links (kind=folder), every path written from the
+/// runtime's own folder, so the folder can be moved or downloaded whole.
 fn read_runtime(dir: &Path) -> Option<Runtime> {
     let text = std::fs::read_to_string(dir.join("ready.txt")).ok()?;
     let mut lines = text.lines();
     let rlib = dir.join(lines.next()?);
     let deps = dir.join("target").join("release").join("deps");
-    let search = lines.map(str::to_string).collect();
+    let search = lines
+        .map(|l| match l.split_once('=') {
+            Some((kind, at)) => format!("{kind}={}", dir.join(at).display()),
+            None => dir.join(l).display().to_string(),
+        })
+        .collect();
     (rlib.exists()).then_some(Runtime { rlib, deps, search })
 }
 
@@ -322,9 +344,7 @@ fn ensure_runtime() -> Result<Runtime, String> {
 fn compile_runtime(dir: &Path) -> Result<(), String> {
     eprintln!("Getting Lust's libraries ready for built programs. This happens once on this computer, and takes a few minutes.");
     std::fs::create_dir_all(dir.join("src")).map_err(|e| format!("couldn't make a build folder: {e}"))?;
-    let toml = format!(
-        "[package]\nname = \"lust_rt\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[lib]\npath = \"src/lib.rs\"\n\n[dependencies]\n{RUNTIME_DEPS}{UI_TARGET_DEPS}\n[profile.release]\noverflow-checks = true\n\n[workspace]\n"
-    );
+    let toml = runtime_toml();
     // Written only when they change, so Cargo doesn't compile the runtime again for nothing.
     let write = |file: PathBuf, text: String| -> Result<(), String> {
         if std::fs::read_to_string(&file).ok().as_deref() != Some(text.as_str()) {
@@ -357,7 +377,9 @@ fn compile_runtime(dir: &Path) -> Result<(), String> {
         if said.contains("link.exe") && (said.contains("not found") || said.contains("could not be found")) {
             return Err(NEEDS_TOOLS.to_string());
         }
-        return Err(format!("Lust's libraries for built programs didn't build, or Cargo couldn't get them. Rust said:\n{said}"));
+        return Err(format!(
+            "Lust's libraries for built programs didn't build, or Cargo couldn't get them. Rust said:\n{said}"
+        ));
     }
     let release = target.join("release");
     let rlib = std::fs::read_dir(release.join("deps"))
@@ -375,11 +397,19 @@ fn compile_runtime(dir: &Path) -> Result<(), String> {
     // The places build scripts told Cargo to look for the libraries they link (SQLite's, and
     // Windows' own on Windows): Rust needs them again for each program.
     for entry in std::fs::read_dir(release.join("build")).into_iter().flatten().flatten() {
-        let Ok(text) = std::fs::read_to_string(entry.path().join("output")) else { continue };
+        let Ok(text) = std::fs::read_to_string(entry.path().join("output")) else {
+            continue;
+        };
         for line in text.lines() {
-            if let Some(at) = line.strip_prefix("cargo:rustc-link-search=").or_else(|| line.strip_prefix("cargo::rustc-link-search=")) {
-                ready.push_str(at);
-                ready.push('\n');
+            if let Some(at) = line
+                .strip_prefix("cargo:rustc-link-search=")
+                .or_else(|| line.strip_prefix("cargo::rustc-link-search="))
+            {
+                // Kept as kind=folder, the folder written from the runtime's own.
+                let (kind, folder) = at.split_once('=').filter(|(k, _)| !k.contains(['/', '\\'])).unwrap_or(("all", at));
+                let folder = Path::new(folder);
+                let folder = folder.strip_prefix(dir).unwrap_or(folder).to_string_lossy().replace('\\', "/");
+                ready.push_str(&format!("{kind}={folder}\n"));
             }
         }
     }
@@ -402,10 +432,21 @@ fn build_with_runtime(path: &Path, rust: &str, exe: &Path, release: bool) -> Res
     deps_arg.push(&rt.deps);
     let mut cmd = std::process::Command::new("rustc");
     // Without symbols: they only name Rust functions, and make the program several times bigger.
-    cmd.args(["--edition", "2021", "-O", "-C", "overflow-checks=on", "-C", "strip=symbols", "--crate-name", "lust_program", "--extern"])
-        .arg(extern_arg)
-        .arg("-L")
-        .arg(deps_arg);
+    cmd.args([
+        "--edition",
+        "2021",
+        "-O",
+        "-C",
+        "overflow-checks=on",
+        "-C",
+        "strip=symbols",
+        "--crate-name",
+        "lust_program",
+        "--extern",
+    ])
+    .arg(extern_arg)
+    .arg("-L")
+    .arg(deps_arg);
     for at in &rt.search {
         cmd.arg("-L").arg(at);
     }

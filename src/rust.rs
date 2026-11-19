@@ -36,7 +36,7 @@ pub const RUNTIME_END: &str = "// The runtime ends here.\n";
 /// when it starts instead, by `rt::set_options`.
 pub fn runtime_library() -> String {
     format!(
-        "// Lust's runtime for programs of their own, written by Lust {ver}. It's compiled once and shared.\n#![allow(warnings)]\n#![recursion_limit = \"1024\"]\n\npub mod rt {{\n{RUNTIME}\n\
+        "// Lust's runtime for programs of their own. It's compiled once and shared by every program built\n// with the same runtime and Rust.\n#![allow(warnings)]\n#![recursion_limit = \"1024\"]\n\npub mod rt {{\n{RUNTIME}\n\
 static UI_PROGRAM: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);\n\
 static LOCAL_TIME: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);\n\
 /// Set by the program before anything else: whether it has views, and whether it reads the time zone.\n\
@@ -49,8 +49,7 @@ pub mod web {{\nuse super::*;\n{WEB_RUNTIME}\n}}\n\
 pub mod dlg {{\nuse super::*;\n{DLG_RUNTIME}\n}}\n\
 pub mod net {{\nuse super::*;\n{NET_RUNTIME}\n}}\n\
 pub mod ui {{\nuse super::*;\n{UI_RUNTIME}\n}}\n\
-pub mod pat {{\nuse super::*;\n{TEXT_RUNTIME}\n}}\n}}\n",
-        ver = crate::VERSION
+pub mod pat {{\nuse super::*;\n{TEXT_RUNTIME}\n}}\n}}\n"
     )
 }
 
@@ -3598,7 +3597,10 @@ mod prebuilt {
     #[test]
     fn the_programs_own_text_cant_confuse_it() {
         // A program that prints the marker's words keeps them: only the first pair is the runtime.
-        let rust = program("pub fn ui_program() -> bool {\n    false\n}\n", "    rt::print(\"// The runtime ends here.\");\n");
+        let rust = program(
+            "pub fn ui_program() -> bool {\n    false\n}\n",
+            "    rt::print(\"// The runtime ends here.\");\n",
+        );
         let out = with_prebuilt_runtime(&rust).unwrap();
         assert!(out.contains("rt::print(\"// The runtime ends here.\");"));
     }
@@ -3613,10 +3615,16 @@ mod prebuilt {
     #[test]
     fn the_shared_runtime_has_every_part() {
         let lib = runtime_library();
-        for m in ["pub mod db {", "pub mod web {", "pub mod dlg {", "pub mod net {", "pub mod ui {", "pub mod pat {"] {
+        for m in [
+            "pub mod db {",
+            "pub mod web {",
+            "pub mod dlg {",
+            "pub mod net {",
+            "pub mod ui {",
+            "pub mod pat {",
+        ] {
             assert!(lib.contains(m), "{m} is missing");
         }
         assert!(lib.contains("pub fn set_options(ui: bool, local_time: bool)"));
-        assert!(lib.contains(crate::VERSION));
     }
 }
