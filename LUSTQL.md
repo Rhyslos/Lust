@@ -221,6 +221,7 @@ query Shop {
 
 - **One thing per block:** one read, or one change. Several changes that belong together go in a `transaction` (below).
 - **Lust's values are used by name** inside a block: `where price < under`. Lust checks their types, and they're never pasted in as text, so a name a player types can never break the database.
+- **A name inside a block is a column first.** If the table has no column by that name, it's a Lust value from around the block (a variable, a field, a method's value). When a Lust value has the same name as a column, the column wins, and Lust warns, so pick a different name for the value.
 - **What a reading block gives back** is rows, looped through or put in a variable. Put in a single row's variable (`Item tea = query Shop { from Item where name == "tea" };`), it's the first answer, or `nothing` if there isn't one.
 - **A row read into Lust is a copy.** Changing `tea.stock` in code changes the copy, not the database: the database only changes in a `query`.
 - **`insert into … set …`** isn't how SQLite writes it (`insert into Item (name, price) values ("Rain", 2.5)`), but it reads the same way as `update`, keeps each value next to its column, and Lust turns it into SQLite's form.
