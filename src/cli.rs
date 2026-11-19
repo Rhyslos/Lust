@@ -283,7 +283,13 @@ fn pinned_rust(get: bool) -> bool {
     {
         return *HAS.get_or_init(|| true);
     }
-    if !get {
+    // A try that failed (no internet, say) is tried again a day later, not on every build.
+    let tried = cache_dir().join(format!("rust-{RUST_FOR_BUILDS}-not-got"));
+    let recently = std::fs::metadata(&tried)
+        .and_then(|m| m.modified())
+        .map(|t| t.elapsed().map(|e| e.as_secs() < 24 * 3600).unwrap_or(true))
+        .unwrap_or(false);
+    if !get || recently {
         return false;
     }
     eprintln!(
@@ -293,9 +299,17 @@ fn pinned_rust(get: bool) -> bool {
         .args(["toolchain", "install", RUST_FOR_BUILDS, "--profile", "minimal", "--no-self-update"])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .status()
         .map(|s| s.success())
         .unwrap_or(false);
+    if got {
+        let _ = std::fs::remove_file(&tried);
+    } else {
+        eprintln!("Rust {RUST_FOR_BUILDS} couldn't be downloaded, so programs are built with the Rust that's installed.");
+        let _ = std::fs::create_dir_all(cache_dir());
+        let _ = std::fs::write(&tried, "");
+    }
     *HAS.get_or_init(|| got)
 }
 
@@ -885,7 +899,9 @@ fn new_project(name: &str, app: bool) -> ExitCode {
 /// Whether the shared libraries built programs use are compiled on this computer already.
 fn warm_ready() -> bool {
     // Never downloads Rust itself: lust new stays instant, and the warm-up does that.
-    runtime_key_with(false).map(|k| read_runtime(&cache_dir().join("runtime").join(k)).is_some()).unwrap_or(false)
+    runtime_key_with(false)
+        .map(|k| read_runtime(&cache_dir().join("runtime").join(k)).is_some())
+        .unwrap_or(false)
 }
 
 fn which(tool: &str) -> bool {

@@ -582,6 +582,17 @@ mod tests {
     }
 
     #[test]
+    fn ready_made_libraries_are_checked_before_use() {
+        let pack = b"the libraries".to_vec();
+        let good = serve(pack.clone(), format!("{}  lust.exe\n", hex(&Sha256::digest(&pack))));
+        assert_eq!(download_checked(&good, "lust.exe").unwrap(), pack);
+        let wrong = serve(pack.clone(), format!("{}  lust.exe\n", hex(&Sha256::digest(b"other"))));
+        assert!(download_checked(&wrong, "lust.exe").unwrap_err().contains("checksum is different"));
+        let unlisted = serve(pack, "abc  something-else\n".into());
+        assert!(download_checked(&unlisted, "lust.exe").unwrap_err().contains("doesn't say"));
+    }
+
+    #[test]
     fn install_refuses_a_wrong_download() {
         let addr = serve(
             b"something else".to_vec(),
