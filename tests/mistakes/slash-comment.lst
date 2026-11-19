@@ -1,0 +1,8 @@
+-- a comment is fine
+int hp = 5;  // not a comment any more
+// nor this
+print("https://example.com");  -- slashes inside text are only text
+--[[ a block comment
+     with a/b and km/h inside ]]
+print(hp);
+end

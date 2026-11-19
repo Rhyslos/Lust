@@ -123,12 +123,33 @@ To work out: how `when` fits with `tick()`, what happens with states inside stat
 
 Each object gets its own `tick()`, and `wait` pauses just that object while the rest carry on. LUST.md already promises this for the engine.
 
+**Waiting, Lust's answer to async and await** (the project lead, 2026-11-19: chosen in direction, not designed in detail). No `async` labels: any method can wait, and only the thing waiting pauses, the way Lua's coroutines and game engines work.
+
+```
+method openGate() {
+    wait 2;                                   -- only this pauses
+    spawnEnemies();
+}
+
+string data = wait Web:get(profileUrl);       -- the window keeps going meanwhile
+
+wait door.state == Door.Open or after 5 {     -- a time limit on any wait
+    print("The door never opened.");
+}
+```
+
+- **Never the whole app:** a button's or a key's code that waits runs on its own, so the window never freezes.
+- **Waiting in a circle** (A waits for B, B waits for A) is noticed: when everything waiting can only be woken by other waiters, Lust stops with a message naming the circle.
+- **States clean up:** a wait started during a state is cancelled when that state ends, like anything else made in it (`keep` aside).
+- Still to design: waiting for several things at once (all of them, or the first), and how waits cross into engines.
+
 ### Smaller additions
 
 - **Vector maths with operators:** `pos + vel * dt` instead of method calls. Needed for games.
 - **C# events:** hooking a Lust function to "the song finished" or "the button was clicked".
 - **Catching errors**, so one broken enemy or file doesn't end the whole program.
 - **Interfaces and generics:** last, if ever.
+- **Removing `false`** (the project lead, 2026-11-19, undecided): `not true` would be the only way to write it, so there's one way, not two. Code written with AI help leans on `false` a lot. Against it: `bool done = not true;` reads oddly as a starting value, and every other language has `false`, so it's what people coming to Lust expect. Not decided which is better.
 - **Still open from LUST.md:** `+=`, fetching single methods, `nothing` for arrays, calling the replaced method from a `like` class.
 
 ## Screens: view { } and styles

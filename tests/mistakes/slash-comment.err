@@ -1,0 +1,4 @@
+slash-comment.lst:2:14  comments start with --, so write -- here instead of //.
+slash-comment.lst:3:1  comments start with --, so write -- here instead of //.
+
+2 mistakes. Nothing was run.
