@@ -456,9 +456,37 @@ fn start_warm_up() -> bool {
         let _ = flags;
         c.spawn().is_ok()
     };
+    // Windows gives a new process a copy of every handle that may be passed on, and this one's
+    // output may be an editor's pipe. The warm-up would then hold that pipe open for minutes, and
+    // the editor would wait for it to close before it calls lust new done.
+    #[cfg(windows)]
+    keep_output_to_myself();
     // CREATE_NO_WINDOW | DETACHED_PROCESS, and out of the starter's job object where that's allowed
     // (CREATE_BREAKAWAY_FROM_JOB), so closing the editor doesn't stop it half-way.
     spawn(0x0800_0000 | 0x0000_0008 | 0x0100_0000) || spawn(0x0800_0000 | 0x0000_0008)
+}
+
+/// Stops this process's input, output and error being passed on to processes it starts.
+#[cfg(windows)]
+fn keep_output_to_myself() {
+    type Handle = *mut core::ffi::c_void;
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetStdHandle(which: u32) -> Handle;
+        fn SetHandleInformation(handle: Handle, mask: u32, flags: u32) -> i32;
+    }
+    const HANDLE_FLAG_INHERIT: u32 = 1;
+    // STD_INPUT_HANDLE, STD_OUTPUT_HANDLE and STD_ERROR_HANDLE: -10, -11 and -12.
+    for which in [-10i32, -11, -12] {
+        // SAFETY: GetStdHandle takes any value and gives back a handle, null or invalid (-1);
+        // SetHandleInformation only changes a flag on a valid one, and fails harmlessly otherwise.
+        unsafe {
+            let h = GetStdHandle(which as u32);
+            if !h.is_null() && h as isize != -1 {
+                SetHandleInformation(h, HANDLE_FLAG_INHERIT, 0);
+            }
+        }
+    }
 }
 
 /// `lust warm-up`: builds a small program with a database once, in a scratch folder, so the
