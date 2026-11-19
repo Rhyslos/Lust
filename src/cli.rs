@@ -438,7 +438,14 @@ fn compile_runtime(dir: &Path) -> Result<(), String> {
     }
     let release = target.join("release");
     let rlib = std::fs::read_dir(release.join("deps"))
-        .map_err(|e| format!("couldn't look in {}: {e}", release.display()))?
+        .map_err(|e| {
+            format!(
+                "Cargo finished, but put nothing in {} ({e}). Cargo said:\n{}\n{}",
+                release.display(),
+                String::from_utf8_lossy(&out.stderr),
+                String::from_utf8_lossy(&out.stdout).lines().take(5).collect::<Vec<_>>().join("\n")
+            )
+        })?
         .flatten()
         .map(|e| e.path())
         .filter(|p| {
