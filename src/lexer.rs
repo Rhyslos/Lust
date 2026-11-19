@@ -84,7 +84,7 @@ pub fn lex(src: &str, file: usize, diags: &mut Diags) -> Vec<Token> {
             advance!(1);
             continue;
         }
-        // Comments: --[[ block ]], -- line, // line.
+        // Comments: --[[ block ]] and -- line. // was a comment until alpha 75.
         if c == '-' && at(i + 1) == '-' {
             if at(i + 2) == '[' && at(i + 3) == '[' {
                 advance!(4);
@@ -104,6 +104,7 @@ pub fn lex(src: &str, file: usize, diags: &mut Diags) -> Vec<Token> {
             continue;
         }
         if c == '/' && at(i + 1) == '/' {
+            diags.add(pos, "comments start with --, so write -- here instead of //.");
             while i < chars.len() && at(i) != '\n' {
                 advance!(1);
             }
