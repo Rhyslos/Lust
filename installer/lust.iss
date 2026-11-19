@@ -55,6 +55,12 @@ Type: files; Name: "{app}\lust.new.exe"
 [Registry]
 Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}"; Check: NotOnPath(ExpandConstant('{app}'))
 
+[Run]
+; Lust's libraries for built programs, downloaded now (or compiled, if that fails), so the first
+; lust build doesn't wait for them. With no Rust on the computer, lust warm-up stops at once.
+; Skipped by a silent install, which is how Lust's own release workflow tries the installer.
+Filename: "{app}\lust.exe"; Parameters: "warm-up"; StatusMsg: "Getting Lust's libraries for built programs ready. This can take a few minutes, once..."; Flags: runhidden skipifsilent
+
 [Messages]
 FinishedLabel=Lust is installed. Open a new terminal and type lust to start, or lust run yourfile.lst.%n%nBuilding real programs (lust build) also needs Rust: lust explains how to get it the first time.
 

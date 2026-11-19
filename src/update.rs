@@ -82,6 +82,10 @@ fn agent(timeout: Duration) -> ureq::Agent {
 }
 
 fn get(url: &str, timeout: Duration) -> Result<Vec<u8>, String> {
+    get_up_to(url, timeout, 200 << 20)
+}
+
+fn get_up_to(url: &str, timeout: Duration, limit: u64) -> Result<Vec<u8>, String> {
     let mut res = agent(timeout)
         .get(url)
         .header("User-Agent", "lust-update")
@@ -92,7 +96,7 @@ fn get(url: &str, timeout: Duration) -> Result<Vec<u8>, String> {
     let body = res
         .body_mut()
         .with_config()
-        .limit(200 << 20)
+        .limit(limit)
         .read_to_vec()
         .map_err(|_| "the download stopped part way. Try again.".to_string())?;
     if status >= 400 {
@@ -150,6 +154,18 @@ pub fn newest(list: &str) -> Option<Release> {
 pub fn ask(api: &str, timeout: Duration) -> Result<Option<Release>, String> {
     let list = get(api, timeout)?;
     Ok(newest(&String::from_utf8_lossy(&list)))
+}
+
+/// A file from `base` (a release's download folder), checked against the SHA256SUMS next to it.
+/// For Lust's ready-made libraries, which can be a few hundred MB.
+pub fn download_checked(base: &str, name: &str) -> Result<Vec<u8>, String> {
+    let sums = String::from_utf8_lossy(&get(&format!("{base}/SHA256SUMS"), Duration::from_secs(60))?).to_string();
+    let want = sum_for(&sums, name).ok_or_else(|| format!("{base} doesn't say what {name}'s checksum is."))?;
+    let file = get_up_to(&format!("{base}/{name}"), Duration::from_secs(1800), 2 << 30)?;
+    if hex(&Sha256::digest(&file)) != want {
+        return Err(format!("the {name} downloaded isn't the one listed (its checksum is different)."));
+    }
+    Ok(file)
 }
 
 /// SHA256SUMS's line for a file: its checksum, in lowercase hex.
@@ -292,6 +308,9 @@ pub fn command(what: Option<&str>) -> std::process::ExitCode {
     match install(&release, &exe) {
         Ok(()) => {
             println!("Lust is now {} (it was {VERSION}). What's new: {}", release.version, release.page);
+            // The new Lust may use new libraries for built programs: they get ready in the
+            // background, so the next build doesn't wait for them.
+            crate::cli::start_warm_up_of(&exe);
             ExitCode::SUCCESS
         }
         Err(e) => {
