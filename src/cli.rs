@@ -16,6 +16,8 @@ const USAGE: &str = "Lust (alpha)
                        .lsc: write the Lua next to it, as file.lua
   lust new <name>      make a new project folder, with a main.lst
   lust new <name> app  the same, starting with a window and a piece in ui/
+  lust build <file> --release
+                       .lst: the same, taking longer to make the fastest program, for sharing
   lust build <file> --library
                        .lst: make a Rust library from it, for a Rust program to use
   lust test <folder>   run the test programs in a folder (or one test file)
@@ -177,7 +179,7 @@ fn command(args: Vec<String>) -> ExitCode {
                 );
                 ExitCode::from(1)
             }
-            Some(Compiled { rust: Some(r), .. }) => match build_native(path, &r) {
+            Some(Compiled { rust: Some(r), .. }) => match build_native_with(path, &r, args.iter().any(|a| a == "--release")) {
                 Ok(exe) => {
                     println!("Built {}.", exe.file_name().unwrap().to_string_lossy());
                     ExitCode::SUCCESS
@@ -346,6 +348,8 @@ fn compile_runtime(dir: &Path) -> Result<(), String> {
         .args(["build", "--release", "--quiet", "--manifest-path"])
         .arg(dir.join("Cargo.toml"))
         .env("CARGO_TARGET_DIR", &target)
+        // Kept in a form Rust can optimise again together with a program, for --release.
+        .env("RUSTFLAGS", "-C embed-bitcode=yes")
         .output()
         .map_err(|_| NEEDS_RUST.to_string())?;
     if !out.status.success() {
@@ -384,7 +388,7 @@ fn compile_runtime(dir: &Path) -> Result<(), String> {
 
 /// Builds a program that uses outside libraries (databases, views, the web) against the shared
 /// runtime, so only the program's own code is compiled.
-fn build_with_runtime(path: &Path, rust: &str, exe: &Path) -> Result<(), String> {
+fn build_with_runtime(path: &Path, rust: &str, exe: &Path, release: bool) -> Result<(), String> {
     let program = rust::with_prebuilt_runtime(rust).ok_or("this Rust has no runtime to share, so it can't be built as a program.")?;
     let rt = ensure_runtime()?;
     let stem = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
@@ -404,6 +408,9 @@ fn build_with_runtime(path: &Path, rust: &str, exe: &Path) -> Result<(), String>
         .arg(deps_arg);
     for at in &rt.search {
         cmd.arg("-L").arg(at);
+    }
+    if release {
+        cmd.args(["-C", "lto=thin"]);
     }
     let result = cmd.arg("-o").arg(exe).arg(&src).output();
     let _ = std::fs::remove_file(&src);
@@ -738,12 +745,18 @@ pub fn build_host(path: &Path, host: &Path) -> Result<PathBuf, String> {
 }
 
 pub fn build_native(path: &Path, rust: &str) -> Result<std::path::PathBuf, String> {
+    build_native_with(path, rust, false)
+}
+
+/// lust build: a program next to the .lst file. `release` takes longer, so that Rust can make
+/// the program's code and the shared runtime's into one, as fast as it can be.
+pub fn build_native_with(path: &Path, rust: &str, release: bool) -> Result<std::path::PathBuf, String> {
     if ["db", "web", "net", "pat", "ui", "dlg"]
         .iter()
         .any(|m| rust.contains(&format!("\npub mod {m} {{\n")))
     {
         let exe = path.with_extension(std::env::consts::EXE_EXTENSION);
-        build_with_runtime(path, rust, &exe)?;
+        build_with_runtime(path, rust, &exe, release)?;
         return Ok(exe);
     }
     let stem = path.file_stem().unwrap_or_default().to_string_lossy().to_string();

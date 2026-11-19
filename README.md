@@ -68,7 +68,7 @@ The full rules are in **[LUST.md](LUST.md)**, and what gets built next is in **[
 On Windows, download **lust-setup.exe** from the newest [release](https://github.com/Rhyslos/Lust/releases) and run it. It needs no administrator: it puts Lust in your own programs folder and adds it to your PATH, so `lust` works in any new terminal. Lust is still a test version (alpha), so things can change between releases.
 
 - **Updates:** `lust update` gets the newest Lust, after checking the download against the release's checksums. `lust update check` only looks. When you run, build or check a file, Lust says at most once a day when a newer one is out; `lust update off` stops that.
-- **Building real programs** (`lust build`) also needs [Rust](https://rustup.rs). `lust run` doesn't. The first `lust build` without Rust says how to get it.
+- **Building real programs** (`lust build`) also needs [Rust](https://rustup.rs). `lust run` doesn't. The first `lust build` without Rust says how to get it. Lust's libraries for built programs are compiled once per computer (a few minutes); after that a build takes about a second.
 - **Uninstalling:** Windows' Settings → Apps → Lust. It takes Lust off your PATH too.
 
 A new release comes out by itself whenever a new version of Lust reaches `main`.
@@ -92,6 +92,7 @@ The second line makes `tests/run/player` (`player.exe` on Windows), a real progr
 | `lust new name app` | the same, starting with a window and a piece of it in `ui/` |
 | `lust check file` | only checks, and lists any mistakes |
 | `lust build file.lst` | builds a real program next to it, through Rust |
+| `lust build file.lst --release` | the same, taking longer (about ten seconds) to make the fastest program, for sharing |
 | `lust build file.lst --library` | makes a Rust library from it, for a Rust program (like a game engine) to use. See LUST.md section 21 |
 | `lust build file.lsc` | writes the Lua next to it, as `file.lua`, ready for Garry's Mod or any Lua host |
 | `lust lua file` | shows the Lua it turns into |
