@@ -24,7 +24,7 @@ Plus **LustQL** (`.lql`) for stored data: designed in [LUSTQL.md](LUSTQL.md), no
 
 **Why Rust:** Lust writes readable Rust, and Rust's compiler does the rest: real machine code through LLVM, every desktop platform, and WebAssembly if it's ever wanted. Rust's libraries (crates) give Lust its standard library: files, HTTP, JSON, SQLite, sound, and windows and graphics through winit and wgpu. Lust checks everything itself, so nobody ever sees a Rust error. Programs need Rust installed to build, the way v1 needs .NET.
 
-**Building is quick.** The libraries a program can use (SQLite, windows, pictures, the web) and Lust's own runtime are compiled once per computer, for each Lust and Rust version, and every program is built against them, so `lust build` only compiles the program's own code: about a second. `lust build main.lst --release` takes longer (about ten seconds) and lets Rust optimise the program and the runtime together, for the fastest program, to share.
+**Building is quick.** The libraries a program can use (SQLite, windows, pictures, the web) and Lust's own runtime are compiled once per computer, for each Lust and Rust version, and every program is built against them, so `lust build` only compiles the program's own code: about a second. `lust build main.lst --release` takes longer (about 20 seconds) and compiles the program with its own copy of the runtime, so Rust can optimise the two together: the fastest program, to share. Everyday apps won't notice the difference; heavy number-crunching runs up to about 1.5 times faster.
 
 **The web:** Lust is for servers (`route`, `schema`). Pages in the browser stay HTML, CSS and JavaScript. Lust in the browser through WebAssembly is possible later, but not planned.
 

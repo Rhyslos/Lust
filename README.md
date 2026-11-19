@@ -92,7 +92,7 @@ The second line makes `tests/run/player` (`player.exe` on Windows), a real progr
 | `lust new name app` | the same, starting with a window and a piece of it in `ui/` |
 | `lust check file` | only checks, and lists any mistakes |
 | `lust build file.lst` | builds a real program next to it, through Rust |
-| `lust build file.lst --release` | the same, taking longer (about ten seconds) to make the fastest program, for sharing |
+| `lust build file.lst --release` | the same, taking longer (about 20 seconds) to make the fastest program, for sharing |
 | `lust build file.lst --library` | makes a Rust library from it, for a Rust program (like a game engine) to use. See LUST.md section 21 |
 | `lust build file.lsc` | writes the Lua next to it, as `file.lua`, ready for Garry's Mod or any Lua host |
 | `lust lua file` | shows the Lua it turns into |

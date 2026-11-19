@@ -244,12 +244,20 @@ Then open a new terminal, and build again.";
 /// The libraries the shared runtime is built with, as Cargo.toml writes them.
 const RUNTIME_DEPS: &str = "rusqlite = { version = \"0.40\", features = [\"bundled\"] }\ntiny_http = \"0.12\"\nureq = \"3\"\nregex = \"1\"\nwinit = \"0.30\"\naccesskit = \"0.25\"\naccesskit_winit = \"0.34\"\nsoftbuffer = \"0.4\"\nab_glyph = \"0.2\"\nrfd = \"0.16\"\narboard = { version = \"3\", default-features = false }\npng = \"0.17\"\njpeg-decoder = { version = \"0.3\", default-features = false }\nresvg = { version = \"0.49\", default-features = false }\n";
 
+/// Changes when the way the runtime is compiled or described (ready.txt) changes, so a runtime
+/// made the old way is made again.
+const RUNTIME_FORMAT: &str = "lust-runtime 1\n";
+
 /// The shared runtime, compiled: the library a program is built against, and where Rust finds
 /// the libraries it uses.
 struct Runtime {
+    dir: PathBuf,
     rlib: PathBuf,
     deps: PathBuf,
     search: Vec<String>,
+    /// The libraries the runtime uses directly, by the names Rust code calls them, for a release
+    /// build, which compiles the program and its own copy of the runtime as one.
+    externs: Vec<(String, PathBuf)>,
 }
 
 /// The runtime's name: a hash of everything that goes into it (its code, the libraries it uses,
@@ -261,7 +269,7 @@ fn runtime_key() -> Result<String, String> {
         .output()
         .map_err(|_| NEEDS_RUST.to_string())?;
     let text = format!(
-        "{}{}{}",
+        "{RUNTIME_FORMAT}{}{}{}",
         String::from_utf8_lossy(&out.stdout),
         runtime_toml(),
         rust::runtime_library()
@@ -285,21 +293,70 @@ fn runtime_toml() -> String {
     )
 }
 
-/// What a finished runtime folder says about itself, in ready.txt: the library, then one line
-/// per place Rust looks for the libraries it links (kind=folder), every path written from the
-/// runtime's own folder, so the folder can be moved or downloaded whole.
+/// What a finished runtime folder says about itself, in ready.txt: the library, then a line
+/// `extern name=file` for each library the runtime uses directly, then one line per place Rust
+/// looks for the libraries it links (kind=folder). Every path is written from the runtime's own
+/// folder, so the folder can be moved or downloaded whole.
 fn read_runtime(dir: &Path) -> Option<Runtime> {
     let text = std::fs::read_to_string(dir.join("ready.txt")).ok()?;
     let mut lines = text.lines();
     let rlib = dir.join(lines.next()?);
     let deps = dir.join("target").join("release").join("deps");
-    let search = lines
-        .map(|l| match l.split_once('=') {
-            Some((kind, at)) => format!("{kind}={}", dir.join(at).display()),
-            None => dir.join(l).display().to_string(),
+    let mut search = Vec::new();
+    let mut externs = Vec::new();
+    for l in lines {
+        if let Some((name, file)) = l.strip_prefix("extern ").and_then(|e| e.split_once('=')) {
+            externs.push((name.to_string(), dir.join(file)));
+        } else if let Some((kind, at)) = l.split_once('=') {
+            search.push(format!("{kind}={}", dir.join(at).display()));
+        }
+    }
+    rlib.exists().then(|| Runtime {
+        dir: dir.to_path_buf(),
+        rlib,
+        deps,
+        search,
+        externs,
+    })
+}
+
+/// The libraries named in Cargo.toml's text, with the version each asks for: ("jpeg_decoder", "0.3").
+fn direct_deps() -> Vec<(String, String)> {
+    format!("{RUNTIME_DEPS}{UI_TARGET_DEPS}")
+        .lines()
+        .filter_map(|l| {
+            let (name, rest) = l.split_once(" = ")?;
+            let version = rest.split('"').nth(1)?;
+            (!name.starts_with('[')).then(|| (name.trim().to_string(), version.to_string()))
         })
-        .collect();
-    (rlib.exists()).then_some(Runtime { rlib, deps, search })
+        .collect()
+}
+
+/// From Cargo's messages (one JSON object a line), the .rlib each library in `wanted` was
+/// compiled to: ("jpeg_decoder", file). A library Cargo compiled in two versions is told apart by
+/// the version Cargo.toml asks for.
+fn rlibs_from_cargo(messages: &str, wanted: &[(String, String)]) -> Vec<(String, String)> {
+    let field = |line: &str, key: &str| -> Option<String> {
+        let at = line.find(&format!("\"{key}\":\""))? + key.len() + 4;
+        let end = line[at..].find('"')? + at;
+        Some(line[at..end].to_string())
+    };
+    let mut found = Vec::new();
+    for line in messages.lines().filter(|l| l.contains("\"reason\":\"compiler-artifact\"")) {
+        let Some(id) = field(line, "package_id") else { continue };
+        for (name, version) in wanted {
+            // registry+https://…#jpeg-decoder@0.3.1, or (older Cargo) jpeg-decoder 0.3.1 (registry+…)
+            let named = id.contains(&format!("#{name}@{version}")) || id.starts_with(&format!("{name} {version}"));
+            if !named || found.iter().any(|(n, _): &(String, String)| *n == name.replace('-', "_")) {
+                continue;
+            }
+            let Some(rlib) = line.split('"').find(|s| s.ends_with(".rlib")) else {
+                continue;
+            };
+            found.push((name.replace('-', "_"), rlib.replace("\\\\", "\\")));
+        }
+    }
+    found
 }
 
 /// The runtime for this Lust and this Rust, compiled now if it isn't yet. Compiling it takes a
@@ -365,11 +422,9 @@ fn compile_runtime(dir: &Path) -> Result<(), String> {
     }
     let target = dir.join("target");
     let out = std::process::Command::new("cargo")
-        .args(["build", "--release", "--quiet", "--manifest-path"])
+        .args(["build", "--release", "--quiet", "--message-format=json", "--manifest-path"])
         .arg(dir.join("Cargo.toml"))
         .env("CARGO_TARGET_DIR", &target)
-        // Kept in a form Rust can optimise again together with a program, for --release.
-        .env("RUSTFLAGS", "-C embed-bitcode=yes")
         .output()
         .map_err(|_| NEEDS_RUST.to_string())?;
     if !out.status.success() {
@@ -392,8 +447,18 @@ fn compile_runtime(dir: &Path) -> Result<(), String> {
         })
         .max_by_key(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok())
         .ok_or("Lust's runtime built, but its library isn't where Cargo puts it.")?;
-    let mut ready = rlib.strip_prefix(dir).unwrap_or(&rlib).to_string_lossy().replace('\\', "/");
+    let from_here = |p: &Path| p.strip_prefix(dir).unwrap_or(p).to_string_lossy().replace('\\', "/");
+    let mut ready = from_here(&rlib);
     ready.push('\n');
+    let wanted = direct_deps();
+    let externs = rlibs_from_cargo(&String::from_utf8_lossy(&out.stdout), &wanted);
+    for (name, _) in &wanted {
+        let name = name.replace('-', "_");
+        // Only this system's: Windows' tray-icon isn't compiled on Linux.
+        if let Some((_, file)) = externs.iter().find(|(n, _)| *n == name) {
+            ready.push_str(&format!("extern {name}={}\n", from_here(Path::new(file))));
+        }
+    }
     // The places build scripts told Cargo to look for the libraries they link (SQLite's, and
     // Windows' own on Windows): Rust needs them again for each program.
     for entry in std::fs::read_dir(release.join("build")).into_iter().flatten().flatten() {
@@ -417,17 +482,34 @@ fn compile_runtime(dir: &Path) -> Result<(), String> {
 }
 
 /// Builds a program that uses outside libraries (databases, views, the web) against the shared
-/// runtime, so only the program's own code is compiled.
+/// runtime, so only the program's own code is compiled. A release build compiles the program
+/// with its own copy of the runtime instead, as one, so Rust can make the two as fast as they
+/// can be together; the outside libraries are still the ones compiled already.
 fn build_with_runtime(path: &Path, rust: &str, exe: &Path, release: bool) -> Result<(), String> {
-    let program = rust::with_prebuilt_runtime(rust).ok_or("this Rust has no runtime to share, so it can't be built as a program.")?;
     let rt = ensure_runtime()?;
+    let program = if release {
+        rust.to_string()
+    } else {
+        rust::with_prebuilt_runtime(rust).ok_or("this Rust has no runtime to share, so it can't be built as a program.")?
+    };
     let stem = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
-    let dir = std::env::temp_dir().join("lust-build");
+    // In the runtime's folder, where a program's own copy of the runtime finds Lust's fonts.
+    let dir = rt.dir.join("programs");
     std::fs::create_dir_all(&dir).map_err(|e| format!("couldn't make a build folder: {e}"))?;
     let src = dir.join(format!("{stem}-{}.rs", std::process::id()));
     std::fs::write(&src, &program).map_err(|e| format!("couldn't write {}: {e}", src.display()))?;
-    let mut extern_arg = std::ffi::OsString::from("lust_rt=");
-    extern_arg.push(&rt.rlib);
+    let mut externs = Vec::new();
+    if release {
+        for (name, file) in &rt.externs {
+            let mut arg = std::ffi::OsString::from(format!("{name}="));
+            arg.push(file);
+            externs.push(arg);
+        }
+    } else {
+        let mut arg = std::ffi::OsString::from("lust_rt=");
+        arg.push(&rt.rlib);
+        externs.push(arg);
+    }
     let mut deps_arg = std::ffi::OsString::from("dependency=");
     deps_arg.push(&rt.deps);
     let mut cmd = std::process::Command::new("rustc");
@@ -442,16 +524,14 @@ fn build_with_runtime(path: &Path, rust: &str, exe: &Path, release: bool) -> Res
         "strip=symbols",
         "--crate-name",
         "lust_program",
-        "--extern",
+        "-L",
     ])
-    .arg(extern_arg)
-    .arg("-L")
     .arg(deps_arg);
+    for e in externs {
+        cmd.arg("--extern").arg(e);
+    }
     for at in &rt.search {
         cmd.arg("-L").arg(at);
-    }
-    if release {
-        cmd.args(["-C", "lto=thin"]);
     }
     let result = cmd.arg("-o").arg(exe).arg(&src).output();
     let _ = std::fs::remove_file(&src);
@@ -834,5 +914,71 @@ pub fn build_native_with(path: &Path, rust: &str, release: bool) -> Result<std::
             ))
         }
         Ok(_) => Ok(exe),
+    }
+}
+
+#[cfg(test)]
+mod shared_runtime {
+    use super::*;
+
+    #[test]
+    fn the_libraries_cargo_toml_names() {
+        let deps = direct_deps();
+        assert!(deps.contains(&("rusqlite".into(), "0.40".into())));
+        assert!(deps.contains(&("jpeg-decoder".into(), "0.3".into())));
+        assert!(deps.contains(&("tray-icon".into(), "0.25".into())));
+        assert!(deps.iter().all(|(n, _)| !n.starts_with('[')));
+    }
+
+    #[test]
+    fn finds_each_library_in_cargos_messages() {
+        let wanted = vec![
+            ("png".to_string(), "0.17".to_string()),
+            ("jpeg-decoder".to_string(), "0.3".to_string()),
+        ];
+        let messages = concat!(
+            r#"{"reason":"compiler-artifact","package_id":"registry+https://github.com/rust-lang/crates.io-index#png@0.18.0","target":{"name":"png"},"filenames":["/c/deps/libpng-new.rlib","/c/deps/libpng-new.rmeta"]}"#,
+            "\n",
+            r#"{"reason":"compiler-artifact","package_id":"registry+https://github.com/rust-lang/crates.io-index#png@0.17.16","target":{"name":"png"},"filenames":["/c/deps/libpng-old.rlib","/c/deps/libpng-old.rmeta"]}"#,
+            "\n",
+            r#"{"reason":"build-script-executed","package_id":"x#png@0.17.16"}"#,
+            "\n",
+            r#"{"reason":"compiler-artifact","package_id":"jpeg-decoder 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)","target":{"name":"jpeg_decoder"},"filenames":["C:\\Users\\a\\deps\\libjpeg_decoder-1.rlib"]}"#,
+        );
+        let found = rlibs_from_cargo(messages, &wanted);
+        assert_eq!(
+            found,
+            vec![
+                ("png".to_string(), "/c/deps/libpng-old.rlib".to_string()),
+                ("jpeg_decoder".to_string(), "C:\\Users\\a\\deps\\libjpeg_decoder-1.rlib".to_string())
+            ]
+        );
+    }
+
+    #[test]
+    fn reads_what_a_runtime_says_about_itself() {
+        let dir = std::env::temp_dir().join(format!("lust-ready-{}", std::process::id()));
+        let deps = dir.join("target").join("release").join("deps");
+        std::fs::create_dir_all(&deps).unwrap();
+        std::fs::write(deps.join("liblust_rt-1.rlib"), "").unwrap();
+        std::fs::write(
+            dir.join("ready.txt"),
+            "target/release/deps/liblust_rt-1.rlib\nextern rusqlite=target/release/deps/librusqlite-2.rlib\nnative=target/release/build/sqlite/out\n",
+        )
+        .unwrap();
+        let rt = read_runtime(&dir).unwrap();
+        assert_eq!(rt.rlib, deps.join("liblust_rt-1.rlib"));
+        assert_eq!(
+            rt.externs,
+            vec![("rusqlite".to_string(), dir.join("target/release/deps/librusqlite-2.rlib"))]
+        );
+        assert_eq!(
+            rt.search,
+            vec![format!("native={}", dir.join("target/release/build/sqlite/out").display())]
+        );
+        // Not ready without its library.
+        std::fs::remove_file(deps.join("liblust_rt-1.rlib")).unwrap();
+        assert!(read_runtime(&dir).is_none());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
