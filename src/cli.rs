@@ -246,7 +246,7 @@ const RUNTIME_DEPS: &str = "rusqlite = { version = \"0.40\", features = [\"bundl
 
 /// Changes when the way the runtime is compiled or described (ready.txt) changes, so a runtime
 /// made the old way is made again.
-const RUNTIME_FORMAT: &str = "lust-runtime 1\n";
+const RUNTIME_FORMAT: &str = "lust-runtime 2\n";
 
 /// The shared runtime, compiled: the library a program is built against, and where Rust finds
 /// the libraries it uses.
@@ -293,15 +293,16 @@ fn runtime_toml() -> String {
     )
 }
 
-/// What a finished runtime folder says about itself, in ready.txt: the library, then a line
-/// `extern name=file` for each library the runtime uses directly, then one line per place Rust
-/// looks for the libraries it links (kind=folder). Every path is written from the runtime's own
-/// folder, so the folder can be moved or downloaded whole.
+/// What a finished runtime folder says about itself, in ready.txt: the runtime's library, then
+/// a line `extern name=file` for each library the runtime uses directly, then one line per place
+/// Rust looks for the libraries it links (kind=folder). Every path is written from the runtime's
+/// own folder, which holds everything a build needs (lib/ and native/), so the folder can be
+/// moved or downloaded whole.
 fn read_runtime(dir: &Path) -> Option<Runtime> {
     let text = std::fs::read_to_string(dir.join("ready.txt")).ok()?;
     let mut lines = text.lines();
     let rlib = dir.join(lines.next()?);
-    let deps = dir.join("target").join("release").join("deps");
+    let deps = dir.join("lib");
     let mut search = Vec::new();
     let mut externs = Vec::new();
     for l in lines {
@@ -332,28 +333,56 @@ fn direct_deps() -> Vec<(String, String)> {
         .collect()
 }
 
-/// From Cargo's messages (one JSON object a line), the .rlib each library in `wanted` was
-/// compiled to: ("jpeg_decoder", file). A library Cargo compiled in two versions is told apart by
-/// the version Cargo.toml asks for.
-fn rlibs_from_cargo(messages: &str, wanted: &[(String, String)]) -> Vec<(String, String)> {
-    let field = |line: &str, key: &str| -> Option<String> {
+/// What Cargo said it made (its JSON messages, one a line): every library compiled, as
+/// (package id, .rlib file), and every folder build scripts link libraries from (kind=folder).
+#[derive(Default, Debug, PartialEq)]
+struct CargoMade {
+    rlibs: Vec<(String, String)>,
+    link_paths: Vec<String>,
+}
+
+fn cargo_made(messages: &str) -> CargoMade {
+    // JSON text as plain text: only \\ and \" are escaped in paths.
+    let unescape = |s: &str| s.replace("\\\\", "\\").replace("\\\"", "\"");
+    let text_field = |line: &str, key: &str| -> Option<String> {
         let at = line.find(&format!("\"{key}\":\""))? + key.len() + 4;
         let end = line[at..].find('"')? + at;
-        Some(line[at..end].to_string())
+        Some(unescape(&line[at..end]))
     };
-    let mut found = Vec::new();
-    for line in messages.lines().filter(|l| l.contains("\"reason\":\"compiler-artifact\"")) {
-        let Some(id) = field(line, "package_id") else { continue };
-        for (name, version) in wanted {
-            // registry+https://…#jpeg-decoder@0.3.1, or (older Cargo) jpeg-decoder 0.3.1 (registry+…)
-            let named = id.contains(&format!("#{name}@{version}")) || id.starts_with(&format!("{name} {version}"));
-            if !named || found.iter().any(|(n, _): &(String, String)| *n == name.replace('-', "_")) {
-                continue;
+    let list_field = |line: &str, key: &str| -> Vec<String> {
+        let Some(at) = line.find(&format!("\"{key}\":[")).map(|a| a + key.len() + 4) else {
+            return Vec::new();
+        };
+        let end = line[at..].find(']').map_or(line.len(), |e| e + at);
+        line[at..end].split('"').skip(1).step_by(2).map(unescape).collect()
+    };
+    let mut made = CargoMade::default();
+    for line in messages.lines() {
+        if line.contains("\"reason\":\"compiler-artifact\"") {
+            let Some(id) = text_field(line, "package_id") else { continue };
+            for file in list_field(line, "filenames").into_iter().filter(|f| f.ends_with(".rlib")) {
+                made.rlibs.push((id.clone(), file));
             }
-            let Some(rlib) = line.split('"').find(|s| s.ends_with(".rlib")) else {
-                continue;
-            };
-            found.push((name.replace('-', "_"), rlib.replace("\\\\", "\\")));
+        } else if line.contains("\"reason\":\"build-script-executed\"") {
+            made.link_paths.extend(list_field(line, "linked_paths"));
+        }
+    }
+    made
+}
+
+/// Which of Cargo's libraries is each one in `wanted`: ("jpeg_decoder", file). A library Cargo
+/// compiled in two versions is told apart by the version Cargo.toml asks for.
+fn rlibs_wanted(made: &CargoMade, wanted: &[(String, String)]) -> Vec<(String, String)> {
+    let mut found: Vec<(String, String)> = Vec::new();
+    for (name, version) in wanted {
+        let crate_name = name.replace('-', "_");
+        // registry+https://…#jpeg-decoder@0.3.1, or (older Cargo) jpeg-decoder 0.3.1 (registry+…)
+        let file = made
+            .rlibs
+            .iter()
+            .find(|(id, _)| id.contains(&format!("#{name}@{version}")) || id.starts_with(&format!("{name} {version}")));
+        if let Some((_, file)) = file {
+            found.push((crate_name, file.clone()));
         }
     }
     found
@@ -436,56 +465,79 @@ fn compile_runtime(dir: &Path) -> Result<(), String> {
             "Lust's libraries for built programs didn't build, or Cargo couldn't get them. Rust said:\n{said}"
         ));
     }
-    let release = target.join("release");
-    let rlib = std::fs::read_dir(release.join("deps"))
-        .map_err(|e| {
-            format!(
-                "Cargo finished, but put nothing in {} ({e}). Cargo said:\n{}\n{}",
-                release.display(),
-                String::from_utf8_lossy(&out.stderr),
-                String::from_utf8_lossy(&out.stdout).lines().take(5).collect::<Vec<_>>().join("\n")
-            )
-        })?
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| {
-            let n = p.file_name().unwrap_or_default().to_string_lossy();
-            n.starts_with("liblust_rt-") && n.ends_with(".rlib")
+    // Everything a build needs is copied into the runtime's own folder: every compiled library
+    // into lib/, and the folders build scripts link from (SQLite's, and Windows' own on Windows)
+    // into native/. Then Cargo's working folder goes; it's ten times the size.
+    let made = cargo_made(&String::from_utf8_lossy(&out.stdout));
+    let lib = dir.join("lib");
+    let _ = std::fs::remove_dir_all(&lib);
+    let _ = std::fs::remove_dir_all(dir.join("native"));
+    std::fs::create_dir_all(&lib).map_err(|e| format!("couldn't make {}: {e}", lib.display()))?;
+    let copy_in = |file: &str| -> Result<String, String> {
+        let from = Path::new(file);
+        let name = from
+            .file_name()
+            .ok_or_else(|| format!("Cargo named a library without a file: {file}"))?;
+        std::fs::copy(from, lib.join(name)).map_err(|e| format!("couldn't copy {file}: {e}"))?;
+        Ok(format!("lib/{}", name.to_string_lossy()))
+    };
+    let mut ready = String::new();
+    let runtime = made
+        .rlibs
+        .iter()
+        .find(|(id, f)| {
+            id.contains("lust_rt")
+                && Path::new(f)
+                    .file_name()
+                    .is_some_and(|n| n.to_string_lossy().starts_with("liblust_rt"))
         })
-        .max_by_key(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok())
-        .ok_or("Lust's runtime built, but its library isn't where Cargo puts it.")?;
-    let from_here = |p: &Path| p.strip_prefix(dir).unwrap_or(p).to_string_lossy().replace('\\', "/");
-    let mut ready = from_here(&rlib);
+        .ok_or("Lust's runtime built, but Cargo didn't say where its library went.")?;
+    let mut copied = std::collections::HashMap::new();
+    for (_, file) in &made.rlibs {
+        if !copied.contains_key(file) {
+            copied.insert(file.clone(), copy_in(file)?);
+        }
+    }
+    ready.push_str(&copied[&runtime.1]);
     ready.push('\n');
-    let wanted = direct_deps();
-    let externs = rlibs_from_cargo(&String::from_utf8_lossy(&out.stdout), &wanted);
-    for (name, _) in &wanted {
-        let name = name.replace('-', "_");
-        // Only this system's: Windows' tray-icon isn't compiled on Linux.
-        if let Some((_, file)) = externs.iter().find(|(n, _)| *n == name) {
-            ready.push_str(&format!("extern {name}={}\n", from_here(Path::new(file))));
+    for (name, file) in rlibs_wanted(&made, &direct_deps()) {
+        ready.push_str(&format!("extern {name}={}\n", copied[&file]));
+    }
+    let mut folders: Vec<&String> = Vec::new();
+    for at in &made.link_paths {
+        if !folders.contains(&at) {
+            folders.push(at);
         }
     }
-    // The places build scripts told Cargo to look for the libraries they link (SQLite's, and
-    // Windows' own on Windows): Rust needs them again for each program.
-    for entry in std::fs::read_dir(release.join("build")).into_iter().flatten().flatten() {
-        let Ok(text) = std::fs::read_to_string(entry.path().join("output")) else {
-            continue;
-        };
-        for line in text.lines() {
-            if let Some(at) = line
-                .strip_prefix("cargo:rustc-link-search=")
-                .or_else(|| line.strip_prefix("cargo::rustc-link-search="))
-            {
-                // Kept as kind=folder, the folder written from the runtime's own.
-                let (kind, folder) = at.split_once('=').filter(|(k, _)| !k.contains(['/', '\\'])).unwrap_or(("all", at));
-                let folder = Path::new(folder);
-                let folder = folder.strip_prefix(dir).unwrap_or(folder).to_string_lossy().replace('\\', "/");
-                ready.push_str(&format!("{kind}={folder}\n"));
-            }
-        }
+    for (n, at) in folders.into_iter().enumerate() {
+        // kind=folder, or just a folder.
+        let (kind, folder) = at
+            .split_once('=')
+            .filter(|(k, _)| !k.contains(['/', '\\', ':']))
+            .unwrap_or(("all", at));
+        let to = dir.join("native").join(n.to_string());
+        copy_folder(Path::new(folder), &to)?;
+        ready.push_str(&format!("{kind}=native/{n}\n"));
     }
+    let _ = std::fs::remove_dir_all(&target);
     std::fs::write(dir.join("ready.txt"), ready).map_err(|e| format!("couldn't write {}: {e}", dir.join("ready.txt").display()))
+}
+
+/// Copies a folder and everything in it.
+fn copy_folder(from: &Path, to: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(to).map_err(|e| format!("couldn't make {}: {e}", to.display()))?;
+    for entry in std::fs::read_dir(from)
+        .map_err(|e| format!("couldn't look in {}: {e}", from.display()))?
+        .flatten()
+    {
+        let path = entry.path();
+        if path.is_dir() {
+            copy_folder(&path, &to.join(entry.file_name()))?;
+        } else {
+            std::fs::copy(&path, to.join(entry.file_name())).map_err(|e| format!("couldn't copy {}: {e}", path.display()))?;
+        }
+    }
+    Ok(())
 }
 
 /// Builds a program that uses outside libraries (databases, views, the web) against the shared
@@ -938,28 +990,37 @@ mod shared_runtime {
     }
 
     #[test]
-    fn finds_each_library_in_cargos_messages() {
-        let wanted = vec![
-            ("png".to_string(), "0.17".to_string()),
-            ("jpeg-decoder".to_string(), "0.3".to_string()),
-        ];
+    fn reads_what_cargo_made() {
         let messages = concat!(
             r#"{"reason":"compiler-artifact","package_id":"registry+https://github.com/rust-lang/crates.io-index#png@0.18.0","target":{"name":"png"},"filenames":["/c/deps/libpng-new.rlib","/c/deps/libpng-new.rmeta"]}"#,
             "\n",
             r#"{"reason":"compiler-artifact","package_id":"registry+https://github.com/rust-lang/crates.io-index#png@0.17.16","target":{"name":"png"},"filenames":["/c/deps/libpng-old.rlib","/c/deps/libpng-old.rmeta"]}"#,
             "\n",
-            r#"{"reason":"build-script-executed","package_id":"x#png@0.17.16"}"#,
+            r#"{"reason":"build-script-executed","package_id":"x#libsqlite3-sys@0.3","linked_libs":["static=sqlite3"],"linked_paths":["native=/c/build/sqlite/abc/out"],"cfgs":[]}"#,
             "\n",
             r#"{"reason":"compiler-artifact","package_id":"jpeg-decoder 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)","target":{"name":"jpeg_decoder"},"filenames":["C:\\Users\\a\\deps\\libjpeg_decoder-1.rlib"]}"#,
+            "\n",
+            r#"{"reason":"compiler-artifact","package_id":"x#serde_derive@1.0.0","target":{"kind":["proc-macro"]},"filenames":["/c/deps/libserde_derive-1.so"]}"#,
+            "\n",
+            r#"{"reason":"build-finished","success":true}"#,
         );
-        let found = rlibs_from_cargo(messages, &wanted);
+        let made = cargo_made(messages);
+        assert_eq!(made.rlibs.len(), 3);
+        assert_eq!(made.link_paths, vec!["native=/c/build/sqlite/abc/out".to_string()]);
+        assert_eq!(made.rlibs[2].1, "C:\\Users\\a\\deps\\libjpeg_decoder-1.rlib");
+        let wanted = vec![
+            ("png".to_string(), "0.17".to_string()),
+            ("jpeg-decoder".to_string(), "0.3".to_string()),
+            ("zbus".to_string(), "5".to_string()),
+        ];
         assert_eq!(
-            found,
+            rlibs_wanted(&made, &wanted),
             vec![
                 ("png".to_string(), "/c/deps/libpng-old.rlib".to_string()),
                 ("jpeg_decoder".to_string(), "C:\\Users\\a\\deps\\libjpeg_decoder-1.rlib".to_string())
             ]
         );
+        assert_eq!(cargo_made("not json\n"), CargoMade::default());
     }
 
     #[test]
