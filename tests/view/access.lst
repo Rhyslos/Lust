@@ -51,12 +51,12 @@ assembly App {
             colourPicker tint [label "Tint"];
             progress volume [label "Loaded"];
             row [gap 8] {
-                button [icon "trash", label "Delete note"] { asking = true; }
-                button [icon "settings", tip "Settings"] { log = "settings"; }
-                button [icon "star"] { log = "starred"; }
+                button [icon Icon.Trash, label "Delete note"] { asking = true; }
+                button [icon Icon.Settings, tip "Settings"] { log = "settings"; }
+                button [icon Icon.Star] { log = "starred"; }
                 button "Off" [disabled true] { log = "never"; }
-                icon "heart" [label "Liked"];
-                icon "bell";
+                icon Icon.Heart [label "Liked"];
+                icon Icon.Bell;
                 image "sunset.png" [width 40, label "A sunset"];
                 image "badge.svg" [width 20];
                 menu "File" {
@@ -91,7 +91,7 @@ assembly App {
             text "Delete the note?" [bold];
             row [gap 8] {
                 button "No" { asking = false; }
-                button "Yes" { asking = false; toast "Deleted" [icon "check"]; }
+                button "Yes" { asking = false; toast "Deleted" [icon Icon.Check]; }
             }
         }
         window helping [title "Help", width 200, height 100] {

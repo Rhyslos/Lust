@@ -2030,7 +2030,7 @@ impl<'a> Parser<'a> {
                 let msg = if w == "close" {
                     "close { } goes right after the view's { }, for when its window's X is clicked: view [title \"Notes\"] { … } close { … }"
                 } else {
-                    "click { } goes right after a tray's { }, for a click on its icon: tray [icon \"bell\"] { … } click { … }"
+                    "click { } goes right after a tray's { }, for a click on its icon: tray [icon Icon.Bell] { … } click { … }"
                 };
                 return self.fail(t.pos, msg);
             }

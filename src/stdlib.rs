@@ -18,6 +18,17 @@ pub const OBJECTS: &[&str] = &["Maths", "Files", "Time", "Json", "Web", "Random"
 /// number is always this.
 pub const EASE: usize = 0;
 
+/// `Icon`, Lust's icons as a built-in state (`icon Icon.Trash;`), is always the second.
+pub const ICON: usize = 1;
+
+/// Icon's options, one per icon, from its name: "triangle-alert" is TriangleAlert.
+pub fn icon_options() -> Vec<String> {
+    crate::icons::ICONS
+        .iter()
+        .map(|(n, _)| n.split('-').map(|p| p[..1].to_uppercase() + &p[1..]).collect())
+        .collect()
+}
+
 /// The easing curves, in order: `Ease`'s options. Their formulas are in runtime.lua and
 /// native_rt.rs (`ease`), from easings.net.
 pub const EASES: &[&str] = &[

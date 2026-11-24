@@ -17,11 +17,11 @@ assembly App {
                 checkbox on "On";
             }
             row [gap 8] {
-                button "Save" [icon "save", border];
-                button [icon "trash", tip "Delete"] { }
+                button "Save" [icon Icon.Save, border];
+                button [icon Icon.Trash, tip "Delete"] { }
                 image "dot.png";
                 image "badge.svg" [width 24];
-                icon "star" [size 16];
+                icon Icon.Star [size 16];
             }
             slider volume [from 0, to 100];
             text "One unit lines:" [small];

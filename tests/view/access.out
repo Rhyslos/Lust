@@ -428,12 +428,12 @@ window "Everything" 560x900
     colourPicker "#ff0000" 12,433 111x31
     progress "80" 12,470 200x8
     row 12,484 357x33
-      button 12,484 32x33 (icon trash)
-      button 52,484 32x33 (icon settings)
-      button 92,484 32x33 (icon star)
+      button 12,484 32x33 (icon Trash)
+      button 52,484 32x33 (icon Settings)
+      button 92,484 32x33 (icon Star)
       button "Off" 132,484 51x33 (disabled)
-      icon "heart" 191,491 20x20
-      icon "bell" 219,491 20x20
+      icon "Heart" 191,491 20x20
+      icon "Bell" 219,491 20x20
       image "sunset.png" 247,486 40x30
       image "badge.svg" 295,496 20x10
       menu "File" 323,485 46x31
@@ -473,5 +473,5 @@ window "Everything" 560x900
     text "pet: Cat" 12,913 56x19
   layer "toast" 0,0 560x900
     toast "Deleted" 437,845 107x39
-      icon "check" 451,857 16x16
+      icon "Check" 451,857 16x16
       text "Deleted" 475,855 55x19

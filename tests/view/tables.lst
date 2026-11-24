@@ -28,7 +28,7 @@ assembly App {
                 column "Age" p.age;
                 column "Mood" p.mood;
                 column "" [width 50] {
-                    button [icon "trash", small] { log = "bin " + p.name; }
+                    button [icon Icon.Trash, small] { log = "bin " + p.name; }
                 }
             } open {
                 log = "opened " + chosen.name;

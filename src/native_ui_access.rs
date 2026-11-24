@@ -186,7 +186,10 @@ fn words_id(s: &str) -> u64 {
 
 /// What a piece is called: its `label`, else its words, else its tip, else its icon's name.
 fn name_of(n: &Laid, words: &str) -> String {
-    [n.look.label.as_str(), words, n.look.tip.as_str(), n.look.icon.as_str()].into_iter().find(|s| !s.is_empty()).unwrap_or("").to_string()
+    // An icon's own name last: Icon.TriangleAlert is said "triangle alert".
+    let icon = icon_key(&n.look.icon).replace('-', " ");
+    let name = [n.look.label.as_str(), words, n.look.tip.as_str(), icon.as_str()].into_iter().find(|s| !s.is_empty()).unwrap_or("");
+    name.to_string()
 }
 
 /// The first words inside a piece, to name a dialog by.
@@ -423,7 +426,8 @@ impl Access<'_> {
                 // A picture's name is its label or tip; an icon's is its own name if it has neither.
                 a.name = name_of(n, "");
                 if a.name.is_empty() && k == "icon" {
-                    a.name = n.text.clone();
+                    // Icon.TriangleAlert is said "triangle alert".
+                    a.name = icon_key(&n.text).replace('-', " ");
                 }
                 a
             }

@@ -24,7 +24,7 @@ assembly App {
             App:notify("Only a title");
             App:frob();
         }
-        tray [icon "bell", tip "One", colour 3] {
+        tray [icon Icon.Bell, tip "One", colour 3] {
             item "Quit" { App:quit(); }
         }
         tray [tip "Two"] {

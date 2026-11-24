@@ -27,7 +27,7 @@ assembly App {
                 button "Cancel" { asking = false; }
             }
         }
-        tray [icon "bell", tip "Notes"] {
+        tray [icon Icon.Bell, tip "Notes"] {
             item "Show" { shown = true; }
             item "Count" [disabled not shown] { clicks = clicks + 1; }
             divider;
