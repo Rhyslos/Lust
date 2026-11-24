@@ -2531,6 +2531,11 @@ impl<'a> W<'a> {
                     s.push_str(&format!("{{ let v = {vc}; o.borrow_mut().{fname} = v; }} "));
                 }
                 s.push_str("Some(o) }");
+                // The engine makes it: its made() gives back what new does.
+                if self.info.classes[ci].made.is_some() {
+                    let root = self.root(ci);
+                    return format!("{{ let made = {s}; let o = rt::obj(&made); d{root}_made(&o) }}");
+                }
                 self.owned(s)
             }
             ExprKind::Saved(_) => "false".into(),

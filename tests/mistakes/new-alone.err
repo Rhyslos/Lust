@@ -1,0 +1,3 @@
+new-alone.lst:8:1  this line doesn't do anything: it makes a Dog and nothing keeps it. Put it in a variable: Dog thing = new Dog { … };
+
+1 mistake. Nothing was run.

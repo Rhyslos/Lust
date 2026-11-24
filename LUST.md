@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (alpha 79):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options, set with `=`), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, tables and long lists, right-click menus, rows dragged to new places, dropped files, the mouse on a canvas, scrolling, pictures (SVG too), timers, keyboard shortcuts, fonts of your own, date and colour pickers, second windows, full screen, toasts, notifications and a tray icon, all drawn by Lust itself, sharp at any screen scaling, with input methods for typing any language and a tree for screen readers. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (alpha 80):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options, set with `=`), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, tables and long lists, right-click menus, rows dragged to new places, dropped files, the mouse on a canvas, scrolling, pictures (SVG too), timers, keyboard shortcuts, fonts of your own, date and colour pickers, second windows, full screen, toasts, notifications and a tray icon, all drawn by Lust itself, sharp at any screen scaling, with input methods for typing any language and a tree for screen readers. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -2236,7 +2236,7 @@ pass Gun;
 - **Fields** hold what the engine can keep and show: `bool`, `int`, `float`, `string`, a state (shown as a choice of its options), `vec3`, `vec2`, `rotation`, `colour` and `entity`. A colour field can start as a colour word: `colour tint = blue1;`.
 - **Things the engine made for it.** A component can hold a thing of one of the engine's own classes (from its host folders), such as the animator its editor made: `FarmerAnimator anim;`, with **no starting value**. The engine fills it in before the first `update`; reading it before then stops on its line, naming the field: "anim is filled in by the engine before the component's first update, and hasn't been yet." A class of the game's own can't be a component's field (keep those in a class or an object), and one of the engine's can't be given a starting value.
 - **`update(float dt)`** runs once a tick, with how long a tick is. The engine runs the entities in order of their IDs, and an entity's components in order of their names, so a game runs the same way every time.
-- **`entity`** is a value the engine hands over: an entity, or `nothing`. Entities can be compared with `==`, and `.text()` gives the 13 letters and digits Solis writes them as. Lust can't make one; it gets them from the engine's native methods and from `this`.
+- **`entity`** is a value the engine hands over: an entity, or `nothing`. Entities can be compared with `==`, and `.text()` gives the 13 letters and digits Solis writes them as. Lust can't make one; it gets them from the engine's native methods, from `this`, and from `new` of a class the engine makes (below).
 - A component can't be `like` another one yet.
 - A component's methods can't be called `handle`, `schema`, `toData`, `setData`, `fromData` or `setMe`: the engine uses those on every component.
 
@@ -2247,6 +2247,41 @@ Built as a library, each component also has what the engine needs to keep, show 
 - `gun.set_data(&data)` changes only the fields `data` has, so an edit made in the editor while the game runs keeps the rest, like ammo left and cooldowns.
 - `gun.set_me(Some(id))` puts it on an entity, and `gun.update(dt)` runs a tick. An entity is its 64-bit ID, `Option<u64>`, with `None` for nothing.
 - `Value` is `Bool`, `Int`, `Float`, `Text`, `List` (a vec3's three numbers, a vec2's two, a rotation's four, a colour's four from 0 to 1) and `Entity`, and `FieldKind` is `Bool`, `Int`, `Float`, `Text`, `Choice` (with the options), `Vec3`, `Vec2`, `Rotation`, `Colour` and `Entity`. A colour from `set_data` has its parts kept between 0 and 1.
+
+### Things the engine makes
+
+A class in the engine's own files (its host folders) can be one the **engine** makes: it has a native method called `made`, with nothing in its ( ). Then `new` hands the engine the new thing, fields filled in, and gives back what `made` gives back, instead of the thing:
+
+```
+-- solis/world.lst, written by the engine
+class Fighter {
+    has {
+        vec3 position = [0, 0, 0];
+        float speed = 9;
+    }
+
+    method entity made() native;
+}
+
+class Horn {
+    has {
+        vec3 at = [0, 0, 0];
+    }
+
+    method made() native;
+}
+```
+
+```
+entity ship = new Fighter { position = gate, speed = 12 };
+new Horn { at = gate };
+```
+
+- **What `new` gives back** is what `made` does: `entity ship = new Fighter { … };` holds the entity the engine made, and a `made` that gives back nothing makes `new Horn { … }` a line of its own, like a call.
+- **On its own line,** a `new` of a class the engine makes does something, so what it gives back can be left unused: `new Fighter { position = gate };`. A `new` of any other class on its own line is a mistake, since nothing keeps what it makes.
+- **It doesn't end with a state:** what the engine makes is the engine's, so one made in a method of a class with a state of its own stays when the state changes.
+- **Only the engine's own files** make such a class: a class of the game's own with a method called `made` is an ordinary class.
+- **The body:** in Rust, the program's `fighter_made(&self, this: &Fighter)`, reading the fields with their getters; in Lua, the function `Fighter_made(thing)` in `LUST_NATIVES`.
 
 ### Objects in an engine
 

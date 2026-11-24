@@ -1,0 +1,27 @@
+-- Things the engine makes: new hands the engine the thing, and gives back what it made.
+fetch "solis/world":[Fighter, Horn];
+
+state Alarm = [Quiet, Ringing];
+
+component Gate {
+    has {
+        state = Alarm.Quiet;
+        entity guard;
+    }
+
+    method update(float dt) {
+        state = Alarm.Ringing;
+        -- Made in a state, but the engine's: it doesn't end with the state.
+        guard = new Fighter { position = [0, 5, 0] };
+        new Horn { at = [0, 5, 0] };
+    }
+}
+
+method show() {
+    entity ship = new Fighter { position = [1, 2, 0], speed = 12 };
+    print(ship.text());
+    new Horn { at = [3, 0, 0] };
+}
+
+pass Gate, show;
+end

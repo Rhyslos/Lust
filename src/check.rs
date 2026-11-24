@@ -76,6 +76,9 @@ pub struct ClassInfo {
     /// Declared in the engine's own files (its host folders): a component may hold one, filled
     /// in by the engine.
     pub host: bool,
+    /// Made by the engine: a class of its own files with `method <type> made() native;`.
+    /// `new` hands it the thing, and gives back what `made` does (an entity, say, or nothing).
+    pub made: Option<Ty>,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -506,6 +509,7 @@ impl<'a> Checker<'a> {
                         fields: vec![],
                         methods: HashMap::new(),
                         host: prog.host_files.contains(&c.pos.file()),
+                        made: None,
                     });
                 }
                 Item::Assembly(a) => {
@@ -710,6 +714,9 @@ impl<'a> Checker<'a> {
                                 }
                                 None => self.err(m.pos, format!("{} already has a method called {}.", c.name, m.name)),
                             }
+                        }
+                        if m.name == "made" && m.native && self.info.classes[ci].host && m.params.is_empty() {
+                            self.info.classes[ci].made = Some(sig.ret.clone());
                         }
                         self.info.classes[ci].methods.insert(m.name.clone(), sig);
                     }
@@ -2890,7 +2897,15 @@ impl<'a> Checker<'a> {
     /// Is this a new thing, made in a method of a class with a state, so it belongs to that state?
     fn makes_owned(&self, e: &Expr, ctx: &Ctx) -> bool {
         let in_state = ctx.class.map(|c| self.stateful(c)).unwrap_or(false);
-        in_state && (matches!(e.kind, ExprKind::New { .. }) || self.info.creates.contains_key(&e.id))
+        let made_by_engine = match &e.kind {
+            ExprKind::New { class, .. } => self
+                .info
+                .class_index
+                .get(class)
+                .is_some_and(|&c| self.info.classes[c].made.is_some()),
+            _ => false,
+        };
+        in_state && !made_by_engine && (matches!(e.kind, ExprKind::New { .. }) || self.info.creates.contains_key(&e.id))
     }
 
     /// Storing something made in a state somewhere that outlasts the state needs keep.
@@ -3225,6 +3240,24 @@ impl<'a> Checker<'a> {
             }
             Stmt::Expr(e) => {
                 let t = self.expr(e, ctx, None);
+                // A new on its own line does something only when the engine makes it (and what
+                // the engine gives back can be left unused: a spawned entity nobody needs).
+                if let ExprKind::New { class, .. } = &e.kind {
+                    let made = self
+                        .info
+                        .class_index
+                        .get(class)
+                        .is_some_and(|&c| self.info.classes[c].made.is_some());
+                    if !made && t != Ty::Error {
+                        self.err(
+                            e.pos,
+                            format!(
+                                "this line doesn't do anything: it makes a {class} and nothing keeps it. Put it in a variable: {class} thing = new {class} {{ … }};"
+                            ),
+                        );
+                    }
+                    return;
+                }
                 let is_lua_call = matches!(&e.kind, ExprKind::Method(..)) && t == Ty::Error;
                 if t != Ty::Void && t != Ty::Error && !is_lua_call {
                     let what = describe(e);
@@ -4024,7 +4057,11 @@ impl<'a> Checker<'a> {
                         }
                     }
                 }
-                Ty::Class(c)
+                // The engine makes it: new gives back what its made() does.
+                match &self.info.classes[c].made {
+                    Some(made) => made.clone(),
+                    None => Ty::Class(c),
+                }
             }
             ExprKind::NewHook(body) => {
                 let Some(Ty::Hook(sig)) = expected.cloned() else {
