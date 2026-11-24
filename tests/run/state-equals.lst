@@ -47,7 +47,7 @@ try {
     print(e);
 }
 print(b.bulb.name);
-a.state = b.state;
+a:switchTo(b.state);
 print(a.state);
 Light now = Light.Off;
 now = a.state;
