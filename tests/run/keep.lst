@@ -33,6 +33,10 @@ class Hero {
     method fight() {
         state = Phase.Battle.Melee;
     }
+
+    method moveTo(Phase next) {
+        state = next;
+    }
 }
 
 Hero h = new Hero {};
@@ -44,7 +48,7 @@ h:grab("sword");
 h:hold("torch");
 Item b = h:loot("bandage");
 keep b;
-h.state = Phase.Battle.Ranged;
+h:moveTo(Phase.Battle.Ranged);
 -- Melee is over, so the arrow made during it has ended.
 try {
     print(a.name);
@@ -52,7 +56,7 @@ try {
     print(e);
 }
 Item c = h:loot("quiver");
-h.state = Phase.Calm;
+h:moveTo(Phase.Calm);
 -- The stick was made while the hero was Calm. Calm ended when the fight began.
 try {
     print(early.name);

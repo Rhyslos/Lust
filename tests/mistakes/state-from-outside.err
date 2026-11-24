@@ -1,0 +1,5 @@
+state-from-outside.lst:26:9  only Hero's own methods can change its state, so whatever they do with it can't be skipped. Give Hero a method that changes it (state = …;), and call that instead.
+state-from-outside.lst:37:1  only Hero's own methods can change its state, so whatever they do with it can't be skipped. Give Hero a method that changes it (state = …;), and call that instead.
+state-from-outside.lst:38:1  only Game's own methods can change its state, so whatever they do with it can't be skipped. Give Game a method that changes it (state = …;), and call that instead.
+
+3 mistakes. Nothing was run.

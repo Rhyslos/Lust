@@ -1,0 +1,40 @@
+-- A thing's own state changes only in its own class's methods.
+state Phase = [Calm, Battle [Melee, Ranged]];
+
+class Hero {
+    has {
+        state = Phase.Calm;
+    }
+
+    method fight() {
+        state = Phase.Battle.Melee;
+    }
+
+    method copy(Hero other) {
+        other.state = state;            -- fine: another Hero, inside Hero's own methods
+    }
+}
+
+class Wizard like Hero {
+    method blink() {
+        state = Phase.Calm;             -- fine: a Wizard is a Hero
+    }
+}
+
+class Bard {
+    method calm(Hero h) {
+        h.state = Phase.Calm;           -- a mistake: Bard isn't Hero
+    }
+}
+
+object Game {
+    has {
+        state = Phase.Calm;
+    }
+}
+
+Hero h = new Hero { state = Phase.Battle.Ranged };   -- fine: a starting value
+h.state = Phase.Calm;                                -- a mistake
+Game.state = Phase.Battle;                           -- a mistake
+print(h.state);                                      -- reading is fine
+end

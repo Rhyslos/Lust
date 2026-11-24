@@ -1287,7 +1287,8 @@ mod state_set_with_equals {
         }
     }
 
-    const LAMP: &str = "class Lamp {\n    has {\n        state = Mood.Calm;\n    }\n    method rush() {\n        state = Mood.Busy;\n    }\n}\nmethod go() {\n    Lamp l = new Lamp {};\n    l:rush();\n    l.state = Mood.Calm;\n}\npass go;";
+    // A thing's own state, and another Lamp's from inside Lamp's methods (outside them is a mistake).
+    const LAMP: &str = "class Lamp {\n    has {\n        state = Mood.Calm;\n    }\n    method rush() {\n        state = Mood.Busy;\n    }\n    method calm(Lamp other) {\n        other.state = Mood.Calm;\n    }\n}\nmethod go() {\n    Lamp l = new Lamp {};\n    l:rush();\n    l:calm(l);\n}\npass go;";
 
     #[test]
     fn equals_changes_an_objects_state_in_both_outputs() {

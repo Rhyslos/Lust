@@ -378,6 +378,30 @@ fn describe(e: &Expr) -> String {
 }
 
 impl<'a> Checker<'a> {
+    /// A thing's own state changes only in its own class's methods (or a class `like` it), so a
+    /// class's methods are the one way in and out of its states, and what they do then can't be
+    /// skipped. Reading it from outside is fine, and so is a starting value in `new { }`.
+    fn own_state_only(&mut self, target: &Expr, ctx: &Ctx, pos: Pos) {
+        let ExprKind::Field(t, f, _) = &target.kind else { return };
+        if f != "state" {
+            return;
+        }
+        let Ty::Class(c) = self.info.ty(t) else { return };
+        if !self.info.stateful(c) {
+            return;
+        }
+        let inside = ctx
+            .class
+            .is_some_and(|k| k == c || self.info.is_like(k, c) || self.info.is_like(c, k));
+        if !inside {
+            let name = crate::ast::shown(&self.info.classes[c].name).to_string();
+            self.err(
+                pos,
+                format!("only {name}'s own methods can change its state, so whatever they do with it can't be skipped. Give {name} a method that changes it (state = …;), and call that instead."),
+            );
+        }
+    }
+
     fn err(&mut self, pos: Pos, msg: impl Into<String>) {
         self.diags.add(pos, msg);
     }
@@ -3167,6 +3191,7 @@ impl<'a> Checker<'a> {
                     }
                 }
                 self.writable(target, ctx, *pos);
+                self.own_state_only(target, ctx, *pos);
                 let got = self.expr(value, ctx, Some(&want));
                 self.expect_fits(value, &got, &want, &format!("{} is {}", describe(target), self.a(&want)));
                 let to_local = matches!(&target.kind, ExprKind::Name(_)) && self.info.names.get(&target.id) == Some(&NameRes::Local);
