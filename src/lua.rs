@@ -724,6 +724,10 @@ impl<'a> W<'a> {
             let opts: Vec<String> = crate::stdlib::EASES.iter().map(|o| lua_string(o)).collect();
             self.line(0, &format!("local Ease = _L.state(\"Ease\", {{{}}})", opts.join(", ")));
         }
+        if self.info.uses_icon {
+            let opts: Vec<String> = crate::stdlib::icon_options().iter().map(|o| lua_string(o)).collect();
+            self.line(0, &format!("local Icon = _L.state(\"Icon\", {{{}}})", opts.join(", ")));
+        }
         for item in &prog.items {
             if let Item::State(s) = item {
                 if let Some(&si) = self.info.state_index.get(&s.name) {

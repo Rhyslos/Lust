@@ -271,8 +271,26 @@ fn button_icon_size(l: &Look) -> f32 {
     (l.size * 1.2).round()
 }
 
-/// An icon's shapes, by its name or another name for it.
+/// An icon's name from its option in Lust's Icon state: Icon.TriangleAlert is "triangle-alert",
+/// Icon.Trash2 is "trash-2". A name already written that way is kept.
+pub fn icon_key(option: &str) -> String {
+    if !option.chars().any(|c| c.is_ascii_uppercase()) {
+        return option.to_string();
+    }
+    let mut out = String::new();
+    for (i, c) in option.chars().enumerate() {
+        if i > 0 && (c.is_ascii_uppercase() || c.is_ascii_digit()) && !out.ends_with('-') {
+            out.push('-');
+        }
+        out.push(c.to_ascii_lowercase());
+    }
+    out
+}
+
+/// An icon's shapes, by its option (Icon.Trash), its name ("trash") or another name for it.
 fn icon_find(name: &str) -> Option<&'static str> {
+    let key = icon_key(name);
+    let name = key.as_str();
     let name = ICON_ALIASES.iter().find(|(a, _)| *a == name).map(|(_, to)| *to).unwrap_or(name);
     ICONS.iter().find(|(n, _)| *n == name).map(|(_, d)| *d)
 }

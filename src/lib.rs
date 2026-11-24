@@ -43,6 +43,11 @@ mod icons {
         let name = ICON_ALIASES.iter().find(|(a, _)| *a == name).map(|(_, to)| *to).unwrap_or(name);
         ICONS.iter().find(|(n, _)| *n == name).map(|(_, d)| *d)
     }
+    /// An icon's own name, from its name or another name for it ("alert-triangle" is "triangle-alert").
+    pub fn name_of(name: &str) -> Option<&'static str> {
+        let name = ICON_ALIASES.iter().find(|(a, _)| *a == name).map(|(_, to)| *to).unwrap_or(name);
+        ICONS.iter().find(|(n, _)| *n == name).map(|(n, _)| *n)
+    }
 }
 
 // The runtime that goes into built programs. lust uses its file functions too, so

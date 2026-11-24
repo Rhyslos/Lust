@@ -1854,7 +1854,11 @@ impl<'a> W<'a> {
                         out.push_str(&format!("{pad}    {v}.value = Some({sv});\n"));
                     }
                     Some(a) => {
-                        let t = self.coerced(a, &Ty::Str);
+                        // An icon is one of Icon's options, kept as its name.
+                        let t = match self.info.ty(a) {
+                            Ty::State(_) => format!("({}).to_string()", self.expr(a)),
+                            _ => self.coerced(a, &Ty::Str),
+                        };
                         out.push_str(&format!("{pad}    {v}.text = {t};\n"));
                     }
                     None => {}
@@ -3176,6 +3180,8 @@ impl<'a> W<'a> {
                             self.expr(e)
                         )
                     }
+                    // [icon Icon.Trash]: the option, as its name.
+                    Ty::State(_) => format!("rt::ui::SV::Text(({}).to_string())", self.expr(e)),
                     _ => format!("rt::ui::SV::Text({})", self.expr(e)),
                 },
                 StyleValue::Nested(n) => format!("rt::ui::SV::Nested({})", self.styles(n)),

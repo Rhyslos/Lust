@@ -10,7 +10,7 @@ assembly App {
     view [title "Dark", width 320, height 200, dark] {
         column [gap 8, pad 12] {
             text "The main window";
-            button "Save" { toast "Saved" [icon "check"]; }
+            button "Save" { toast "Saved" [icon Icon.Check]; }
         }
         window showingSettings [title "Settings", width 280, height 180] {
             column [gap 8, pad 12] {

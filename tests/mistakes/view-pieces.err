@@ -11,13 +11,14 @@ view-pieces.lsc:23:27  min 10 is more than max 2, so no number fits between them
 view-pieces.lsc:24:27  min -1 is more than max -5.5, so no number fits between them. Swap them: [min -5.5, max -1].
 view-pieces.lsc:25:41  a number box is kept between min and max: number count [min 0, max 99]. from and to are for a slider.
 view-pieces.lsc:26:27  a slider goes from one number to another: slider volume [from 0, to 100]. min and max are for a number box.
-view-pieces.lsc:27:18  Lust has no icon called "trsh". Did you mean "trash"? The icons are listed in the rulebook, LUST.md, under Icons.
-view-pieces.lsc:28:18  Lust has no icon called "not-an-icon-at-all". The icons are listed in the rulebook, LUST.md, under Icons.
-view-pieces.lsc:29:18  icon takes the icon's name, but this is an int: icon "star";
-view-pieces.lsc:30:13  icon needs the icon's name: icon "star";
-view-pieces.lsc:31:35  Lust has no icon called "trash-3". Did you mean "trash-2"? The icons are listed in the rulebook, LUST.md, under Icons.
-view-pieces.lsc:32:24  only a button has an icon in its [ ]. Put an icon next to a text instead: row { icon "star"; … }
-view-pieces.lsc:33:13  a button needs its words, or an icon: button "Start" { … }, button [icon "play"] { … }
-view-pieces.lsc:34:13  a switch needs the field it changes: switch name;
+view-pieces.lsc:27:18  an icon is one of Icon's options now, like Icon.Star, not text. Write Icon.Star here.
+view-pieces.lsc:28:18  an icon is one of Icon's options now, like Icon.Star, not text. Lust has no icon called "trsh". Did you mean Icon.Trash? The icons are listed in the rulebook, LUST.md, under Icons.
+view-pieces.lsc:29:18  an icon is one of Icon's options now, like Icon.Star, not text. Lust has no icon called "not-an-icon-at-all". The icons are listed in the rulebook, LUST.md, under Icons.
+view-pieces.lsc:30:18  an icon is one of Icon's options, like Icon.Star, but this is an int.
+view-pieces.lsc:31:13  icon needs which icon: icon Icon.Star;
+view-pieces.lsc:32:35  an icon is one of Icon's options now, like Icon.Star, not text. Lust has no icon called "trash-3". Did you mean Icon.Trash? The icons are listed in the rulebook, LUST.md, under Icons.
+view-pieces.lsc:33:24  only a button has an icon in its [ ]. Put an icon next to a text instead: row { icon Icon.Star; … }
+view-pieces.lsc:34:13  a button needs its words, or an icon: button "Start" { … }, button [icon Icon.Play] { … }
+view-pieces.lsc:35:13  a switch needs the field it changes: switch name;
 
-21 mistakes. Nothing was run.
+22 mistakes. Nothing was run.

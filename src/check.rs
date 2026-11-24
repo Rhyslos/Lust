@@ -170,6 +170,8 @@ pub struct Info {
     pub tween_top_names: std::collections::HashSet<String>,
     /// The program names `Ease` (its options or the object), so Lua makes its table.
     pub uses_ease: bool,
+    /// The program names `Icon`'s options as a list (loop or #), so Lua makes its table.
+    pub uses_icon: bool,
     /// A view has a datePicker, which shows today by the computer's clock.
     pub uses_dates: bool,
 }
@@ -451,6 +453,13 @@ impl<'a> Checker<'a> {
         self.info.states.push(StateInfo {
             name: "Ease".into(),
             options: crate::stdlib::EASES.iter().map(|e| e.to_string()).collect(),
+        });
+        // Icon, the built-in state of Lust's icons, is always the second.
+        self.info.state_index.insert("Icon".into(), crate::stdlib::ICON);
+        self.state_names.push("Icon".into());
+        self.info.states.push(StateInfo {
+            name: "Icon".into(),
+            options: crate::stdlib::icon_options(),
         });
         // 1. Names of states, classes and methods, so everything can refer to everything.
         for item in &prog.items {
@@ -1612,16 +1621,10 @@ impl<'a> Checker<'a> {
             }
             ("image", None) => self.err(pos, "image needs the picture's file: image \"cat.png\";"),
             ("icon", Some(a)) => {
-                let t = self.expr(a, ctx, Some(&Ty::Str));
-                if t != Ty::Str && t != Ty::Error {
-                    self.err(
-                        a.pos,
-                        format!("icon takes the icon's name, but this is {}: icon \"star\";", self.a(&t)),
-                    );
-                }
-                self.icon_name(a);
+                let t = self.expr(a, ctx, Some(&Ty::State(crate::stdlib::ICON)));
+                self.icon_value(a, &t);
             }
-            ("icon", None) => self.err(pos, "icon needs the icon's name: icon \"star\";"),
+            ("icon", None) => self.err(pos, "icon needs which icon: icon Icon.Star;"),
             ("every", Some(a)) => {
                 let t = self.expr(a, ctx, Some(&Ty::Float));
                 if !matches!(t, Ty::Int | Ty::Float | Ty::Error) {
@@ -1660,7 +1663,7 @@ impl<'a> Checker<'a> {
             ("button", None) if style.iter().any(|s| s.name == "icon") => {}
             ("button", None) => self.err(
                 pos,
-                "a button needs its words, or an icon: button \"Start\" { … }, button [icon \"play\"] { … }",
+                "a button needs its words, or an icon: button \"Start\" { … }, button [icon Icon.Play] { … }",
             ),
             (_, Some(a)) => self.err(
                 a.pos,
@@ -1821,7 +1824,7 @@ impl<'a> Checker<'a> {
                     if kind != "tray" {
                         self.err(
                             a.pos,
-                            format!("click {{ }} is for a click on a tray icon, so it goes right after a tray's {{ }}: tray [icon \"bell\"] {{ … }} click {{ … }}. A {shown} runs its own {{ }} when it's clicked."),
+                            format!("click {{ }} is for a click on a tray icon, so it goes right after a tray's {{ }}: tray [icon Icon.Bell] {{ … }} click {{ … }}. A {shown} runs its own {{ }} when it's clicked."),
                         );
                     }
                     self.attached_block(a, Ty::Void, "", "click { … }", ctx);
@@ -1917,11 +1920,11 @@ impl<'a> Checker<'a> {
             let n = it.name.as_str();
             match (n, &it.value) {
                 (c, StyleValue::Flag) if crate::words::COLOURS.contains(&c) => {}
-                ("icon", StyleValue::Expr(e)) if matches!(self.info.ty(e), Ty::Str | Ty::Error) => {
-                    let e = e.clone();
-                    self.icon_name(&e);
+                ("icon", StyleValue::Expr(e)) => {
+                    let (e, t) = (e.clone(), self.info.ty(e));
+                    self.icon_value(&e, &t);
                 }
-                ("icon", _) => self.err(it.pos, "icon takes the icon's name: toast \"Saved\" [icon \"check\"];"),
+                ("icon", _) => self.err(it.pos, "icon takes which icon: toast \"Saved\" [icon Icon.Check];"),
                 ("seconds", StyleValue::Expr(e)) => {
                     let t = self.info.ty(e);
                     if !matches!(t, Ty::Int | Ty::Float | Ty::Error) {
@@ -1937,7 +1940,7 @@ impl<'a> Checker<'a> {
                     let s = suggest(n, known);
                     self.err(
                         it.pos,
-                        format!("a toast has a colour word, icon and seconds: toast \"Saved\" [green, icon \"check\", seconds 8];{s}"),
+                        format!("a toast has a colour word, icon and seconds: toast \"Saved\" [green, icon Icon.Check, seconds 8];{s}"),
                     );
                 }
             }
@@ -2308,15 +2311,15 @@ impl<'a> Checker<'a> {
                     "escape lets Escape close a second window: window showingSettings [escape] { … }. Escape doesn't close the main window.",
                 ),
                 // A tray's icon: one of Lust's icons, or a picture file; and its tip.
-                ("icon", StyleValue::Expr(e)) if kind == "tray" && matches!(self.info.ty(e), Ty::Str | Ty::Error) => {
-                    let e = e.clone();
-                    self.icon_name(&e);
+                ("icon", StyleValue::Expr(e)) if kind == "tray" => {
+                    let (e, t) = (e.clone(), self.info.ty(e));
+                    self.icon_value(&e, &t);
                 }
                 ("picture", StyleValue::Expr(e)) if kind == "tray" && matches!(self.info.ty(e), Ty::Str | Ty::Error) => {}
                 ("tip", StyleValue::Expr(e)) if kind == "tray" && matches!(self.info.ty(e), Ty::Str | Ty::Error) => {}
                 (_, _) if kind == "tray" => self.err(
                     it.pos,
-                    format!("a tray has an icon, a picture or a tip: tray [icon \"bell\", tip \"Notes\"] {{ … }}. {n} isn't one of those."),
+                    format!("a tray has an icon, a picture or a tip: tray [icon Icon.Bell, tip \"Notes\"] {{ … }}. {n} isn't one of those."),
                 ),
                 // A date picker's min and max are dates, written as text.
                 ("min" | "max", v) if kind == "datePicker" => match v {
@@ -2369,17 +2372,17 @@ impl<'a> Checker<'a> {
                     "a number box is kept between min and max: number count [min 0, max 99]. from and to are for a slider.",
                 ),
                 ("icon", v) if !window => match v {
-                    StyleValue::Expr(e) if matches!(self.info.ty(e), Ty::Str | Ty::Error) => {
+                    StyleValue::Expr(e) => {
                         if kind != "button" {
                             self.err(
                                 it.pos,
-                                format!("only a button has an icon in its [ ]. Put an icon next to a {kind} instead: row {{ icon \"star\"; … }}"),
+                                format!("only a button has an icon in its [ ]. Put an icon next to a {kind} instead: row {{ icon Icon.Star; … }}"),
                             );
                         }
-                        let e = e.clone();
-                        self.icon_name(&e);
+                        let (e, t) = (e.clone(), self.info.ty(e));
+                        self.icon_value(&e, &t);
                     }
-                    _ => self.err(it.pos, "icon takes the icon's name: icon \"trash\"."),
+                    _ => self.err(it.pos, "icon takes which icon: icon Icon.Trash."),
                 },
                 ("reorder", StyleValue::Flag) if kind == "table" || kind == "list" => {}
                 ("reorder", StyleValue::Flag) if !window => self.err(
@@ -2583,22 +2586,35 @@ impl<'a> Checker<'a> {
         }
     }
 
-    /// An icon's name written right there has to be one Lust has.
-    fn icon_name(&mut self, e: &Expr) {
-        let ExprKind::Str(name) = &e.kind else { return };
-        if crate::icons::find(name).is_some() {
-            return;
+    /// An icon is one of Icon's options (icon Icon.Trash;), so a wrong name is a mistake before
+    /// running, as for any state. Text, the way icons were written before, says which to write.
+    fn icon_value(&mut self, e: &Expr, t: &Ty) {
+        match t {
+            Ty::State(s) if *s == crate::stdlib::ICON => {}
+            Ty::Error => {}
+            Ty::Str => {
+                let fix = match &e.kind {
+                    ExprKind::Str(name) => match crate::icons::name_of(name) {
+                        Some(found) => format!(" Write Icon.{} here.", icon_option(found)),
+                        None => {
+                            let all = crate::stdlib::icon_options();
+                            let s = suggest(&icon_option(name), all.into_iter());
+                            format!(" Lust has no icon called \"{name}\".{s} The icons are listed in the rulebook, LUST.md, under Icons.")
+                                .replace("Did you mean ", "Did you mean Icon.")
+                        }
+                    },
+                    _ => " Keep one in a variable of its own: Icon shown = Icon.Star;".into(),
+                };
+                self.err(
+                    e.pos,
+                    format!("an icon is one of Icon's options now, like Icon.Star, not text.{fix}"),
+                );
+            }
+            _ => self.err(
+                e.pos,
+                format!("an icon is one of Icon's options, like Icon.Star, but this is {}.", self.a(t)),
+            ),
         }
-        let all = crate::icons::ICONS
-            .iter()
-            .map(|(n, _)| n.to_string())
-            .chain(crate::icons::ICON_ALIASES.iter().map(|(n, _)| n.to_string()));
-        // The names are written in quotes, so the one it might be is too.
-        let s = suggest(name, all).replace("Did you mean ", "Did you mean \"").replace('?', "\"?");
-        self.err(
-            e.pos,
-            format!("Lust has no icon called \"{name}\".{s} The icons are listed in the rulebook, LUST.md, under Icons."),
-        );
     }
 
     fn method_body(&mut self, m: &MethodDecl, class: Option<usize>) {
@@ -4223,6 +4239,9 @@ impl<'a> Checker<'a> {
             if s == crate::stdlib::EASE {
                 self.info.uses_ease = true;
             }
+            if s == crate::stdlib::ICON {
+                self.info.uses_icon = true;
+            }
             self.info.names.insert(e.id, NameRes::StateList);
             self.info.options.insert(e.id, (s, String::new()));
             return Ty::StateList(s);
@@ -4823,10 +4842,13 @@ impl<'a> Checker<'a> {
                 .collect();
             let where_ = if path.is_empty() { sn.clone() } else { format!("{sn}.{path}") };
             let s2 = suggest(f, here.clone());
-            self.err(
-                fpos,
-                format!("{f} isn't an option of {where_}.{s2} The options are {}.", here.join(", ")),
-            );
+            // Lust's icons are too many to list here.
+            let list = if s == crate::stdlib::ICON {
+                "The icons are listed in the rulebook, LUST.md, under Icons.".to_string()
+            } else {
+                format!("The options are {}.", here.join(", "))
+            };
+            self.err(fpos, format!("{f} isn't an option of {where_}.{s2} {list}"));
             return Ty::Error;
         }
         match t {
@@ -5955,4 +5977,12 @@ fn has_stop(stmts: &[Stmt]) -> bool {
         Stmt::Try { body, handler, .. } => has_stop(body) || has_stop(handler),
         _ => false,
     })
+}
+
+/// Icon's option for an icon's name: "triangle-alert" is TriangleAlert.
+fn icon_option(name: &str) -> String {
+    name.split('-')
+        .filter(|p| !p.is_empty())
+        .map(|p| p[..1].to_uppercase() + &p[1..])
+        .collect()
 }

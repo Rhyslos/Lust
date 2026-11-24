@@ -8,13 +8,13 @@ assembly App {
 
     method store() {
         count = count + 1;
-        toast "Saved " + count.text() [green, icon "check"];
+        toast "Saved " + count.text() [green, icon Icon.Check];
     }
 
     view [title "Toasts", width 420, height 300] {
         column [gap 8, pad 12] {
             button "Save" { store(); }
-            button "Oops" { toast "Something went wrong" [red, icon "triangle-alert", seconds 8]; }
+            button "Oops" { toast "Something went wrong" [red, icon Icon.TriangleAlert, seconds 8]; }
             button "Plain" { toast "Hello"; }
             button "More" { showingMore = true; }
         }

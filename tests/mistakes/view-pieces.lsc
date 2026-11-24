@@ -24,12 +24,13 @@ assembly Form {
             number count [min -1, max -5.5];
             number count [min 0, max 9, from 1];
             slider count [min 0];
+            icon "star";
             icon "trsh";
             icon "not-an-icon-at-all";
             icon 5;
             icon;
             button "Delete" [icon "trash-3"];
-            text "Hi" [icon "trash"];
+            text "Hi" [icon Icon.Trash];
             button;
             switch;
         }

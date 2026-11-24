@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (alpha 78):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options, set with `=`), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, tables and long lists, right-click menus, rows dragged to new places, dropped files, the mouse on a canvas, scrolling, pictures (SVG too), timers, keyboard shortcuts, fonts of your own, date and colour pickers, second windows, full screen, toasts, notifications and a tray icon, all drawn by Lust itself, sharp at any screen scaling, with input methods for typing any language and a tree for screen readers. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (alpha 79):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options, set with `=`), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, tables and long lists, right-click menus, rows dragged to new places, dropped files, the mouse on a canvas, scrolling, pictures (SVG too), timers, keyboard shortcuts, fonts of your own, date and colour pickers, second windows, full screen, toasts, notifications and a tray icon, all drawn by Lust itself, sharp at any screen scaling, with input methods for typing any language and a tree for screen readers. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -796,7 +796,7 @@ An assembly with a `view` opens a window with `App:open();`, through `lust run` 
 - **Scrolling, pictures and timers:** `scroll`, `image` and `every` (see below).
 - **Inputs:** `input`, `textarea` (several lines), `checkbox`, `switch`, `radio`, `number` and `slider`, each bound to a field (see below), with the mouse, the keyboard and the clipboard.
 - **Pickers:** `datePicker` for a date, with a month's calendar, and `colourPicker` for a colour, with a square of colours, a hue strip and swatches (see below).
-- **Icons:** `icon "trash"`, from a built-in set of about 150, on their own or in buttons (see below).
+- **Icons:** `icon Icon.Trash`, from a built-in set of about 150, on their own or in buttons (see below).
 - **Your own pieces:** any assembly with a view, used inside another view as `TodoRow { label = task };`, from the same file or fetched from files in `ui/` folders (see below).
 - **Styles and layout:** every word in the list below, `hover:[ … ]` included, plus named styles (`style chip = [pad 6, round];`). Text wraps onto more lines when it doesn't fit.
 - **Questions and loops** inside a view.
@@ -1276,34 +1276,33 @@ colourPicker glass [alpha, swatches [white, gray3, Colour:hex("#ffd43b80")]];
 
 ### Icons
 
-`icon "trash";` draws a small picture from Lust's own set, in the text's colour, sharp at any size. `size` sets how big it is (20 unless told), and a colour word colours it:
+`icon Icon.Trash;` draws a small picture from Lust's own set, in the text's colour, sharp at any size. `size` sets how big it is (20 unless told), and a colour word colours it:
 
 ```
 row [gap 8] {
-    icon "star" [size 18, yellow6];
+    icon Icon.Star [size 18, yellow6];
     text "Favourites";
 }
-button "Delete" [icon "trash", red] { remove(); }
-button [icon "settings", tip "Settings"] { showSettings = true; }
+button "Delete" [icon Icon.Trash, red] { remove(); }
+button [icon Icon.Settings, tip "Settings"] { showSettings = true; }
 ```
 
-On a button, `icon` in its `[ ]` puts the icon before the words, or on its own when the button has no words. An icon's name is usually written in place, and then a name Lust doesn't have is a mistake before running, with the nearest name it does have; a name worked out while running that isn't one shows as an empty grey box.
+On a button, `icon` in its `[ ]` puts the icon before the words, or on its own when the button has no words. **Icons are a built-in state, `Icon`,** so an icon is written like any state's option: `Icon.Trash`, `Icon.ArrowLeft`, `Icon.TriangleAlert`. A name Lust doesn't have is a mistake before running, with the nearest one it does have. One that changes is kept in a variable like any state (`Icon shown = Icon.Star;`, then `icon shown;`), and `loop (Icon i in Icon)` goes through them all. Icons used to be written as text (`icon "trash"`); that's a mistake now, which says which option to write.
 
-The icons are a subset of [Lucide](https://lucide.dev) (ISC licence, see `LICENSES/lucide.txt`), drawn from their shapes by Lust itself. These are the names:
+The icons are a subset of [Lucide](https://lucide.dev) (ISC licence, see `LICENSES/lucide.txt`), drawn from their shapes by Lust itself. These are `Icon`'s options:
 
 | | |
 | --- | --- |
-| arrows | `arrow-up`, `arrow-down`, `arrow-left`, `arrow-right`, `arrow-up-right`, `arrow-up-down`, `arrow-left-right`, `undo`, `redo`, `corner-down-left`, `move`, `maximize`, `minimize`, `external-link`, `log-in`, `log-out` |
-| chevrons | `chevron-up`, `chevron-down`, `chevron-left`, `chevron-right`, `chevrons-up`, `chevrons-down`, `chevrons-left`, `chevrons-right` |
-| marks | `check`, `x`, `plus`, `minus`, `circle-check`, `circle-x`, `circle-plus`, `circle-minus`, `circle-alert`, `circle-help`, `info`, `triangle-alert`, `ban`, `circle`, `square` |
-| editing | `trash`, `trash-2`, `pencil`, `square-pen`, `scissors`, `copy`, `clipboard`, `paperclip`, `bold`, `italic`, `type`, `align-left` |
-| finding your way | `house`, `menu`, `ellipsis`, `ellipsis-vertical`, `search`, `zoom-in`, `zoom-out`, `settings`, `funnel`, `list-filter`, `list`, `layout-grid`, `panel-left`, `grip-vertical` |
-| people and files | `user`, `users`, `folder`, `folder-open`, `file`, `file-text`, `save`, `download`, `upload`, `cloud`, `archive`, `inbox`, `printer`, `share`, `link` |
-| media | `play`, `pause`, `skip-back`, `skip-forward`, `volume-2`, `volume-x`, `mic`, `camera`, `image`, `video`, `music` |
-| state | `refresh-cw`, `refresh-ccw`, `rotate-cw`, `rotate-ccw`, `loader`, `eye`, `eye-off`, `lock`, `lock-open`, `key`, `shield`, `shield-check`, `bell`, `star`, `heart`, `thumbs-up`, `bookmark`, `flag`, `tag`, `map-pin`, `globe`, `wifi`, `zap`, `power` |
-| time and talking | `calendar`, `clock`, `timer`, `history`, `mail`, `send`, `message-circle`, `phone` |
-| things | `sun`, `moon`, `gift`, `shopping-cart`, `chart-column`, `chart-line`, `activity`, `code`, `terminal`, `database`, `monitor`, `gamepad-2`, `trophy`, `sword`, `coins`, `rocket`, `palette`, `book`, `bug`, `wrench`, `lightbulb`, `layers`, `box`, `puzzle` |
-| other names | `edit` (`square-pen`), `home` (`house`), `unlock` (`lock-open`), `more-horizontal` (`ellipsis`), `more-vertical` (`ellipsis-vertical`), `alert-triangle` (`triangle-alert`), `alert-circle` (`circle-alert`), `help-circle` and `help` (`circle-help`), `check-circle`, `x-circle`, `plus-circle` and `minus-circle` (`circle-…`), `filter` (`funnel`), `refresh` (`refresh-cw`), `sort` (`arrow-up-down`), `stop` (`square`), `close` (`x`), `delete` (`trash-2`) |
+| arrows | `ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight`, `ArrowUpRight`, `ArrowUpDown`, `ArrowLeftRight`, `Undo`, `Redo`, `CornerDownLeft`, `Move`, `Maximize`, `Minimize`, `ExternalLink`, `LogIn`, `LogOut` |
+| chevrons | `ChevronUp`, `ChevronDown`, `ChevronLeft`, `ChevronRight`, `ChevronsUp`, `ChevronsDown`, `ChevronsLeft`, `ChevronsRight` |
+| marks | `Check`, `X`, `Plus`, `Minus`, `CircleCheck`, `CircleX`, `CirclePlus`, `CircleMinus`, `CircleAlert`, `CircleHelp`, `Info`, `TriangleAlert`, `Ban`, `Circle`, `Square` |
+| editing | `Trash`, `Trash2`, `Pencil`, `SquarePen`, `Scissors`, `Copy`, `Clipboard`, `Paperclip`, `Bold`, `Italic`, `Type`, `AlignLeft` |
+| finding your way | `House`, `Menu`, `Ellipsis`, `EllipsisVertical`, `Search`, `ZoomIn`, `ZoomOut`, `Settings`, `Funnel`, `ListFilter`, `List`, `LayoutGrid`, `PanelLeft`, `GripVertical` |
+| people and files | `User`, `Users`, `Folder`, `FolderOpen`, `File`, `FileText`, `Save`, `Download`, `Upload`, `Cloud`, `Archive`, `Inbox`, `Printer`, `Share`, `Link` |
+| media | `Play`, `Pause`, `SkipBack`, `SkipForward`, `Volume2`, `VolumeX`, `Mic`, `Camera`, `Image`, `Video`, `Music` |
+| state | `RefreshCw`, `RefreshCcw`, `RotateCw`, `RotateCcw`, `Loader`, `Eye`, `EyeOff`, `Lock`, `LockOpen`, `Key`, `Shield`, `ShieldCheck`, `Bell`, `Star`, `Heart`, `ThumbsUp`, `Bookmark`, `Flag`, `Tag`, `MapPin`, `Globe`, `Wifi`, `Zap`, `Power` |
+| time and talking | `Calendar`, `Clock`, `Timer`, `History`, `Mail`, `Send`, `MessageCircle`, `Phone` |
+| things | `Sun`, `Moon`, `Gift`, `ShoppingCart`, `ChartColumn`, `ChartLine`, `Activity`, `Code`, `Terminal`, `Database`, `Monitor`, `Gamepad2`, `Trophy`, `Sword`, `Coins`, `Rocket`, `Palette`, `Book`, `Bug`, `Wrench`, `Lightbulb`, `Layers`, `Box`, `Puzzle` |
 
 ### Menus
 
@@ -1392,7 +1391,7 @@ assembly Notes {
     view [title "Notes", width 480, height 320] {
         column [gap 8, pad 16] {
             text "Hello " + name;
-            button [icon "settings", tip "Settings"] { showingSettings = true; }
+            button [icon Icon.Settings, tip "Settings"] { showingSettings = true; }
         }
 
         window showingSettings [title "Settings", width 300, height 160, escape] {
@@ -1457,12 +1456,12 @@ view [title "Notes", visible shown] {
 ```
 button "Save" {
     save();
-    toast "Saved" [green, icon "check"];
+    toast "Saved" [green, icon Icon.Check];
 }
-button "Delete" { toast "Can't delete a note that's open" [red, icon "triangle-alert", seconds 8]; }
+button "Delete" { toast "Can't delete a note that's open" [red, icon Icon.TriangleAlert, seconds 8]; }
 ```
 
-- **How it looks:** white words on dark grey, or on its colour with a colour word, like a button: `[green]`, `[red]`. `icon "check"` puts one of Lust's icons before the words, and `seconds 8` keeps it for 8 seconds (more than 0).
+- **How it looks:** white words on dark grey, or on its colour with a colour word, like a button: `[green]`, `[red]`. `icon Icon.Check` puts one of Lust's icons before the words, and `seconds 8` keeps it for 8 seconds (more than 0).
 - **Several toasts** stack up, the newest at the bottom, up to five. A click on one puts it away.
 - **Which window:** a toast shows in the window whose code made it. Made from the tray, it shows in the main window. With no window open, it has nowhere to show and is let go.
 - `toast` is a word only at the start of a statement, so a variable can still be called `toast`. A toast of something that isn't text is a mistake, as with `text`: `toast count.text();`.
@@ -1485,7 +1484,7 @@ button "Delete" { toast "Can't delete a note that's open" [red, icon "triangle-a
 ```
 view [title "Notes", visible shown] {
     …
-    tray [icon "bell", tip "Notes"] {
+    tray [icon Icon.Bell, tip "Notes"] {
         item "Show" { shown = true; }
         item "New note" { add(); shown = true; }
         divider;
@@ -1498,7 +1497,7 @@ view [title "Notes", visible shown] {
 }
 ```
 
-- **The icon** is one of Lust's icons, drawn white on a blue square: `icon "bell"`. `picture "tray.png"` uses a picture file instead, found the way `image` finds files. `tip` is the words shown when the mouse rests on it.
+- **The icon** is one of Lust's icons, drawn white on a blue square: `icon Icon.Bell`. `picture "tray.png"` uses a picture file instead, found the way `image` finds files. `tip` is the words shown when the mouse rests on it.
 - **The menu** is Windows' own tray menu, with the items' words; a `disabled` item is greyed out. Items can come from a loop or a question, and the menu follows the data.
 - **Clicks:** a right-click opens the menu, and a left click runs `click { }`, if there is one.
 - **One tray** in a view: a second is a mistake.
@@ -1527,7 +1526,7 @@ input newTodo [placeholder "Something to do…"] enter { add(); }
 input search { results = find(search); } enter { open(results[0]); }
 ```
 
-`key "ctrl+s" { save(); }` is a keyboard shortcut: its block runs when those keys are pressed anywhere in the window. Like `every`, it takes no room, and it works only while it's in the view, so a shortcut inside a question is there only some of the time:
+`key "ctrl+s" { save(); }` is a keyboard shortcut: its block runs when those keys are pressed anywhere in the window. Spaces and capitals are fine too: `key "Ctrl + Shift + S"`. Like `every`, it takes no room, and it works only while it's in the view, so a shortcut inside a question is there only some of the time:
 
 ```
 key "ctrl+s" { save(); }
@@ -1607,7 +1606,7 @@ Every piece is in it, with no extra code: buttons, checkboxes, switches, radio b
 **Names.** A screen reader says each piece's name. It's the piece's words (`button "Save"`), or else its `tip`, or else its icon's name. An icon-only button or a picture should be given a name of its own with `label`, which is said instead and isn't shown:
 
 ```
-button [icon "trash", label "Delete the note"] { remove(); }
+button [icon Icon.Trash, label "Delete the note"] { remove(); }
 image "chart.png" [label "Sales went up in March"];
 input search [label "Search", placeholder "Find…"];
 ```
@@ -1635,7 +1634,7 @@ table (Person p in people) [select chosen, height 300] {
     column "Name" p.name [width 160];
     column "Age" p.age;
     column "" [width 40] {
-        button [icon "trash", subtle] { forget(p); }
+        button [icon Icon.Trash, subtle] { forget(p); }
     }
 } open {
     edit(chosen);
@@ -1773,10 +1772,10 @@ Short words in `[ ]`, in the spirit of Tailwind:
 | for screen readers | `label "Delete the note"` |
 | in dark mode | `dark:[ … ]` |
 | windows | `title`, `width`, `height`, `minWidth`, `minHeight`, `background`, `font`, `dark`, `fullscreen`, `visible` (the main window), `escape` (a second window) |
-| toasts | a colour word, `icon "check"`, `seconds 8` |
-| the tray | `icon "bell"`, `picture "tray.png"`, `tip "Notes"` |
+| toasts | a colour word, `icon Icon.Check`, `seconds 8` |
+| the tray | `icon Icon.Bell`, `picture "tray.png"`, `tip "Notes"` |
 | inputs and pictures | `placeholder "…"`, `from`, `to`, `step` (sliders), `min`, `max`, `step` (number boxes), `min`, `max` (date pickers, as dates), `alpha`, `swatches [ … ]` (colour pickers), `across` (radios), `cover` |
-| icons | `icon "trash"` on a button |
+| icons | `icon Icon.Trash` on a button |
 | grids, splits, branches | `columns 3`, `cell 180`, `down`, `open` |
 | tables and lists | `select chosen`, `rowHeight 28`, `stripes`, `reorder`, and `sort p.age` on a column |
 | in a canvas | `x`, `y`, `toX`, `toY`, `radius`, `thick` |
@@ -2349,7 +2348,7 @@ The built-ins can't be used as names either:
 print      wait       ask
 ```
 
-Neither can the built-in objects: `Maths`, `Files`, `Time`, `Json`, `Web`, `Random`, `Rotation`, `Colour` and `Ease` (which is a state of easing curves too). (`Rotation` and `Colour` with a capital are the objects; `rotation` and `colour` are the types.)
+Neither can the built-in objects: `Maths`, `Files`, `Time`, `Json`, `Web`, `Random`, `Rotation`, `Colour` and `Ease` (which is a state of easing curves too), and the built-in state `Icon`, Lust's icons. (`Rotation` and `Colour` with a capital are the objects; `rotation` and `colour` are the types.)
 
 `tween`, `to` and `over` are words only in a tween (and `to` after `send`), so they can still be names. So is `toast`, a word only at the start of a statement, and `App`, which a program's own assembly can be called.
 
