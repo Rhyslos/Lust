@@ -1,0 +1,21 @@
+-- What the engine makes when game code says new: a fighter gives back the entity it becomes,
+-- and a horn's sound gives back nothing.
+class Fighter {
+    has {
+        vec3 position = [0, 0, 0];
+        float speed = 9;
+    }
+
+    method entity made() native;
+}
+
+class Horn {
+    has {
+        vec3 at = [0, 0, 0];
+    }
+
+    method made() native;
+}
+
+pass Fighter, Horn;
+end

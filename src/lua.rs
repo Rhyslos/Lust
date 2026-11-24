@@ -1954,6 +1954,10 @@ impl<'a> W<'a> {
                     parts.push(self.expr(v));
                 }
                 let made = format!("_L.new({})", parts.join(", "));
+                // The engine makes it: its made() gives back what new does.
+                if self.info.classes[c].made.is_some() {
+                    return format!("{made}:made()");
+                }
                 self.owned(made)
             }
             ExprKind::Saved(_) => "false".into(),

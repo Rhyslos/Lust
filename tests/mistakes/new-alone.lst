@@ -1,0 +1,9 @@
+-- A new on its own line makes something nothing keeps, unless the engine makes it.
+class Dog {
+    has {
+        string name = "Rex";
+    }
+}
+
+new Dog { name = "Bo" };
+end

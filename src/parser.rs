@@ -2285,7 +2285,8 @@ impl<'a> Parser<'a> {
             let m = m.clone();
             return self.fail(t.pos, format!("add () to call it: {m}()"));
         }
-        if !matches!(target.kind, ExprKind::Call(..) | ExprKind::Method(..)) {
+        // A new on its own line: the checker says whether the engine makes it.
+        if !matches!(target.kind, ExprKind::Call(..) | ExprKind::Method(..) | ExprKind::New { .. }) {
             if let ExprKind::Name(n) = &target.kind {
                 if ELEMENTS.contains(&n.as_str()) {
                     return self.fail(t.pos, format!("{n} puts something on the screen, so it goes inside a view {{ }}."));
