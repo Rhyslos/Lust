@@ -113,25 +113,7 @@ To work out: how `when` fits with `tick()`, what happens with states inside stat
 
 Each object gets its own `tick()`, and `wait` pauses just that object while the rest carry on. LUST.md already promises this for the engine.
 
-**Waiting, Lust's answer to async and await** (the project lead, 2026-11-19: chosen in direction, not designed in detail). No `async` labels: any method can wait, and only the thing waiting pauses, the way Lua's coroutines and game engines work.
-
-```
-method openGate() {
-    wait 2;                                   -- only this pauses
-    spawnEnemies();
-}
-
-string data = wait Web:get(profileUrl);       -- the window keeps going meanwhile
-
-wait door.state == Door.Open or after 5 {     -- a time limit on any wait
-    print("The door never opened.");
-}
-```
-
-- **Never the whole app:** a button's or a key's code that waits runs on its own, so the window never freezes.
-- **Waiting in a circle** (A waits for B, B waits for A) is noticed: when everything waiting can only be woken by other waiters, Lust stops with a message naming the circle.
-- **States clean up:** a wait started during a state is cancelled when that state ends, like anything else made in it (`keep` aside).
-- Still to design: waiting for several things at once (all of them, or the first), and how waits cross into engines.
+**Waiting, Lust's answer to async and await,** is designed now: see [WAITING.md](WAITING.md) (`start`, `wait { }` holding questions and `check`s, and `or after`).
 
 ### Smaller additions
 
