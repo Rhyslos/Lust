@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (alpha 87):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options, set with `=`), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error` (with `Problem`, the kinds of failure, as a built-in state), `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too), with built-in states for their fixed choices (`Day`, `Request` and `Answer`). Waiting pauses only the run that waits (`wait`, `wait { }` until questions are true or a state is one of a `check`'s options, `or after` time limits, and `start` to run a call alongside), and so do asking a website and the computer's own file boxes. Events in any program (`event`, `on { }` and `send`), sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, tables and long lists, right-click menus, rows dragged to new places, dropped files, the mouse on a canvas, scrolling, pictures (SVG too), timers, keyboard shortcuts, fonts of your own, date and colour pickers, second windows, full screen, toasts, notifications and a tray icon, all drawn by Lust itself, sharp at any screen scaling, with input methods for typing any language and a tree for screen readers. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (alpha 88):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options, set with `=`), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error` (with `Problem`, the kinds of failure, as a built-in state), `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too), with built-in states for their fixed choices (`Day`, `Request` and `Answer`). Waiting pauses only the run that waits (`wait`, `wait { }` until questions are true or a state is one of a `check`'s options, `or after` time limits, `start` to run a call alongside, `start gate = …` and `cancel gate;` to name and stop it, and `gate.state` to see how it's going), and so do asking a website and the computer's own file boxes; work started during a state is cancelled when the state ends, and a program whose runs could only wake each other stops with a message naming them. Events in any program (`event`, `on { }` and `send`), sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, tables and long lists, right-click menus, rows dragged to new places, dropped files, the mouse on a canvas, scrolling, pictures (SVG too), timers, keyboard shortcuts, fonts of your own, date and colour pickers, second windows, full screen, toasts, notifications and a tray icon, all drawn by Lust itself, sharp at any screen scaling, with input methods for typing any language and a tree for screen readers. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -474,6 +474,7 @@ class Hero {
 - Every change of the object's state ends what belongs to the options it leaves, however it's written: `state = …;`, `other.state = …;` for another of the same class, or a value from a variable (`state = next;`). `lust run` and built programs do exactly the same.
 - Options inside options count separately: something made during `Battle.Melee` ends when the object moves on to `Battle.Ranged`.
 - Starting values in `has`, and anything made by code outside a class's methods, belong to no state.
+- **Work started with `start`** in a method belongs to the state too, and is cancelled when it ends (section 11, States cancel their work).
 - If one ended thing owned things of its own, those end with it.
 - Lust catches the simple slips before running: storing something just made in a field or array without `keep` is a mistake.
 
@@ -672,13 +673,98 @@ print("Gate open");
 - **A run** is a piece of work that waits on its own: the program's own code from the top, one click's, key's or timer's code in a window, one event's handler (an `on` block's), a tween's done block, or a call started with `start`.
 - **`wait seconds;` pauses its run,** and everything else carries on: the window draws and answers clicks, other runs go on, and tweens and timers move. `wait 0;` lets the other runs that are due now go first. A wait below 0 seconds stops with `Problem.OutOfRange`.
 - **`start call;`** runs the call as a run of its own. It goes straight away, until its first `wait` (or its end), and then the line after `start` runs. It gives nothing back, and what it's given is worked out as it starts. Only a call can be started: `start gate;` is a mistake. `start` is a word only before a call, so a variable can still be called `start`.
+- **`start gate = openGate();`** does the same, and gives the work a name, to stop it with `cancel` or see how it's going (below).
 - **A call waits for what it calls.** A method that waits makes whoever calls it wait too, as it would for a long loop. Nothing is marked: a method that waits is called like any other, and can give back a value (`int n = slowAdd(1, 2);`).
 - **In order:** runs due at the same moment go on in the order they started waiting. A tween's step due then goes before them. `lust run` and built programs run them in exactly the same order.
 - **A plain program ends** once its own code and every run it started are done.
 - **In a window,** each callback is a run, so a button whose code waits doesn't freeze the window: the other buttons still work. A wait in the code that draws the view (outside any callback) stops the program with a message saying where to put it instead.
 - **Failures:** a `try` inside a run catches that run's own failures, waits and all. A failure no `try` in its own run catches stops the program, even if the code that started the run was inside a `try`.
 - **Lust's own clock.** Runs wait on the same clock as tweens and timers. In a view's tests, `wait 2.5` in the test moves every run's clock along (section 17); `lust test` runs waits without taking the real time, so tests stay quick and give the same results every time.
+- **Failures stop the program,** so started work never ends in a failure of its own: it's done, cancelled, or the whole program has stopped.
 - **In an engine** (a library or components), runs aren't there yet: see below.
+
+### Naming and stopping work: start name = and cancel
+
+`start gate = openGate();` gives the work a name, and `cancel gate;` stops it wherever it is:
+
+```
+start gate = openGate();         -- gate names this work
+wait 0.5;
+cancel gate;                     -- openGate() stops: its wait never finishes
+
+wait {
+    check gate.state {           -- how it went
+        when Done { print("Open!"); }
+        when Cancelled { print("Gave up."); }
+    }
+}
+```
+
+- **The name is a variable,** declared where the `start` is, and it lives as long as a variable there would: inside `{ }`, only until the `}`. It always names that work, so `gate = …;` is a mistake, and so is a second `start gate = …;` while the first `gate` still exists. A `new hook` can use it, as it can any variable around it.
+- **Only variables, for now.** A name can't be a field, go in an array or a map, be handed to a method or be given back, as started work has no type to write there. To stop work from another method, start it during a state instead, and change the state (below).
+- **What a name can do:** `cancel gate;`, `gate.state`, and `keep gate;` (below). Printing it, putting it in text or comparing it is a mistake that says to use its state.
+- **`cancel gate;`** stops the work wherever it is: the `wait` it's in never finishes, and none of its code runs again. It never fails:
+  - Cancelling work that's already done, or already cancelled, does nothing.
+  - **Work it started carries on,** each a run of its own, unless that work has a name and is cancelled too.
+  - **A `try` around the cancelled wait does nothing:** a cancel isn't a failure, so no `error` block runs, and nothing after it either.
+  - **Cancelling itself** (through a hook that holds its name, say) stops the work at once: the line after `cancel` doesn't run.
+  - **Work that's going but not waiting** (one that started the work going now, or that's waiting for an event's handler to finish) is marked cancelled at once, and stops as soon as it would go on.
+  - `cancel` on anything else is a mistake. `cancel` is a word only before a name, so a variable can still be called `cancel`.
+
+### How work is going: Run
+
+A name's `state` is one of the built-in state `Run`'s options, and it changes by itself as the work goes on:
+
+| Option | Means |
+| --- | --- |
+| `Run.Waiting` | paused in a `wait` (or a slow built-in) |
+| `Run.Going` | running now (or it started work that's running now) |
+| `Run.Done` | finished |
+| `Run.Cancelled` | stopped by `cancel`, or because its state ended |
+
+- It's waited for like any state: `wait { is gate.state == Run.Done? }`, or a `check` inside `wait { }`.
+- Only the work and `cancel` change it, so `gate.state = …;` is a mistake, as for any thing's state.
+- Work that starts and finishes without waiting is `Run.Done` by the line after the `start`.
+
+### States cancel their work
+
+Work started during a state is cancelled when that state ends, like anything else made in it (section 8):
+
+```
+class Hero {
+    has {
+        state = Phase.Calm;
+    }
+
+    method fight() {
+        state = Phase.Battle;
+        start drums();           -- belongs to Battle: cancelled when Battle ends
+        start song = music();
+        keep song;               -- kept: it carries on
+    }
+
+    method rest() {
+        state = Phase.Calm;      -- drums() stops here
+    }
+}
+```
+
+- **Which state:** work started in a method of a thing with a state of its own belongs to the option the thing is in at the `start`, exactly as something made with `new` there would. Work started in a node's method belongs to the node, and is cancelled when it closes.
+- **The thing it runs on:** work also belongs to the thing whose method it runs, so it's cancelled when that thing ends: `start guard:patrol();` (with the guard in a variable or field) or `start patrol();` in the guard's own method stops if the guard was made in a state that's ended, and so does an event's handler that was waiting when its thing ended. So no run wakes up inside a thing that's gone.
+- **Work that ends its own state** (its first part changes the state it was started in) is cancelled there and then, and stops at once.
+- **`keep gate;`** holds onto named work: it no longer belongs to any state, and carries on. Work started outside a class or node's methods belongs to no state.
+
+### Waiting in a circle
+
+When every run that's waiting is in a `wait { }` that only other code could end, and nothing else could ever run, nothing can change: Lust stops the program with a message naming each run and where it waits:
+
+```
+gate waits at line 22, and guard waits at line 27, each for something only the other could change, so neither can ever move.
+```
+
+- **Only what's certain is noticed.** A run counts as stuck when its `wait { }` has no time limit and its questions (and its `check`'s state) call nothing: no method, hook, built-in, `Random`, save or database, any of which could change by itself. Lust stops only when every waiting run is stuck, no tween is moving, no window is open, and each has looked again since anything last ran.
+- So **a run waiting seconds, for a slow built-in or with `or after`,** or one whose questions call a method, keeps the program going: its time can come, and the code after it could change things.
+- **Names:** named work is called by its name, other started work by its call (`openGate()`), an event's handler `the Saved handler`, and the program's own code `the program's own code`. The lines are where each `wait { }` is. The program stops as on any failure, and no `try` catches it.
 
 ### Slow built-ins pause only their run
 
@@ -701,7 +787,7 @@ print("asking…");                -- runs straight away, while the request is o
 - **In the program's own code** it pauses that code, so runs started earlier go on while the request is out.
 - **Where a run can't pause, it holds everything up,** as it always did: in the code that draws a view (outside any callback), in a route's method answering a request (`Web:request`, `Web:serve`), and in an engine (below).
 - **In tests** (`lust test`), the answer takes no time on Lust's clock: the run pauses for the runs due now, then waits for the answer before the clock moves on. So a test that asks a website prints the same every time, however long the answer takes. In a view's tests, a file box's answer (`choose` in the test) is seen once the test's clock moves: `click Open…` then `wait 0`.
-- **The rest stay as they are:** reading and writing files, databases, `ask(…)` and `Web:serve` hold everything up while they work. Files and databases are quick, and runs reading and writing the same file or table at once would see each other's half-done work; `ask` types into the console, which other runs would be printing over; and a server that pauses only its run needs a way to stop it (`cancel`, WAITING.md).
+- **The rest stay as they are:** reading and writing files, databases, `ask(…)` and `Web:serve` hold everything up while they work. Files and databases are quick, and runs reading and writing the same file or table at once would see each other's half-done work; `ask` types into the console, which other runs would be printing over; and a server that pauses only its run (so `cancel` can stop it) needs both outputs' servers to look for requests on Lust's clock instead of waiting for them, which is still to come (WAITING.md).
 
 ### Waiting for things to be true: wait { }
 
@@ -733,7 +819,7 @@ wait {
 - **Lust looks again** each time the clock moves a 1/60 s step: once a frame in a window, and in a plain program on the same clock as `wait seconds;` and tweens, so something another run sets at 0.5 seconds is seen by 0.5 seconds and one step at the latest, and the code after the wait goes on there and then. Runs waiting at the same moment look in the order they started waiting.
 - **Looking runs the questions,** so a method in a question is called at every look. Lust has no `=` or `+=` inside a question, but a method can still change things: keep the methods a wait calls to asking.
 - **Where:** it pauses only its run, as `wait seconds;` does, so it works in the program's own code, in methods started with `start`, in event handlers, in a tween's done block and in a window's callbacks. In the code that draws a view (outside any callback) it stops the program with a message, as `wait seconds;` does.
-- **A wait no one can end** (nothing will ever make the questions true) waits for ever, so give it a time limit when that can happen. Lust noticing this by itself comes with `cancel` (WAITING.md, step 5).
+- **A wait no one can end** (nothing will ever make the questions true) waits for ever, so give it a time limit when that can happen. When nothing else could ever run, Lust notices and stops (Waiting in a circle, above).
 
 ### Waiting for one of several options: check inside wait { }
 
@@ -771,7 +857,7 @@ wait {                           -- until the boss is in one of these, then that
 
 In an engine (a library or components), runs aren't there yet: `start` just calls the method, and `wait seconds;` pauses everything while tweens move, as before. Asking a website or opening a file box holds the call up until the answer comes, as before. Nothing else runs while code waits there, so a `wait { }` goes straight on when its questions are already true (and its `check`'s state is already one of its options, whose `when` then runs), and otherwise stops with a message saying it can't wait in an engine yet. `or after` on `wait seconds;` works as it does elsewhere.
 
-`start gate = openGate();` (a name, to `cancel` it) is designed in [WAITING.md](WAITING.md) and comes next.
+`start gate = openGate();` names the work as anywhere else, but as the call runs straight through, the work is `Run.Done` by the next line, and cancelling it then does nothing. Work cancelled while it's still going (by a hook holding its name, say) stops at once, as elsewhere, and work started in a state is cancelled when it ends, which only matters while it's going. There are no runs waiting in an engine, so the circle check never stops one.
 
 ---
 
@@ -2640,9 +2726,9 @@ The built-ins can't be used as names either:
 print      wait       ask
 ```
 
-Neither can the built-in objects: `Maths`, `Files`, `Time`, `Json`, `Web`, `Random`, `Rotation`, `Colour` and `Ease` (which is a state of easing curves too), and the built-in states `Icon`, Lust's icons, `Problem`, the kinds of failure (section 15), `Day`, the days of the week (section 19), and `Request` and `Answer`, the kinds of request and the answers a server sends (section 18). (`Rotation` and `Colour` with a capital are the objects; `rotation` and `colour` are the types.)
+Neither can the built-in objects: `Maths`, `Files`, `Time`, `Json`, `Web`, `Random`, `Rotation`, `Colour` and `Ease` (which is a state of easing curves too), and the built-in states `Icon`, Lust's icons, `Problem`, the kinds of failure (section 15), `Day`, the days of the week (section 19), `Request` and `Answer`, the kinds of request and the answers a server sends (section 18), and `Run`, how started work is going (section 11). (`Rotation` and `Colour` with a capital are the objects; `rotation` and `colour` are the types.)
 
-`tween`, `to` and `over` are words only in a tween (and `to` after `send`), so they can still be names. So are `event` and `send`, words only at the start of a line, and `on`, a word only in the body of a class, object, node, component or assembly. So are `toast`, a word only at the start of a statement, `start`, a word only before a call, `after`, a word only after a wait's `or`, and `App`, which a program's own assembly can be called.
+`tween`, `to` and `over` are words only in a tween (and `to` after `send`), so they can still be names. So are `event` and `send`, words only at the start of a line, and `on`, a word only in the body of a class, object, node, component or assembly. So are `toast`, a word only at the start of a statement, `start`, a word only before a call, `cancel`, a word only before a name, `after`, a word only after a wait's `or`, and `App`, which a program's own assembly can be called.
 
 The pieces of a view (`text`, `button`, `radio`, `switch`, `number`, `icon`, `table`, `list` and the rest) are words only at the start of a line inside a view, so they can still be names: `int number = 3;` works anywhere.
 

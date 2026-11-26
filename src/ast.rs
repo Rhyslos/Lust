@@ -426,8 +426,16 @@ pub enum Stmt {
     },
     /// start openGate();: runs a method call alongside, as a run of its own, and the next line
     /// runs straight away.
+    /// start gate = openGate();: the same, with a name for the work, declared like a variable,
+    /// for `cancel` and its `state`.
     Start {
+        name: Option<(String, Pos)>,
         call: Expr,
+        pos: Pos,
+    },
+    /// cancel gate;: stops started work wherever it is.
+    Cancel {
+        work: Expr,
         pos: Pos,
     },
     /// wait { is door.open? } or after 5 { … }: waits until every question is true; or wait 2
@@ -464,6 +472,7 @@ impl Stmt {
             | Stmt::Lua { pos, .. }
             | Stmt::Keep { pos, .. }
             | Stmt::Start { pos, .. }
+            | Stmt::Cancel { pos, .. }
             | Stmt::Wait { pos, .. }
             | Stmt::SaveDecl { pos, .. }
             | Stmt::Element { pos, .. }

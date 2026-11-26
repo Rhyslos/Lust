@@ -1,0 +1,33 @@
+-- Naming started work, and cancelling it: the mistakes.
+method openGate() {
+    wait 1;
+}
+
+class Door {
+    has {
+        bool open = false;
+    }
+}
+
+Door door = new Door;
+int count = 3;
+
+start gate = openGate();
+cancel door;
+cancel count;
+cancel openGate;
+gate.state = Run.Done;
+gate = door;
+start gate = openGate();
+start other = count;
+start third = door.open;
+print(gate.name);
+keep gate in door;
+cancel nobody;
+start Run = openGate();
+start print = openGate();
+print(gate);
+print("{gate}");
+bool same = gate == gate;
+print([gate]);
+end

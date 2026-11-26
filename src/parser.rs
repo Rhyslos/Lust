@@ -169,7 +169,8 @@ pub fn check_name(diags: &mut Diags, name: &str, pos: Pos, kind: NameKind, what:
         diags.add(pos, format!("{name} is one of Lust's built-in objects, so it can't be a name."));
         return;
     }
-    if crate::stdlib::STATES.contains(&name) {
+    // An option is reached through its state (Mode.Run), so it can share a built-in state's name.
+    if crate::stdlib::STATES.contains(&name) && what != "option" {
         diags.add(pos, format!("{name} is one of Lust's built-in states, so it can't be a name."));
         return;
     }
@@ -2068,16 +2069,28 @@ impl<'a> Parser<'a> {
             )
         {
             self.next();
+            // start gate = openGate();: the work gets a name, like a variable.
+            let mut name = None;
             if matches!(self.peek(1).kind, Tk::Sym("=")) {
-                let p = self.cur().pos;
-                return self.fail(
-                    p,
-                    "giving started work a name (start gate = openGate();) isn't built yet. For now, start a call on its own: start openGate();",
-                );
+                if let Tk::Ident(n) = &self.cur().kind {
+                    let (n, p) = (n.clone(), self.cur().pos);
+                    check_name(self.diags, &n, p, NameKind::Value, "variable");
+                    name = Some((n, p));
+                    self.next();
+                    self.next();
+                }
             }
             let call = self.expr()?;
             self.semi()?;
-            return Ok(Stmt::Start { call, pos: t.pos });
+            return Ok(Stmt::Start { name, call, pos: t.pos });
+        }
+        // cancel gate;: stops started work. cancel is a word only here, before a name, so a
+        // variable can still be called cancel.
+        if t.kind == Tk::Ident("cancel".into()) && matches!(&self.peek(1).kind, Tk::Ident(_)) {
+            self.next();
+            let work = self.expr()?;
+            self.semi()?;
+            return Ok(Stmt::Cancel { work, pos: t.pos });
         }
         // tween hp to 0 over 0.5 [ease OutCubic] { … }. tween, to and over are words only here, so
         // a variable can still be called over or to.

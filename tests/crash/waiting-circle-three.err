@@ -1,0 +1,1 @@
+waiting-circle-three.lst:25  the program's own code waits at line 25, first() waits at line 11 and second() waits at line 16, each for something only the others could change, so none of them can ever move.

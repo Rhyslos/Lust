@@ -1,0 +1,19 @@
+cancel.lst:16:8  cancel stops started work that has a name, but door is a Door. Name the work as it starts, then cancel it: start gate = openGate(); … cancel gate;
+cancel.lst:17:8  cancel stops started work that has a name, but count is an int. Name the work as it starts, then cancel it: start gate = openGate(); … cancel gate;
+cancel.lst:18:8  cancel stops started work that has a name, but openGate is a hook. Name the work as it starts, then cancel it: start gate = openGate(); … cancel gate;
+cancel.lst:19:1  gate.state can't be set: it changes by itself as the work goes on, or when it's cancelled with cancel gate;
+cancel.lst:20:1  gate names the work it was started with, so it can't be given anything else. Give other work a name of its own: start other = openGate();
+cancel.lst:21:7  gate already names work started on line 15. Give this work a name of its own: start gate2 = …;
+cancel.lst:22:15  start runs a method call alongside, but count isn't a call. Write the call: start other = openGate();
+cancel.lst:23:15  start runs a method call alongside, but door.open isn't a call. Write the call: start third = openGate();
+cancel.lst:24:12  started work has no field called name. It has a state, to see how it's going: gate.state
+cancel.lst:25:14  gate names started work, which stays where it was started. Keep it on its own: keep gate;
+cancel.lst:26:8  there's nothing called nobody here. Declare it first, like int nobody = 0;
+cancel.lst:27:7  Run is one of Lust's built-in states, so it can't be a name.
+cancel.lst:28:7  print is a built-in, so it can't be a name.
+cancel.lst:29:7  gate names started work, which can't be printed. Its state can: gate.state, which is Run.Waiting, Going, Done or Cancelled.
+cancel.lst:30:9  gate names started work, which can't go in text. Its state can: gate.state, which is Run.Waiting, Going, Done or Cancelled.
+cancel.lst:31:13  gate names started work, which can't be compared. Its state can: gate.state, which is Run.Waiting, Going, Done or Cancelled.
+cancel.lst:32:8  gate names started work, which can't go in an array or a map. Its state can: gate.state, which is Run.Waiting, Going, Done or Cancelled.
+
+17 mistakes. Nothing was run.

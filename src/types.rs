@@ -99,6 +99,9 @@ pub enum Ty {
     Query(Rc<TableTy>),
     /// One row of a table, read and changed in the database itself: `Shop.items["tea"]`.
     TableRow(Rc<TableTy>),
+    /// Started work given a name (`start gate = openGate();`): `cancel gate;` stops it, and
+    /// `gate.state` says how it's going (a `Run` option).
+    Work,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -165,6 +168,7 @@ impl<'a> Names<'a> {
             Ty::Table(t) => format!("the table {}", t.name),
             Ty::Query(t) => format!("query on {}", t.name),
             Ty::TableRow(t) => format!("row of {}", t.name),
+            Ty::Work => "the name of started work".into(),
             Ty::Hook(sig) => {
                 let mut s = String::from("hook");
                 if sig.ret != Ty::Void {

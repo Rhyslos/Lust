@@ -903,6 +903,7 @@ fn walk_stmts(stmts: &[Stmt], f: &mut dyn FnMut(&Expr)) {
                 }
             }
             Stmt::Start { call, .. } => walk_expr(call, f),
+            Stmt::Cancel { work, .. } => walk_expr(work, f),
             Stmt::Keep { value, into, .. } => {
                 walk_expr(value, f);
                 if let Some(i) = into {
@@ -1050,7 +1051,7 @@ pub fn captures(body: &[Stmt], params: &[String], info: &Info) -> Vec<String> {
 fn declared(stmts: &[Stmt], out: &mut HashSet<String>) {
     for s in stmts {
         match s {
-            Stmt::Var { name, .. } => {
+            Stmt::Var { name, .. } | Stmt::Start { name: Some((name, _)), .. } => {
                 out.insert(name.clone());
             }
             Stmt::If { branches, otherwise, .. } => {
@@ -1173,6 +1174,7 @@ impl<'a> W<'a> {
             }
             Ty::Table(_) | Ty::Query(_) => "rt::db::Q".into(),
             Ty::TableRow(_) => "rt::db::RowRef".into(),
+            Ty::Work => "rt::WorkRef".into(),
             Ty::Void | Ty::Nothing | Ty::Error => "()".into(),
         }
     }
@@ -1232,8 +1234,9 @@ impl<'a> W<'a> {
                             let mut a = vec!["&o".to_string()];
                             a.extend((0..params.len()).map(|k| format!("a{k}")));
                             let copies: String = (0..params.len()).map(|k| format!("let a{k} = a{k}.clone(); ")).collect();
+                            let label = format!("the {ev} handler");
                             class_arms.push_str(&format!(
-                                "ID_{c} => {{ let o = o.clone(); {copies}rt::start(Box::new(move || m{x}_{}({}))) }}, ",
+                                "ID_{c} => {{ let o = o.clone(); let on = o.clone(); {copies}rt::start_on(&on, {label:?}, Box::new(move || m{x}_{}({}))) }}, ",
                                 ident(&h),
                                 a.join(", ")
                             ));
@@ -2221,12 +2224,27 @@ impl<'a> W<'a> {
             }
             // start openGate();: the call runs as a run of its own, with its own copies of the
             // variables it uses (as a hook has), straight away until it waits.
-            Stmt::Start { call, .. } => {
+            // start gate = openGate();: the same, and gate names the work. Work started in a
+            // method belongs to what's made there (the object's state option, or its node), and to
+            // the thing whose method it runs, so it's cancelled when either ends.
+            Stmt::Start { name, call, .. } => {
                 let body = [Stmt::Expr(call.clone())];
                 let captured = captures(&body, &[], self.info);
                 let uses_this = self.class.is_some() && has_this(&body, self.info);
                 let c = self.expr(call);
-                out.push_str(&format!("{pad}{{\n"));
+                let label = match name {
+                    Some((n, _)) => n.clone(),
+                    None => crate::check::start_label(call),
+                };
+                let mut w = self.owned(format!("rt::work({label:?})"));
+                if let Some(on) = self.start_subject(call) {
+                    w = on.replace("WORK", &w);
+                }
+                match name {
+                    Some((n, _)) => out.push_str(&format!("{pad}let v_{n}: rt::WorkRef = {{\n")),
+                    None => out.push_str(&format!("{pad}{{\n")),
+                }
+                out.push_str(&format!("{pad}    let w = {w};\n"));
                 for v in &captured {
                     out.push_str(&format!("{pad}    let v_{v} = v_{v}.clone();\n"));
                 }
@@ -2235,9 +2253,14 @@ impl<'a> W<'a> {
                 } else {
                     ("", "")
                 };
+                let end = if name.is_some() { "" } else { ";" };
                 out.push_str(&format!(
-                    "{pad}    {keep}\n{pad}    rt::start(Box::new(move || {{ {at}let _ = {c}; }}));\n{pad}}}\n"
+                    "{pad}    {keep}\n{pad}    rt::begin(w, Box::new(move || {{ {at}let _ = {c}; }})){end}\n{pad}}};\n"
                 ));
+            }
+            Stmt::Cancel { work, .. } => {
+                let w = self.expr(work);
+                out.push_str(&format!("{pad}rt::cancel(&{w});\n"));
             }
             // wait { is a? is b? }: rt::wait_for looks at the questions until they're all true;
             // with or after, it gives back false when time ran out first, and the block runs.
@@ -2248,7 +2271,7 @@ impl<'a> W<'a> {
                 questions,
                 check,
                 limit,
-                ..
+                pos,
             } => {
                 let lim = limit.as_ref().map(|(l, _)| self.coerced(l, &Ty::Float));
                 let mut seen = None;
@@ -2273,7 +2296,12 @@ impl<'a> W<'a> {
                             seen = Some((m, arms, opts));
                         }
                         let l = lim.as_ref().map_or("None".to_string(), |l| format!("Some({l})"));
-                        format!("rt::wait_for(&mut || {{ {take}{} }}, {l})", qs.join(" && "))
+                        let sure = if crate::check::only_code_changes(questions, check.as_deref(), self.info) {
+                            format!("Some({})", pos.line)
+                        } else {
+                            "None".to_string()
+                        };
+                        format!("rt::wait_for(&mut || {{ {take}{} }}, {l}, {sure})", qs.join(" && "))
                     }
                 };
                 let (pad, depth) = match &seen {
@@ -2587,6 +2615,7 @@ impl<'a> W<'a> {
                     _ => format!("v_{n}.clone()"),
                 }
             }
+            ExprKind::Field(t, _, _) if self.info.ty(t) == Ty::Work => format!("rt::work_state(&{})", self.expr(t)),
             ExprKind::Field(t, f, _) if self.info.ty(t) == Ty::Vec3 && f == "xy" => format!("rt::vxy({})", self.expr(t)),
             ExprKind::Field(t, f, _) if matches!(self.info.ty(t), Ty::Vec3 | Ty::Vec2 | Ty::Colour) => {
                 format!("({}.{f} as f64)", self.expr(t))
@@ -3134,6 +3163,27 @@ impl<'a> W<'a> {
                 format!("rt::own(this, {:?}, {made})", crate::ast::shown(&self.info.classes[c].name))
             }
             _ => made,
+        }
+    }
+
+    /// The thing whose method a start runs, when it's one that might end, as code that hands
+    /// WORK to it: `this` for its own method, or a variable or field holding a thing of a class
+    /// (not an object, which never ends).
+    fn start_subject(&mut self, call: &Expr) -> Option<String> {
+        match &call.kind {
+            // Something with a state, or a node, owns it already, until it ends.
+            ExprKind::Call(..) if self.info.calls.get(&call.id) == Some(&CallRes::Own) => {
+                let c = self.class?;
+                let ci = &self.info.classes[c];
+                (!ci.is_object && !ci.is_node && !self.info.stateful(c)).then(|| "rt::own(this, \"\", WORK)".to_string())
+            }
+            ExprKind::Method(t, ..) if matches!(&t.kind, ExprKind::Name(n) if n != "this") && matches!(self.info.ty(t), Ty::Class(_)) => {
+                if self.info.names.get(&t.id) == Some(&NameRes::Object) {
+                    return None;
+                }
+                Some(format!("rt::own_until(&{}, WORK)", self.expr(t)))
+            }
+            _ => None,
         }
     }
 

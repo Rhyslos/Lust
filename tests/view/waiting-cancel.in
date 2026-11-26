@@ -1,0 +1,9 @@
+click Start
+wait 0.6
+dump
+click Stop
+wait 1
+dump
+click Both
+wait 0.5
+dump

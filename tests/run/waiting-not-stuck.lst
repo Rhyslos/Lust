@@ -1,0 +1,48 @@
+-- A run waiting with a time limit isn't stuck: when it runs out, its block can change things,
+-- so the runs waiting for that aren't stopped by the circle check.
+object Flag {
+    has {
+        bool up = false;
+    }
+}
+
+method patient() {
+    wait { is Flag.up? } or after 1 {
+        print("patient gave up");
+    }
+}
+
+method raiser() {
+    wait { is Flag.up? } or after 2 {
+        print("raiser raises it");
+        Flag.up = true;
+    }
+}
+
+method follower() {
+    wait { is Flag.up? }
+    print("follower saw it");
+}
+
+start patient();
+start raiser();
+start follower();
+wait { is Flag.up? }
+print("main saw it");
+
+-- A run waiting seconds isn't stuck either, nor is the work waiting for it.
+method sleeper() {
+    wait 1.5;
+    Flag.up = false;
+}
+start s = sleeper();
+wait { is not Flag.up? }
+print("down again");
+wait {
+    check s.state {
+        when Done {
+            print("sleeper done");
+        }
+    }
+}
+end

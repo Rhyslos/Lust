@@ -1,0 +1,39 @@
+-- Two runs each waiting for what only the other would change: nothing else could ever wake
+-- them, so Lust stops and names them, and where they wait.
+state Door = [Shut, Open];
+
+object Gate {
+    has {
+        state = Door.Shut;
+    }
+
+    method swing() {
+        state = Door.Open;
+    }
+}
+
+object Guard {
+    has {
+        bool ready = false;
+    }
+}
+
+method openGate() {
+    wait { is Guard.ready? }
+    Gate:swing();
+}
+
+method watch() {
+    wait {
+        check Gate.state {
+            when Open {
+                print("never");
+            }
+        }
+    }
+}
+
+start gate = openGate();
+start guard = watch();
+print("waiting");
+end
