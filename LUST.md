@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (alpha 88):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options, set with `=`), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error` (with `Problem`, the kinds of failure, as a built-in state), `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too), with built-in states for their fixed choices (`Day`, `Request` and `Answer`). Waiting pauses only the run that waits (`wait`, `wait { }` until questions are true or a state is one of a `check`'s options, `or after` time limits, `start` to run a call alongside, `start gate = …` and `cancel gate;` to name and stop it, and `gate.state` to see how it's going), and so do asking a website and the computer's own file boxes; work started during a state is cancelled when the state ends, and a program whose runs could only wake each other stops with a message naming them. Events in any program (`event`, `on { }` and `send`), sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, tables and long lists, right-click menus, rows dragged to new places, dropped files, the mouse on a canvas, scrolling, pictures (SVG too), timers, keyboard shortcuts, fonts of your own, date and colour pickers, second windows, full screen, toasts, notifications and a tray icon, all drawn by Lust itself, sharp at any screen scaling, with input methods for typing any language and a tree for screen readers. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (alpha 89):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options, set with `=`), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error` (with `Problem`, the kinds of failure, as a built-in state), `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too), with built-in states for their fixed choices (`Day`, `Request` and `Answer`). Waiting pauses only the run that waits (`wait`, `wait { }` until questions are true or a state is one of a `check`'s options, `or after` time limits, `start` to run a call alongside, `start gate = …` and `cancel gate;` to name and stop it, and `gate.state` to see how it's going), and so do asking a website and the computer's own file boxes; work started during a state is cancelled when the state ends, and a program whose runs could only wake each other stops with a message naming them. In a game, event handlers and started work wait across the engine's ticks, on the game's own time. Events in any program (`event`, `on { }` and `send`), sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, tables and long lists, right-click menus, rows dragged to new places, dropped files, the mouse on a canvas, scrolling, pictures (SVG too), timers, keyboard shortcuts, fonts of your own, date and colour pickers, second windows, full screen, toasts, notifications and a tray icon, all drawn by Lust itself, sharp at any screen scaling, with input methods for typing any language and a tree for screen readers. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -681,7 +681,7 @@ print("Gate open");
 - **Failures:** a `try` inside a run catches that run's own failures, waits and all. A failure no `try` in its own run catches stops the program, even if the code that started the run was inside a `try`.
 - **Lust's own clock.** Runs wait on the same clock as tweens and timers. In a view's tests, `wait 2.5` in the test moves every run's clock along (section 17); `lust test` runs waits without taking the real time, so tests stay quick and give the same results every time.
 - **Failures stop the program,** so started work never ends in a failure of its own: it's done, cancelled, or the whole program has stopped.
-- **In an engine** (a library or components), runs aren't there yet: see below.
+- **In an engine** (a library or components), the engine's ticks move the runs, and `update` can't wait: see In an engine, below.
 
 ### Naming and stopping work: start name = and cancel
 
@@ -785,7 +785,7 @@ print("asking…");                -- runs straight away, while the request is o
 - **What comes back is the same** as when it held everything up: the same text, and on a failure the same `Problem` (`NoAnswer`, `NotFound`, `NotAllowed`, `BadText`), caught by a `try` in that run.
 - **A method that calls one waits for it,** as for any wait, so the code that calls it waits too, and can be `start`ed to go alongside instead.
 - **In the program's own code** it pauses that code, so runs started earlier go on while the request is out.
-- **Where a run can't pause, it holds everything up,** as it always did: in the code that draws a view (outside any callback), in a route's method answering a request (`Web:request`, `Web:serve`), and in an engine (below).
+- **Where a run can't pause, it holds everything up,** as it always did: in the code that draws a view (outside any callback), in a route's method answering a request (`Web:request`, `Web:serve`), and in an engine's update or other code the engine calls straight into (below).
 - **In tests** (`lust test`), the answer takes no time on Lust's clock: the run pauses for the runs due now, then waits for the answer before the clock moves on. So a test that asks a website prints the same every time, however long the answer takes. In a view's tests, a file box's answer (`choose` in the test) is seen once the test's clock moves: `click Open…` then `wait 0`.
 - **The rest stay as they are:** reading and writing files, databases, `ask(…)` and `Web:serve` hold everything up while they work. Files and databases are quick, and runs reading and writing the same file or table at once would see each other's half-done work; `ask` types into the console, which other runs would be printing over; and a server that pauses only its run (so `cancel` can stop it) needs both outputs' servers to look for requests on Lust's clock instead of waiting for them, which is still to come (WAITING.md).
 
@@ -818,7 +818,7 @@ wait {
 - **If they're all true straight away, nothing waits.** Events sent before the wait are heard first, as for `wait seconds;`.
 - **Lust looks again** each time the clock moves a 1/60 s step: once a frame in a window, and in a plain program on the same clock as `wait seconds;` and tweens, so something another run sets at 0.5 seconds is seen by 0.5 seconds and one step at the latest, and the code after the wait goes on there and then. Runs waiting at the same moment look in the order they started waiting.
 - **Looking runs the questions,** so a method in a question is called at every look. Lust has no `=` or `+=` inside a question, but a method can still change things: keep the methods a wait calls to asking.
-- **Where:** it pauses only its run, as `wait seconds;` does, so it works in the program's own code, in methods started with `start`, in event handlers, in a tween's done block and in a window's callbacks. In the code that draws a view (outside any callback) it stops the program with a message, as `wait seconds;` does.
+- **Where:** it pauses only its run, as `wait seconds;` does, so it works in the program's own code, in methods started with `start`, in event handlers, in a tween's done block and in a window's callbacks. In the code that draws a view (outside any callback) it stops the program with a message, as `wait seconds;` does. In an engine it looks again once a tick (below).
 - **A wait no one can end** (nothing will ever make the questions true) waits for ever, so give it a time limit when that can happen. When nothing else could ever run, Lust notices and stops (Waiting in a circle, above).
 
 ### Waiting for one of several options: check inside wait { }
@@ -855,9 +855,48 @@ wait {                           -- until the boss is in one of these, then that
 
 ### In an engine
 
-In an engine (a library or components), runs aren't there yet: `start` just calls the method, and `wait seconds;` pauses everything while tweens move, as before. Asking a website or opening a file box holds the call up until the answer comes, as before. Nothing else runs while code waits there, so a `wait { }` goes straight on when its questions are already true (and its `check`'s state is already one of its options, whose `when` then runs), and otherwise stops with a message saying it can't wait in an engine yet. `or after` on `wait seconds;` works as it does elsewhere.
+In a game (a library or components), everything above works, with the engine's ticks as the clock:
 
-`start gate = openGate();` names the work as anywhere else, but as the call runs straight through, the work is `Run.Done` by the next line, and cancelling it then does nothing. Work cancelled while it's still going (by a hook holding its name, say) stops at once, as elsewhere, and work started in a state is cancelled when it ends, which only matters while it's going. There are no runs waiting in an engine, so the circle check never stops one.
+```
+component Gate {
+    has {
+        bool opening = false;
+        bool flash = false;
+    }
+
+    method update(float dt) {
+        is Lever.pulled && not opening? then {
+            opening = true;
+            start open();                -- update goes on; open() waits on its own
+        }
+    }
+
+    method open() {
+        play("creak");
+        wait 2;                          -- two seconds of game time, across ticks
+        spawnEnemies();
+    }
+
+    on {
+        Hit(entity by, float damage) {
+            flash = true;
+            wait 0.2;                    -- only this handler pauses
+            flash = false;
+        }
+    }
+}
+```
+
+- **Runs:** each event handler (a component's `on { }`, and Lust's own events), each `start`, and each tween's done block is a run. It goes straight away until its first wait, and goes on in a later tick, while the engine keeps calling every component's `update`.
+- **`update` can't wait.** It runs every tick, and a second one would start while the first still waited, so the waiting goes in a method of its own, started from `update` (`start open();`), as a game engine's coroutines are. A `wait` written in a component's `update` is a mistake that says so, and one reached through a method `update` calls stops with the same advice. So does a wait in anything else the engine calls straight into: an object's `update`, a method the engine calls, and the program's own code as it starts. A `wait { }` there whose questions are already true goes straight on.
+- **The game's own time:** `wait 2;` is over once two seconds of the engine's ticks (their `dt`) have gone by, at the first tick that reaches it. A paused game pauses waits too, and a slowed one slows them. `or after` counts the same time. `wait 0;` goes on in the next tick.
+- **`wait { }` and a `check` in a wait look again once a tick,** even while the game is paused.
+- **In order:** each tick, after the objects' updates, tweens move, then the runs whose wait is over go on, in the order they're due (of two due together, the one that started waiting first), then the components' updates. A run that starts waiting during a tick goes on in a later one.
+- **Removed components:** when the engine removes a component (its entity is destroyed, or the component taken off), its handlers still waiting and the work started in its methods are cancelled, wherever they wait, what it made in its states ends, and its tweens stop. Work started in a component's method belongs to the component, whatever method it runs.
+- **Waiting in a circle** is never noticed in an engine: the engine keeps ticking, and an update could change anything a wait asks about.
+- **Asking a website** (in a game built as a Rust library) pauses only its run, looking for the answer once a tick; in code the engine calls straight into it holds the call up, as before.
+
+How an engine drives this is in section 21, Runs in an engine.
 
 ---
 
@@ -2465,7 +2504,7 @@ What the Rust program sees:
 - **The native methods' bodies:** the program implements `game::Host`, one function each (`entity_move_by(&self, this: &Entity, dx: f64)`, `now(&self)`), and hands it over with `game::set_host(…)` before `start`.
 - **Failures come back as a `LustError`.** Everything gives back a `Result`, and a Lust failure says where it happened: `file`, `line` and `column` (of the statement that failed), `message`, and `problem`, its kind as the name of a `Problem` option (`"NotFound"`, section 15). Shown with `{}`, it's the message Lust prints: `game.lst:24  this is nothing, so it has no fields or methods.` The program decides what to do with it.
 - **`game::LUST_VERSION`** is the version of Lust that wrote the library.
-- **No unsafe code.** A library starts with `#![forbid(unsafe_code)]`, so Rust itself checks it has none. The one thing that needed it, the computer's time zone for `Time:date()` and `Time:time()`, comes from the program instead: when the Lust uses either, `Host` has `local_time_offset(&self, unix_seconds: i64) -> i64`, the seconds the local time is ahead of UTC (0 for UTC). A program of its own (`lust build`) still asks the computer.
+- **No unsafe code.** A library starts with `#![forbid(unsafe_code)]`, so Rust itself checks it has none. The one exception is a library whose code waits (or asks a website): its runs get stacks of their own, as built programs' do (section 11), so it says `#![deny(unsafe_code)]` with that one module allowed, and its `Cargo.toml` has the corosensei library. The one thing that needed it, the computer's time zone for `Time:date()` and `Time:time()`, comes from the program instead: when the Lust uses either, `Host` has `local_time_offset(&self, unix_seconds: i64) -> i64`, the seconds the local time is ahead of UTC (0 for UTC). A program of its own (`lust build`) still asks the computer.
 - Ints, floats, text and bools are Rust's `i64`, `f64`, `String` and `bool`. A state's option comes in as `&'static str` (its full name) and goes back as a `String`, checked by name. A thing made from a class is `Option<Weapon>`, since it can be `nothing`. A `vec3` is the library's `Vec3 { x, y, z }` and a `rotation` its `Rotation { x, y, z, w }` (a quaternion), all `f32`, the same layout as Solis's and glam's. A `vec2` is its `Vec2 { x, y }`, and a `colour` its `Colour { r, g, b, a }` (`to_array()` gives `[f32; 4]`, and `Colour::from([r, g, b, a])` makes one); a colour coming in from the program has each part kept between 0 and 1. An array is a `Vec` of its items, copied each way.
 - **In LustScript**, the host's Lua function hands a `vec3` back as a Luau `vector` or any table with `x`, `y` and `z`, a rotation as a table with `x`, `y`, `z` and `w`, and an array as a plain list. Lust rounds the numbers to f32 and counts the list, so they're the same as Lust's own. In Luau, the `vec3`s Lust hands over are Luau vectors. A `vec2` is a table with `x` and `y`, and a `colour` a table with `r`, `g`, `b` and `a` (an `a` left out is 1), both ways, in plain Lua and Luau alike.
 
@@ -2503,7 +2542,8 @@ match lust::to_lua("main.lst", &files) {
 **The Lua** (`chunk.code`) runs in Lua 5.1, LuaJIT or Luau. Load it with the name `lust::LuaChunk::NAME` (in mlua: `.set_name(lust::LuaChunk::NAME)`), so a failure says where it came from. The engine gives native methods' bodies, and `send_event(to, name, values)`, in the table `LUST_NATIVES` first. Running the chunk runs the program's own start, and gives back a table:
 
 - **`version`**, **`components`** (by name) and **`events`** (by name: what each carries, as `{ key, name, kind }` lists, kinds being `bool`, `int`, `float`, `string`, `state`, `vec3`, `rotation` and `entity`).
-- **`new(name, entity)`** makes a component with its starting values, on an entity. The engine calls its `update(dt)` each tick, and `handle(event, values)` to deliver an event (it gives back whether the component handles it).
+- **`new(name, entity)`** makes a component with its starting values, on an entity. The engine calls its `update(dt)` each tick, and `handle(event, values)` to deliver an event (it gives back whether the component handles it; the handler is a run, so it may still be waiting).
+- **`removed(component)`** tells Lust the engine has removed a component, so its waiting runs are cancelled and its tweens stop (Runs in an engine, below).
 - **`swap(component)`**, on the table from new code, gives a component made by an earlier chunk the new code, in place, so the engine's hold on it stays good. It follows the same rule as `from_data`: a field kept by name keeps its value; a field whose kind changed, or a new one, takes its starting value; a removed field is dropped; the entity it's on stays. It gives back the component and notes on what started over (`Gun's ammo is float now, not int, so it starts at 10.`), or `nil` and a note if the component isn't in the code any more.
 - **`changes(old)`**, given the earlier chunk's table, lists the components whose fields `changed`, and those `removed` and `added`, so an inspector knows what to show again.
 - The code outside classes and methods runs again with each new chunk, and objects start over.
@@ -2578,14 +2618,15 @@ pass Gun;
 - **`update(float dt)`** runs once a tick, with how long a tick is. The engine runs the entities in order of their IDs, and an entity's components in order of their names, so a game runs the same way every time.
 - **`entity`** is a value the engine hands over: an entity, or `nothing`. Entities can be compared with `==`, and `.text()` gives the 13 letters and digits Solis writes them as. Lust can't make one; it gets them from the engine's native methods, from `this`, and from `new` of a class the engine makes (below).
 - A component can't be `like` another one yet.
-- A component's methods can't be called `handle`, `schema`, `toData`, `setData`, `fromData` or `setMe`: the engine uses those on every component.
+- A component's methods can't be called `handle`, `schema`, `toData`, `setData`, `fromData`, `setMe` or `removed`: the engine uses those on every component.
+- **`update` can't wait:** it runs every tick, so waiting goes in a method of its own, started from `update` (`start open();`). Section 11, In an engine.
 
 Built as a library, each component also has what the engine needs to keep, show and run it, in the same kinds as Solis's own (`reflect`):
 
 - `Gun::NAME`, and `Gun::schema()`: its fields, their kinds and their starting values, in the order they're written. `game::components()` lists every component's.
 - `gun.to_data()` gives its fields' values by name, as a `Data` (a `BTreeMap<String, Value>`), and `Gun::from_data(&data)` makes one from values. A value that's missing, or of the wrong kind, keeps the starting value.
 - `gun.set_data(&data)` changes only the fields `data` has, so an edit made in the editor while the game runs keeps the rest, like ammo left and cooldowns.
-- `gun.set_me(Some(id))` puts it on an entity, and `gun.update(dt)` runs a tick. An entity is its 64-bit ID, `Option<u64>`, with `None` for nothing.
+- `gun.set_me(Some(id))` puts it on an entity, and `gun.update(dt)` runs a tick. `gun.removed()` says the engine has removed it (Runs in an engine, below). An entity is its 64-bit ID, `Option<u64>`, with `None` for nothing.
 - `Value` is `Bool`, `Int`, `Float`, `Text`, `List` (a vec3's three numbers, a vec2's two, a rotation's four, a colour's four from 0 to 1) and `Entity`, and `FieldKind` is `Bool`, `Int`, `Float`, `Text`, `Choice` (with the options), `Vec3`, `Vec2`, `Rotation`, `Colour` and `Entity`. A colour from `set_data` has its parts kept between 0 and 1.
 
 ### Things the engine makes
@@ -2653,8 +2694,31 @@ Tweens (section 17) move when the engine says: once a tick, **after the objects'
 
 - A tween on a component's field belongs to that component: it moves it, and keeps it, until it ends.
 - **New code:** tweens run inside the chunk that started them, so when the engine moves to a new chunk (and calls its `tickTweens`), tweens the old code started stop where they are. Their done blocks don't run.
-- **Removing an entity** doesn't stop its tweens: Lust has no way to hear that a component has gone yet. They keep moving the component nobody ticks until they end, and their done blocks still run (a `send` from one goes to an entity the engine no longer has, which it should ignore).
+- **Removing an entity:** the engine says so with `removed` (below), which stops its components' tweens where they are, without their done blocks. A tween on something else (an object's field, say) that a removed component started keeps going.
 - `tickTweens` and `tick_tweens` with 0 move nothing. A failure in a done block comes back as from `update`.
+- The same call moves Lust's waiting runs on too (below).
+
+### Runs in an engine
+
+Waiting works in a game as it does in a window (section 11, In an engine): each event handler, `start` and tween's done block is a run, and a `wait` pauses only its run, across ticks. The engine drives it with the calls it already makes, and one more:
+
+- **`tickTweens(dt)`** (Lua) or **`tick_tweens(dt)`** (Rust), once a tick after the objects and before the components' updates, moves Lust's clock on by `dt`, moves the tweens, then goes on with every run whose wait is over, in the order they're due. `dt` is the game's own time: 0 while it's paused, smaller while it's slowed. With 0 the clock stays put, but `wait { }`s still look again. An engine that never calls it never freezes: its runs just stay where they wait.
+- **`removed(component)`** (Lua: `api.removed(gun)`; Rust: `gun.removed()`), once, when the engine stops running a component for good (its entity is destroyed, the component taken off, or stopped after a failure): its handlers still waiting and the work started in its methods are cancelled (none of their code runs again), what it made in its states ends, and its tweens stop.
+- **Failures:** a run that fails before its first wait fails the call that started it (`update`, `handle`, …); one that fails after a wait fails `tickTweens` / `tick_tweens`, with the file and line of the run's own code. Runs due after it that tick go on in the next.
+- **What can't wait:** a component's or object's `update`, a method the engine calls, and the program's own start: code the engine calls straight into. A wait there stops that call with a message saying to start a method that waits instead.
+- **New code:** runs belong to the chunk that started them, like tweens: once the engine ticks a new chunk instead, the old code's waiting runs never go on.
+- **In Lua** each run is a coroutine: a native method's body shouldn't call back into Lust code that waits, since Lua can't pause across it. In Rust each run has a stack of its own, so only a library whose code waits needs them (and the corosensei library).
+
+```
+-- once a tick, on each core
+api.tick(dt)                          -- the objects
+api.tickTweens(dt)                    -- tweens, then runs whose wait is over
+gun:update(dt)                        -- each component
+gun:handle("Hit", values)             -- events: each handler is a run
+api.removed(gun)                      -- its entity is gone
+```
+
+ENGINES.md (alpha 89) lists what an engine does to move over.
 
 ### Events
 
@@ -2691,7 +2755,7 @@ component Gun {
 ```
 
 - **`event Name(…)`** says what an event carries, in order. An event that reaches the engine (one a component handles, or one sent to an entity) carries the same kinds a component's fields hold: `bool`, `int`, `float`, `string`, a state, `vec3`, `vec2`, `rotation`, `colour` and `entity`. Events heard only by Lust's own things can carry anything.
-- **A component's `on { }` block** runs a handler when its event reaches the entity the component is on. It takes what the event carries, in the same order (the names can be its own). The old way, `on Hit(…) { … }` on its own, is a mistake now that shows the `on { }` form.
+- **A component's `on { }` block** runs a handler when its event reaches the entity the component is on. Each handler is a run, so it can wait (section 11, In an engine). It takes what the event carries, in the same order (the names can be its own). The old way, `on Hit(…) { … }` on its own, is a mistake now that shows the `on { }` form.
 - **`send Name(…) to target;`** with an entity hands the event to the engine, which queues it. Nothing runs straight away: the engine delivers the queue in order, to each component on the entity in order of their names. Events sent while delivering (Hit sends Damaged, which sends Died) join the end of the same tick's queue, so a game runs the same way every time.
 - **Components hear only the engine.** `send Name(…);` with no `to`, or `to` a thing of a class, stays in Lust: a game's objects and classes can have `on` blocks too, and hear those (section 11). Those events are delivered after each `update` and `handle` the engine runs, after `tick_objects` and `tick_tweens` (`tick` and `tickTweens` in Lua), and after every other call into the library.
 - The engine knows events by their names, so two files can't each have an event with the same name. A program that sends to an entity needs the engine, so like native methods it's built with `lust build --library`; `lust run` on its own stops at the first such `send`. Events that stay in Lust need nothing: a plain program with them runs with `lust run` and builds with `lust build`.

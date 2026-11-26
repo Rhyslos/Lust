@@ -1,0 +1,129 @@
+-- Runs in an engine: started work, event handlers and tweens' done blocks wait across the
+-- engine's ticks, on the engine's own time (its dt), while it keeps calling every update.
+-- tests/library-wait/runs.lst is the same game, built as a Rust library.
+method log(string words) native;
+
+event Knock(int times);
+
+object Lever {
+    has {
+        bool pulled = false;
+    }
+}
+
+component Gate {
+    has {
+        bool begun = false;
+        int opened = 0;
+        float glow = 0;
+    }
+
+    method update(float dt) {
+        is not begun? then {
+            begun = true;
+            start open();
+            start watch();
+            start alarm();
+            start late();
+            tween glow to 1 over 0.25 {
+                log("glow done");
+                wait 0.125;
+                log("glow settled");
+            }
+        }
+    }
+
+    method open() {
+        log("gate creaks");
+        wait 0.25;
+        opened += 1;
+        log("gate open");
+    }
+
+    -- wait { } looks again once a tick, and or after counts the engine's time.
+    method watch() {
+        wait {
+            is Lever.pulled?
+        } or after 2 {
+            log("nobody pulled the lever");
+        }
+        log("watch over, lever pulled: {Lever.pulled}");
+    }
+
+    method late() {
+        wait {
+            is opened > 5?
+        } or after 0.75 {
+            log("gave up after 0.75 seconds of game time");
+        }
+    }
+
+    method alarm() {
+        start bell = ring();
+        wait 0.5;
+        cancel bell;
+        log("bell is {bell.state}");
+    }
+
+    method ring() {
+        loop {
+            log("ring");
+            wait 0.125;
+        }
+    }
+
+    on {
+        Knock(int times) {
+            log("knock x{times}");
+            wait 0.25;
+            log("answered {times} knocks");
+        }
+    }
+}
+
+-- Removed by the engine while its work waits: none of it goes on.
+component Guard {
+    has {
+        bool begun = false;
+    }
+
+    method update(float dt) {
+        is not begun? then {
+            begun = true;
+            start patrol();
+        }
+    }
+
+    method patrol() {
+        loop {
+            log("guard walks");
+            wait 0.25;
+        }
+    }
+
+    on {
+        Knock(int times) {
+            log("guard hears it");
+            wait 1;
+            log("guard never says this");
+        }
+    }
+}
+
+-- An update can't wait, even through a method it calls: it says to start that method instead.
+component Sleepy {
+    method update(float dt) {
+        rest();
+    }
+
+    method rest() {
+        wait 1;
+    }
+}
+
+method pullLever() {
+    Lever.pulled = true;
+}
+
+pass Gate, Guard, Sleepy, Lever, pullLever;
+end

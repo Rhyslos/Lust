@@ -28,6 +28,9 @@ component Health {
 
     method handle() {
     }
+
+    method removed() {
+    }
 }
 
 schema Plain {

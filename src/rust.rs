@@ -114,9 +114,10 @@ const SLOW: &[&str] = &["web_get", "web_post", "files_chooseOpen", "files_choose
 
 /// Whether a run can pause while another goes on, so runs need stacks of their own: the program
 /// waits (or asks a slow built-in), and has runs besides its own code (start, tweens' done blocks,
-/// events or a window). An engine's library has none yet.
+/// events or a window). In an engine's library, event handlers and tweens' done blocks are runs,
+/// so waiting is enough.
 fn needs_runs(info: &Info, library: bool) -> bool {
-    !library && (info.waits || uses(info, SLOW)) && (info.starts || info.lust_events || views(info))
+    (info.waits || uses(info, SLOW)) && (library || info.starts || info.lust_events || views(info))
 }
 
 fn serves(info: &Info) -> bool {
@@ -612,7 +613,7 @@ pub fn write(prog: &Program, info: &Info, files: &[String], library: bool) -> St
     let ending = if library {
         let api = w.library_api(prog, &class_decls);
         format!(
-            "{host}{api}\nconst FILES: &[&str] = &[{files_list}];\n\n/// Runs the Lust code's own start: makes its objects, then runs the code written outside\n/// classes and methods. Call it once, before anything else.\npub fn start() -> Result<(), LustError> {{\n    rt::catch(FILES, || {{ rt::started(); program() }})\n}}\n\n/// Moves every running tween on by dt seconds, and runs the done blocks of those that end. An\n/// engine calls it once a tick, after tick_objects and before the components' updates.\npub fn tick_tweens(dt: f64) -> Result<(), LustError> {{\n    rt::catch(FILES, || {{ rt::tween_step(dt); }})\n}}\n\nfn program() {{\n{body}}}\n"
+            "{host}{api}\nconst FILES: &[&str] = &[{files_list}];\n\n/// Runs the Lust code's own start: makes its objects, then runs the code written outside\n/// classes and methods. Call it once, before anything else.\npub fn start() -> Result<(), LustError> {{\n    rt::catch(FILES, || {{ rt::started(); program() }})\n}}\n\n/// Moves Lust's clock on by dt seconds: every running tween moves (and the done blocks of those\n/// that end run), then the runs whose wait is over go on. An engine calls it once a tick, after\n/// tick_objects and before the components' updates.\npub fn tick_tweens(dt: f64) -> Result<(), LustError> {{\n    rt::catch(FILES, || rt::engine_tick(dt))\n}}\n\nfn program() {{\n{body}}}\n"
         )
     } else {
         format!("{host}\nfn program() {{\n{body}}}\n\nfn main() {{\n    rt::main(program, &[{files_list}]);\n}}\n")
@@ -1629,8 +1630,21 @@ impl<'a> W<'a> {
                 ));
                 args.push(format!("a{i}"));
             }
+            // Each handler is a run of its own, belonging to the component. In code that never
+            // waits it can't pause, so it's just called, which is quicker.
+            if !needs_runs(self.info, true) {
+                b.push_str(&format!(
+                    "                rt::catch(FILES, || d{root}_{}({}))?;\n                Ok(true)\n            }}\n",
+                    ident(&m),
+                    args.join(", ")
+                ));
+                arms.push_str(&b);
+                handles.push(format!("{es:?}"));
+                continue;
+            }
+            args[0] = "&o".to_string();
             b.push_str(&format!(
-                "                rt::catch(FILES, || d{root}_{}({}))?;\n                Ok(true)\n            }}\n",
+                "                let o = self.0.clone();\n                let on = o.clone();\n                rt::catch(FILES, move || rt::start_on(&on, \"the {es} handler\", Box::new(move || {{ d{root}_{}({}); }})))?;\n                Ok(true)\n            }}\n",
                 ident(&m),
                 args.join(", ")
             ));
@@ -1638,7 +1652,7 @@ impl<'a> W<'a> {
             handles.push(format!("{es:?}"));
         }
         let handle = format!(
-            "\n    /// The events it handles, by name.\n    pub const HANDLES: &'static [&'static str] = &[{}];\n\n    /// Runs its handler for an event: false if it has none for this one.\n    pub fn handle(&self, event: &str, values: &[Value]) -> Result<bool, LustError> {{\n        match event {{\n{arms}            _ => Ok(false),\n        }}\n    }}\n",
+            "\n    /// The engine removed it (its entity is gone, or it was taken off): the work it started and\n    /// its handlers still waiting are cancelled, what it made in its states ends, and its tweens\n    /// stop where they are.\n    pub fn removed(&self) -> Result<(), LustError> {{\n        rt::catch(FILES, || rt::removed(&self.0))\n    }}\n\n    /// The events it handles, by name.\n    pub const HANDLES: &'static [&'static str] = &[{}];\n\n    /// Runs its handler for an event: false if it has none for this one.\n    pub fn handle(&self, event: &str, values: &[Value]) -> Result<bool, LustError> {{\n        match event {{\n{arms}            _ => Ok(false),\n        }}\n    }}\n",
             handles.join(", ")
         );
         format!(
@@ -2237,8 +2251,18 @@ impl<'a> W<'a> {
                     None => crate::check::start_label(call),
                 };
                 let mut w = self.owned(format!("rt::work({label:?})"));
-                if let Some(on) = self.start_subject(call) {
+                let on = self.start_subject(call);
+                // In a component, work also belongs to the component, so it's cancelled when the
+                // engine removes it (a stateful one's own state option already ties it there).
+                let own_self = self
+                    .class
+                    .is_some_and(|c| self.info.classes[c].is_component && !self.info.stateful(c))
+                    && !matches!(&call.kind, ExprKind::Call(..) if on.is_some());
+                if let Some(on) = on {
                     w = on.replace("WORK", &w);
+                }
+                if own_self {
+                    w = format!("rt::own(this, \"\", {w})");
                 }
                 match name {
                     Some((n, _)) => out.push_str(&format!("{pad}let v_{n}: rt::WorkRef = {{\n")),

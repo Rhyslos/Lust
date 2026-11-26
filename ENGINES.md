@@ -205,3 +205,45 @@ An engine moving from alpha 48 to alpha 67 or later reads everything below.
 - **Rust:** started work, event handlers and tweens' done blocks go through `rt::begin` (which catches a cancel and passes every failure on as before); `rt::wait_for` takes a third value, used by the circle check. No new dependencies and no unsafe code in a library.
 - **Lua:** event handlers and tweens' done blocks in an engine run inside a `pcall` that passes every failure on unchanged, so a cancel can stop them; a chunk is otherwise the same.
 
+
+## alpha 89: waiting, step 6: runs in engines
+
+Game code can now wait in an engine the way it does in a window (LUST.md, section 11, Waiting, and section 21, Runs in an engine). A `wait` pauses only its run, across the engine's ticks, while the engine keeps calling every update.
+
+- **What's a run:** each event handler (a component's `on { }`, and Lust's own events), each `start`, and each tween's done block. A run goes straight away until its first wait, then goes on in a later tick.
+- **What can't wait:** the code the engine calls straight into: a component's `update`, an object's `update` (`tick`, `tick_objects`), a passed method, and the program's own start. `update` is still called every tick, as before; to wait, game code starts a method from it (`start openGate();`), as game engines' coroutines are started from an update. A `wait` written straight in a component's `update` is a mistake; one reached through a method that `update` calls stops that call with "this wait would hold up the whole game: code the engine calls (an update, an object's tick, a method it calls) can't wait. Put the waiting in a method of its own and start it: start openGate();" (problem `Other`). Before, `wait` there held up the whole engine for that long, and `wait { }` stopped with "can't wait in an engine yet".
+- **The engine's clock:** runs move when the engine calls **`tickTweens(dt)`** (Lua) or **`tick_tweens(dt)`** (Rust), which it already calls once a tick, after the objects and before the components' updates. It now moves Lust's clock on by `dt`, moves the tweens, then wakes every run whose wait is over, in the order they're due (and of two due together, the one that started waiting first). Runs that start waiting during it, or in the updates after it, go on in a later tick.
+  - **Engine time, not wall time:** `wait 2;` is over once the engine's `dt`s add up to 2 seconds, at the first tick that reaches it. A paused game (dt 0) moves no waits, and a slowed one (smaller dt) moves them slower. `or after` counts the same time.
+  - **`wait { }` and `check` in waits look once a tick,** in that call, even with dt 0. `wait 0;` goes on in the next tick.
+  - **An engine that never calls it** (or only calls it with 0) never freezes: runs just stay where they wait.
+- **Removing a component:** the new **`removed(component)`** (Lua: `api.removed(gun)`; Rust: `gun.removed()`) says the engine has removed it (its entity is gone, or the component was taken off). The work it started and its handlers still waiting are cancelled (none of their code runs again), things it made in its states end, and its tweens stop where they are, without their done blocks. Call it once, when the component stops running for good. Work started in a component's methods belongs to the component for this, whatever method it runs. A component's method can't be called `removed` now.
+- **Failures:** a failure in a run comes back from the call that was running it: from `update` or `handle` when it fails before its first wait, and from `tickTweens` / `tick_tweens` when it fails after one, with the file and line of the run's own code. Runs due after it in that tick go on in the next. `handle` gives back true once the handler has started, whether or not it's still waiting.
+- **The circle check is off in engines:** the engine keeps ticking, and its updates can change anything a `wait { }` asks about, so nothing is ever certain to be stuck.
+- **New code (`swap`):** runs live in the chunk that started them, like tweens: once the engine calls the new chunk's `tickTweens` instead of the old one's, the old code's waiting runs never go on.
+- **Slow built-ins** (`Web:get`, file boxes) pause only their run in a Rust library, looking for the answer once a tick; in code the engine calls straight into they hold the call up, as before. Luau has neither.
+- **Rust:** a library whose code waits (or asks a website) has runs on stacks of their own, as built programs do: its `Cargo.toml` has `corosensei = "0.3"` (MIT or Apache), and it says `#![deny(unsafe_code)]` with the one runs module allowed, instead of `forbid`. A library that never waits is unchanged. Each component has `removed()`. `rt::wait_all` is gone.
+- **Lua:** the chunk calls `_L.runs_engine()` as it starts; the table has `removed(component)`, and `tickTweens(dt)` moves the runs. Each handler runs as a coroutine, so a native method's body shouldn't call back into Lust code that waits (Lua can't pause across it).
+
+```lua
+-- once a tick, on each shard
+api.tick(dt)                      -- the objects' updates
+api.tickTweens(dt)                -- tweens, then runs whose wait is over
+for _, c in ipairs(components) do c:update(dt) end
+-- deliver the events: c:handle(name, values) starts each handler as a run
+-- when an entity is destroyed, for each Lust component that was on it:
+api.removed(c)
+```
+
+```rust
+game::tick_objects(dt)?;
+game::tick_tweens(dt)?;           // tweens, then runs whose wait is over
+gun.update(dt)?;
+gun.handle("Hit", &[Value::Float(6.0)])?;
+gun.removed()?;                   // its entity is gone: its waiting work is cancelled
+```
+
+- **The engine does:**
+  - keeps calling `tickTweens` / `tick_tweens` once a tick, with the game's own `dt` (0 while paused);
+  - calls `removed` for every Lust component it stops for good (its entity destroyed, the component taken off, or stopped after a failure);
+  - treats what runs inside `tickTweens` as it treats tweens' done blocks: their changes and sends happen there, and a failure there belongs to whichever component's run it was (the message points at the Lust line);
+  - moves any `wait` out of its own Lust files' updates into a started method.

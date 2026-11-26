@@ -204,6 +204,14 @@ pub fn settle() {
 /// Lust's own things are delivered before it gives back.
 pub fn catch<R>(files: &[&str], f: impl FnOnce() -> R) -> Result<R, LustError> {
     quiet();
+    // Lust built as a library is in an engine: runs are on, and the engine's tick moves them. A
+    // failure that reached the engine is over: the next call starts afresh.
+    RUNS.with(|r| {
+        let mut r = r.borrow_mut();
+        r.on = true;
+        r.engine = true;
+        r.fatal = false;
+    });
     let depth = DEPTH.with(|c| c.get());
     let f = || {
         let r = f();
@@ -1458,18 +1466,40 @@ pub fn wait(s: f64) {
     if s.is_infinite() || s > 24.0 * 24.0 * 3600.0 {
         fail_as("OutOfRange", format!("can't wait {} seconds; the longest wait is 24 days.", ftext(s)));
     }
-    if !RUNS.with(|r| r.borrow().on) {
-        wait_all(s);
-        return;
-    }
     // Events sent before the wait are heard as it starts.
     settle();
     stop_if_cancelled();
+    no_wait_here();
     let due = TWEENS.with(|t| t.borrow().clock_now) + s;
-    if !runs::in_run() && TWEENS.with(|t| t.borrow().viewing) > 0 {
+    pause(due, Root::Other);
+}
+
+/// Where code can't wait: the code the engine calls straight into (an update, an object's tick, a
+/// passed method, the program's start), and the code that draws a view.
+fn no_wait_here() {
+    if runs::in_run() {
+        return;
+    }
+    let (on, engine) = RUNS.with(|r| {
+        let r = r.borrow();
+        (r.on, r.engine)
+    });
+    if engine || !on {
+        fail("this wait would hold up the whole game: code the engine calls (an update, an object's tick, a method it calls) can't wait. Put the waiting in a method of its own and start it: start openGate();".into());
+    }
+    if TWEENS.with(|t| t.borrow().viewing) > 0 {
         fail("this wait would stop the window, so it can't go here. Put it in a button's or a timer's code, or in a method started with start.".into());
     }
-    pause(due, Root::Other);
+}
+
+/// How soon a run waiting for something looks again: the clock's next 1/60 s step, or in an
+/// engine the next tick.
+fn next_look() -> f64 {
+    let now = TWEENS.with(|t| t.borrow().clock_now);
+    if RUNS.with(|r| r.borrow().engine) {
+        return now;
+    }
+    (((now + 1e-9) * 60.0).floor() + 1.0) / 60.0
 }
 
 /// The run going now pauses until `due` (the program's own code, waiting in `how`). A run that's
@@ -1494,6 +1524,10 @@ pub fn wait_or(s: f64, limit: f64) -> bool {
     if limit < 0.0 || limit.is_nan() {
         fail_as("OutOfRange", format!("a time limit can't be {} seconds.", ftext(limit)));
     }
+    if s < 0.0 || s.is_nan() {
+        fail_as("OutOfRange", format!("can't wait {} seconds.", ftext(s)));
+    }
+    no_wait_here();
     if limit < s {
         wait(limit);
         false
@@ -1518,19 +1552,13 @@ pub fn wait_for(look: &mut dyn FnMut() -> bool, limit: Option<f64>, line: Option
     if look() {
         return true;
     }
-    if !RUNS.with(|r| r.borrow().on) {
-        fail("wait { } can't wait in an engine yet: nothing else runs while it waits, so its questions could never come true. Runs come to engines later.".into());
-    }
+    no_wait_here();
     let in_run = runs::in_run();
-    if !in_run && TWEENS.with(|t| t.borrow().viewing) > 0 {
-        fail("this wait would stop the window, so it can't go here. Put it in a button's or a timer's code, or in a method started with start.".into());
-    }
     let due = limit.map(|l| TWEENS.with(|t| t.borrow().clock_now) + l);
     let sure = if limit.is_none() { line } else { None };
     let me = if in_run { CURRENT.with(|c| c.borrow().clone()) } else { None };
     loop {
-        let now = TWEENS.with(|t| t.borrow().clock_now);
-        let mut at = (((now + 1e-9) * 60.0).floor() + 1.0) / 60.0;
+        let mut at = next_look();
         if let Some(d) = due.filter(|d| *d < at) {
             at = d;
         }
@@ -1557,50 +1585,14 @@ pub fn wait_for(look: &mut dyn FnMut() -> bool, limit: Option<f64>, line: Option
     }
 }
 
-/// wait in an engine: pauses everything, while tweens move on.
-fn wait_all(s: f64) {
-    // Events sent before the wait are heard as it starts.
-    settle();
-    let start = std::time::Instant::now();
-    let until = |secs: f64| {
-        let due = start + std::time::Duration::from_secs_f64(secs.max(0.0));
-        let now = std::time::Instant::now();
-        if due > now {
-            std::thread::sleep(due - now);
-        }
-    };
-    // Tweens move on during the wait, a 1/60 s step at a time, on the clock wait keeps.
-    let steps = TWEENS.with(|t| {
-        let mut t = t.borrow_mut();
-        if t.stepping || t.viewing > 0 {
-            return None;
-        }
-        let before = t.clock_now;
-        t.clock_now += s;
-        let last = ((t.clock_now + 1e-9) * 60.0).floor() as i64;
-        let first = t.clock_ticks + 1;
-        t.clock_ticks = t.clock_ticks.max(last);
-        Some((before, first, last))
-    });
-    if let Some((before, first, last)) = steps {
-        for k in first..=last {
-            if TWEENS.with(|t| t.borrow().live) == 0 {
-                break;
-            }
-            until(k as f64 / 60.0 - before);
-            tween_step(1.0 / 60.0);
-        }
-    }
-    until(s);
-}
-
 // ----- runs: pieces of work that wait on their own -----
 // A run is the program's own code from the top, a window's callback, an event's handler, a
 // tween's done block, or a method started with start. wait pauses only its run. Each run but the
 // program's own code has a stack of its own (the runs module); when the program's own code waits,
 // it moves the clock on, waking the other runs as their times come, until its own time comes.
-// runtime.lua does the same, in the same order. In an engine runs are off: start just calls, and
-// wait pauses everything while tweens move.
+// runtime.lua does the same, in the same order. In an engine, the engine's tick moves the clock
+// (engine_tick): code the engine calls can't wait, but it can start runs, and event handlers and
+// tweens' done blocks are runs, which wait across ticks.
 
 /// A run waiting: when it's due, and of two due together, which started waiting first.
 struct Sleeper {
@@ -1634,6 +1626,8 @@ impl Ord for Sleeper {
 struct Runs {
     /// A plain program or a window: waits pause only their run.
     on: bool,
+    /// In an engine (a library): the engine's tick moves the runs, and the code it calls can't wait.
+    engine: bool,
     /// A run failed: no try catches it, and the program stops.
     fatal: bool,
     seq: u64,
@@ -1802,7 +1796,7 @@ pub fn start(f: Box<dyn FnOnce()>) {
 }
 
 /// start openGate(); and start gate = openGate();: runs the call as work w, straight away until
-/// it waits or ends, and gives back w. In an engine, it's just called.
+/// it waits or ends, and gives back w.
 pub fn begin(w: WorkRef, f: Box<dyn FnOnce()>) -> WorkRef {
     let Some(wr) = w.clone() else { return w };
     if !RUNS.with(|r| r.borrow().on) {
@@ -2079,6 +2073,56 @@ fn run_until(root: Option<(f64, u64)>, how: Root) {
     }
 }
 
+/// The engine's tick (its tick_tweens): the clock moves dt seconds on (none when dt isn't above 0,
+/// so a paused game pauses waits too), tweens step, then each run that's due goes on, in the order
+/// they're due. Runs that wait again now, or start waiting during it, go on in a later tick.
+pub fn engine_tick(dt: f64) {
+    if dt > 0.0 {
+        TWEENS.with(|t| {
+            let mut t = t.borrow_mut();
+            t.clock_now += dt;
+            let k = ((t.clock_now + 1e-9) * 60.0).floor() as i64;
+            t.clock_ticks = t.clock_ticks.max(k);
+        });
+    }
+    tween_step(dt);
+    let now = TWEENS.with(|t| t.borrow().clock_now);
+    let upto = RUNS.with(|r| r.borrow().seq);
+    loop {
+        let due = RUNS.with(|r| {
+            let mut r = r.borrow_mut();
+            let ready = r.sleeping.peek().is_some_and(|s| s.due <= now + 1e-9 && s.seq <= upto);
+            if ready {
+                r.sleeping.pop()
+            } else {
+                None
+            }
+        });
+        let Some(s) = due else { break };
+        wake(s);
+        settle();
+    }
+}
+
+/// The engine removed a component (its entity is gone, or it was taken off): the work it started
+/// and its handlers still waiting are cancelled, what it made in its states ends, and its tweens
+/// stop where they are, without their done blocks.
+pub fn removed<O>(o: &Rc<RefCell<O>>) {
+    let a = Rc::as_ptr(o) as *const () as usize;
+    TWEENS.with(|t| {
+        let mut t = t.borrow_mut();
+        let keys: Vec<TweenKey> = t.places.keys().filter(|k| k.0 == a).copied().collect();
+        for k in keys {
+            if let Some(i) = t.places.remove(&k) {
+                if t.list[i].take().is_some() {
+                    t.live -= 1;
+                }
+            }
+        }
+    });
+    end_owned(o, "this was made by a component the engine has removed.");
+}
+
 /// A window's clock moves the runs: dt seconds on, waking each that's due (when `wake_due`).
 /// Gives back the seconds until the next is due (None when none waits), or what failed.
 pub fn runs_view(dt: f64, wake_due: bool) -> Result<Option<f64>, String> {
@@ -2194,9 +2238,11 @@ pub fn answering(d: i32) {
 /// Waits for slow work's answer, pausing only the run that asked.
 pub fn await_slow(s: Slow) -> SlowResult {
     let in_run = runs::in_run();
-    let can = RUNS.with(|r| r.borrow().on)
-        && ANSWERING.with(|a| a.get()) == 0
-        && (in_run || TWEENS.with(|t| t.borrow().viewing) == 0);
+    let (on, engine) = RUNS.with(|r| {
+        let r = r.borrow();
+        (r.on, r.engine)
+    });
+    let can = on && ANSWERING.with(|a| a.get()) == 0 && (in_run || (!engine && TWEENS.with(|t| t.borrow().viewing) == 0));
     if !can {
         return s.wait();
     }
@@ -2209,8 +2255,7 @@ pub fn await_slow(s: Slow) -> SlowResult {
         if let Some(r) = s.look() {
             return r;
         }
-        let now = TWEENS.with(|t| t.borrow().clock_now);
-        at = (((now + 1e-9) * 60.0).floor() + 1.0) / 60.0;
+        at = next_look();
     }
 }
 

@@ -970,11 +970,15 @@ function L.engine(version, components, events, classes, objects, ticked)
   -- Delivers events sent to Lust's own things (send Saved(…);), for an engine that runs Lust code
   -- some other way. Components' update and handle, tick and tickTweens deliver them already.
   api.settle = L.settle
-  -- Moves every running tween on by dt (and runs the done blocks of those that end): the engine
-  -- calls it once a tick, after the objects' tick and before the components' updates.
+  -- Moves Lust's clock on by dt: every running tween moves (and the done blocks of those that end
+  -- run), then the runs whose wait is over go on. The engine calls it once a tick, after the
+  -- objects' tick and before the components' updates.
   function api.tickTweens(dt)
-    L.tween_step(dt)
+    L.engine_tick(dt)
   end
+  -- The engine removed a component: the runs it started, and its handlers still waiting, are
+  -- cancelled, and its tweens stop.
+  api.removed = L.removed
   -- An object by its name, or a clear stop.
   local function object(name)
     local o = objects[name]
@@ -1487,8 +1491,11 @@ function L.viewing(d) viewing = viewing + d end
 -- program's own code is a coroutine; when the program's own code waits, it moves the clock on,
 -- waking the other runs as their times come, until its own time comes. native_rt.rs does the
 -- same, in the same order, for built programs.
--- In an engine runs are off: start just calls, and wait pauses everything while tweens move.
+-- In an engine, the engine's tick moves the clock (L.engine_tick): code the engine calls (an
+-- update, an object's tick, a passed method, the program's start) can't wait, but it can start
+-- runs, and event handlers and tweens' done blocks are runs, which wait across ticks.
 local runs_on = false
+local engine = false
 -- The coroutine running now: nil for the program's own code.
 local current = nil
 -- A run failed: no try catches it, and the program stops.
@@ -1586,6 +1593,8 @@ local streak, carried, root = 0, 0, nil
 
 -- Runs a run until it waits or ends. One that waits is kept until it's due.
 local function go(co, w, ...)
+  -- In an engine, a failure that reached the engine is over: the next run starts afresh.
+  if engine and current == nil then fatal = false end
   local before, bw = current, current_work
   current, current_work = co, w
   w.state, w.co = "Going", nil
@@ -1605,7 +1614,7 @@ local function go(co, w, ...)
     w.state = "Done"
   end
 end
--- Runs f(…) as work w: straight away, until it waits or ends. In an engine, it's just called.
+-- Runs f(…) as work w: straight away, until it waits or ends.
 local function begin(w, f, ...)
   if not runs_on then
     local bw = current_work
@@ -1637,6 +1646,7 @@ end
 -- A failure from another run goes on past it, and so does a cancel.
 function L.try(f)
   if current == nil then
+    if engine then fatal = false end
     local ok, e = pcall(f)
     if not ok and (fatal or e == CANCEL) then error(e, 0) end
     return ok, e
@@ -1709,6 +1719,46 @@ end
 -- A plain program or a window: runs are on. At its end, the program waits for every run.
 function L.runs_begin() runs_on = true end
 function L.runs_finish() run_until(nil, nil, "finish") end
+-- A chunk for an engine: runs are on, and the engine's tick moves them.
+function L.runs_engine() runs_on, engine = true, true end
+
+-- The engine's tick (its tickTweens): the clock moves dt seconds on (none when dt isn't above
+-- 0, so a paused game pauses waits too), tweens step, then each run that's due goes on, in the
+-- order they're due. Runs that wait again now, or start waiting during it, go on in a later tick.
+function L.engine_tick(dt)
+  if dt > 0 then
+    clock_now = clock_now + dt
+    local t = floor((clock_now + 1e-9) * 60)
+    if t > clock_ticks then clock_ticks = t end
+  end
+  L.tween_step(dt)
+  local upto = seq
+  while sleeping[1] and sleeping[1][1] <= clock_now + 1e-9 and sleeping[1][2] <= upto do
+    local top = hpop()
+    go(top[3], top[4])
+    L.settle()
+  end
+end
+-- The engine removed a component (its entity is gone, or it was taken off): the work it started
+-- and its handlers still waiting are cancelled, what it made in its states ends, and its tweens
+-- stop where they are, without their done blocks.
+function L.removed(o)
+  local list = owners[o]
+  owners[o] = nil
+  if list then
+    for t in pairs(list) do finish(t, "this was made by a component the engine has removed.") end
+  end
+  local here = places[o]
+  if here then
+    for _, i in pairs(here) do
+      if tweens[i] then
+        tweens[i] = false
+        live = live - 1
+      end
+    end
+    places[o] = nil
+  end
+end
 
 -- A window's clock moves the runs: dt seconds on, waking each that's due (when wake is true).
 -- Gives back the seconds until the next is due, or nil when none waits.
@@ -1729,6 +1779,22 @@ function L.runs_view(dt, wake)
   local s = sleeping[1][1] - clock_now
   if s < 0 then s = 0 end
   return s
+end
+
+-- Where code can't wait: the code the engine calls straight into, and the code that draws a
+-- view. level is the caller's, for error.
+local ENGINE_WAIT = "this wait would hold up the whole game: code the engine calls (an update, an object's tick, a method it calls) can't wait. Put the waiting in a method of its own and start it: start openGate();"
+local VIEW_WAIT = "this wait would stop the window, so it can't go here. Put it in a button's or a timer's code, or in a method started with start."
+local function no_wait_here(level)
+  if current then return end
+  if engine or not runs_on then error(ENGINE_WAIT, level + 1) end
+  if viewing > 0 then error(VIEW_WAIT, level + 1) end
+end
+-- How soon a run waiting for something looks again: the clock's next 1/60 s step, or in an
+-- engine the next tick.
+local function next_look()
+  if engine then return clock_now end
+  return (floor((clock_now + 1e-9) * 60) + 1) / 60
 end
 
 -- The run going now pauses until due (the program's own code, how being what it waits in).
@@ -1777,13 +1843,10 @@ end
 
 function L.wait(s)
   if s < 0 or s ~= s then error(problem("OutOfRange", "can't wait " .. L.ftext(s) .. " seconds."), 2) end
-  if not runs_on then return L.wait_all(s) end
   -- Events sent before the wait are heard as it starts.
   L.settle()
   L.stop_if_cancelled()
-  if not current and viewing > 0 then
-    error("this wait would stop the window, so it can't go here. Put it in a button's or a timer's code, or in a method started with start.", 2)
-  end
+  no_wait_here(2)
   pause(clock_now + s, "other")
 end
 
@@ -1792,9 +1855,7 @@ end
 function L.wait_or(s, limit)
   if limit < 0 or limit ~= limit then error(problem("OutOfRange", "a time limit can't be " .. L.ftext(limit) .. " seconds."), 2) end
   if s < 0 or s ~= s then error(problem("OutOfRange", "can't wait " .. L.ftext(s) .. " seconds."), 2) end
-  if runs_on and not current and viewing > 0 then
-    error("this wait would stop the window, so it can't go here. Put it in a button's or a timer's code, or in a method started with start.", 2)
-  end
+  no_wait_here(2)
   if limit < s then
     L.wait(limit)
     return false
@@ -1815,17 +1876,12 @@ function L.wait_for(look, limit, line)
   L.settle()
   L.stop_if_cancelled()
   if look() then return true end
-  if not runs_on then
-    error("wait { } can't wait in an engine yet: nothing else runs while it waits, so its questions could never come true. Runs come to engines later.", 2)
-  end
-  if not current and viewing > 0 then
-    error("this wait would stop the window, so it can't go here. Put it in a button's or a timer's code, or in a method started with start.", 2)
-  end
+  no_wait_here(2)
   local due = limit and clock_now + limit
   local sure = not limit and line or nil
   local w = current and current_work
   while true do
-    local at = (floor((clock_now + 1e-9) * 60) + 1) / 60
+    local at = next_look()
     if due and due < at then at = due end
     if w then w.stuck = sure end
     pause(at, sure or "other")
@@ -1858,7 +1914,7 @@ local function slow(what, name, ...)
   end
   local id = RUNHOST[name .. "_start"](...)
   local r, e, kind
-  if not runs_on or answering > 0 or (not current and viewing > 0) then
+  if not runs_on or answering > 0 or (not current and (viewing > 0 or engine)) then
     r, e, kind = RUNHOST.slow_wait(id)
   else
     -- Events sent before it are heard as it starts, as for a wait.
@@ -1870,36 +1926,13 @@ local function slow(what, name, ...)
       local done
       done, r, e, kind = RUNHOST.slow_look(id)
       if done then break end
-      at = (floor((clock_now + 1e-9) * 60) + 1) / 60
+      at = next_look()
     end
   end
   if r == nil then error(problem(kind or "Other", e), 3) end
   return r
 end
 L.slow = slow
-
--- wait in an engine: pauses everything, while tweens move on.
-function L.wait_all(s)
-  if not os or not os.clock then error("wait isn't available here. Use the host program's timers.", 3) end
-  L.settle()
-  local start = os.clock()
-  -- Tweens move on during the wait, a 1/60 s step at a time, on the clock wait keeps.
-  if not stepping and viewing == 0 then
-    local before = clock_now
-    clock_now = clock_now + s
-    local last = floor((clock_now + 1e-9) * 60)
-    local first = clock_ticks + 1
-    if last > clock_ticks then clock_ticks = last end
-    for k = first, last do
-      if live == 0 then break end
-      local due = start + (k / 60 - before)
-      while os.clock() < due do end
-      L.tween_step(1 / 60)
-    end
-  end
-  local stop = start + s
-  while os.clock() < stop do end
-end
 
 -- ----- the standard library -----
 -- The same functions, with the same messages, are in native_rt.rs for built programs.

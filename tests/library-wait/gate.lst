@@ -1,5 +1,6 @@
--- Built as a library for an engine, wait { } goes straight on when its questions are true, and
--- otherwise stops with a message: nothing else runs in an engine while it waits (yet).
+-- Built as a library for an engine, a method the engine calls straight into can't wait: a wait { }
+-- there goes straight on when its questions are true, and otherwise stops with a message saying
+-- to start a method that waits instead.
 object Gate {
     has {
         bool open = false;

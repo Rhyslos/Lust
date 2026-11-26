@@ -297,6 +297,8 @@ pub struct Checker<'a> {
     /// select fits its rows (when it doesn't, that's said once, not again for each row).
     tables: usize,
     rows_ok: Vec<bool>,
+    /// Checking a component's update, which runs every tick, so it can't wait.
+    in_update: bool,
     /// The + of each hp += 5, and what was written; and the one being checked now.
     compound: HashMap<usize, &'static str>,
     /// Values written after the old `is` (now is Mood.Calm;): each is a mistake.
@@ -321,6 +323,7 @@ pub fn check(prog: &Program, diags: &mut Diags, is_script: bool) -> Info {
         trays: 0,
         tables: 0,
         rows_ok: vec![],
+        in_update: false,
         compound: prog.compound.clone(),
         old_is: prog.old_is.clone(),
         compound_now: None,
@@ -938,7 +941,7 @@ impl<'a> Checker<'a> {
                     );
                 }
                 for m in &c.methods {
-                    if ["handle", "schema", "toData", "setData", "fromData", "setMe"].contains(&m.name.as_str()) {
+                    if ["handle", "schema", "toData", "setData", "fromData", "setMe", "removed"].contains(&m.name.as_str()) {
                         self.err(
                             m.pos,
                             format!(
@@ -2842,7 +2845,9 @@ impl<'a> Checker<'a> {
                 },
             );
         }
+        self.in_update = class.is_some_and(|c| self.info.classes[c].is_component) && m.name == "update" && m.on.is_none();
         self.block_in(&m.body, &mut ctx, false);
+        self.in_update = false;
         if sig.ret != Ty::Void && sig.ret != Ty::Error && !returns(&m.body) {
             self.err(
                 m.pos,
@@ -2851,6 +2856,17 @@ impl<'a> Checker<'a> {
                     m.name,
                     self.a(&sig.ret)
                 ),
+            );
+        }
+    }
+
+    /// A wait straight in a component's update (not in a hook made there) is a mistake: update runs
+    /// every tick, so the waiting goes in a method of its own, started from update.
+    fn no_wait_in_update(&mut self, pos: Pos, ctx: &Ctx) {
+        if self.in_update && !ctx.in_hook {
+            self.err(
+                pos,
+                "a component's update runs every tick, so it can't wait. Put the waiting in a method of its own and start it from update: start openGate();",
             );
         }
     }
@@ -3756,9 +3772,10 @@ impl<'a> Checker<'a> {
                 questions,
                 check,
                 limit,
-                ..
+                pos,
             } => {
                 self.info.waits = true;
+                self.no_wait_in_update(*pos, ctx);
                 if let Some(secs) = seconds {
                     let t = self.expr(secs, ctx, Some(&Ty::Float));
                     self.expect_fits(secs, &t, &Ty::Float, "wait's seconds is a number");
@@ -5468,6 +5485,7 @@ impl<'a> Checker<'a> {
                 "ask" => (vec![("question", Some(Ty::Str))], Ty::Str),
                 "wait" => {
                     self.info.waits = true;
+                    self.no_wait_in_update(e.pos, ctx);
                     (vec![("seconds", Some(Ty::Float))], Ty::Void)
                 }
                 _ => unreachable!(),
