@@ -1037,6 +1037,9 @@ pub fn build_library_in(path: &Path, rust: &str, dir: &Path) -> Result<(), Strin
     if has("dlg") {
         deps.push_str("rfd = \"0.16\"\n");
     }
+    if has("runs") {
+        deps.push_str("corosensei = \"0.3\"\n");
+    }
     if has("ui") {
         deps.push_str("winit = \"0.30\"\naccesskit = \"0.25\"\naccesskit_winit = \"0.34\"\nsoftbuffer = \"0.4\"\nab_glyph = \"0.2\"\narboard = { version = \"3\", default-features = false }\npng = \"0.17\"\njpeg-decoder = { version = \"0.3\", default-features = false }\nresvg = { version = \"0.49\", default-features = false }\n");
         target_deps.push_str(UI_TARGET_DEPS);

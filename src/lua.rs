@@ -126,8 +126,11 @@ fn write_with(prog: &Program, info: &Info, exact: bool, engine: bool) -> Output 
     if exact {
         w.line(0, "_L.exact = true");
     }
-    // A plain program's own code is a run, and it ends once every run it started is done.
-    if !engine {
+    // A plain program's own code is a run, and it ends once every run it started is done. In an
+    // engine, the engine's tick moves the runs.
+    if engine {
+        w.line(0, "_L.runs_engine()");
+    } else {
         w.line(0, "_L.runs_begin()");
     }
     w.program(prog);
@@ -1105,7 +1108,11 @@ impl<'a> W<'a> {
                     .collect();
                 self.line(m.pos.line, &format!("if event == {} then", lua_string(crate::ast::shown(ev))));
                 self.indent += 1;
-                self.line(m.pos.line, &format!("self:{}({})", lname(&m.name), args.join(", ")));
+                // Each handler is a run of its own, belonging to the component.
+                let label = lua_string(&format!("the {} handler", crate::ast::shown(ev)));
+                let mut call = vec!["self".to_string(), label, format!("self.{}", lname(&m.name)), "self".to_string()];
+                call.extend(args);
+                self.line(m.pos.line, &format!("_L.spawn_on({})", call.join(", ")));
                 if self.info.lust_events {
                     self.line(m.pos.line, "_L.settle()");
                 }
@@ -1558,8 +1565,16 @@ impl<'a> W<'a> {
                     None => crate::check::start_label(call),
                 };
                 let mut w = self.owned(format!("_L.work({})", lua_string(&label)));
-                if let Some(on) = self.start_subject(call) {
+                let on = self.start_subject(call);
+                // In a component, work also belongs to the component, so it's cancelled when the
+                // engine removes it (a stateful one's own state option already ties it there).
+                let own_self = self.class.is_some_and(|c| self.info.classes[c].is_component && !self.info.stateful(c))
+                    && on.as_deref() != Some("self");
+                if let Some(on) = on {
                     w = format!("_L.own({on}, {w}, true)");
+                }
+                if own_self {
+                    w = format!("_L.own(self, {w}, true)");
                 }
                 let code = format!("_L.start({w}, function() local _ = {c} end)");
                 match name {

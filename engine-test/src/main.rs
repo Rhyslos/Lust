@@ -464,6 +464,54 @@ fn main() {
         .unwrap();
     }
 
+    // 10. Runs: started work, event handlers and tweens' done blocks wait across ticks, on the
+    // engine's own time (tickTweens' dt), while the engine keeps calling every update. The same
+    // game and ticks as tests/library-wait/runs, which builds it as a Rust library.
+    let rn = lust::to_lua("main.lst", &files("runs")).unwrap();
+    let api6 = load(&lua, &rn);
+    let new: Function = api6.get("new").unwrap();
+    let gate: Table = new.call(("Gate", "0000000000001")).unwrap();
+    let guard: Table = new.call(("Guard", "0000000000002")).unwrap();
+    let tick: Function = api6.get("tick").unwrap();
+    let tick_tweens: Function = api6.get("tickTweens").unwrap();
+    let removed: Function = api6.get("removed").unwrap();
+    let dts = [0.125, 0.125, 0.125, 0.125, 0.0, 0.0, 0.125, 0.0625, 0.0625, 0.125, 0.125, 0.5, 0.5, 0.5, 0.5];
+    let mut guarding = true;
+    let call_update = |c: &Table, dt: f64| c.get::<Function>("update").unwrap().call::<()>((c.clone(), dt)).unwrap();
+    for (k, dt) in dts.iter().enumerate() {
+        writeln!(out, "tick {k} (dt {dt})").unwrap();
+        tick.call::<()>(*dt).unwrap();
+        tick_tweens.call::<()>(*dt).unwrap();
+        call_update(&gate, *dt);
+        if guarding {
+            call_update(&guard, *dt);
+        }
+        if k == 1 {
+            for c in [&gate, &guard] {
+                let values = lua.create_table().unwrap();
+                values.set(1, 3).unwrap();
+                values.set("n", 1).unwrap();
+                c.get::<Function>("handle").unwrap().call::<bool>((c.clone(), "Knock", values)).unwrap();
+            }
+        }
+        if k == 3 {
+            // The guard's entity is destroyed: its patrol and its waiting handler stop.
+            removed.call::<()>(guard.clone()).unwrap();
+            guarding = false;
+        }
+        if k == 6 {
+            let lever: Table = api6.get::<Table>("objects").unwrap().get("Lever").unwrap();
+            lever.set("pulled", true).unwrap();
+        }
+        out.push_str(&log.borrow_mut().split_off(0).lines().map(|l| format!("  {l}\n")).collect::<String>());
+    }
+    writeln!(out, "gate opened Int({})", gate.get::<i64>("opened").unwrap()).unwrap();
+    let sleepy: Table = new.call(("Sleepy", "0000000000003")).unwrap();
+    match sleepy.get::<Function>("update").unwrap().call::<()>((sleepy.clone(), 0.125)) {
+        Ok(()) => writeln!(out, "Sleepy waited?").unwrap(),
+        Err(err) => writeln!(out, "Lust said: {}", rn.locate(&err.to_string())).unwrap(),
+    }
+
     let expected_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("expected.out");
     if std::env::args().any(|a| a == "--print") {
         print!("{out}");

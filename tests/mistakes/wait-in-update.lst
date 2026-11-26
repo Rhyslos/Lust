@@ -1,0 +1,39 @@
+-- A component's update runs every tick, so it can't wait: the waiting goes in a method of its
+-- own, started from update. A wait in a hook made there, or in a handler, is fine.
+component Door {
+    has {
+        float open = 0;
+        bool shut = false;
+    }
+
+    method update(float dt) {
+        wait 1;
+        wait {
+            is shut?
+        }
+        is shut? then {
+            wait 0.5 or after 0.25 {
+                open = 0;
+            }
+        }
+        hook() later = new hook() {
+            wait 1;
+        };
+        start creak();
+    }
+
+    method creak() {
+        wait 2;
+    }
+
+    on {
+        Slam() {
+            wait 0.5;
+        }
+    }
+}
+
+event Slam();
+
+pass Door;
+end
