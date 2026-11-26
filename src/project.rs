@@ -740,6 +740,7 @@ impl<'a> Renamer<'a> {
                     }
                 }
             }
+            Stmt::Start { call, .. } => self.expr(call),
             Stmt::Keep { value, into, .. } => {
                 self.expr(value);
                 if let Some(i) = into {

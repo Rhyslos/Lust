@@ -168,6 +168,27 @@ pub fn on_settle(f: std::rc::Rc<dyn Fn() -> Result<(), String>>) {
     SETTLE.with(|s| *s.borrow_mut() = Some(f));
 }
 
+/// The program's runs, moved on by the window's clock: given seconds, it moves the runs' clock on
+/// that much and, when told to, wakes every run that's due. It gives back the seconds until the
+/// next run is due (None when none waits), or what failed.
+pub type Runs = dyn Fn(f64, bool) -> Result<Option<f64>, String>;
+
+thread_local! {
+    static RUNS: std::cell::RefCell<Option<std::rc::Rc<Runs>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// The program's runs, which the main window's clock moves on.
+pub fn on_runs(f: std::rc::Rc<Runs>) {
+    RUNS.with(|r| *r.borrow_mut() = Some(f));
+}
+
+fn runs_move(dt: f64, wake: bool) -> Result<Option<f64>, String> {
+    match RUNS.with(|r| r.borrow().clone()) {
+        Some(f) => f(dt, wake),
+        None => Ok(None),
+    }
+}
+
 pub fn incoming() -> SV {
     INCOMING.with(|i| i.borrow().clone())
 }
@@ -3332,6 +3353,11 @@ struct Ui<'a, 'b> {
     tween_base: f64,
     tween_steps: u64,
     tween_last: f64,
+    /// The main window's clock moves the program's runs (runs that wait): when the next is due
+    /// on the window's clock, and when the runs' clock last moved.
+    moves_runs: bool,
+    runs_at: Option<f64>,
+    runs_last: f64,
     /// What's typed in the focused number box, when it isn't the number shown: "007", "1.50", or
     /// text that isn't a number that fits. It goes when focus leaves.
     draft: Option<(Vec<usize>, String)>,
@@ -3496,6 +3522,9 @@ impl<'a, 'b> Ui<'a, 'b> {
             tween_base: 0.0,
             tween_steps: 0,
             tween_last: 0.0,
+            moves_runs: true,
+            runs_at: None,
+            runs_last: 0.0,
             draft: None,
             flips: HashMap::new(),
             wheel_acc: (None, 0.0),
@@ -3562,8 +3591,10 @@ impl<'a, 'b> Ui<'a, 'b> {
         self.timers.iter().map(|t| t.due).fold(None, |m: Option<f64>, d| Some(m.map_or(d, |m| m.min(d))))
     }
 
-    /// Asks whether tweens are running; when they've just started, their clock starts now.
+    /// Asks whether tweens are running; when they've just started, their clock starts now. And
+    /// asks when the next run that waits is due.
     fn check_tweens(&mut self) -> Result<(), String> {
+        self.runs(false)?;
         let busy = (self.step)(0.0)?;
         if busy && !self.tweening {
             let now = self.now();
@@ -3585,6 +3616,27 @@ impl<'a, 'b> Ui<'a, 'b> {
             Some(_) => self.tween_base + (self.tween_steps + 1) as f64 / 60.0,
             None => self.tween_last + 1.0 / 60.0,
         })
+    }
+
+    /// Moves the runs' clock on to now, and wakes the runs that are due when `wake` is true.
+    fn runs(&mut self, wake: bool) -> Result<(), String> {
+        if !self.moves_runs {
+            return Ok(());
+        }
+        let now = self.now();
+        let dt = (now - self.runs_last).max(0.0);
+        self.runs_last = now;
+        if wake {
+            data_may_change();
+        }
+        self.runs_at = runs_move(dt, wake)?.map(|s| now + s);
+        Ok(())
+    }
+
+    /// Wakes the runs that are due, then draws the view again.
+    fn wake_runs(&mut self) -> Result<(), String> {
+        self.runs(true)?;
+        self.rebuild()
     }
 
     /// Moves the tweens on: exactly 1/60 s in a test, and the time since the last step in a

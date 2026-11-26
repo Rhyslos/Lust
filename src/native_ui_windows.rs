@@ -487,6 +487,9 @@ impl<'a, 'b> Wins<'a, 'b> {
         // Only the main window moves the tweens on.
         let step: Box<Step> = Box::new(|_| Ok(false));
         let mut ui = Ui::new(s, build, self.windowed, step)?;
+        // Only the main window moves the runs on.
+        ui.moves_runs = false;
+        ui.runs_at = None;
         // A test's windows share one clock.
         if let Some(now) = self.list[0].ui.test_clock {
             ui.test_clock = Some(now);
@@ -613,11 +616,27 @@ impl<'a, 'b> Wins<'a, 'b> {
                     best = Some((d, 0, true));
                 }
             }
+            // Runs that wait are woken after the timers and the tweens due with them.
+            let mut wake = false;
+            if let Some(d) = self.list[0].ui.runs_at {
+                if best.is_none_or(|(b, _, _)| d < b) {
+                    best = Some((d, 0, false));
+                    wake = true;
+                }
+            }
             let Some((d, i, step)) = best.filter(|(d, _, _)| *d <= end + 1e-9) else { break };
             for w in &mut self.list {
                 w.ui.test_clock = Some(d.max(w.ui.now()));
             }
-            self.with(i, |u| if step { u.step_tweens() } else { u.fire_timers().map(|_| ()) })?;
+            self.with(i, |u| {
+                if wake {
+                    u.wake_runs()
+                } else if step {
+                    u.step_tweens()
+                } else {
+                    u.fire_timers().map(|_| ())
+                }
+            })?;
             self.sync(i)?;
             if self.ended {
                 return Ok(());
@@ -1144,6 +1163,11 @@ mod windowed {
                         ui.step_tweens()?;
                         draw = true;
                     }
+                    // Runs that waited go on when they're due.
+                    if ui.runs_at.is_some_and(|d| d <= now + 0.001) {
+                        ui.wake_runs()?;
+                        draw = true;
+                    }
                     draw |= ui.step_toasts();
                     Ok(draw)
                 })();
@@ -1231,7 +1255,10 @@ mod windowed {
             for w in &self.wins.list {
                 let ui = &w.ui;
                 let at = |d: Option<f64>| d.map(|d| ui.started + std::time::Duration::from_secs_f64(d.max(0.0)));
-                let soonest = [ui.next_blink(), at(ui.next_timer()), at(ui.next_step()), ui.tip_due(), at(ui.toast_wake())].into_iter().flatten().min();
+                let soonest = [ui.next_blink(), at(ui.next_timer()), at(ui.next_step()), ui.tip_due(), at(ui.toast_wake()), at(ui.runs_at)]
+                    .into_iter()
+                    .flatten()
+                    .min();
                 wake = [wake, soonest].into_iter().flatten().min();
             }
             match wake {

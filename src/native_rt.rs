@@ -9,6 +9,8 @@ thread_local! {
     /// The file and line (packed, like a Lust position's) in the top half, the column below.
     static LINE: Cell<u64> = const { Cell::new(0) };
     static DEPTH: Cell<u32> = const { Cell::new(0) };
+    /// How deep calls may go here: less inside a run, whose stack is smaller (see runs).
+    static LIMIT: Cell<u32> = const { Cell::new(100_000) };
     static RNG: Cell<u64> = const { Cell::new(0) };
 }
 
@@ -61,7 +63,7 @@ impl Depth {
             c.set(c.get() + 1);
             c.get()
         });
-        if d > 100_000 {
+        if d > LIMIT.with(|c| c.get()) {
             fail("methods called each other too deeply. That usually means one calls itself with no way to stop.".into());
         }
         Depth
@@ -109,7 +111,10 @@ pub fn main(program: fn(), files: &'static [&'static str]) {
 fn run_program(program: fn(), files: &'static [&'static str]) -> i32 {
             match std::panic::catch_unwind(|| {
                 started();
-                program()
+                runs_begin();
+                program();
+                // The program ends once every run it started is done.
+                runs_finish();
             }) {
                 Ok(()) => 0,
                 Err(p) => {
@@ -230,12 +235,24 @@ fn quiet() {
 
 /// The message, if something failed.
 pub fn attempt(f: impl FnOnce()) -> Option<String> {
-    attempt_problem(f).map(|(_, m)| m)
+    attempt_any(f).map(|(_, m)| m)
 }
 
 /// try { … } error (Problem p, string message) { … }: the kind of problem and the message, if
-/// something failed.
+/// something failed. A failure that came from another run isn't this code's to catch: it goes
+/// on, and stops the program.
 pub fn attempt_problem(f: impl FnOnce()) -> Option<Failed> {
+    let r = attempt_any(f);
+    if let Some(e) = &r {
+        if RUNS.with(|x| x.borrow().fatal) {
+            failed(e.clone());
+        }
+    }
+    r
+}
+
+/// The kind of problem and the message, if something failed, whatever failed.
+fn attempt_any(f: impl FnOnce()) -> Option<Failed> {
     let depth = DEPTH.with(|c| c.get());
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
         Ok(()) => None,
@@ -1435,6 +1452,30 @@ pub fn wait(s: f64) {
     if s.is_infinite() || s > 24.0 * 24.0 * 3600.0 {
         fail_as("OutOfRange", format!("can't wait {} seconds; the longest wait is 24 days.", ftext(s)));
     }
+    if !RUNS.with(|r| r.borrow().on) {
+        wait_all(s);
+        return;
+    }
+    // Events sent before the wait are heard as it starts.
+    settle();
+    let due = TWEENS.with(|t| t.borrow().clock_now) + s;
+    if runs::in_run() {
+        runs::pause(due);
+        return;
+    }
+    if TWEENS.with(|t| t.borrow().viewing) > 0 {
+        fail("this wait would stop the window, so it can't go here. Put it in a button's or a timer's code, or in a method started with start.".into());
+    }
+    let seq = RUNS.with(|r| {
+        let mut r = r.borrow_mut();
+        r.seq += 1;
+        r.seq
+    });
+    run_until(Some((due, seq)));
+}
+
+/// wait in an engine: pauses everything, while tweens move on.
+fn wait_all(s: f64) {
     // Events sent before the wait are heard as it starts.
     settle();
     let start = std::time::Instant::now();
@@ -1468,6 +1509,235 @@ pub fn wait(s: f64) {
         }
     }
     until(s);
+}
+
+// ----- runs: pieces of work that wait on their own -----
+// A run is the program's own code from the top, a window's callback, an event's handler, a
+// tween's done block, or a method started with start. wait pauses only its run. Each run but the
+// program's own code has a stack of its own (the runs module); when the program's own code waits,
+// it moves the clock on, waking the other runs as their times come, until its own time comes.
+// runtime.lua does the same, in the same order. In an engine runs are off: start just calls, and
+// wait pauses everything while tweens move.
+
+/// A run waiting: when it's due, and of two due together, which started waiting first.
+struct Sleeper {
+    due: f64,
+    seq: u64,
+    run: runs::Run,
+    /// Its calls' depth and the line it's at, put back when it goes on.
+    depth: u32,
+    line: u64,
+}
+impl PartialEq for Sleeper {
+    fn eq(&self, o: &Self) -> bool {
+        self.cmp(o) == std::cmp::Ordering::Equal
+    }
+}
+impl Eq for Sleeper {}
+impl PartialOrd for Sleeper {
+    fn partial_cmp(&self, o: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(o))
+    }
+}
+impl Ord for Sleeper {
+    /// The soonest is the greatest, for BinaryHeap.
+    fn cmp(&self, o: &Self) -> std::cmp::Ordering {
+        o.due.total_cmp(&self.due).then(o.seq.cmp(&self.seq))
+    }
+}
+
+#[derive(Default)]
+struct Runs {
+    /// A plain program or a window: waits pause only their run.
+    on: bool,
+    /// A run failed: no try catches it, and the program stops.
+    fatal: bool,
+    seq: u64,
+    sleeping: std::collections::BinaryHeap<Sleeper>,
+    /// lust test: waits take no real time.
+    quick: bool,
+}
+
+thread_local! {
+    static RUNS: RefCell<Runs> = RefCell::new(Runs::default());
+}
+
+/// A plain program or a window starts: runs are on.
+pub fn runs_begin() {
+    RUNS.with(|r| {
+        let mut r = r.borrow_mut();
+        r.on = true;
+        r.quick = std::env::var_os("LUST_VIEW_TEST").is_some();
+    });
+}
+
+/// The program's own code is done: it waits for every run.
+pub fn runs_finish() {
+    run_until(None);
+}
+
+/// How many runs are waiting.
+pub fn runs_waiting() -> usize {
+    RUNS.with(|r| r.borrow().sleeping.len())
+}
+
+/// start openGate();: runs the call as a run of its own, straight away until it waits or ends.
+pub fn start(f: Box<dyn FnOnce()>) {
+    if !RUNS.with(|r| r.borrow().on) {
+        f();
+        return;
+    }
+    let outer = (DEPTH.with(|c| c.get()), LINE.with(|c| c.get()), LIMIT.with(|c| c.get()));
+    if runs::OWN_STACKS {
+        DEPTH.with(|c| c.set(0));
+        LIMIT.with(|c| c.set(runs::DEPTH_LIMIT));
+    }
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| runs::spawn(f)));
+    ran(r, outer);
+}
+
+/// A window's callback: a run of its own. Gives back the message if it failed.
+pub fn run_action(f: Box<dyn FnOnce()>) -> Result<(), String> {
+    match attempt(|| start(f)) {
+        None => Ok(()),
+        Some(e) => Err(e),
+    }
+}
+
+/// After a run went: one that waits is kept until it's due, and one that failed stops the
+/// program (keeping the line it failed at).
+fn ran(r: std::thread::Result<Option<(runs::Run, f64)>>, outer: (u32, u64, u32)) {
+    match r {
+        Err(p) => {
+            RUNS.with(|x| x.borrow_mut().fatal = true);
+            LIMIT.with(|c| c.set(outer.2));
+            std::panic::resume_unwind(p);
+        }
+        Ok(waiting) => {
+            if let Some((run, due)) = waiting {
+                let (depth, line) = (DEPTH.with(|c| c.get()), LINE.with(|c| c.get()));
+                RUNS.with(|x| {
+                    let mut x = x.borrow_mut();
+                    x.seq += 1;
+                    let seq = x.seq;
+                    x.sleeping.push(Sleeper { due, seq, run, depth, line });
+                });
+            }
+            DEPTH.with(|c| c.set(outer.0));
+            LINE.with(|c| c.set(outer.1));
+            LIMIT.with(|c| c.set(outer.2));
+        }
+    }
+}
+
+/// A run that's due goes on, until it waits again or ends.
+fn wake(s: Sleeper) {
+    let outer = (DEPTH.with(|c| c.get()), LINE.with(|c| c.get()), LIMIT.with(|c| c.get()));
+    DEPTH.with(|c| c.set(s.depth));
+    LINE.with(|c| c.set(s.line));
+    LIMIT.with(|c| c.set(runs::DEPTH_LIMIT));
+    let run = s.run;
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| runs::resume(run)));
+    ran(r, outer);
+}
+
+/// Sleeps until `secs` after `base` in real time (not in lust test).
+fn sleep_until(base: std::time::Instant, secs: f64) {
+    if RUNS.with(|r| r.borrow().quick) {
+        return;
+    }
+    let due = base + std::time::Duration::from_secs_f64(secs.max(0.0));
+    let now = std::time::Instant::now();
+    if due > now {
+        std::thread::sleep(due - now);
+    }
+}
+
+/// The program's own code waits until `root` (when it's due, and its place in the queue), or,
+/// with None, until every run is done. The clock moves on to each run's time in turn, and
+/// tweens step on the way, a 1/60 s step at a time (a step due with a run goes first).
+fn run_until(root: Option<(f64, u64)>) {
+    let base = std::time::Instant::now();
+    let from = TWEENS.with(|t| t.borrow().clock_now);
+    loop {
+        let top = RUNS.with(|r| r.borrow().sleeping.peek().map(|s| (s.due, s.seq)));
+        let (target, mine) = match (root, top) {
+            (Some((d, q)), Some((td, tq))) if d < td || (d == td && q < tq) => (d, true),
+            (Some((d, _)), None) => (d, true),
+            (_, Some((td, _))) => (td, false),
+            (None, None) => return,
+        };
+        let last = ((target + 1e-9) * 60.0).floor() as i64;
+        let tick = TWEENS.with(|t| {
+            let mut t = t.borrow_mut();
+            if t.live > 0 && !t.stepping && t.viewing == 0 && t.clock_ticks < last {
+                t.clock_ticks += 1;
+                Some(t.clock_ticks)
+            } else {
+                t.clock_ticks = t.clock_ticks.max(last);
+                None
+            }
+        });
+        match tick {
+            Some(k) => {
+                let at = k as f64 / 60.0;
+                sleep_until(base, at - from);
+                TWEENS.with(|t| {
+                    let mut t = t.borrow_mut();
+                    t.clock_now = t.clock_now.max(at);
+                });
+                tween_step(1.0 / 60.0);
+            }
+            None => {
+                sleep_until(base, target - from);
+                TWEENS.with(|t| {
+                    let mut t = t.borrow_mut();
+                    t.clock_now = t.clock_now.max(target);
+                });
+                if mine {
+                    return;
+                }
+                let Some(s) = RUNS.with(|r| r.borrow_mut().sleeping.pop()) else { return };
+                wake(s);
+                settle();
+            }
+        }
+    }
+}
+
+/// A window's clock moves the runs: dt seconds on, waking each that's due (when `wake_due`).
+/// Gives back the seconds until the next is due (None when none waits), or what failed.
+pub fn runs_view(dt: f64, wake_due: bool) -> Result<Option<f64>, String> {
+    let now = TWEENS.with(|t| {
+        let mut t = t.borrow_mut();
+        t.clock_now += dt;
+        let k = ((t.clock_now + 1e-9) * 60.0).floor() as i64;
+        t.clock_ticks = t.clock_ticks.max(k);
+        t.clock_now
+    });
+    if wake_due {
+        // Runs that wait again now are woken on the next step, not this one.
+        let upto = RUNS.with(|r| r.borrow().seq);
+        loop {
+            let due = RUNS.with(|r| {
+                let mut r = r.borrow_mut();
+                let ready = r.sleeping.peek().is_some_and(|s| s.due <= now + 1e-9 && s.seq <= upto);
+                if ready {
+                    r.sleeping.pop()
+                } else {
+                    None
+                }
+            });
+            let Some(s) = due else { break };
+            if let Some(e) = attempt(|| {
+                wake(s);
+                settle();
+            }) {
+                return Err(e);
+            }
+        }
+    }
+    Ok(RUNS.with(|r| r.borrow().sleeping.peek().map(|s| (s.due - now).max(0.0))))
 }
 
 // ----- easing and tweens -----
@@ -1723,7 +1993,7 @@ pub fn tween<T: Tweenable>(key: TweenKey, from: T, to: T, secs: f64, ease: &'sta
     if secs == 0.0 {
         set(to);
         if let Some(d) = done {
-            d();
+            start(Box::new(move || d()));
         }
         return;
     }
@@ -1784,7 +2054,7 @@ pub fn tween_step(dt: f64) -> bool {
                 });
                 (w.apply)(None);
                 if let Some(d) = w.done {
-                    d();
+                    start(Box::new(move || d()));
                 }
             } else {
                 (w.apply)(Some(ease(w.ease, t / w.secs)));

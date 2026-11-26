@@ -424,6 +424,12 @@ pub enum Stmt {
         done: Option<Expr>,
         pos: Pos,
     },
+    /// start openGate();: runs a method call alongside, as a run of its own, and the next line
+    /// runs straight away.
+    Start {
+        call: Expr,
+        pos: Pos,
+    },
     /// keep sword in player.bag; or keep sword;
     Keep {
         value: Expr,
@@ -443,6 +449,7 @@ impl Stmt {
             | Stmt::Try { pos, .. }
             | Stmt::Lua { pos, .. }
             | Stmt::Keep { pos, .. }
+            | Stmt::Start { pos, .. }
             | Stmt::SaveDecl { pos, .. }
             | Stmt::Element { pos, .. }
             | Stmt::Send { pos, .. }

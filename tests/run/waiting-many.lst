@@ -1,0 +1,26 @@
+-- Thousands of runs waiting at once.
+
+object Count {
+    has {
+        int done = 0;
+        int sum = 0;
+    }
+}
+
+method worker(int n) {
+    loop (int i = 0; i < 3; i += 1) {
+        wait 0.001 + 0.01 * (n % 7);
+        Count.sum += n;
+    }
+    Count.done += 1;
+}
+
+loop (int n = 0; n < 5000; n += 1) {
+    start worker(n);
+}
+print("started");
+wait 0.05;
+print("after 0.05", Count.done);
+wait 1;
+print("all done", Count.done, Count.sum);
+end

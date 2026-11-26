@@ -901,7 +901,7 @@ local function hear(o, h, v)
   local mt = getmetatable(o)
   if mt.__ended or mt.__closed then return end
   local f = mt[h]
-  if f then f(o, unpack(v, 1, v.n)) end
+  if f then L.spawn(f, o, unpack(v, 1, v.n)) end
 end
 local function deliver()
   while qhead <= qtail do
@@ -1407,7 +1407,7 @@ function L.tween(owner, name, kind, from, to, secs, ease, set, done)
   end
   if secs == 0 then
     set(to)
-    if done then done() end
+    if done then L.spawn(done) end
     return
   end
   local i = #tweens + 1
@@ -1437,7 +1437,7 @@ local function step(dt)
         places[tw.owner][tw.name] = nil
         live = live - 1
         tw.set(tw.to)
-        if tw.done then tw.done() end
+        if tw.done then L.spawn(tw.done) end
       else
         tw.set(BLEND[tw.kind](tw.from, tw.to, EASES[tw.ease](tw.t / tw.secs)))
       end
@@ -1473,10 +1473,178 @@ function L.tween_step(dt)
 end
 function L.viewing(d) viewing = viewing + d end
 
+-- ----- runs: pieces of work that wait on their own -----
+-- A run is the program's own code from the top, a window's callback, an event's handler, a
+-- tween's done block, or a method started with start. wait pauses only its run. Each run but the
+-- program's own code is a coroutine; when the program's own code waits, it moves the clock on,
+-- waking the other runs as their times come, until its own time comes. native_rt.rs does the
+-- same, in the same order, for built programs.
+-- In an engine runs are off: start just calls, and wait pauses everything while tweens move.
+local runs_on = false
+-- The coroutine running now: nil for the program's own code.
+local current = nil
+-- A run failed: no try catches it, and the program stops.
+local fatal = false
+-- The runs waiting, as a heap of { due, seq, coroutine }: the soonest first, and of two due
+-- together, the one that started waiting first.
+local sleeping, nsleep, seq = {}, 0, 0
+local function earlier(a, b) return a[1] < b[1] or (a[1] == b[1] and a[2] < b[2]) end
+local function hpush(x)
+  nsleep = nsleep + 1
+  local i = nsleep
+  sleeping[i] = x
+  while i > 1 do
+    local p = floor(i / 2)
+    if not earlier(sleeping[i], sleeping[p]) then break end
+    sleeping[i], sleeping[p] = sleeping[p], sleeping[i]
+    i = p
+  end
+end
+local function hpop()
+  local top = sleeping[1]
+  sleeping[1] = sleeping[nsleep]
+  sleeping[nsleep] = nil
+  nsleep = nsleep - 1
+  local i = 1
+  while true do
+    local l, r, m = 2 * i, 2 * i + 1, i
+    if l <= nsleep and earlier(sleeping[l], sleeping[m]) then m = l end
+    if r <= nsleep and earlier(sleeping[r], sleeping[m]) then m = r end
+    if m == i then break end
+    sleeping[i], sleeping[m] = sleeping[m], sleeping[i]
+    i = m
+  end
+  return top
+end
+-- Runs a run until it waits or ends. One that waits is kept until it's due.
+local function go(co, ...)
+  local before = current
+  current = co
+  local ok, due = coroutine.resume(co, ...)
+  current = before
+  if not ok then
+    fatal = true
+    error(due, 0)
+  end
+  if coroutine.status(co) ~= "dead" then
+    seq = seq + 1
+    hpush({ due, seq, co })
+  end
+end
+-- Runs f(…) as a run of its own: straight away, until it waits or ends.
+function L.spawn(f, ...)
+  if not runs_on then return f(...) end
+  go(coroutine.create(f), ...)
+end
+L.start = L.spawn
+-- try { … }: like pcall, but a wait inside pauses the run, as Lua 5.1 can't wait inside pcall.
+-- A failure from another run goes on past it.
+function L.try(f)
+  if current == nil then
+    local ok, e = pcall(f)
+    if not ok and fatal then error(e, 0) end
+    return ok, e
+  end
+  local co = coroutine.create(f)
+  local ok, x = coroutine.resume(co)
+  while ok and coroutine.status(co) ~= "dead" do
+    ok, x = coroutine.resume(co, coroutine.yield(x))
+  end
+  if not ok and fatal then error(x, 0) end
+  return ok, x
+end
+
+-- Real time: lust's own clock and sleep, or Lua's (which counts the time Lua is busy).
+local RUNHOST = rawget(_G, "LUST_HOST")
+local function realclock()
+  if RUNHOST and RUNHOST.clock then return RUNHOST.clock() end
+  return os.clock()
+end
+local function sleep_until(t)
+  if RUNHOST and RUNHOST.sleep then
+    RUNHOST.sleep(t - RUNHOST.clock())
+  else
+    while os.clock() < t do end
+  end
+end
+
+-- The program's own code waits until (rdue, rseq), or, with nothing given, until every run is
+-- done. The clock moves on to each run's time in turn, and tweens step on the way, a 1/60 s
+-- step at a time (a step due with a run goes first).
+local function run_until(rdue, rseq)
+  local base, from = realclock(), clock_now
+  while true do
+    local top = sleeping[1]
+    local target
+    if rdue and (not top or rdue < top[1] or (rdue == top[1] and rseq < top[2])) then
+      target, top = rdue, nil
+    elseif top then
+      target = top[1]
+    else
+      return
+    end
+    local last = floor((target + 1e-9) * 60)
+    if live > 0 and not stepping and viewing == 0 and clock_ticks < last then
+      clock_ticks = clock_ticks + 1
+      local at = clock_ticks / 60
+      sleep_until(base + (at - from))
+      if at > clock_now then clock_now = at end
+      L.tween_step(1 / 60)
+    else
+      if last > clock_ticks then clock_ticks = last end
+      sleep_until(base + (target - from))
+      if target > clock_now then clock_now = target end
+      if not top then return end
+      hpop()
+      go(top[3])
+      L.settle()
+    end
+  end
+end
+
+-- A plain program or a window: runs are on. At its end, the program waits for every run.
+function L.runs_begin() runs_on = true end
+function L.runs_finish() run_until(nil) end
+
+-- A window's clock moves the runs: dt seconds on, waking each that's due (when wake is true).
+-- Gives back the seconds until the next is due, or nil when none waits.
+function L.runs_view(dt, wake)
+  clock_now = clock_now + dt
+  local t = floor((clock_now + 1e-9) * 60)
+  if t > clock_ticks then clock_ticks = t end
+  if wake then
+    -- Runs that wait again now are woken on the next step, not this one.
+    local upto = seq
+    while sleeping[1] and sleeping[1][1] <= clock_now + 1e-9 and sleeping[1][2] <= upto do
+      go(hpop()[3])
+      L.settle()
+    end
+  end
+  if not sleeping[1] then return nil end
+  local s = sleeping[1][1] - clock_now
+  if s < 0 then s = 0 end
+  return s
+end
+
 function L.wait(s)
   if s < 0 or s ~= s then error(problem("OutOfRange", "can't wait " .. L.ftext(s) .. " seconds."), 2) end
-  if not os or not os.clock then error("wait isn't available here. Use the host program's timers.", 2) end
+  if not runs_on then return L.wait_all(s) end
   -- Events sent before the wait are heard as it starts.
+  L.settle()
+  if current then
+    coroutine.yield(clock_now + s)
+    return
+  end
+  if viewing > 0 then
+    error("this wait would stop the window, so it can't go here. Put it in a button's or a timer's code, or in a method started with start.", 2)
+  end
+  seq = seq + 1
+  run_until(clock_now + s, seq)
+end
+
+-- wait in an engine: pauses everything, while tweens move on.
+function L.wait_all(s)
+  if not os or not os.clock then error("wait isn't available here. Use the host program's timers.", 3) end
   L.settle()
   local start = os.clock()
   -- Tweens move on during the wait, a 1/60 s step at a time, on the clock wait keeps.
@@ -2441,7 +2609,7 @@ function L.view_open(class)
       if next(made) == nil then st.items[parent] = nil end
     end
     return v
-  end, L.tween_step, L.settle)
+  end, L.tween_step, L.settle, L.spawn, L.runs_view)
   L.viewing(-1)
   stores[#stores] = nil
   if e then error(e, 0) end

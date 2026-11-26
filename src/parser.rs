@@ -2059,6 +2059,26 @@ impl<'a> Parser<'a> {
                 pos: t.pos,
             });
         }
+        // start openGate();: a call run alongside. start is a word only here, before a name, so a
+        // variable can still be called start.
+        if t.kind == Tk::Ident("start".into())
+            && matches!(
+                &self.peek(1).kind,
+                Tk::Ident(_) | Tk::Int(_) | Tk::Float(..) | Tk::Str(_) | Tk::Text(_)
+            )
+        {
+            self.next();
+            if matches!(self.peek(1).kind, Tk::Sym("=")) {
+                let p = self.cur().pos;
+                return self.fail(
+                    p,
+                    "giving started work a name (start gate = openGate();) isn't built yet. For now, start a call on its own: start openGate();",
+                );
+            }
+            let call = self.expr()?;
+            self.semi()?;
+            return Ok(Stmt::Start { call, pos: t.pos });
+        }
         // tween hp to 0 over 0.5 [ease OutCubic] { … }. tween, to and over are words only here, so
         // a variable can still be called over or to.
         if t.kind == Tk::Ident("tween".into())

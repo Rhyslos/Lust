@@ -1,0 +1,7 @@
+-- Naming started work comes later.
+method openGate() {
+    print("open");
+}
+
+start gate = openGate();
+end

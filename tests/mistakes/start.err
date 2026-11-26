@@ -1,0 +1,7 @@
+start.lst:7:7  start runs a method call alongside, but gate isn't a call. Write the call: start openGate();
+start.lst:8:7  start runs a method call alongside, but this isn't a call. Write the call: start openGate();
+start.lst:9:7  start runs a method call alongside, but openGate isn't a call. Write the call: start openGate();
+start.lst:10:7  start runs a method call alongside, but this isn't a call. Write the call: start openGate();
+start.lst:11:7  there's no method called nope.
+
+5 mistakes. Nothing was run.

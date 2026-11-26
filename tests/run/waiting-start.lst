@@ -1,0 +1,113 @@
+-- start runs a call alongside: it goes straight away until its first wait, then the next line
+-- runs. wait pauses only its own run, and the program ends once every run is done.
+
+method tick(string name, int times, float gap) {
+    loop (int i = 1; i <= times; i += 1) {
+        print(name + " " + i.text());
+        wait gap;
+    }
+    print(name + " done");
+}
+
+start tick("a", 3, 0.5);
+start tick("b", 2, 0.75);
+print("both started");
+wait 1;
+-- a's second wait is due at 1 too, but the top started waiting first.
+print("top after 1");
+
+-- A method that waits makes whoever calls it wait too.
+method inner(string who) {
+    print(who + " inner before");
+    wait 0.25;
+    print(who + " inner after");
+}
+
+method outer(string who) {
+    print(who + " outer before");
+    inner(who);
+    print(who + " outer after");
+}
+
+start outer("x");
+print("the top goes on");
+outer("top");
+print("the top is done with outer");
+
+-- A method that waits can give a value back.
+method int slowAdd(int a, int b) {
+    wait 0.1;
+    return a + b;
+}
+
+method addLater() {
+    int n = slowAdd(2, 3);
+    print("started sum", n);
+}
+
+start addLater();
+int sum = slowAdd(1, 2);
+print("sum", sum);
+
+-- wait 0 lets the other runs due now go first.
+method twice(string n) {
+    print(n + " first");
+    wait 0;
+    print(n + " second");
+}
+
+start twice("p");
+start twice("q");
+print("top before wait 0");
+wait 0;
+print("top after wait 0");
+
+-- A started method on a thing, and one started from inside a run.
+class Door {
+    has {
+        string name = "";
+    }
+
+    method open() {
+        print(name + " opening");
+        wait 0.5;
+        print(name + " open");
+        start close();
+        print(name + " told to close");
+    }
+
+    method close() {
+        wait 0.25;
+        print(name + " closed");
+    }
+}
+
+Door front = new Door { name = "front" };
+start front:open();
+start new Door { name = "back" }:open();
+print("doors started");
+
+-- A try inside a run catches the run's own failure, waits and all.
+method careful() {
+    try {
+        wait 0.1;
+        int array none = [];
+        print(none[3]);
+    } error (Problem p, string m) {
+        print("caught", p, m);
+    }
+    try {
+        wait -1;
+    } error (Problem p, string m) {
+        print("caught", p, m);
+    }
+}
+
+start careful();
+
+-- start is a word only before a call, so it can still be a name.
+int start = 2;
+start += 1;
+print("start is", start);
+print("the top is done");
+end

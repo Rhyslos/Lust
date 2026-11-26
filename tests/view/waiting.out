@@ -1,0 +1,35 @@
+window "Waits" 320x220
+  column 0,0 320x192
+    text "Log: slow; " 8,8 77x19
+    text "Clicks: 0, counted: 0" 8,31 146x19
+    text "Glow: 0.0" 8,54 68x19
+    button "Slow" 8,77 63x33
+    button "Quick" 8,114 70x33
+    button "Count" 8,151 72x33
+window "Waits" 320x220
+  column 0,0 320x192
+    text "Log: slow; " 8,8 77x19
+    text "Clicks: 2, counted: 0" 8,31 146x19
+    text "Glow: 0.0" 8,54 68x19
+    button "Slow" 8,77 63x33
+    button "Quick" 8,114 70x33
+    button "Count" 8,151 72x33
+window "Waits" 320x220
+  column 0,0 320x192
+    text "Log: slow; " 8,8 77x19
+    text "Clicks: 2, counted: 2" 8,31 145x19
+    text "Glow: 1.0" 8,54 65x19
+    button "Slow" 8,77 63x33
+    button "Quick" 8,114 70x33
+    button "Count" 8,151 72x33
+counted 3
+slow done after 2 clicks
+window "Waits" 320x220
+  column 0,0 320x192
+    text "Log: slow; slow done; " 8,8 159x19
+    text "Clicks: 2, counted: 3" 8,31 146x19
+    text "Glow: 1.0" 8,54 65x19
+    button "Slow" 8,77 63x33
+    button "Quick" 8,114 70x33
+    button "Count" 8,151 72x33
+closed

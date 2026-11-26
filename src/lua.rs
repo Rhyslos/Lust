@@ -37,6 +37,10 @@ pub fn friendly(msg: &str) -> String {
     if msg.contains("stack overflow") {
         return "methods called each other too deeply. That usually means one calls itself with no way to stop.".into();
     }
+    // Lua 5.1 can't pause a run inside some of its own functions (a sort's order, say).
+    if msg.contains("attempt to yield across") {
+        return "this wait is inside something Lua runs for Lust (a sort's order, say), where a run can't pause. Wait before or after it instead.".into();
+    }
     if msg.contains("attempt to perform arithmetic") || msg.contains("attempt to concatenate") || msg.contains("attempt to compare") {
         return "a value here is nothing, so it can't be used in maths or text.".into();
     }
@@ -122,9 +126,15 @@ fn write_with(prog: &Program, info: &Info, exact: bool, engine: bool) -> Output 
     if exact {
         w.line(0, "_L.exact = true");
     }
+    // A plain program's own code is a run, and it ends once every run it started is done.
+    if !engine {
+        w.line(0, "_L.runs_begin()");
+    }
     w.program(prog);
     if engine {
         w.engine_table();
+    } else {
+        w.line(0, "_L.runs_finish()");
     }
     if !w.consts.is_empty() {
         // Lust never changes a vector in place, so one made once can be shared.
@@ -1216,7 +1226,7 @@ impl<'a> W<'a> {
             } => {
                 let ok = self.fresh("ok");
                 let e = self.fresh("err");
-                self.line(ln, &format!("local {ok}, {e} = pcall(function()"));
+                self.line(ln, &format!("local {ok}, {e} = _L.try(function()"));
                 self.indent += 1;
                 let saved = std::mem::take(&mut self.loops);
                 self.stmts(body);
@@ -1523,6 +1533,11 @@ impl<'a> W<'a> {
                 );
                 self.indent -= 1;
                 self.line(ln, "end");
+            }
+            // start openGate();: the call runs as a run of its own, straight away until it waits.
+            Stmt::Start { call, .. } => {
+                let c = self.expr(call);
+                self.line(ln, &format!("_L.start(function() local _ = {c} end)"));
             }
             Stmt::Keep { value, into, .. } => {
                 let v = self.expr(value);

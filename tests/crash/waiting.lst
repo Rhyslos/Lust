@@ -1,0 +1,17 @@
+-- A failure in a run stops the program: a try around the code that started it doesn't catch
+-- it, as the run isn't that code's.
+method later() {
+    wait 0.1;
+    int array none = [];
+    print(none[1]);
+}
+
+try {
+    start later();
+    print("started");
+    wait 0.5;
+} error (string m) {
+    print("never caught here: " + m);
+}
+print("never here");
+end

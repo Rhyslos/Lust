@@ -183,6 +183,10 @@ pub struct Info {
     pub uses_states: std::collections::BTreeSet<usize>,
     /// A view has a datePicker, which shows today by the computer's clock.
     pub uses_dates: bool,
+    /// The program waits somewhere (wait seconds;).
+    pub waits: bool,
+    /// The program starts runs of its own: a start, or a tween's done block.
+    pub starts: bool,
 }
 
 impl Info {
@@ -3321,7 +3325,12 @@ impl<'a> Checker<'a> {
                 ease,
                 done,
                 pos,
-            } => self.tween(place, target, secs, ease.as_ref(), done.as_ref(), *pos, ctx),
+            } => {
+                if done.is_some() {
+                    self.info.starts = true;
+                }
+                self.tween(place, target, secs, ease.as_ref(), done.as_ref(), *pos, ctx)
+            }
             Stmt::Var {
                 ty,
                 name,
@@ -3620,6 +3629,21 @@ impl<'a> Checker<'a> {
                         }
                     }
                 }
+            }
+            Stmt::Start { call, .. } => {
+                self.info.starts = true;
+                if !matches!(&call.kind, ExprKind::Call(..) | ExprKind::Method(..)) {
+                    self.expr(call, ctx, None);
+                    self.err(
+                        call.pos,
+                        format!(
+                            "start runs a method call alongside, but {} isn't a call. Write the call: start openGate();",
+                            describe(call)
+                        ),
+                    );
+                    return;
+                }
+                self.expr(call, ctx, None);
             }
             Stmt::Keep { value, into, pos } => {
                 let t = self.expr(value, ctx, None);
@@ -5263,7 +5287,10 @@ impl<'a> Checker<'a> {
             let (params, ret): (Vec<(&str, Option<Ty>)>, Ty) = match name {
                 "print" => (vec![("value", None)], Ty::Void),
                 "ask" => (vec![("question", Some(Ty::Str))], Ty::Str),
-                "wait" => (vec![("seconds", Some(Ty::Float))], Ty::Void),
+                "wait" => {
+                    self.info.waits = true;
+                    (vec![("seconds", Some(Ty::Float))], Ty::Void)
+                }
                 _ => unreachable!(),
             };
             if args.len() != params.len() {
