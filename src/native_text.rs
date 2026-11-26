@@ -29,7 +29,7 @@ pub fn try_capture(s: &str, p: &str) -> Result<Vec<String>, String> {
 fn ok<T>(r: Result<T, String>) -> T {
     match r {
         Ok(v) => v,
-        Err(e) => fail(e),
+        Err(e) => fail_as("BadText", e),
     }
 }
 pub fn matches(s: String, p: String) -> bool {

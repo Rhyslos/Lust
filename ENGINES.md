@@ -153,3 +153,10 @@ An engine moving from alpha 48 to alpha 67 or later reads everything below.
 - **Events that reach the engine** (handled by a component, or sent to an entity) still carry only the engine's kinds. Events only Lust hears can carry anything, things of the game's classes too, so `events()` (Rust) and the chunk's `events` (Lua) list only the events the engine can carry.
 - A program whose only sends stay in Lust no longer needs `--library`.
 - **The engine does:** changes `on X(…) { … }` to the `on { }` block in its own Lust files, samples and templates.
+
+## alpha 82: errors carry a Problem
+
+- Game code can tell kinds of failure apart: `try { … } error (Problem p, string message) { … }`, where `Problem` is a built-in state (`NotFound`, `BadJson`, `OutOfRange`, … and `Other`; the list is in LUST.md, section 15). `error (string message)` still works, and an error nobody catches stops with the same message as before.
+- **Rust:** `LustError` has a new field, `problem: &'static str`, the failure's option by name (`"NotFound"`, `"Other"`), so the engine can tell kinds apart too. Code that only reads a `LustError` needs no change; code that builds one with `LustError { … }` needs the new field.
+- **Lua:** nothing changes for the engine: an error that leaves Lust is the same message as before.
+- `Problem` is a taken name now, like `Icon`: an engine's own class or state can't be called `Problem`.

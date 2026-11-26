@@ -58,6 +58,6 @@ fn main() {
     let broken = game::Weapon::new().unwrap();
     match broken.fire(None) {
         Ok(_) => println!("no error?"),
-        Err(e) => println!("Lust said: {e}"),
+        Err(e) => println!("Lust said: {e} ({})", e.problem),
     }
 }

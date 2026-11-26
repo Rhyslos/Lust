@@ -178,6 +178,8 @@ pub struct Info {
     pub uses_ease: bool,
     /// The program names `Icon`'s options as a list (loop or #), so Lua makes its table.
     pub uses_icon: bool,
+    /// The program names `Problem` as a list (loop or #), so Lua makes its table.
+    pub uses_problem: bool,
     /// A view has a datePicker, which shows today by the computer's clock.
     pub uses_dates: bool,
 }
@@ -466,6 +468,13 @@ impl<'a> Checker<'a> {
         self.info.states.push(StateInfo {
             name: "Icon".into(),
             options: crate::stdlib::icon_options(),
+        });
+        // Problem, the built-in state of the kinds of failure, is always the third.
+        self.info.state_index.insert("Problem".into(), crate::stdlib::PROBLEM);
+        self.state_names.push("Problem".into());
+        self.info.states.push(StateInfo {
+            name: "Problem".into(),
+            options: crate::stdlib::PROBLEMS.iter().map(|e| e.to_string()).collect(),
         });
         // 1. Names of states, classes and methods, so everything can refer to everything.
         for item in &prog.items {
@@ -3444,12 +3453,21 @@ impl<'a> Checker<'a> {
                     }
                 }
             }
-            Stmt::Try { body, err, handler, .. } => {
+            Stmt::Try {
+                body,
+                problem,
+                err,
+                handler,
+                ..
+            } => {
                 let was = ctx.in_try;
                 ctx.in_try = true;
                 self.block(body, ctx);
                 ctx.in_try = was;
                 ctx.scopes.push(HashMap::new());
+                if let Some((p, ppos)) = problem {
+                    self.declare(ctx, p, Ty::State(crate::stdlib::PROBLEM), *ppos, false);
+                }
                 self.declare(ctx, &err.0, Ty::Str, err.1, false);
                 for s in handler {
                     self.stmt(s, ctx);
@@ -4358,6 +4376,9 @@ impl<'a> Checker<'a> {
             }
             if s == crate::stdlib::ICON {
                 self.info.uses_icon = true;
+            }
+            if s == crate::stdlib::PROBLEM {
+                self.info.uses_problem = true;
             }
             self.info.names.insert(e.id, NameRes::StateList);
             self.info.options.insert(e.id, (s, String::new()));

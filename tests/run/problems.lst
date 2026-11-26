@@ -1,0 +1,122 @@
+-- Errors carry their kind, a Problem: each option from a real failure, both ways.
+class Item {
+    has {
+        string name = "";
+    }
+}
+
+method Item getItem(int id) {
+    Web:fail(404, "there's no item " + id.text() + ".");
+    return nothing;
+}
+
+int day = 1;
+save progress = [day];
+
+-- Shows what went wrong: the kind, then the message.
+method show(Problem p, string message) {
+    print(p.text() + ": " + message);
+}
+
+-- NotFound: a file, a folder, a key, a row, a save.
+try { string t = Files:read("no-such-file.json"); } error (Problem p, string m) { show(p, m); }
+try { print(Files:list("no-such-folder")); } error (Problem p, string m) { show(p, m); }
+try { Files:remove("no-such-file.txt"); } error (Problem p, string m) { show(p, m); }
+int map ages = ["Ada" 36];
+try { print(ages["Bo"]); } error (Problem p, string m) { show(p, m); }
+cMap(int id, string who) people = [];
+people:inject([1, "Ada"]);
+try { print(people[2].who); } error (Problem p, string m) { show(p, m); }
+try { people:remove(7); } error (Problem p, string m) { show(p, m); }
+is Files:exists("progress.save")? then { Files:remove("progress.save"); }
+try { load progress; } error (Problem p, string m) { show(p, m); }
+
+-- AlreadyThere: a key that's taken.
+try { people:inject([1, "Bo"]); } error (Problem p, string m) { show(p, m); }
+
+-- BadJson: text that isn't JSON, or JSON that doesn't fit.
+try { Item i = Json:read("{\"name\": "); } error (Problem p, string m) { show(p, m); }
+try { Item i = Json:read("{\"name\": 3}"); } error (Problem p, string m) { show(p, m); }
+try { string s = Json:write(1.0 / 0.0); } error (Problem p, string m) { show(p, m); }
+
+-- BadText: text that isn't a number, a date, a colour, a pattern or a web address.
+try { int n = "twelve".int(); } error (Problem p, string m) { show(p, m); }
+try { float f = "1.5x".float(); } error (Problem p, string m) { show(p, m); }
+string green = "green";
+try { colour c = Colour:hex(green); } error (Problem p, string m) { show(p, m); }
+try { print("abc":matches("(")); } error (Problem p, string m) { show(p, m); }
+try { string s = Web:get("example.com"); } error (Problem p, string m) { show(p, m); }
+
+-- BadSave: a save that's damaged, or doesn't fit.
+Files:write("progress.save", "not json");
+try { load progress; } error (Problem p, string m) { show(p, m); }
+Files:write("progress.save", "{\"other\": 1}");
+try { load progress; } error (Problem p, string m) { show(p, m); }
+Files:remove("progress.save");
+
+-- OutOfRange: an item that isn't there, maths outside what it allows, a number too big.
+int array list = [1, 2, 3];
+try { print(list[3]); } error (Problem p, string m) { show(p, m); }
+int array none = [];
+try { print(none:pick()); } error (Problem p, string m) { show(p, m); }
+try { print(Maths:sqrt(-1.0)); } error (Problem p, string m) { show(p, m); }
+try { print("abc":slice(1, 9)); } error (Problem p, string m) { show(p, m); }
+uint8 small = 200;
+try { small += 100; } error (Problem p, string m) { show(p, m); }
+
+-- DividedByZero.
+int zero = 0;
+try { print(7 / zero); } error (Problem p, string m) { show(p, m); }
+try { print(7 % zero); } error (Problem p, string m) { show(p, m); }
+
+-- Nothing: something that's nothing, used.
+Item missing = nothing;
+try { print(missing.name); } error (Problem p, string m) { show(p, m); }
+
+-- NoAnswer: a website that can't be reached.
+try { string s = Web:get("http://127.0.0.1:1/"); } error (Problem p, string m) { show(p, m); }
+
+-- Stopped: Web:fail.
+try { Item i = getItem(3); } error (Problem p, string m) { show(p, m); }
+
+-- Other: anything else.
+try { print("abc":replace("", "x")); } error (Problem p, string m) { show(p, m); }
+
+-- The message on its own still works.
+try { print(list[5]); } error (string message) { print(message); }
+
+-- check goes through Problem like any state.
+try {
+    string t = Files:read("no-such-save.json");
+} error (Problem p, string message) {
+    check p {
+        when NotFound { print("starting a new game"); }
+        when BadJson { print("the save is damaged: {message}"); }
+        when NotAllowed, AlreadyThere, BadText, BadSave, OutOfRange, DividedByZero, Nothing, NoAnswer, Database, Stopped, Other {
+            print(message);
+        }
+    }
+}
+
+-- And with is, picking out one.
+try {
+    int array read = Json:read("[1, 2");
+} error (Problem p, string message) {
+    is p == Problem.BadJson? then { print("not JSON"); } or { print("something else"); }
+}
+
+-- A Problem kept in a variable, and every option.
+Problem last = Problem.Other;
+try { print(list[9]); } error (Problem p, string m) { last = p; }
+print(last);
+print(last == Problem.OutOfRange);
+loop (Problem each in Problem) { print(each); }
+
+-- A try inside a try's error part: each has its own.
+try {
+    print(list[4]);
+} error (Problem outer, string m) {
+    try { print(ages["Cy"]); } error (Problem inner, string m2) { print(inner); }
+    print(outer);
+}
+end

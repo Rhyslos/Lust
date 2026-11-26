@@ -5,6 +5,24 @@ local floor, fmt, insert, remove = math.floor, string.format, table.insert, tabl
 local setmetatable, getmetatable, tostring, tonumber, type, error = setmetatable, getmetatable, tostring, tonumber, type, error
 local ipairs = ipairs
 
+-- ----- failures and their kinds -----
+-- Each failure names its kind, an option of the built-in state Problem, for
+-- try … error (Problem p, string message): error(problem("NotFound", message), 2) keeps the
+-- kind with its message, and L.problem finds it again. Failures that don't name one are Other.
+-- native_rt.rs does the same with fail_as, and both give the same option for the same failure.
+local lastkind, lastmsg
+local function problem(kind, msg)
+  lastkind, lastmsg = kind, msg
+  return msg
+end
+-- A file Lua couldn't open: why, from Lua's own message.
+local function iokind(e)
+  e = tostring(e)
+  if e:find("No such file") then return "NotFound" end
+  if e:find("Permission denied") then return "NotAllowed" end
+  return "Other"
+end
+
 -- ----- text -----
 
 function L.ftext(v)
@@ -179,7 +197,7 @@ end
 function L.rotation_toward(d)
   local x, y, z = d.x, d.y, d.z
   if x == 0 and y == 0 and z == 0 then
-    error("toward needs a direction, but [0.0, 0.0, 0.0] has no length.", 2)
+    error(problem("OutOfRange", "toward needs a direction, but [0.0, 0.0, 0.0] has no length."), 2)
   end
   local yaw = 0
   if x ~= 0 or y ~= 0 then yaw = math.atan2(y, x) end
@@ -193,7 +211,7 @@ end
 function L.rotation_around(a, deg)
   local x, y, z = a.x, a.y, a.z
   local l = sqrt(x * x + y * y + z * z)
-  if l == 0 then error("around needs an axis to turn around, but [0.0, 0.0, 0.0] has no length.", 2) end
+  if l == 0 then error(problem("OutOfRange", "around needs an axis to turn around, but [0.0, 0.0, 0.0] has no length."), 2) end
   local h = deg * RAD / 2
   local s = math.sin(h)
   return quat(x / l * s, y / l * s, z / l * s, math.cos(h))
@@ -220,7 +238,7 @@ end
 -- a:angle(b): the angle between two directions, in degrees, from 0 to 180.
 function L.vangle(a, b)
   if (a.x == 0 and a.y == 0 and a.z == 0) or (b.x == 0 and b.y == 0 and b.z == 0) then
-    error("angle needs two directions, but one of them is [0.0, 0.0, 0.0], which has no length.", 2)
+    error(problem("OutOfRange", "angle needs two directions, but one of them is [0.0, 0.0, 0.0], which has no length."), 2)
   end
   local cx, cy, cz = a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x
   local dot = a.x * b.x + a.y * b.y + a.z * b.z
@@ -258,7 +276,7 @@ end
 function L.v2lerp(a, b, t) return vec2(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t) end
 function L.v2angle(a, b)
   if (a.x == 0 and a.y == 0) or (b.x == 0 and b.y == 0) then
-    error("angle needs two directions, but one of them is [0.0, 0.0], which has no length.", 2)
+    error(problem("OutOfRange", "angle needs two directions, but one of them is [0.0, 0.0], which has no length."), 2)
   end
   local cross, dot = a.x * b.y - a.y * b.x, a.x * b.x + a.y * b.y
   return math.atan2(math.abs(cross), dot) / RAD
@@ -315,7 +333,7 @@ L.ctext = L.colhex
 function L.colour_hex(text)
   local hex = text:match("^#(%x+)$")
   if hex == nil or (#hex ~= 6 and #hex ~= 8) then
-    error("hex needs a colour written as \"#rrggbb\" or \"#rrggbbaa\", like \"#3a8f2a\", but this is \"" .. text .. "\".", 2)
+    error(problem("BadText", "hex needs a colour written as \"#rrggbb\" or \"#rrggbbaa\", like \"#3a8f2a\", but this is \"" .. text .. "\"."), 2)
   end
   local a = 255
   if #hex == 8 then a = tonumber(hex:sub(7, 8), 16) end
@@ -336,7 +354,7 @@ function L.hcol(c) return colour(c.r, c.g, c.b, c.a == nil and 1 or c.a) end
 -- stops, naming the field.
 function L.filled(v, name)
   if v == nil then
-    error(name .. " is filled in by the engine before the component's first update, and hasn't been yet.", 2)
+    error(problem("Nothing", name .. " is filled in by the engine before the component's first update, and hasn't been yet."), 2)
   end
   return v
 end
@@ -428,12 +446,12 @@ end
 -- ----- numbers -----
 
 function L.idiv(a, b)
-  if b == 0 then error("dividing a whole number by zero doesn't work.", 2) end
+  if b == 0 then error(problem("DividedByZero", "dividing a whole number by zero doesn't work."), 2) end
   local q = a / b
   if q >= 0 then return floor(q) else return -floor(-q) end
 end
 function L.imod(a, b)
-  if b == 0 then error("the remainder after dividing by zero doesn't exist.", 2) end
+  if b == 0 then error(problem("DividedByZero", "the remainder after dividing by zero doesn't exist."), 2) end
   return math.fmod(a, b)
 end
 function L.fmod(a, b) return math.fmod(a, b) end
@@ -441,8 +459,8 @@ function L.fmod(a, b) return math.fmod(a, b) end
 -- Built programs go up to 9223372036854775807. LustScript (.lsc) numbers are plain Lua numbers.
 local EXACT = 9007199254740991
 local function too_big(level)
-  error("this whole number is too big for lust run, which holds ints exactly only up to 9007199254740991. "
-    .. "A built program (lust build) holds them up to 9223372036854775807.", level + 1)
+  error(problem("OutOfRange", "this whole number is too big for lust run, which holds ints exactly only up to 9007199254740991. "
+    .. "A built program (lust build) holds them up to 9223372036854775807."), level + 1)
 end
 function L.I(x)
   if x > EXACT or x < -EXACT then too_big(2) end
@@ -454,7 +472,7 @@ end
 function L.narrow(v, lo, hi, name)
   if v < lo or v > hi then
     local a = name:sub(1, 1) == "u" and "a" or "an"
-    error(L.itext(v) .. " doesn't fit in " .. a .. " " .. name .. ", which holds " .. lo .. " to " .. hi .. ".", 2)
+    error(problem("OutOfRange", L.itext(v) .. " doesn't fit in " .. a .. " " .. name .. ", which holds " .. lo .. " to " .. hi .. "."), 2)
   end
   return v
 end
@@ -474,8 +492,8 @@ function L.itext(v)
   return whole(v)
 end
 function L.toint(v)
-  if v ~= v then error("this float isn't a number, so it can't be an int.", 2) end
-  if v == math.huge or v == -math.huge then error(L.ftext(v) .. " is too big to be an int.", 2) end
+  if v ~= v then error(problem("OutOfRange", "this float isn't a number, so it can't be an int."), 2) end
+  if v == math.huge or v == -math.huge then error(problem("OutOfRange", L.ftext(v) .. " is too big to be an int."), 2) end
   if L.exact and (v > EXACT or v < -EXACT) then too_big(2) end
   if v >= 0 then return floor(v) else return -floor(-v) end
 end
@@ -545,13 +563,13 @@ function L.bnot(a)
   return v
 end
 local function shift_by(n, op)
-  if n < 0 or n > 63 then error(op .. " moves bits by 0 to 63 places, but this is " .. whole(n) .. ".", 3) end
+  if n < 0 or n > 63 then error(problem("OutOfRange", op .. " moves bits by 0 to 63 places, but this is " .. whole(n) .. "."), 3) end
 end
 function L.shl(a, n)
   shift_by(n, "<<")
   if a > EXACT or a < -EXACT then too_big(2) end
   local v = a * 2 ^ n
-  if v >= 9223372036854775808 or v < -9223372036854775808 then error("a number got too big for an int.", 2) end
+  if v >= 9223372036854775808 or v < -9223372036854775808 then error(problem("OutOfRange", "a number got too big for an int."), 2) end
   if v > EXACT or v < -EXACT then too_big(2) end
   return v
 end
@@ -566,11 +584,11 @@ function L.isnum(s)
   return v ~= nil and v == v and v ~= math.huge and v ~= -math.huge and not s:find("[xX]")
 end
 function L.sint(s)
-  if not L.isnum(s) then error("\"" .. s .. "\" isn't a number. Check first with .isNumber().", 2) end
+  if not L.isnum(s) then error(problem("BadText", "\"" .. s .. "\" isn't a number. Check first with .isNumber()."), 2) end
   return L.toint(tonumber(s))
 end
 function L.sfloat(s)
-  if not L.isnum(s) then error("\"" .. s .. "\" isn't a number. Check first with .isNumber().", 2) end
+  if not L.isnum(s) then error(problem("BadText", "\"" .. s .. "\" isn't a number. Check first with .isNumber()."), 2) end
   return tonumber(s) + 0.0
 end
 function L.lines(s)
@@ -596,14 +614,14 @@ local function seed()
   end
 end
 function L.random(lo, hi)
-  if lo > hi then error("Random's lowest number (" .. whole(lo) .. ") is bigger than its highest (" .. whole(hi) .. ").", 2) end
+  if lo > hi then error(problem("OutOfRange", "Random's lowest number (" .. whole(lo) .. ") is bigger than its highest (" .. whole(hi) .. ")."), 2) end
   if RHOST and RHOST.random then return RHOST.random(lo, hi) end
   seed()
   return math.random(lo, hi)
 end
 -- A decimal from lo up to (not quite) hi.
 function L.frandom(lo, hi)
-  if lo > hi then error("Random's lowest number (" .. L.ftext(lo) .. ") is bigger than its highest (" .. L.ftext(hi) .. ").", 2) end
+  if lo > hi then error(problem("OutOfRange", "Random's lowest number (" .. L.ftext(lo) .. ") is bigger than its highest (" .. L.ftext(hi) .. ")."), 2) end
   if RHOST and RHOST.frandom then return RHOST.frandom(lo, hi) end
   seed()
   return lo + math.random() * (hi - lo)
@@ -617,7 +635,7 @@ end
 -- Random:chance(0.25): true about a quarter of the time. It always rolls, even for 0 and 1, so
 -- the numbers after it are the same whatever the chance was.
 function L.random_chance(p)
-  if not (p >= 0 and p <= 1) then error("chance takes a number from 0 to 1, but this is " .. L.ftext(p) .. ".", 2) end
+  if not (p >= 0 and p <= 1) then error(problem("OutOfRange", "chance takes a number from 0 to 1, but this is " .. L.ftext(p) .. "."), 2) end
   return L.frandom(0, 1) < p
 end
 -- Random:direction(): a point on a ball of size 1, every way equally likely. The same steps as
@@ -638,9 +656,9 @@ function L.acopy(a)
   return c
 end
 local function where(a, i, level)
-  if a.n == 0 then error(fmt("the array is empty, so there's no item [%d].", i), level) end
+  if a.n == 0 then error(problem("OutOfRange", fmt("the array is empty, so there's no item [%d].", i)), level) end
   if i < 0 or i >= a.n or i ~= floor(i) then
-    error(fmt("there's no item [%d]. The array has %d item%s, numbered 0 to %d.", i, a.n, a.n == 1 and "" or "s", a.n - 1), level)
+    error(problem("OutOfRange", fmt("there's no item [%d]. The array has %d item%s, numbered 0 to %d.", i, a.n, a.n == 1 and "" or "s", a.n - 1)), level)
   end
 end
 function L.aget(a, i) where(a, i, 3); return a[i + 1] end
@@ -686,7 +704,7 @@ function L.mget(m, k)
   if v == nil then
     local found = false
     for _, x in ipairs(m.keys) do if x == k then found = true break end end
-    if not found then error("there's no key \"" .. k .. "\" in this map. Check first with :has(\"" .. k .. "\").", 2) end
+    if not found then error(problem("NotFound", "there's no key \"" .. k .. "\" in this map. Check first with :has(\"" .. k .. "\")."), 2) end
   end
   return v
 end
@@ -725,13 +743,13 @@ local function addrow(c, values, level)
   if values.n == ncols then
     k = values[1]
     first = 2
-    if c.byKey[k] ~= nil then error("there's already a row with " .. c.key .. " " .. keytext(c, k) .. ".", level) end
+    if c.byKey[k] ~= nil then error(problem("AlreadyThere", "there's already a row with " .. c.key .. " " .. keytext(c, k) .. "."), level) end
   elseif c.maker then
     local tries = 0
     repeat
       k = c.maker()
       tries = tries + 1
-      if tries > 100 then error("the key-maker keeps making " .. c.key .. "s that are already taken.", level) end
+      if tries > 100 then error(problem("AlreadyThere", "the key-maker keeps making " .. c.key .. "s that are already taken."), level) end
     until c.byKey[k] == nil
   elseif c.textkey then
     error("this cMap's key (" .. c.key .. ") is text, so each new row needs it first.", level)
@@ -753,7 +771,7 @@ function L.carr(cols, textkey, rows, maker)
 end
 -- Gives a cMap its key-maker, and gives the cMap back.
 function L.cmaker(c, maker)
-  c.maker = maker or function() error("the key-maker is nothing, so it can't make keys.", 0) end
+  c.maker = maker or function() error(problem("Nothing", "the key-maker is nothing, so it can't make keys."), 0) end
   return c
 end
 function L.rows(c)
@@ -763,7 +781,7 @@ function L.rows(c)
 end
 function L.cget(c, k)
   local r = c.byKey[k]
-  if not r then error("there's no row with " .. c.key .. " " .. keytext(c, k) .. ". " .. keys(c), 2) end
+  if not r then error(problem("NotFound", "there's no row with " .. c.key .. " " .. keytext(c, k) .. ". " .. keys(c)), 2) end
   return r
 end
 function L.cinject(c, values) addrow(c, values, 3) end
@@ -786,14 +804,14 @@ function L.asort_by(a, field)
   local t = {}
   for i = 1, a.n do t[i] = a[i] end
   stable(t, function(o)
-    if o == nil then error("this is nothing, so it has no fields or methods. Check first: is it !== nothing?", 0) end
+    if o == nil then error(problem("Nothing", "this is nothing, so it has no fields or methods. Check first: is it !== nothing?"), 0) end
     return o[field]
   end)
   for i = 1, a.n do a[i] = t[i] end
 end
 function L.chas(c, k) return c.byKey[k] ~= nil end
 function L.cremove(c, k)
-  if not c.byKey[k] then error("there's no row with " .. c.key .. " " .. keytext(c, k) .. " to remove. " .. keys(c), 2) end
+  if not c.byKey[k] then error(problem("NotFound", "there's no row with " .. c.key .. " " .. keytext(c, k) .. " to remove. " .. keys(c)), 2) end
   c.byKey[k] = nil
   for i, r in ipairs(c.rows) do
     if r[c.key] == k then remove(c.rows, i) break end
@@ -865,12 +883,12 @@ local delivering = false
 function L.listen(o) listeners[#listeners + 1] = o end
 -- send Saved(…) to editor: it must be there to send to.
 function L.target(o)
-  if o == nil then error("this is nothing, so it has no fields or methods. Check first: is it !== nothing?", 2) end
+  if o == nil then error(problem("Nothing", "this is nothing, so it has no fields or methods. Check first: is it !== nothing?"), 2) end
   local mt = getmetatable(o)
-  if mt.__ended then error(mt.__ended, 2) end
+  if mt.__ended then error(problem("Nothing", mt.__ended), 2) end
   if mt.__closed then
     local n = mt.__class.__node
-    error(n .. " is closed. Open it first: " .. n .. ":open();", 2)
+    error(problem("Nothing", n .. " is closed. Open it first: " .. n .. ":open();"), 2)
   end
   return o
 end
@@ -1138,7 +1156,7 @@ function L.like(o, c)
   return false
 end
 function L.bind(o, name)
-  if o == nil then error("this is nothing, so it has no methods.", 2) end
+  if o == nil then error(problem("Nothing", "this is nothing, so it has no methods."), 2) end
   return function(...) return o[name](o, ...) end
 end
 
@@ -1163,7 +1181,7 @@ end
 local function finish(thing, msg)
   local name = (getmetatable(thing) or {}).__name
   for k in pairs(thing) do thing[k] = nil end
-  local function gone() error(msg, 2) end
+  local function gone() error(problem("Nothing", msg), 2) end
   setmetatable(thing, { __name = name, __index = gone, __newindex = gone, __ended = msg })
   local list = owners[thing]
   owners[thing] = nil
@@ -1176,7 +1194,7 @@ function L.ended(state)
   return "this was made during " .. state .. ", and ended with it. To hold onto something made in a state, keep it, like keep sword in player.bag;"
 end
 function L.setstate(o, new)
-  if o == nil then error("this is nothing, so it has no fields or methods. Check first: is it !== nothing?", 2) end
+  if o == nil then error(problem("Nothing", "this is nothing, so it has no fields or methods. Check first: is it !== nothing?"), 2) end
   o.state = new
   local list = owners[o]
   if not list then return end
@@ -1195,7 +1213,7 @@ end
 local function shut(n, class)
   for k in pairs(n) do n[k] = nil end
   local msg = class.__node .. " is closed. Open it first: " .. class.__node .. ":open();"
-  local function gone() error(msg, 2) end
+  local function gone() error(problem("Nothing", msg), 2) end
   setmetatable(n, { __index = gone, __newindex = gone, __name = class.__name, __class = class, __closed = true })
 end
 function L.node(class, name)
@@ -1379,7 +1397,7 @@ local stepping, viewing = false, 0
 local clock_now, clock_ticks = 0, 0
 
 function L.tween(owner, name, kind, from, to, secs, ease, set, done)
-  if not (secs >= 0) then error("a tween can't take " .. L.ftext(secs) .. " seconds. It takes 0 seconds or more.", 2) end
+  if not (secs >= 0) then error(problem("OutOfRange", "a tween can't take " .. L.ftext(secs) .. " seconds. It takes 0 seconds or more."), 2) end
   local here = places[owner]
   local old = here and here[name]
   if old then
@@ -1456,7 +1474,7 @@ end
 function L.viewing(d) viewing = viewing + d end
 
 function L.wait(s)
-  if s < 0 or s ~= s then error("can't wait " .. L.ftext(s) .. " seconds.", 2) end
+  if s < 0 or s ~= s then error(problem("OutOfRange", "can't wait " .. L.ftext(s) .. " seconds."), 2) end
   if not os or not os.clock then error("wait isn't available here. Use the host program's timers.", 2) end
   -- Events sent before the wait are heard as it starts.
   L.settle()
@@ -1537,7 +1555,7 @@ end
 function L.text_slice(s, from, to)
   local list = letters(s)
   if from < 0 or to > #list or from > to then
-    error(fmt("can't slice from %d to %d: the text has %d letter%s.", from, to, #list, #list == 1 and "" or "s"), 2)
+    error(problem("OutOfRange", fmt("can't slice from %d to %d: the text has %d letter%s.", from, to, #list, #list == 1 and "" or "s")), 2)
   end
   return table.concat(list, "", from + 1, to)
 end
@@ -1571,7 +1589,7 @@ function L.array_shuffle(a)
   end
 end
 function L.array_pick(a)
-  if a.n == 0 then error("the array has no items, so there's nothing to pick.", 2) end
+  if a.n == 0 then error(problem("OutOfRange", "the array has no items, so there's nothing to pick."), 2) end
   return a[L.random(0, a.n - 1) + 1]
 end
 function L.array_sum_int(a)
@@ -1585,7 +1603,7 @@ function L.array_sum_float(a)
   return s
 end
 local function none(a, what)
-  if a.n == 0 then error("the array has no items, so it has no " .. what .. ".", 3) end
+  if a.n == 0 then error(problem("OutOfRange", "the array has no items, so it has no " .. what .. "."), 3) end
 end
 function L.array_average_int(a)
   none(a, "average")
@@ -1617,12 +1635,12 @@ L.maths_min_float = L.maths_min_int
 function L.maths_max_int(a, b) if b > a then return b end return a end
 L.maths_max_float = L.maths_max_int
 function L.maths_clamp_int(x, lo, hi)
-  if lo > hi then error("clamp's low (" .. tostring(lo) .. ") is bigger than its high (" .. tostring(hi) .. ").", 2) end
+  if lo > hi then error(problem("OutOfRange", "clamp's low (" .. tostring(lo) .. ") is bigger than its high (" .. tostring(hi) .. ")."), 2) end
   if x < lo then return lo elseif x > hi then return hi end
   return x
 end
 function L.maths_clamp_float(x, lo, hi)
-  if lo > hi then error("clamp's low (" .. L.ftext(lo) .. ") is bigger than its high (" .. L.ftext(hi) .. ").", 2) end
+  if lo > hi then error(problem("OutOfRange", "clamp's low (" .. L.ftext(lo) .. ") is bigger than its high (" .. L.ftext(hi) .. ")."), 2) end
   if x < lo then return lo elseif x > hi then return hi end
   return x
 end
@@ -1633,14 +1651,14 @@ end
 function L.maths_floor(x) return L.toint(floor(x)) end
 function L.maths_ceil(x) return L.toint(math.ceil(x)) end
 function L.maths_sqrt(x)
-  if x < 0 then error("there's no square root of a number below zero (" .. L.ftext(x) .. ").", 2) end
+  if x < 0 then error(problem("OutOfRange", "there's no square root of a number below zero (" .. L.ftext(x) .. ")."), 2) end
   return math.sqrt(x)
 end
 function L.maths_power(a, b) return a ^ b end
 L.maths_sin, L.maths_cos, L.maths_tan, L.maths_atan = math.sin, math.cos, math.tan, math.atan
 local function unit(name, x)
   if not (x >= -1 and x <= 1) then
-    error(name .. " takes a number from -1 to 1, but this is " .. L.ftext(x) .. ".", 3)
+    error(problem("OutOfRange", name .. " takes a number from -1 to 1, but this is " .. L.ftext(x) .. "."), 3)
   end
 end
 function L.maths_asin(x) unit("asin", x) return math.asin(x) end
@@ -1663,20 +1681,20 @@ L.maths_trunc = L.toint
 -- What's after the point, with x's sign. + 0.0 turns -0.0 (from -2.0) into 0.0.
 function L.maths_fraction(x) return math.fmod(x, 1) + 0.0 end
 function L.maths_log(x)
-  if x <= 0 then error("there's no log of zero or a number below zero (" .. L.ftext(x) .. ").", 2) end
+  if x <= 0 then error(problem("OutOfRange", "there's no log of zero or a number below zero (" .. L.ftext(x) .. ")."), 2) end
   return math.log(x)
 end
 function L.maths_exp(x) return math.exp(x) end
 function L.maths_isFinite(x) return x == x and x ~= math.huge and x ~= -math.huge end
 function L.maths_lerp(a, b, t) return a + (b - a) * t end
 function L.maths_moveTowards(c, t, step)
-  if step < 0 then error("moveTowards's step can't be below zero, but this is " .. L.ftext(step) .. ".", 2) end
+  if step < 0 then error(problem("OutOfRange", "moveTowards's step can't be below zero, but this is " .. L.ftext(step) .. "."), 2) end
   if math.abs(t - c) <= step then return t end
   if t > c then return c + step end
   return c - step
 end
 function L.maths_smoothstep(lo, hi, x)
-  if lo == hi then error("smoothstep needs low and high to be different, but both are " .. L.ftext(lo) .. ".", 2) end
+  if lo == hi then error(problem("OutOfRange", "smoothstep needs low and high to be different, but both are " .. L.ftext(lo) .. "."), 2) end
   local t = (x - lo) / (hi - lo)
   if t < 0 then t = 0 elseif t > 1 then t = 1 end
   return t * t * (3 - 2 * t)
@@ -1711,7 +1729,7 @@ local function grad(h, x, y, z)
 end
 local function ordinary(n)
   if n ~= n or n == math.huge or n == -math.huge then
-    error("noise needs ordinary numbers, but this is " .. L.ftext(n) .. ".", 3)
+    error(problem("OutOfRange", "noise needs ordinary numbers, but this is " .. L.ftext(n) .. "."), 3)
   end
 end
 local function perlin(x, y, z)
@@ -1748,8 +1766,8 @@ function L.files_read(path)
   if not io or not io.open then needs("Files:read") end
   local f, e = io.open(path, "rb")
   if not f then
-    if tostring(e):find("No such file") then error("can't read " .. path .. ": there's no such file.", 2) end
-    error("can't read " .. path .. ".", 2)
+    if tostring(e):find("No such file") then error(problem("NotFound", "can't read " .. path .. ": there's no such file."), 2) end
+    error(problem(iokind(e), "can't read " .. path .. "."), 2)
   end
   local s = f:read("*a")
   f:close()
@@ -1757,8 +1775,8 @@ function L.files_read(path)
 end
 local function put(path, text, mode, what)
   if not io or not io.open then needs("Files:" .. what) end
-  local f = io.open(path, mode)
-  if not f then error("can't " .. what .. " " .. path .. ".", 3) end
+  local f, e = io.open(path, mode)
+  if not f then error(problem(iokind(e), "can't " .. what .. " " .. path .. "."), 3) end
   f:write(text)
   f:close()
 end
@@ -1773,8 +1791,8 @@ function L.files_exists(path)
 end
 function L.files_remove(path)
   if host then
-    local e = host.remove(path)
-    if e then error(e, 2) end
+    local e, kind = host.remove(path)
+    if e then error(problem(kind, e), 2) end
     return
   end
   if not os or not os.remove then needs("Files:remove") end
@@ -1783,8 +1801,8 @@ function L.files_remove(path)
 end
 function L.files_list(folder)
   if not host then needs("Files:list") end
-  local names, e = host.list(folder)
-  if not names then error(e, 2) end
+  local names, e, kind = host.list(folder)
+  if not names then error(problem(kind, e), 2) end
   local out = { n = #names }
   for i, n in ipairs(names) do out[i] = n end
   return out
@@ -1805,15 +1823,16 @@ function L.files_chooseFolder(title)
 end
 function L.files_makeFolder(folder)
   if not host then needs("Files:makeFolder") end
-  local e = host.mkdir(folder)
-  if e then error(e, 2) end
+  local e, kind = host.mkdir(folder)
+  if e then error(problem(kind, e), 2) end
 end
 
 -- Text patterns and the web client come from lust, which runs them with the same code as built programs.
+-- A pattern that isn't one is BadText; the web client names its own kind of failure.
 local function hostcall(what, name, ...)
   if not host or not host[name] then needs(what) end
-  local r, e = host[name](...)
-  if r == nil then error(e, 3) end
+  local r, e, kind = host[name](...)
+  if r == nil then error(problem(kind or "BadText", e), 3) end
   return r
 end
 local function strings(list)
@@ -1862,7 +1881,7 @@ local function dayof(s)
 end
 local function needday(s)
   local z = dayof(s)
-  if not z then error("\"" .. s .. "\" isn't a date. Dates are written like \"2026-10-21\".", 3) end
+  if not z then error(problem("BadText", "\"" .. s .. "\" isn't a date. Dates are written like \"2026-10-21\"."), 3) end
   return z
 end
 local function datetext(z)
@@ -1896,7 +1915,7 @@ L.NULL = setmetatable({}, { __tostring = function() return "null" end })
 local function jfail(text, i, what)
   local line = 1
   for _ in text:sub(1, i - 1):gmatch("\n") do line = line + 1 end
-  error(fmt("this isn't valid JSON (line %d): %s.", line, what), 0)
+  error(problem("BadJson", fmt("this isn't valid JSON (line %d): %s.", line, what)), 0)
 end
 local function junexpected(text, i)
   if i > #text then jfail(text, i, "the text ends too early") end
@@ -2025,7 +2044,7 @@ local function kind(v)
 end
 local function misfit(at, want, v)
   local where = at == "" and "the JSON" or ("the JSON at " .. at)
-  error(where .. " should be " .. want .. ", but it's " .. kind(v) .. ".", 0)
+  error(problem("BadJson", where .. " should be " .. want .. ", but it's " .. kind(v) .. "."), 0)
 end
 local function child(at, k) if at == "" then return k end return at .. "." .. k end
 
@@ -2034,7 +2053,7 @@ function L.jr.int(v, at)
   if type(v) ~= "number" then misfit(at, "an int", v) end
   if v ~= floor(v) or v ~= v or v > 9007199254740992 or v < -9007199254740992 then
     local where = at == "" and "the JSON" or ("the JSON at " .. at)
-    error(where .. " should be an int, but it's a number with a fraction.", 0)
+    error(problem("BadJson", where .. " should be an int, but it's a number with a fraction."), 0)
   end
   return v
 end
@@ -2057,7 +2076,7 @@ local function jlist(v, at, want, counts)
   for _, c in ipairs(counts) do if v.n == c then fits = true end end
   if not fits then
     local where = at == "" and "the JSON" or ("the JSON at " .. at)
-    error(where .. " should be " .. want .. ", but it has " .. v.n .. (v.n == 1 and " item." or " items."), 0)
+    error(problem("BadJson", where .. " should be " .. want .. ", but it has " .. v.n .. (v.n == 1 and " item." or " items.")), 0)
   end
   local out = {}
   for i = 1, v.n do
@@ -2066,7 +2085,7 @@ local function jlist(v, at, want, counts)
     if type(x) ~= "number" then misfit(iat, "a number", x) end
     local r = f32(x)
     if r == math.huge or r == -math.huge then
-      error("the JSON at " .. iat .. " is too big to keep in 32 bits.", 0)
+      error(problem("BadJson", "the JSON at " .. iat .. " is too big to keep in 32 bits."), 0)
     end
     out[i] = x
   end
@@ -2089,7 +2108,7 @@ function L.jr.rotation(v, at)
   local len = sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w)
   if not (math.abs(len - 1) <= 0.001) then
     local where = at == "" and "the JSON" or ("the JSON at " .. at)
-    error(where .. " is a rotation's four numbers, which should be 1 long together, but these are " .. L.ftext(len) .. " long.", 0)
+    error(problem("BadJson", where .. " is a rotation's four numbers, which should be 1 long together, but these are " .. L.ftext(len) .. " long."), 0)
   end
   return q
 end
@@ -2100,14 +2119,14 @@ function L.jr.colour(v, at)
     local hex = v:match("^#(%x+)$")
     if hex == nil or (#hex ~= 6 and #hex ~= 8) then
       local where = at == "" and "the JSON" or ("the JSON at " .. at)
-      error(where .. " should be " .. want .. ", but it's \"" .. v .. "\".", 0)
+      error(problem("BadJson", where .. " should be " .. want .. ", but it's \"" .. v .. "\"."), 0)
     end
     return L.colour_hex(v)
   end
   local n = jlist(v, at, want, { 3, 4 })
   for i = 1, v.n do
     if not (n[i] >= 0 and n[i] <= 1) then
-      error(fmt("the JSON at %s[%d] is %s, but a colour's parts go from 0 to 1.", at, i - 1, L.ftext(n[i] + 0.0)), 0)
+      error(problem("BadJson", fmt("the JSON at %s[%d] is %s, but a colour's parts go from 0 to 1.", at, i - 1, L.ftext(n[i] + 0.0))), 0)
     end
   end
   return colour(n[1], n[2], n[3], v.n == 4 and n[4] or 1)
@@ -2117,7 +2136,7 @@ function L.jr_state(opts)
     for _, o in ipairs(opts) do if v == o then return v end end
     local where = at == "" and "the JSON" or ("the JSON at " .. at)
     local shown = type(v) == "string" and ("\"" .. v .. "\"") or kind(v)
-    error(where .. " should be one of " .. table.concat(opts, ", ") .. ", but it's " .. shown .. ".", 0)
+    error(problem("BadJson", where .. " should be one of " .. table.concat(opts, ", ") .. ", but it's " .. shown .. "."), 0)
   end
 end
 function L.jr_array(f)
@@ -2148,7 +2167,7 @@ function L.jr_cmap(cols, textkey, fs)
       for c, name in ipairs(cols) do
         local x = r.vals[name]
         if x == nil then
-          if c > 1 then error("the JSON at " .. rat .. " is missing " .. name .. ".", 0) end
+          if c > 1 then error(problem("BadJson", "the JSON at " .. rat .. " is missing " .. name .. "."), 0) end
         else
           values.n = values.n + 1
           values[values.n] = fs[c](x, child(rat, name))
@@ -2165,7 +2184,7 @@ function L.jr_fields(v, at, class, names, fs, required)
   if type(v) ~= "table" or not v.__obj then misfit(at, "an object", v) end
   for _, r in ipairs(required or {}) do
     if v.vals[r] == nil then
-      error((at == "" and "the JSON" or ("the JSON at " .. at)) .. " is missing " .. r .. ".", 0)
+      error(problem("BadJson", (at == "" and "the JSON" or ("the JSON at " .. at)) .. " is missing " .. r .. "."), 0)
     end
   end
   local o = L.new(class)
@@ -2206,7 +2225,7 @@ local function pair(k, v, d) if d then return jquote(k) .. ": " .. v end return 
 L.jw = {}
 function L.jw.int(v) return whole(v) end
 function L.jw.float(v)
-  if v ~= v or v == math.huge or v == -math.huge then error("JSON can't hold " .. L.ftext(v) .. ".", 0) end
+  if v ~= v or v == math.huge or v == -math.huge then error(problem("BadJson", "JSON can't hold " .. L.ftext(v) .. "."), 0) end
   return L.ftext(v)
 end
 function L.jw.string(v) return jquote(v) end
@@ -2216,7 +2235,7 @@ function L.jw.truth(v) return L.btext(v) end
 -- 3.4028235e38 beyond. Each try is C's correctly rounded %.Ne, read back through a double and
 -- rounded to f32, as Json:read does.
 function L.f32json(x)
-  if x ~= x or x == math.huge or x == -math.huge then error("JSON can't hold " .. L.ftext(x) .. ".", 0) end
+  if x ~= x or x == math.huge or x == -math.huge then error(problem("BadJson", "JSON can't hold " .. L.ftext(x) .. "."), 0) end
   if x == 0 then
     if 1 / x < 0 then return "-0.0" end
     return "0.0"
@@ -2290,7 +2309,7 @@ local jdepth = 0
 function L.jw_obj(o, d)
   if o == nil then return "null" end
   jdepth = jdepth + 1
-  if jdepth > 500 then error("this holds itself (somewhere inside it, something points back to it), so it can't be JSON.", 0) end
+  if jdepth > 500 then error(problem("BadJson", "this holds itself (somewhere inside it, something points back to it), so it can't be JSON."), 0) end
   local s = getmetatable(o).__jw(o, d)
   jdepth = jdepth - 1
   return s
@@ -2326,16 +2345,18 @@ function L.route(method, path, f)
   routes[#routes + 1] = { method = method, parts = segments(path), f = f }
 end
 function L.web_fail(status, msg)
-  error(setmetatable({ status = status, message = msg }, WebFail), 2)
+  error(setmetatable({ status = status, message = msg, problem = "Stopped" }, WebFail), 2)
 end
-local function bad(msg) error(setmetatable({ status = 400, message = msg }, WebFail), 0) end
+-- The request doesn't fit the route: a path's value isn't a number (BadText), or its body isn't
+-- the JSON it takes (BadJson).
+local function bad(kind, msg) error(setmetatable({ status = 400, message = msg, problem = kind }, WebFail), 0) end
 function L.web_param(p, name, kind)
   local v = p[name]
   if kind == "string" then return v end
-  if not L.isnum(v) then bad("the path's " .. name .. " should be a number, but it's \"" .. v .. "\".") end
+  if not L.isnum(v) then bad("BadText", "the path's " .. name .. " should be a number, but it's \"" .. v .. "\".") end
   if kind == "int" then
     local n = tonumber(v)
-    if n ~= floor(n) then bad("the path's " .. name .. " should be a whole number, but it's \"" .. v .. "\".") end
+    if n ~= floor(n) then bad("BadText", "the path's " .. name .. " should be a whole number, but it's \"" .. v .. "\".") end
     return n
   end
   return tonumber(v) + 0.0
@@ -2344,7 +2365,7 @@ function L.web_body(body, f)
   local ok, r = pcall(function() return f(parse(body), "") end)
   if not ok then
     if getmetatable(r) == WebFail then error(r, 0) end
-    bad("the request's body doesn't fit: " .. L.errtext(r))
+    bad("BadJson", "the request's body doesn't fit: " .. L.errtext(r))
   end
   return r
 end
@@ -2492,26 +2513,26 @@ function L.save_write(name, names, encs, values)
     parts[i] = pair(n, r, 1)
   end
   if not io or not io.open then needs("save") end
-  local f = io.open(name .. ".save", "wb")
-  if not f then error("can't write the save " .. name .. ".save.", 2) end
+  local f, e = io.open(name .. ".save", "wb")
+  if not f then error(problem(iokind(e), "can't write the save " .. name .. ".save."), 2) end
   f:write(block("{", "}", parts, 0) .. "\n")
   f:close()
 end
 function L.save_read(name)
   if not io or not io.open then needs("load") end
   local f = io.open(name .. ".save", "rb")
-  if not f then error("there's no saved " .. name .. " yet. Check first: is saved " .. name .. "?", 2) end
+  if not f then error(problem("NotFound", "there's no saved " .. name .. " yet. Check first: is saved " .. name .. "?"), 2) end
   local text = f:read("*a")
   f:close()
   local ok, r = pcall(parse, text)
-  if not ok then error(name .. ".save isn't a save Lust can read: " .. r, 2) end
+  if not ok then error(problem("BadSave", name .. ".save isn't a save Lust can read: " .. r), 2) end
   return r
 end
 function L.save_get(d, name, entry, f)
   local v = d.vals and d.vals[entry]
-  if v == nil then error(name .. "'s save doesn't fit this program, so nothing was loaded: it has no " .. entry .. ".", 2) end
+  if v == nil then error(problem("BadSave", name .. "'s save doesn't fit this program, so nothing was loaded: it has no " .. entry .. "."), 2) end
   local ok, r = pcall(f, v, entry)
-  if not ok then error(name .. "'s save doesn't fit this program, so nothing was loaded: " .. r, 2) end
+  if not ok then error(problem("BadSave", name .. "'s save doesn't fit this program, so nothing was loaded: " .. r), 2) end
   return r
 end
 function L.copy_fields(o, from)
@@ -2523,7 +2544,7 @@ end
 local function dbcall(what, ...)
   if not host or not host.db_open then error("databases need lust run, or a built program.", 3) end
   local r, e = host[what](...)
-  if r == nil and e then error(e, 3) end
+  if r == nil and e then error(problem("Database", e), 3) end
   return r
 end
 -- vec3s, vec2s, rotations and colours are kept as the text Json:write gives them, which reads
@@ -2595,7 +2616,7 @@ end
 function L.q_order(q, col) local n = qcopy(q); n.order = col; n.desc = false; return n end
 function L.q_reverse(q) local n = qcopy(q); n.desc = not n.desc; return n end
 function L.q_first(q, count)
-  if count < 0 then error(fmt("first needs 0 or more, not %d.", count), 2) end
+  if count < 0 then error(problem("OutOfRange", fmt("first needs 0 or more, not %d.", count)), 2) end
   local n = qcopy(q); n.limit = count; return n
 end
 function L.q_rows(q)
@@ -2624,7 +2645,7 @@ end
 function L.t_inject(q, values)
   local with_key = values.n == #q.cols
   if with_key and L.t_has(q, values[1]) then
-    error("there's already a row with " .. keyof(q) .. " " .. ktext(q, values[1]) .. " in " .. q.shown .. ".", 2)
+    error(problem("AlreadyThere", "there's already a row with " .. keyof(q) .. " " .. ktext(q, values[1]) .. " in " .. q.shown .. "."), 2)
   end
   local cols, marks, params = {}, {}, {}
   local first = with_key and 1 or 2
@@ -2637,14 +2658,14 @@ function L.t_inject(q, values)
 end
 function L.t_remove(q, k)
   local n = dbcall("db_exec", q.id, 'DELETE FROM "' .. q.table .. '" WHERE "' .. keyof(q) .. '" = ?', { k })
-  if n == 0 then error("there's no row with " .. keyof(q) .. " " .. ktext(q, k) .. " in " .. q.shown .. " to remove.", 2) end
+  if n == 0 then error(problem("NotFound", "there's no row with " .. keyof(q) .. " " .. ktext(q, k) .. " in " .. q.shown .. " to remove."), 2) end
 end
 function L.t_get(q, k)
-  if not L.t_has(q, k) then error("there's no row with " .. keyof(q) .. " " .. ktext(q, k) .. " in " .. q.shown .. ".", 2) end
+  if not L.t_has(q, k) then error(problem("NotFound", "there's no row with " .. keyof(q) .. " " .. ktext(q, k) .. " in " .. q.shown .. "."), 2) end
   return { q = q, k = k }
 end
 local function rowgone(r)
-  error("this row of " .. r.q.shown .. " (" .. keyof(r.q) .. " " .. ktext(r.q, r.k) .. ") has been removed.", 3)
+  error(problem("NotFound", "this row of " .. r.q.shown .. " (" .. keyof(r.q) .. " " .. ktext(r.q, r.k) .. ") has been removed."), 3)
 end
 function L.r_get(r, col)
   local rows = dbcall("db_rows", r.q.id, 'SELECT "' .. col .. '" FROM "' .. r.q.table .. '" WHERE "' .. keyof(r.q) .. '" = ?', { r.k })
@@ -2664,6 +2685,17 @@ end
 
 -- try … error (string message): just the message, without Lua's file and line.
 -- Lua's own messages are turned into plain words, the same ones lust run shows.
+-- try … error (Problem p, string message): the kind of failure, an option of Problem. Lust's own
+-- failures named theirs as they were raised; Lua's own are about nothing, or Other.
+function L.problem(e)
+  if type(e) == "table" then return e.problem or "Other" end
+  local s = tostring(e)
+  if lastmsg and #lastmsg > 0 and s:sub(-#lastmsg) == lastmsg then return lastkind end
+  if s:find("nil value") or s:find("with nil") or s:find("a nil value") then
+    if s:find("attempt to") then return "Nothing" end
+  end
+  return "Other"
+end
 function L.errtext(e)
   if type(e) == "table" and e.message then return e.message end
   local s = (tostring(e):gsub("^[^:]*:%d+: ", ""))

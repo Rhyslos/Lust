@@ -732,6 +732,10 @@ impl<'a> W<'a> {
             let opts: Vec<String> = crate::stdlib::icon_options().iter().map(|o| lua_string(o)).collect();
             self.line(0, &format!("local Icon = _L.state(\"Icon\", {{{}}})", opts.join(", ")));
         }
+        if self.info.uses_problem {
+            let opts: Vec<String> = crate::stdlib::PROBLEMS.iter().map(|o| lua_string(o)).collect();
+            self.line(0, &format!("local Problem = _L.state(\"Problem\", {{{}}})", opts.join(", ")));
+        }
         for item in &prog.items {
             if let Item::State(s) = item {
                 if let Some(&si) = self.info.state_index.get(&s.name) {
@@ -1201,7 +1205,13 @@ impl<'a> W<'a> {
                 }
                 None => self.line(ln, "do return end"),
             },
-            Stmt::Try { body, err, handler, .. } => {
+            Stmt::Try {
+                body,
+                problem,
+                err,
+                handler,
+                ..
+            } => {
                 let ok = self.fresh("ok");
                 let e = self.fresh("err");
                 self.line(ln, &format!("local {ok}, {e} = pcall(function()"));
@@ -1213,6 +1223,9 @@ impl<'a> W<'a> {
                 self.line(ln, "end)");
                 self.line(ln, &format!("if not {ok} then"));
                 self.indent += 1;
+                if let Some((p, ppos)) = problem {
+                    self.line(ppos.line, &format!("local {} = _L.problem({e})", lname(p)));
+                }
                 self.line(err.1.line, &format!("local {} = _L.errtext({e})", lname(&err.0)));
                 self.stmts(handler);
                 self.indent -= 1;

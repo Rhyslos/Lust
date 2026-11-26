@@ -460,8 +460,17 @@ fn value_names(p: &Program, out: &mut HashSet<String>) {
                     }
                     stmts(body, out);
                 }
-                Stmt::Try { body, err, handler, .. } => {
+                Stmt::Try {
+                    body,
+                    problem,
+                    err,
+                    handler,
+                    ..
+                } => {
                     out.insert(err.0.clone());
+                    if let Some(p) = problem {
+                        out.insert(p.0.clone());
+                    }
                     stmts(body, out);
                     stmts(handler, out);
                 }

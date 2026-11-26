@@ -10,9 +10,9 @@ fn agent() -> ureq::Agent {
 }
 
 /// GET, or POST with a JSON body. The answer's text, or why there isn't one.
-pub fn fetch(url: &str, body: Option<&str>) -> Result<String, String> {
+pub fn fetch(url: &str, body: Option<&str>) -> Result<String, Failed> {
     if !(url.starts_with("http://") || url.starts_with("https://")) {
-        return Err(format!("{url} isn't a web address. Addresses start with http:// or https://."));
+        return Err(("BadText", format!("{url} isn't a web address. Addresses start with http:// or https://.")));
     }
     let a = agent();
     let res = match body {
@@ -20,13 +20,18 @@ pub fn fetch(url: &str, body: Option<&str>) -> Result<String, String> {
         Some(b) => a.post(url).header("Content-Type", "application/json").send(b),
     };
     match res {
-        Err(_) => Err(format!("can't reach {url}.")),
+        Err(_) => Err(("NoAnswer", format!("can't reach {url}."))),
         Ok(mut r) => {
             let status = r.status().as_u16();
             let text = r.body_mut().read_to_string().unwrap_or_default();
             if status >= 400 {
                 let short: String = text.chars().take(200).collect();
-                Err(format!("{url} answered {status}: {}", short.trim()))
+                let problem = match status {
+                    404 | 410 => "NotFound",
+                    401 | 403 => "NotAllowed",
+                    _ => "NoAnswer",
+                };
+                Err((problem, format!("{url} answered {status}: {}", short.trim())))
             } else {
                 Ok(text)
             }
@@ -37,13 +42,13 @@ pub fn fetch(url: &str, body: Option<&str>) -> Result<String, String> {
 pub fn get(url: String) -> String {
     match fetch(&url, None) {
         Ok(t) => t,
-        Err(e) => fail(e),
+        Err(e) => failed(e),
     }
 }
 
 pub fn post(url: String, body: String) -> String {
     match fetch(&url, Some(&body)) {
         Ok(t) => t,
-        Err(e) => fail(e),
+        Err(e) => failed(e),
     }
 }

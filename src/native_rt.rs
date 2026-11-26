@@ -17,10 +17,36 @@ pub fn at(line: u32, col: u32) {
     LINE.with(|c| c.set(((line as u64) << 32) | col as u64));
 }
 
-pub struct Fail(pub String);
+/// A failure in Lust code: its message, and its kind, one of the options of Lust's built-in
+/// state `Problem` ("NotFound", "BadJson", …), the same one runtime.lua gives.
+pub struct Fail(pub String, pub &'static str);
+
+/// What went wrong, for code that hands a failure on: its Problem option and its message.
+pub type Failed = (&'static str, String);
 
 pub fn fail(msg: String) -> ! {
-    std::panic::panic_any(Fail(msg))
+    fail_as("Other", msg)
+}
+
+/// Stops with a failure of this kind (an option of `Problem`).
+pub fn fail_as(problem: &'static str, msg: String) -> ! {
+    std::panic::panic_any(Fail(msg, problem))
+}
+
+/// Stops with a failure handed on from elsewhere.
+pub fn failed(e: Failed) -> ! {
+    fail_as(e.0, e.1)
+}
+
+/// The Problem option for a file that couldn't be read or written: not there, not allowed, or
+/// anything else.
+pub fn io_problem(e: &std::io::Error) -> &'static str {
+    match e.kind() {
+        std::io::ErrorKind::NotFound => "NotFound",
+        std::io::ErrorKind::PermissionDenied => "NotAllowed",
+        std::io::ErrorKind::AlreadyExists => "AlreadyThere",
+        _ => "Other",
+    }
 }
 
 pub fn unreachable() -> ! {
@@ -47,9 +73,10 @@ impl Drop for Depth {
     }
 }
 
-fn payload_text(p: &(dyn std::any::Any + Send)) -> String {
-    if let Some(Fail(m)) = p.downcast_ref::<Fail>() {
-        return m.clone();
+/// A failure's kind (an option of `Problem`) and its message.
+fn payload(p: &(dyn std::any::Any + Send)) -> Failed {
+    if let Some(Fail(m, k)) = p.downcast_ref::<Fail>() {
+        return (k, m.clone());
     }
     let raw = if let Some(s) = p.downcast_ref::<String>() {
         s.clone()
@@ -59,9 +86,9 @@ fn payload_text(p: &(dyn std::any::Any + Send)) -> String {
         "something went wrong.".into()
     };
     if raw.contains("overflow") {
-        return "a number got too big for an int.".into();
+        return ("OutOfRange", "a number got too big for an int.".into());
     }
-    raw
+    ("Other", raw)
 }
 
 /// Runs the program on a thread with a big stack, and turns failures into Lust messages.
@@ -111,6 +138,9 @@ pub struct LustError {
     /// `each` is). None with `line`.
     pub column: Option<u32>,
     pub message: String,
+    /// The kind of failure: one of the options of Lust's built-in state `Problem`, by name,
+    /// like "NotFound" or "BadJson" ("Other" for anything else).
+    pub problem: &'static str,
 }
 
 impl std::fmt::Display for LustError {
@@ -132,12 +162,17 @@ pub fn error_at(files: &[&str], packed: u32, col: u32, message: String) -> LustE
         line: (line > 0).then_some(line),
         column: (line > 0 && col > 0).then_some(col),
         message,
+        problem: "Other",
     }
 }
 
 fn failure(p: &(dyn std::any::Any + Send), files: &[&str]) -> LustError {
     let at = LINE.with(|c| c.get());
-    error_at(files, (at >> 32) as u32, at as u32, payload_text(p))
+    let (problem, message) = payload(p);
+    LustError {
+        problem,
+        ..error_at(files, (at >> 32) as u32, at as u32, message)
+    }
 }
 
 // ----- events heard by Lust's own things -----
@@ -193,14 +228,20 @@ fn quiet() {
     });
 }
 
-/// try { … } error (string message) { … }: the message, if something failed.
+/// The message, if something failed.
 pub fn attempt(f: impl FnOnce()) -> Option<String> {
+    attempt_problem(f).map(|(_, m)| m)
+}
+
+/// try { … } error (Problem p, string message) { … }: the kind of problem and the message, if
+/// something failed.
+pub fn attempt_problem(f: impl FnOnce()) -> Option<Failed> {
     let depth = DEPTH.with(|c| c.get());
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
         Ok(()) => None,
         Err(p) => {
             DEPTH.with(|c| c.set(depth));
-            Some(payload_text(&*p))
+            Some(payload(&*p))
         }
     }
 }
@@ -212,7 +253,7 @@ pub fn attempt(f: impl FnOnce()) -> Option<String> {
 pub fn filled<T>(v: Option<T>, name: &str) -> Option<T> {
     match v {
         Some(v) => Some(v),
-        None => fail(format!("{name} is filled in by the engine before the component's first update, and hasn't been yet.")),
+        None => fail_as("Nothing", format!("{name} is filled in by the engine before the component's first update, and hasn't been yet.")),
     }
 }
 
@@ -221,19 +262,19 @@ pub fn obj<T: HasClass>(o: &Option<Rc<RefCell<T>>>) -> Rc<RefCell<T>> {
         Some(r) => {
             if let Ok(b) = r.try_borrow() {
                 if let Some(m) = b.ended() {
-                    fail(m.to_string());
+                    fail_as("Nothing", m.to_string());
                 }
             }
             r.clone()
         }
-        None => fail("this is nothing, so it has no fields or methods. Check first: is it !== nothing?".into()),
+        None => fail_as("Nothing", "this is nothing, so it has no fields or methods. Check first: is it !== nothing?".into()),
     }
 }
 
 pub fn hk<T: ?Sized>(h: &Option<Rc<T>>) -> Rc<T> {
     match h {
         Some(r) => r.clone(),
-        None => fail("this hook is nothing, so it can't be called. Check first: is it !== nothing?".into()),
+        None => fail_as("Nothing", "this hook is nothing, so it can't be called. Check first: is it !== nothing?".into()),
     }
 }
 
@@ -377,7 +418,7 @@ pub fn like<T: HasClass>(o: &Option<Rc<RefCell<T>>>, ids: &[u32]) -> bool {
 pub fn narrow<T: TryFrom<i64>>(v: i64, lo: i64, hi: i64, name: &str) -> T {
     match T::try_from(v) {
         Ok(x) => x,
-        Err(_) => fail(format!("{v} doesn't fit in {} {name}, which holds {lo} to {hi}.", if name.starts_with('u') { "a" } else { "an" })),
+        Err(_) => fail_as("OutOfRange", format!("{v} doesn't fit in {} {name}, which holds {lo} to {hi}.", if name.starts_with('u') { "a" } else { "an" })),
     }
 }
 
@@ -548,7 +589,7 @@ pub fn qdegrees(q: Rotation) -> Vec3 {
 pub fn rotation_toward(d: Vec3) -> Rotation {
     let (x, y, z) = v64(d);
     if x == 0.0 && y == 0.0 && z == 0.0 {
-        fail("toward needs a direction, but [0.0, 0.0, 0.0] has no length.".into());
+        fail_as("OutOfRange", "toward needs a direction, but [0.0, 0.0, 0.0] has no length.".into());
     }
     let yaw = if x != 0.0 || y != 0.0 { y.atan2(x) } else { 0.0 };
     let pitch = z.atan2((x * x + y * y).sqrt());
@@ -562,7 +603,7 @@ pub fn rotation_around(a: Vec3, deg: f64) -> Rotation {
     let (x, y, z) = v64(a);
     let l = (x * x + y * y + z * z).sqrt();
     if l == 0.0 {
-        fail("around needs an axis to turn around, but [0.0, 0.0, 0.0] has no length.".into());
+        fail_as("OutOfRange", "around needs an axis to turn around, but [0.0, 0.0, 0.0] has no length.".into());
     }
     let h = deg * RAD / 2.0;
     let s = h.sin();
@@ -595,7 +636,7 @@ pub fn qlerp(a: Rotation, b: Rotation, t: f64) -> Rotation {
 pub fn vangle(a: Vec3, b: Vec3) -> f64 {
     let ((ax, ay, az), (bx, by, bz)) = (v64(a), v64(b));
     if (ax == 0.0 && ay == 0.0 && az == 0.0) || (bx == 0.0 && by == 0.0 && bz == 0.0) {
-        fail("angle needs two directions, but one of them is [0.0, 0.0, 0.0], which has no length.".into());
+        fail_as("OutOfRange", "angle needs two directions, but one of them is [0.0, 0.0, 0.0], which has no length.".into());
     }
     let (cx, cy, cz) = (ay * bz - az * by, az * bx - ax * bz, ax * by - ay * bx);
     let dot = ax * bx + ay * by + az * bz;
@@ -678,7 +719,7 @@ pub fn v2lerp(a: Vec2, b: Vec2, t: f64) -> Vec2 {
 pub fn v2angle(a: Vec2, b: Vec2) -> f64 {
     let ((ax, ay), (bx, by)) = (w64(a), w64(b));
     if (ax == 0.0 && ay == 0.0) || (bx == 0.0 && by == 0.0) {
-        fail("angle needs two directions, but one of them is [0.0, 0.0], which has no length.".into());
+        fail_as("OutOfRange", "angle needs two directions, but one of them is [0.0, 0.0], which has no length.".into());
     }
     (ax * by - ay * bx).abs().atan2(ax * bx + ay * by) / RAD
 }
@@ -794,7 +835,7 @@ pub fn colhex(c: Colour) -> String {
 pub fn colour_hex(text: String) -> Colour {
     let hex = text.strip_prefix('#').unwrap_or("");
     if !text.starts_with('#') || !matches!(hex.len(), 6 | 8) || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
-        fail(format!(
+        fail_as("BadText", format!(
             "hex needs a colour written as \"#rrggbb\" or \"#rrggbbaa\", like \"#3a8f2a\", but this is \"{text}\"."
         ));
     }
@@ -886,14 +927,14 @@ pub fn hshow<T: ?Sized>(h: &Option<Rc<T>>) -> String {
 
 pub fn idiv(a: i64, b: i64) -> i64 {
     if b == 0 {
-        fail("dividing a whole number by zero doesn't work.".into());
+        fail_as("DividedByZero", "dividing a whole number by zero doesn't work.".into());
     }
     a / b
 }
 
 pub fn imod(a: i64, b: i64) -> i64 {
     if b == 0 {
-        fail("the remainder after dividing by zero doesn't exist.".into());
+        fail_as("DividedByZero", "the remainder after dividing by zero doesn't exist.".into());
     }
     a % b
 }
@@ -901,11 +942,11 @@ pub fn imod(a: i64, b: i64) -> i64 {
 /// a << n: stops, as * does, when the bits pushed out the top would change the number.
 pub fn shl(a: i64, n: i64) -> i64 {
     if !(0..64).contains(&n) {
-        fail(format!("<< moves bits by 0 to 63 places, but this is {n}."));
+        fail_as("OutOfRange", format!("<< moves bits by 0 to 63 places, but this is {n}."));
     }
     let v = a << n;
     if v >> n != a {
-        fail("a number got too big for an int.".into());
+        fail_as("OutOfRange", "a number got too big for an int.".into());
     }
     v
 }
@@ -913,17 +954,17 @@ pub fn shl(a: i64, n: i64) -> i64 {
 /// a >> n: keeps the sign, so -8 >> 1 is -4.
 pub fn shr(a: i64, n: i64) -> i64 {
     if !(0..64).contains(&n) {
-        fail(format!(">> moves bits by 0 to 63 places, but this is {n}."));
+        fail_as("OutOfRange", format!(">> moves bits by 0 to 63 places, but this is {n}."));
     }
     a >> n
 }
 
 pub fn toint(v: f64) -> i64 {
     if v.is_nan() {
-        fail("this float isn't a number, so it can't be an int.".into());
+        fail_as("OutOfRange", "this float isn't a number, so it can't be an int.".into());
     }
     if v.is_infinite() || !(-9.223_372_036_854_776e18..9.223_372_036_854_776e18).contains(&v) {
-        fail(format!("{} is too big to be an int.", ftext(v)));
+        fail_as("OutOfRange", format!("{} is too big to be an int.", ftext(v)));
     }
     v.trunc() as i64
 }
@@ -943,14 +984,14 @@ pub fn isnum(s: &str) -> bool {
 
 pub fn sint(s: &str) -> i64 {
     if !isnum(s) {
-        fail(format!("\"{s}\" isn't a number. Check first with .isNumber()."));
+        fail_as("BadText", format!("\"{s}\" isn't a number. Check first with .isNumber()."));
     }
     toint(s.trim().parse::<f64>().unwrap())
 }
 
 pub fn sfloat(s: &str) -> f64 {
     if !isnum(s) {
-        fail(format!("\"{s}\" isn't a number. Check first with .isNumber()."));
+        fail_as("BadText", format!("\"{s}\" isn't a number. Check first with .isNumber()."));
     }
     s.trim().parse::<f64>().unwrap()
 }
@@ -965,7 +1006,7 @@ pub fn lines(s: &str) -> Arr<String> {
 
 pub fn random(lo: i64, hi: i64) -> i64 {
     if lo > hi {
-        fail(format!("Random's lowest number ({lo}) is bigger than its highest ({hi})."));
+        fail_as("OutOfRange", format!("Random's lowest number ({lo}) is bigger than its highest ({hi})."));
     }
     let mut x = RNG.with(|c| c.get());
     if x == 0 {
@@ -991,7 +1032,7 @@ pub fn random(lo: i64, hi: i64) -> i64 {
 /// A decimal from lo up to (not quite) hi.
 pub fn frandom(lo: f64, hi: f64) -> f64 {
     if lo > hi {
-        fail(format!(
+        fail_as("OutOfRange", format!(
             "Random's lowest number ({}) is bigger than its highest ({}).",
             ftext(lo),
             ftext(hi)
@@ -1010,7 +1051,7 @@ pub fn random_seed(s: i64) {
 /// the numbers after it are the same whatever the chance was.
 pub fn random_chance(p: f64) -> bool {
     if !(0.0..=1.0).contains(&p) {
-        fail(format!("chance takes a number from 0 to 1, but this is {}.", ftext(p)));
+        fail_as("OutOfRange", format!("chance takes a number from 0 to 1, but this is {}.", ftext(p)));
     }
     frandom(0.0, 1.0) < p
 }
@@ -1048,11 +1089,11 @@ pub fn arr<T>(v: Vec<T>) -> Arr<T> {
 
 fn where_(n: usize, i: i64) {
     if n == 0 {
-        fail(format!("the array is empty, so there's no item [{i}]."));
+        fail_as("OutOfRange", format!("the array is empty, so there's no item [{i}]."));
     }
     if i < 0 || i as usize >= n {
         let s = if n == 1 { "" } else { "s" };
-        fail(format!(
+        fail_as("OutOfRange", format!(
             "there's no item [{i}]. The array has {n} item{s}, numbered 0 to {}.",
             n - 1
         ));
@@ -1126,7 +1167,7 @@ pub fn map<T>(pairs: Vec<(String, T)>) -> Map<T> {
 pub fn mget<T: Clone>(m: &Map<T>, k: &str) -> T {
     match m.borrow().vals.get(k) {
         Some(v) => v.clone(),
-        None => fail(format!("there's no key \"{k}\" in this map. Check first with :has(\"{k}\").")),
+        None => fail_as("NotFound", format!("there's no key \"{k}\" in this map. Check first with :has(\"{k}\").")),
     }
 }
 
@@ -1233,7 +1274,7 @@ fn add_row<R: Row>(c: &CMap<R>, k: Option<R::K>, mut r: R) {
     let k = match k {
         Some(k) => {
             if taken(c, &k) {
-                fail(format!("there's already a row with {key} {}.", k.show()));
+                fail_as("AlreadyThere", format!("there's already a row with {key} {}.", k.show()));
             }
             k
         }
@@ -1250,7 +1291,7 @@ fn add_row<R: Row>(c: &CMap<R>, k: Option<R::K>, mut r: R) {
                         }
                         tries += 1;
                         if tries >= 100 {
-                            fail(format!("the key-maker keeps making {key}s that are already taken."));
+                            fail_as("AlreadyThere", format!("the key-maker keeps making {key}s that are already taken."));
                         }
                     }
                 }
@@ -1291,7 +1332,7 @@ pub fn carr<R: Row>(key: &'static str, maker: Option<Option<Rc<dyn Fn() -> R::K>
 pub fn cmaker<R: Row>(c: CMap<R>, maker: Option<Rc<dyn Fn() -> R::K>>) -> CMap<R> {
     c.borrow_mut().maker = Some(match maker {
         Some(m) => m,
-        None => Rc::new(|| fail("the key-maker is nothing, so it can't make keys.".into())),
+        None => Rc::new(|| fail_as("Nothing", "the key-maker is nothing, so it can't make keys.".into())),
     });
     c
 }
@@ -1308,7 +1349,7 @@ pub fn cget<R: Row>(c: &CMap<R>, k: R::K) -> Rc<RefCell<R>> {
     let b = c.borrow();
     match b.rows.iter().find(|r| r.borrow().key() == k) {
         Some(r) => r.clone(),
-        None => fail(format!("there's no row with {} {}. {}", b.key, k.show(), keys(&b))),
+        None => fail_as("NotFound", format!("there's no row with {} {}. {}", b.key, k.show(), keys(&b))),
     }
 }
 
@@ -1329,7 +1370,7 @@ pub fn cremove<R: Row>(c: &CMap<R>, k: R::K) {
         None => {
             let msg = format!("there's no row with {} {} to remove. {}", b.key, k.show(), keys(&b));
             drop(b);
-            fail(msg)
+            fail_as("NotFound", msg)
         }
     }
 }
@@ -1389,10 +1430,10 @@ pub fn ask(q: String) -> String {
 
 pub fn wait(s: f64) {
     if s < 0.0 || s.is_nan() {
-        fail(format!("can't wait {} seconds.", ftext(s)));
+        fail_as("OutOfRange", format!("can't wait {} seconds.", ftext(s)));
     }
     if s.is_infinite() || s > 24.0 * 24.0 * 3600.0 {
-        fail(format!("can't wait {} seconds; the longest wait is 24 days.", ftext(s)));
+        fail_as("OutOfRange", format!("can't wait {} seconds; the longest wait is 24 days.", ftext(s)));
     }
     // Events sent before the wait are heard as it starts.
     settle();
@@ -1669,7 +1710,7 @@ thread_local! {
 /// doesn't run). Over 0 seconds, it sets the place and runs the done block straight away.
 pub fn tween<T: Tweenable>(key: TweenKey, from: T, to: T, secs: f64, ease: &'static str, mut set: Box<dyn FnMut(T)>, done: Option<Rc<dyn Fn()>>) {
     if !(secs >= 0.0) {
-        fail(format!("a tween can't take {} seconds. It takes 0 seconds or more.", ftext(secs)));
+        fail_as("OutOfRange", format!("a tween can't take {} seconds. It takes 0 seconds or more.", ftext(secs)));
     }
     TWEENS.with(|t| {
         let mut t = t.borrow_mut();
@@ -1828,7 +1869,7 @@ pub fn text_slice(s: String, from: i64, to: i64) -> String {
     let list: Vec<char> = s.chars().collect();
     let n = list.len() as i64;
     if from < 0 || to > n || from > to {
-        fail(format!(
+        fail_as("OutOfRange", format!(
             "can't slice from {from} to {to}: the text has {n} letter{}.",
             if n == 1 { "" } else { "s" }
         ));
@@ -1873,7 +1914,7 @@ pub fn array_shuffle<T>(a: Arr<T>) {
 pub fn array_pick<T: Clone>(a: Arr<T>) -> T {
     let n = a.borrow().len();
     if n == 0 {
-        fail("the array has no items, so there's nothing to pick.".into());
+        fail_as("OutOfRange", "the array has no items, so there's nothing to pick.".into());
     }
     let i = random(0, n as i64 - 1) as usize;
     let v = a.borrow()[i].clone();
@@ -1895,7 +1936,7 @@ pub fn array_sum_float(a: Arr<f64>) -> f64 {
 }
 fn none<T>(a: &Arr<T>, what: &str) {
     if a.borrow().is_empty() {
-        fail(format!("the array has no items, so it has no {what}."));
+        fail_as("OutOfRange", format!("the array has no items, so it has no {what}."));
     }
 }
 pub fn array_average_int(a: Arr<i64>) -> f64 {
@@ -1961,13 +2002,13 @@ pub fn maths_max_float(a: f64, b: f64) -> f64 {
 }
 pub fn maths_clamp_int(x: i64, lo: i64, hi: i64) -> i64 {
     if lo > hi {
-        fail(format!("clamp's low ({lo}) is bigger than its high ({hi})."));
+        fail_as("OutOfRange", format!("clamp's low ({lo}) is bigger than its high ({hi})."));
     }
     x.max(lo).min(hi)
 }
 pub fn maths_clamp_float(x: f64, lo: f64, hi: f64) -> f64 {
     if lo > hi {
-        fail(format!("clamp's low ({}) is bigger than its high ({}).", ftext(lo), ftext(hi)));
+        fail_as("OutOfRange", format!("clamp's low ({}) is bigger than its high ({}).", ftext(lo), ftext(hi)));
     }
     if x < lo {
         lo
@@ -1992,7 +2033,7 @@ pub fn maths_ceil(x: f64) -> i64 {
 }
 pub fn maths_sqrt(x: f64) -> f64 {
     if x < 0.0 {
-        fail(format!("there's no square root of a number below zero ({}).", ftext(x)));
+        fail_as("OutOfRange", format!("there's no square root of a number below zero ({}).", ftext(x)));
     }
     x.sqrt()
 }
@@ -2010,7 +2051,7 @@ pub fn maths_tan(x: f64) -> f64 {
 }
 fn unit(name: &str, x: f64) {
     if !(-1.0..=1.0).contains(&x) {
-        fail(format!("{name} takes a number from -1 to 1, but this is {}.", ftext(x)));
+        fail_as("OutOfRange", format!("{name} takes a number from -1 to 1, but this is {}.", ftext(x)));
     }
 }
 pub fn maths_asin(x: f64) -> f64 {
@@ -2063,7 +2104,7 @@ pub fn maths_fraction(x: f64) -> f64 {
 }
 pub fn maths_log(x: f64) -> f64 {
     if x <= 0.0 {
-        fail(format!("there's no log of zero or a number below zero ({}).", ftext(x)));
+        fail_as("OutOfRange", format!("there's no log of zero or a number below zero ({}).", ftext(x)));
     }
     x.ln()
 }
@@ -2078,7 +2119,7 @@ pub fn maths_lerp(a: f64, b: f64, t: f64) -> f64 {
 }
 pub fn maths_moveTowards(c: f64, t: f64, step: f64) -> f64 {
     if step < 0.0 {
-        fail(format!("moveTowards's step can't be below zero, but this is {}.", ftext(step)));
+        fail_as("OutOfRange", format!("moveTowards's step can't be below zero, but this is {}.", ftext(step)));
     }
     if (t - c).abs() <= step {
         t
@@ -2090,7 +2131,7 @@ pub fn maths_moveTowards(c: f64, t: f64, step: f64) -> f64 {
 }
 pub fn maths_smoothstep(lo: f64, hi: f64, x: f64) -> f64 {
     if lo == hi {
-        fail(format!("smoothstep needs low and high to be different, but both are {}.", ftext(lo)));
+        fail_as("OutOfRange", format!("smoothstep needs low and high to be different, but both are {}.", ftext(lo)));
     }
     let mut t = (x - lo) / (hi - lo);
     if t < 0.0 {
@@ -2143,7 +2184,7 @@ fn grad(h: usize, x: f64, y: f64, z: f64) -> f64 {
 }
 fn ordinary(n: f64) {
     if !n.is_finite() {
-        fail(format!("noise needs ordinary numbers, but this is {}.", ftext(n)));
+        fail_as("OutOfRange", format!("noise needs ordinary numbers, but this is {}.", ftext(n)));
     }
 }
 /// Perlin noise: smooth hills and valleys from -1 to 1, the same for the same numbers on every
@@ -2189,7 +2230,7 @@ pub fn maths_noise3(x: f64, y: f64, z: f64) -> f64 {
 }
 
 // Files. The fs_ ones are also what `lust run` gives Lua, so both say the same things.
-pub fn fs_remove(path: &str) -> Result<(), String> {
+pub fn fs_remove(path: &str) -> Result<(), Failed> {
     let p = std::path::Path::new(path);
     let r = if p.is_dir() {
         std::fs::remove_dir(p)
@@ -2197,32 +2238,32 @@ pub fn fs_remove(path: &str) -> Result<(), String> {
         std::fs::remove_file(p)
     };
     r.map_err(|e| match e.kind() {
-        std::io::ErrorKind::NotFound => format!("can't remove {path}: there's no such file or folder."),
-        _ if p.is_dir() => format!("can't remove {path}: the folder isn't empty."),
-        _ => format!("can't remove {path}."),
+        std::io::ErrorKind::NotFound => ("NotFound", format!("can't remove {path}: there's no such file or folder.")),
+        _ if p.is_dir() => ("Other", format!("can't remove {path}: the folder isn't empty.")),
+        _ => (io_problem(&e), format!("can't remove {path}.")),
     })
 }
-pub fn fs_list(folder: &str) -> Result<Vec<String>, String> {
-    let rd = std::fs::read_dir(folder).map_err(|_| format!("there's no folder {folder}."))?;
+pub fn fs_list(folder: &str) -> Result<Vec<String>, Failed> {
+    let rd = std::fs::read_dir(folder).map_err(|_| ("NotFound", format!("there's no folder {folder}.")))?;
     let mut names: Vec<String> = rd
         .filter_map(|e| e.ok().map(|e| e.file_name().to_string_lossy().to_string()))
         .collect();
     names.sort();
     Ok(names)
 }
-pub fn fs_mkdir(folder: &str) -> Result<(), String> {
-    std::fs::create_dir_all(folder).map_err(|_| format!("can't make the folder {folder}."))
+pub fn fs_mkdir(folder: &str) -> Result<(), Failed> {
+    std::fs::create_dir_all(folder).map_err(|e| (io_problem(&e), format!("can't make the folder {folder}.")))
 }
 pub fn files_read(path: String) -> String {
     match std::fs::read(&path) {
         Ok(b) => String::from_utf8_lossy(&b).to_string(),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => fail(format!("can't read {path}: there's no such file.")),
-        Err(_) => fail(format!("can't read {path}.")),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => fail_as("NotFound", format!("can't read {path}: there's no such file.")),
+        Err(e) => fail_as(io_problem(&e), format!("can't read {path}.")),
     }
 }
 pub fn files_write(path: String, text: String) {
-    if std::fs::write(&path, text).is_err() {
-        fail(format!("can't write {path}."));
+    if let Err(e) = std::fs::write(&path, text) {
+        fail_as(io_problem(&e), format!("can't write {path}."));
     }
 }
 pub fn files_append(path: String, text: String) {
@@ -2232,8 +2273,8 @@ pub fn files_append(path: String, text: String) {
         .create(true)
         .open(&path)
         .and_then(|mut f| f.write_all(text.as_bytes()));
-    if ok.is_err() {
-        fail(format!("can't append {path}."));
+    if let Err(e) = ok {
+        fail_as(io_problem(&e), format!("can't append {path}."));
     }
 }
 pub fn files_exists(path: String) -> bool {
@@ -2241,18 +2282,18 @@ pub fn files_exists(path: String) -> bool {
 }
 pub fn files_remove(path: String) {
     if let Err(e) = fs_remove(&path) {
-        fail(e);
+        failed(e);
     }
 }
 pub fn files_list(folder: String) -> Arr<String> {
     match fs_list(&folder) {
         Ok(n) => arr(n),
-        Err(e) => fail(e),
+        Err(e) => failed(e),
     }
 }
 pub fn files_makeFolder(folder: String) {
     if let Err(e) = fs_mkdir(&folder) {
-        fail(e);
+        failed(e);
     }
 }
 
@@ -2328,7 +2369,7 @@ fn day_of(s: &str) -> Option<i64> {
 fn need_day(s: &str) -> i64 {
     match day_of(s) {
         Some(z) => z,
-        None => fail(format!("\"{s}\" isn't a date. Dates are written like \"2026-10-21\".")),
+        None => fail_as("BadText", format!("\"{s}\" isn't a date. Dates are written like \"2026-10-21\".")),
     }
 }
 fn date_text(z: i64) -> String {
@@ -2378,7 +2419,7 @@ struct JP<'a> {
 impl<'a> JP<'a> {
     fn fail(&self, at: usize, what: &str) -> ! {
         let line = self.b[..at.min(self.b.len())].iter().filter(|&&c| c == b'\n').count() + 1;
-        fail(format!("this isn't valid JSON (line {line}): {what}."))
+        fail_as("BadJson", format!("this isn't valid JSON (line {line}): {what}."))
     }
     fn unexpected(&self, at: usize) -> ! {
         match self.b.get(at) {
@@ -2591,7 +2632,7 @@ fn place(at: &str) -> String {
     }
 }
 fn misfit(at: &str, want: &str, v: &Json) -> ! {
-    fail(format!("{} should be {want}, but it's {}.", place(at), kind(v)))
+    fail_as("BadJson", format!("{} should be {want}, but it's {}.", place(at), kind(v)))
 }
 pub fn child(at: &str, k: &str) -> String {
     if at.is_empty() {
@@ -2609,14 +2650,14 @@ pub fn jget<'a>(v: &'a Json, k: &str) -> Option<&'a Json> {
 pub fn jneed<'a>(v: &'a Json, k: &str, at: &str) -> &'a Json {
     match jget(v, k) {
         Some(x) => x,
-        None => fail(format!("the JSON at {at} is missing {k}.")),
+        None => fail_as("BadJson", format!("the JSON at {at} is missing {k}.")),
     }
 }
 pub fn jr_int(v: &Json, at: &str) -> i64 {
     match v {
         Json::Num(n) => {
             if n.fract() != 0.0 || n.abs() > 9007199254740992.0 {
-                fail(format!("{} should be an int, but it's a number with a fraction.", place(at)));
+                fail_as("BadJson", format!("{} should be an int, but it's a number with a fraction.", place(at)));
             }
             *n as i64
         }
@@ -2645,7 +2686,7 @@ pub fn jr_truth(v: &Json, at: &str) -> bool {
 fn jr_list(v: &Json, at: &str, want: &str, counts: &[usize]) -> Vec<f64> {
     let Json::Arr(a) = v else { misfit(at, want, v) };
     if !counts.contains(&a.len()) {
-        fail(format!(
+        fail_as("BadJson", format!(
             "{} should be {want}, but it has {} item{}.",
             place(at),
             a.len(),
@@ -2658,7 +2699,7 @@ fn jr_list(v: &Json, at: &str, want: &str, counts: &[usize]) -> Vec<f64> {
             let iat = format!("{at}[{i}]");
             let Json::Num(n) = x else { misfit(&iat, "a number", x) };
             if (*n as f32).is_infinite() {
-                fail(format!("the JSON at {iat} is too big to keep in 32 bits."));
+                fail_as("BadJson", format!("the JSON at {iat} is too big to keep in 32 bits."));
             }
             *n
         })
@@ -2683,7 +2724,7 @@ pub fn jr_rotation(v: &Json, at: &str) -> Rotation {
     let (x, y, z, w) = q4(q);
     let len = (x * x + y * y + z * z + w * w).sqrt();
     if !((len - 1.0).abs() <= 0.001) {
-        fail(format!(
+        fail_as("BadJson", format!(
             "{} is a rotation's four numbers, which should be 1 long together, but these are {} long.",
             place(at),
             ftext(len)
@@ -2699,12 +2740,12 @@ pub fn jr_colour(v: &Json, at: &str) -> Colour {
         if s.starts_with('#') && matches!(hex.len(), 6 | 8) && hex.bytes().all(|b| b.is_ascii_hexdigit()) {
             return colour_hex(s.clone());
         }
-        fail(format!("{} should be {want}, but it's \"{s}\".", place(at)));
+        fail_as("BadJson", format!("{} should be {want}, but it's \"{s}\".", place(at)));
     }
     let n = jr_list(v, at, want, &[3, 4]);
     for (i, p) in n.iter().enumerate() {
         if !(*p >= 0.0 && *p <= 1.0) {
-            fail(format!("the JSON at {at}[{i}] is {}, but a colour's parts go from 0 to 1.", ftext(*p)));
+            fail_as("BadJson", format!("the JSON at {at}[{i}] is {}, but a colour's parts go from 0 to 1.", ftext(*p)));
         }
     }
     colour(n[0], n[1], n[2], if n.len() == 4 { n[3] } else { 1.0 })
@@ -2715,7 +2756,7 @@ pub fn jr_colour(v: &Json, at: &str) -> Colour {
 /// f32, as Json:read does.
 pub fn f32json(x: f32) -> String {
     if !x.is_finite() {
-        fail(format!("JSON can't hold {}.", ftext(x as f64)));
+        fail_as("BadJson", format!("JSON can't hold {}.", ftext(x as f64)));
     }
     if x == 0.0 {
         return if x.is_sign_negative() { "-0.0".into() } else { "0.0".into() };
@@ -2800,7 +2841,7 @@ pub fn jr_state(v: &Json, at: &str, opts: &[&'static str]) -> &'static str {
         Json::Str(s) => format!("\"{s}\""),
         _ => kind(v).to_string(),
     };
-    fail(format!("{} should be one of {}, but it's {shown}.", place(at), opts.join(", ")))
+    fail_as("BadJson", format!("{} should be one of {}, but it's {shown}.", place(at), opts.join(", ")))
 }
 pub fn jr_array<T>(v: &Json, at: &str, f: &dyn Fn(&Json, &str) -> T) -> Arr<T> {
     match v {
@@ -2834,7 +2875,7 @@ pub fn jr_cmap<R: Row>(v: &Json, at: &str, key: &'static str, f: &dyn Fn(&Json, 
 pub fn jr_required(v: &Json, at: &str, required: &[&str]) {
     for r in required {
         if jget(v, r).is_none() {
-            fail(format!("{} is missing {r}.", place(at)));
+            fail_as("BadJson", format!("{} is missing {r}.", place(at)));
         }
     }
 }
@@ -2876,12 +2917,14 @@ pub fn web_routes(h: Handler) {
 
 pub fn web_fail(status: i64, msg: String) {
     STATUS.with(|s| s.set(status.clamp(100, 999) as u16));
-    fail(msg)
+    fail_as("Stopped", msg)
 }
 
-fn bad(msg: String) -> ! {
+/// The request doesn't fit the route: a path's value isn't a number (BadText), or its body
+/// isn't the JSON it takes (BadJson).
+fn bad(problem: &'static str, msg: String) -> ! {
     STATUS.with(|s| s.set(400));
-    fail(msg)
+    fail_as(problem, msg)
 }
 
 /// The path without its ?query, and whether it fits a route's pattern: the :names' values if it does.
@@ -2930,28 +2973,28 @@ pub fn web_string(p: &[(String, String)], name: &str) -> String {
 pub fn web_int(p: &[(String, String)], name: &str) -> i64 {
     let v = param(p, name);
     if !isnum(v) {
-        bad(format!("the path's {name} should be a number, but it's \"{v}\"."));
+        bad("BadText", format!("the path's {name} should be a number, but it's \"{v}\"."));
     }
     let n: f64 = v.trim().parse().unwrap_or(0.0);
     if n.fract() != 0.0 {
-        bad(format!("the path's {name} should be a whole number, but it's \"{v}\"."));
+        bad("BadText", format!("the path's {name} should be a whole number, but it's \"{v}\"."));
     }
     n as i64
 }
 pub fn web_float(p: &[(String, String)], name: &str) -> f64 {
     let v = param(p, name);
     if !isnum(v) {
-        bad(format!("the path's {name} should be a number, but it's \"{v}\"."));
+        bad("BadText", format!("the path's {name} should be a number, but it's \"{v}\"."));
     }
     v.trim().parse().unwrap_or(0.0)
 }
 pub fn web_body<T>(body: &str, f: &dyn Fn(&Json, &str) -> T) -> T {
     let mut out = None;
-    if let Some(e) = attempt(|| out = Some(f(&json_parse(body), ""))) {
+    if let Some(e) = attempt_problem(|| out = Some(f(&json_parse(body), ""))) {
         if STATUS.with(|s| s.get()) == 0 {
-            bad(format!("the request's body doesn't fit: {e}"));
+            bad("BadJson", format!("the request's body doesn't fit: {}", e.1));
         }
-        fail(e);
+        failed(e);
     }
     out.unwrap()
 }
@@ -3009,19 +3052,19 @@ pub fn save_exists(name: &str) -> bool {
 }
 
 pub fn save_write(name: &str, text: String) {
-    if std::fs::write(format!("{name}.save"), text + "\n").is_err() {
-        fail(format!("can't write the save {name}.save."));
+    if let Err(e) = std::fs::write(format!("{name}.save"), text + "\n") {
+        fail_as(io_problem(&e), format!("can't write the save {name}.save."));
     }
 }
 
 pub fn save_read(name: &str) -> Json {
     let text = match std::fs::read_to_string(format!("{name}.save")) {
         Ok(t) => t,
-        Err(_) => fail(format!("there's no saved {name} yet. Check first: is saved {name}?")),
+        Err(_) => fail_as("NotFound", format!("there's no saved {name} yet. Check first: is saved {name}?")),
     };
     let mut out = None;
     if let Some(e) = attempt(|| out = Some(json_parse(&text))) {
-        fail(format!("{name}.save isn't a save Lust can read: {e}"));
+        fail_as("BadSave", format!("{name}.save isn't a save Lust can read: {e}"));
     }
     out.unwrap()
 }
@@ -3029,13 +3072,13 @@ pub fn save_read(name: &str) -> Json {
 /// One thing from a save. Anything that doesn't fit stops the load before anything changes.
 pub fn save_get<T>(d: &Json, name: &str, entry: &str, f: &dyn Fn(&Json, &str) -> T) -> T {
     let Some(v) = jget(d, entry) else {
-        fail(format!(
+        fail_as("BadSave", format!(
             "{name}'s save doesn't fit this program, so nothing was loaded: it has no {entry}."
         ))
     };
     let mut out = None;
     if let Some(e) = attempt(|| out = Some(f(v, entry))) {
-        fail(format!("{name}'s save doesn't fit this program, so nothing was loaded: {e}"));
+        fail_as("BadSave", format!("{name}'s save doesn't fit this program, so nothing was loaded: {e}"));
     }
     out.unwrap()
 }
@@ -3085,7 +3128,7 @@ pub fn jw_int(v: &i64, _: Option<usize>) -> String {
 }
 pub fn jw_float(v: &f64, _: Option<usize>) -> String {
     if !v.is_finite() {
-        fail(format!("JSON can't hold {}.", ftext(*v)));
+        fail_as("BadJson", format!("JSON can't hold {}.", ftext(*v)));
     }
     ftext(*v)
 }
@@ -3124,7 +3167,7 @@ pub fn jw_enter() {
     let n = JDEPTH.with(|c| c.get()) + 1;
     JDEPTH.with(|c| c.set(n));
     if n > 500 {
-        fail("this holds itself (somewhere inside it, something points back to it), so it can't be JSON.".into());
+        fail_as("BadJson", "this holds itself (somewhere inside it, something points back to it), so it can't be JSON.".into());
     }
 }
 pub fn jw_leave() {

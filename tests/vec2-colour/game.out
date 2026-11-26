@@ -12,5 +12,5 @@ queued Flash to Some(3): [List([Float(0.0), Float(0.0), Float(0.0), Float(0.5)])
 0000000000003 flashes #00000080 at [2.0, 0.5]
 handled: Ok(true)
 {"shadow": List([Float(0.0), Float(0.0), Float(0.0), Float(0.5)]), "speed": List([Float(0.25), Float(4.0)]), "tint": List([Float(1.0), Float(0.5), Float(0.0), Float(0.5)])}
-Err(LustError { file: "game.lst", line: Some(26), column: Some(9), message: "Flash's glow should be four numbers from 0 to 1." })
+Err(LustError { file: "game.lst", line: Some(26), column: Some(9), message: "Flash's glow should be four numbers from 0 to 1.", problem: "Other" })
 Colour { r: 0.5, g: 1.0, b: 0.0, a: 1.0 }

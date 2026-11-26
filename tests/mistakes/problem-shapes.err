@@ -1,0 +1,9 @@
+problem-shapes.lst:2:40  the kind of problem comes first: error (Problem p, string message) { … }
+problem-shapes.lst:3:35  the message comes after the kind of problem: error (Problem p, string message) { … }
+problem-shapes.lst:4:26  error takes the message, or the kind of problem and then the message: error (string message) { … } or error (Problem p, string message) { … }
+problem-shapes.lst:5:26  error takes the message, or the kind of problem and then the message: error (string message) { … } or error (Problem p, string message) { … }
+problem-shapes.lst:6:37  error takes the message, or the kind of problem and then the message: error (string message) { … } or error (Problem p, string message) { … }
+problem-shapes.lst:7:47  the kind of problem and the message can't both be called same.
+problem-shapes.lst:8:40  error takes the message, or the kind of problem and then the message: error (string message) { … } or error (Problem p, string message) { … }
+
+7 mistakes. Nothing was run.

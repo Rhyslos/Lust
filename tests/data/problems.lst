@@ -1,0 +1,20 @@
+-- Errors from databases carry their kind, a Problem, both ways.
+database Shop in "problems-shop.db" {
+    cMap(string name, int stock) items;
+}
+
+method show(Problem p, string message) {
+    print(p.text() + ": " + message);
+}
+
+Shop.items:where(true):remove();
+Shop.items:inject(["tea", 3]);
+
+-- AlreadyThere: a row with a key that's taken.
+try { Shop.items:inject(["tea", 4]); } error (Problem p, string m) { show(p, m); }
+-- NotFound: a row that isn't there, or has been removed.
+try { print(Shop.items["cake"].stock); } error (Problem p, string m) { show(p, m); }
+try { Shop.items:remove("cake"); } error (Problem p, string m) { show(p, m); }
+-- OutOfRange: first with fewer than none.
+try { print(Shop.items:first(-1)); } error (Problem p, string m) { show(p, m); }
+end

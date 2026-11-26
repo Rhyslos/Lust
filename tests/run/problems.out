@@ -1,0 +1,49 @@
+NotFound: can't read no-such-file.json: there's no such file.
+NotFound: there's no folder no-such-folder.
+NotFound: can't remove no-such-file.txt: there's no such file or folder.
+NotFound: there's no key "Bo" in this map. Check first with :has("Bo").
+NotFound: there's no row with id 2. The ids are 1.
+NotFound: there's no row with id 7 to remove. The ids are 1.
+NotFound: there's no saved progress yet. Check first: is saved progress?
+AlreadyThere: there's already a row with id 1.
+BadJson: this isn't valid JSON (line 1): the text ends too early.
+BadJson: the JSON at name should be text, but it's a number.
+BadJson: JSON can't hold infinity.
+BadText: "twelve" isn't a number. Check first with .isNumber().
+BadText: "1.5x" isn't a number. Check first with .isNumber().
+BadText: hex needs a colour written as "#rrggbb" or "#rrggbbaa", like "#3a8f2a", but this is "green".
+BadText: "(" isn't a pattern Lust understands: error: unclosed group
+BadText: example.com isn't a web address. Addresses start with http:// or https://.
+BadSave: progress.save isn't a save Lust can read: this isn't valid JSON (line 1): "n" is out of place.
+BadSave: progress's save doesn't fit this program, so nothing was loaded: it has no day.
+OutOfRange: there's no item [3]. The array has 3 items, numbered 0 to 2.
+OutOfRange: the array has no items, so there's nothing to pick.
+OutOfRange: there's no square root of a number below zero (-1.0).
+OutOfRange: can't slice from 1 to 9: the text has 3 letters.
+OutOfRange: 300 doesn't fit in a uint8, which holds 0 to 255.
+DividedByZero: dividing a whole number by zero doesn't work.
+DividedByZero: the remainder after dividing by zero doesn't exist.
+Nothing: this is nothing, so it has no fields or methods. Check first: is it !== nothing?
+NoAnswer: can't reach http://127.0.0.1:1/.
+Stopped: there's no item 3.
+Other: replace needs some text to look for.
+there's no item [5]. The array has 3 items, numbered 0 to 2.
+starting a new game
+not JSON
+OutOfRange
+true
+NotFound
+NotAllowed
+AlreadyThere
+BadJson
+BadText
+BadSave
+OutOfRange
+DividedByZero
+Nothing
+NoAnswer
+Database
+Stopped
+Other
+NotFound
+OutOfRange

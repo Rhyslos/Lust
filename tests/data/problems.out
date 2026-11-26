@@ -1,0 +1,4 @@
+AlreadyThere: there's already a row with name "tea" in Shop.items.
+NotFound: there's no row with name "cake" in Shop.items.
+NotFound: there's no row with name "cake" in Shop.items to remove.
+OutOfRange: first needs 0 or more, not -1.
