@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (alpha 81):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options, set with `=`), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too). Events in any program (`event`, `on { }` and `send`), sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, tables and long lists, right-click menus, rows dragged to new places, dropped files, the mouse on a canvas, scrolling, pictures (SVG too), timers, keyboard shortcuts, fonts of your own, date and colour pickers, second windows, full screen, toasts, notifications and a tray icon, all drawn by Lust itself, sharp at any screen scaling, with input methods for typing any language and a tree for screen readers. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (alpha 82):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options, set with `=`), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error` (with `Problem`, the kinds of failure, as a built-in state), `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too). Events in any program (`event`, `on { }` and `send`), sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, tables and long lists, right-click menus, rows dragged to new places, dropped files, the mouse on a canvas, scrolling, pictures (SVG too), timers, keyboard shortcuts, fonts of your own, date and colour pickers, second windows, full screen, toasts, notifications and a tray icon, all drawn by Lust itself, sharp at any screen scaling, with input methods for typing any language and a tree for screen readers. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -797,6 +797,50 @@ try {
 
 - `try` runs the block. If something goes wrong inside it, the program carries on in `error` instead of stopping.
 - Without `try`, an error stops the program with the file, line and a plain message.
+
+### What kind of problem
+
+Fixed choices are states, not text, and the kinds of failure are too. **`Problem` is a built-in state**, and `error` can take one before the message, so code can tell kinds of failure apart without comparing text:
+
+```
+try {
+    string text = Files:read("save.json");
+    Game g = Json:read(text);
+} error (Problem p, string message) {
+    is p == Problem.NotFound? then {
+        startNewGame();
+    } or is p == Problem.BadJson? then {
+        print("The save is damaged: {message}");
+    } or {
+        print(message);
+    }
+}
+```
+
+- **Two shapes:** `error (string message)`, for code that only shows the message, and `error (Problem p, string message)`. The `Problem` comes first, then the message; any other shape is a mistake that shows both.
+- **`p` is a state option** like any other: `is p == Problem.NotFound?`, `check p { … }`, `print(p)` (which shows `NotFound`), or kept in a variable (`Problem last = p;`). A misspelt option is a mistake before running that suggests the nearest one: `Problem.NotFund` says `Did you mean NotFound?`.
+- **`check` covers every option,** as always, so it suits code that does something for each kind. To pick out one or two, `is` is shorter (above).
+- **Each failure has exactly one kind,** the same in `lust run` and built programs. A kind Lust doesn't name more closely is `Other`.
+- **An error nobody catches** stops the program with its message, as before. The kind isn't shown there.
+- `Problem` is one of Lust's names, so a class, state or anything else of your own can't be called `Problem` (section 22).
+
+These are `Problem`'s options:
+
+| Option | What went wrong |
+| --- | --- |
+| `NotFound` | something asked for isn't there: a file or folder (`Files:read`, `:list`, `:remove`, or writing into a folder that doesn't exist), a map's key, a cMap's or database's row (or a row that's been removed), a save that hasn't been made yet (`load`), or a web page that answered 404 |
+| `NotAllowed` | the computer doesn't allow it: a file or folder that can't be read or written, or a website that answered 401 or 403 |
+| `AlreadyThere` | a key that's taken: a cMap's or database's row with the same key, or a folder where a file of that name is |
+| `BadJson` | text that isn't JSON, JSON that doesn't fit where it's going (`Json:read`), or a value JSON can't hold (`Json:write` of infinity) |
+| `BadText` | text that isn't what it should be: a number (`.int()`, `.float()`), a date, a colour for `Colour:hex`, a pattern (`:matches` and the rest) or a web address |
+| `BadSave` | a save that's damaged, or doesn't fit this program, so nothing was loaded |
+| `OutOfRange` | a number outside what's allowed: an array's item that isn't there (or one from an empty array), a slice past the end, a number too big for its type, maths with no answer (the square root of a number below zero, `asin(2.0)`), `Random` or `clamp` with its low above its high, a wait or tween below 0 seconds |
+| `DividedByZero` | a whole number divided by zero, or its remainder (`%`) |
+| `Nothing` | something that's nothing was used, or a thing that has ended with its state, or whose node is closed |
+| `NoAnswer` | a website couldn't be reached, or answered with an error other than 401, 403 or 404 |
+| `Database` | the database itself failed: it couldn't be opened, or SQLite couldn't do what was asked |
+| `Stopped` | `Web:fail` stopped a route's method |
+| `Other` | anything else, like a method calling itself forever |
 
 ---
 
@@ -1896,7 +1940,7 @@ string reply = Web:post("https://example.com/scores", Json:write(score));
 ```
 
 - Both give back the answer's text. Turn JSON into Lust values with `Json:read`.
-- If the site can't be reached, or answers with an error (400 and up), the program stops with what happened, like `https://example.com/x answered 404: …`. Use `try` to carry on.
+- If the site can't be reached, or answers with an error (400 and up), the program stops with what happened, like `https://example.com/x answered 404: …`. Use `try` to carry on: its `Problem` is `NotFound` for 404, `NotAllowed` for 401 and 403, and `NoAnswer` for the rest (section 15).
 - A program that asks websites is built against Lust's libraries, like ones with databases. In LustScript, it needs `lust run`.
 
 ---
@@ -2161,7 +2205,7 @@ What the Rust program sees:
 - **Each class the first file `pass`es** is a Rust type: `Weapon::new()`, a getter and a setter for each field (`ammo()`, `set_ammo(…)`), and each method (`fire(…)`), with names in Rust's style (`lastShot` becomes `last_shot`). An object is `Score::get()`. Methods the first file passes are functions: `game::damage(10, true)`.
 - **Classes with native methods** are always there in full, since they belong to the program: it makes them, and fills in their fields.
 - **The native methods' bodies:** the program implements `game::Host`, one function each (`entity_move_by(&self, this: &Entity, dx: f64)`, `now(&self)`), and hands it over with `game::set_host(…)` before `start`.
-- **Failures come back as a `LustError`.** Everything gives back a `Result`, and a Lust failure says where it happened: `file`, `line` and `column` (of the statement that failed), and `message`. Shown with `{}`, it's the message Lust prints: `game.lst:24  this is nothing, so it has no fields or methods.` The program decides what to do with it.
+- **Failures come back as a `LustError`.** Everything gives back a `Result`, and a Lust failure says where it happened: `file`, `line` and `column` (of the statement that failed), `message`, and `problem`, its kind as the name of a `Problem` option (`"NotFound"`, section 15). Shown with `{}`, it's the message Lust prints: `game.lst:24  this is nothing, so it has no fields or methods.` The program decides what to do with it.
 - **`game::LUST_VERSION`** is the version of Lust that wrote the library.
 - **No unsafe code.** A library starts with `#![forbid(unsafe_code)]`, so Rust itself checks it has none. The one thing that needed it, the computer's time zone for `Time:date()` and `Time:time()`, comes from the program instead: when the Lust uses either, `Host` has `local_time_offset(&self, unix_seconds: i64) -> i64`, the seconds the local time is ahead of UTC (0 for UTC). A program of its own (`lust build`) still asks the computer.
 - Ints, floats, text and bools are Rust's `i64`, `f64`, `String` and `bool`. A state's option comes in as `&'static str` (its full name) and goes back as a `String`, checked by name. A thing made from a class is `Option<Weapon>`, since it can be `nothing`. A `vec3` is the library's `Vec3 { x, y, z }` and a `rotation` its `Rotation { x, y, z, w }` (a quaternion), all `f32`, the same layout as Solis's and glam's. A `vec2` is its `Vec2 { x, y }`, and a `colour` its `Colour { r, g, b, a }` (`to_array()` gives `[f32; 4]`, and `Colour::from([r, g, b, a])` makes one); a colour coming in from the program has each part kept between 0 and 1. An array is a `Vec` of its items, copied each way.
@@ -2424,7 +2468,7 @@ The built-ins can't be used as names either:
 print      wait       ask
 ```
 
-Neither can the built-in objects: `Maths`, `Files`, `Time`, `Json`, `Web`, `Random`, `Rotation`, `Colour` and `Ease` (which is a state of easing curves too), and the built-in state `Icon`, Lust's icons. (`Rotation` and `Colour` with a capital are the objects; `rotation` and `colour` are the types.)
+Neither can the built-in objects: `Maths`, `Files`, `Time`, `Json`, `Web`, `Random`, `Rotation`, `Colour` and `Ease` (which is a state of easing curves too), and the built-in states `Icon`, Lust's icons, and `Problem`, the kinds of failure (section 15). (`Rotation` and `Colour` with a capital are the objects; `rotation` and `colour` are the types.)
 
 `tween`, `to` and `over` are words only in a tween (and `to` after `send`), so they can still be names. So are `event` and `send`, words only at the start of a line, and `on`, a word only in the body of a class, object, node, component or assembly. So is `toast`, a word only at the start of a statement, and `App`, which a program's own assembly can be called.
 

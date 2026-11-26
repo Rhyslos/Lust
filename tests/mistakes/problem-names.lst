@@ -1,0 +1,19 @@
+-- Problem is built in: its options are checked, and nothing else can be called Problem.
+state Problem = [Lost, Found];
+class Problem {
+    has {
+        int code = 0;
+    }
+}
+Problem p = Problem.NotFund;
+try {
+    print(1);
+} error (Problem kind, string message) {
+    check kind {
+        when NotFound { print("missing"); }
+        when BadJson { print("broken"); }
+    }
+    is kind == Problem.BadJosn? then { print(message); }
+    int n = kind;
+}
+end

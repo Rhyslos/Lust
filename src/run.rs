@@ -16,17 +16,24 @@ fn host(lua: &Lua) -> mlua::Result<()> {
     let h = lua.create_table()?;
     let started = std::time::Instant::now();
     h.set("exists", lua.create_function(|_, p: String| Ok(std::path::Path::new(&p).exists()))?)?;
-    h.set("remove", lua.create_function(|_, p: String| Ok(rt::fs_remove(&p).err()))?)?;
+    // A failure comes back as its message and its Problem option.
+    h.set(
+        "remove",
+        lua.create_function(|_, p: String| Ok(rt::fs_remove(&p).err().map_or((None, None), |(k, m)| (Some(m), Some(k)))))?,
+    )?;
     h.set(
         "list",
         lua.create_function(|_, p: String| {
             Ok(match rt::fs_list(&p) {
-                Ok(names) => (Some(names), None),
-                Err(e) => (None, Some(e)),
+                Ok(names) => (Some(names), None, None),
+                Err((k, m)) => (None, Some(m), Some(k)),
             })
         })?,
     )?;
-    h.set("mkdir", lua.create_function(|_, p: String| Ok(rt::fs_mkdir(&p).err()))?)?;
+    h.set(
+        "mkdir",
+        lua.create_function(|_, p: String| Ok(rt::fs_mkdir(&p).err().map_or((None, None), |(k, m)| (Some(m), Some(k)))))?,
+    )?;
     h.set(
         "choose_open",
         lua.create_function(|_, (title, types): (String, Vec<String>)| Ok(crate::native_dlg::choose_open(title, types)))?,
@@ -114,8 +121,8 @@ fn host(lua: &Lua) -> mlua::Result<()> {
         "http",
         lua.create_function(|_, (url, body): (String, Option<String>)| {
             Ok(match crate::native_net::fetch(&url, body.as_deref()) {
-                Ok(t) => (Some(t), None),
-                Err(e) => (None, Some(e)),
+                Ok(t) => (Some(t), None, None),
+                Err((k, m)) => (None, Some(m), Some(k)),
             })
         })?,
     )?;

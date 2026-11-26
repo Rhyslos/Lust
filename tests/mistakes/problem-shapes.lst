@@ -1,0 +1,9 @@
+-- try's error part takes the message, or the kind of problem and then the message.
+try { print(1); } error (string message, Problem p) { print(message); }
+try { print(2); } error (Problem p) { print(p); }
+try { print(3); } error (message) { print(message); }
+try { print(4); } error (int code, string message) { print(message); }
+try { print(5); } error (Problem p, int code) { print(p); }
+try { print(6); } error (Problem same, string same) { print(same); }
+try { print(7); } error (string message, string other) { print(message); }
+end

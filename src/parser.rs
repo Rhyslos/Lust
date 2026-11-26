@@ -169,6 +169,10 @@ pub fn check_name(diags: &mut Diags, name: &str, pos: Pos, kind: NameKind, what:
         diags.add(pos, format!("{name} is one of Lust's built-in objects, so it can't be a name."));
         return;
     }
+    if crate::stdlib::STATES.contains(&name) {
+        diags.add(pos, format!("{name} is one of Lust's built-in states, so it can't be a name."));
+        return;
+    }
     let letters: Vec<char> = name.chars().filter(|c| c.is_alphabetic()).collect();
     if letters.len() >= 2 && letters.iter().all(|c| c.is_uppercase()) {
         let camel = to_camel(name, kind == NameKind::Type);
@@ -2708,6 +2712,8 @@ impl<'a> Parser<'a> {
     }
 
     fn try_stmt(&mut self) -> R<Stmt> {
+        const SHAPES: &str =
+            "error takes the message, or the kind of problem and then the message: error (string message) { … } or error (Problem p, string message) { … }";
         let start = self.next().pos;
         let body = self.block("the try")?;
         if !self.at_word("error") {
@@ -2716,17 +2722,44 @@ impl<'a> Parser<'a> {
         }
         self.next();
         self.expect_sym("(", "expected ( after error: error (string message) { }")?;
+        let mut problem = None;
+        if self.at_word("Problem") {
+            self.next();
+            let (name, pos) = self.ident("a name for the kind of problem")?;
+            check_name(self.diags, &name, pos, NameKind::Value, "variable");
+            problem = Some((name, pos));
+            if !self.at_sym(",") {
+                let pos = self.cur().pos;
+                return self.fail(
+                    pos,
+                    "the message comes after the kind of problem: error (Problem p, string message) { … }",
+                );
+            }
+            self.next();
+        }
         if !self.at_word("string") {
             let pos = self.cur().pos;
-            return self.fail(pos, "the error is text: error (string message) { }");
+            return self.fail(pos, SHAPES);
         }
         self.next();
         let (name, pos) = self.ident("a name for the error")?;
         check_name(self.diags, &name, pos, NameKind::Value, "variable");
+        if self.at_sym(",") {
+            let pos = self.cur().pos;
+            if problem.is_none() && self.peek(1).is_word("Problem") {
+                return self.fail(pos, "the kind of problem comes first: error (Problem p, string message) { … }");
+            }
+            return self.fail(pos, SHAPES);
+        }
         self.expect_sym(")", "expected ) here.")?;
+        if problem.as_ref().is_some_and(|(p, _)| *p == name) {
+            self.diags
+                .add(pos, format!("the kind of problem and the message can't both be called {name}."));
+        }
         let handler = self.block("the error part")?;
         Ok(Stmt::Try {
             body,
+            problem,
             err: (name, pos),
             handler,
             pos: start,

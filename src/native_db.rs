@@ -144,7 +144,7 @@ pub fn table(db: Rc<Db>, table: &'static str, shown: &'static str, cols: &'stati
 pub fn open(path: &str, tables: &[(&str, &[(&str, &str)])]) -> Rc<Db> {
     match open_db(path, tables) {
         Ok(d) => Rc::new(d),
-        Err(e) => fail(e),
+        Err(e) => fail_as("Database", e),
     }
 }
 
@@ -164,7 +164,7 @@ fn keytext(_q: &Q, k: &SqlVal) -> String {
 fn ok<T>(r: Result<T, String>) -> T {
     match r {
         Ok(v) => v,
-        Err(e) => fail(e),
+        Err(e) => fail_as("Database", e),
     }
 }
 
@@ -207,7 +207,7 @@ pub fn q_reverse(q: &Q) -> Q {
 
 pub fn q_first(q: &Q, count: i64) -> Q {
     if count < 0 {
-        fail(format!("first needs 0 or more, not {count}."));
+        fail_as("OutOfRange", format!("first needs 0 or more, not {count}."));
     }
     let mut n = q.clone();
     n.limit = Some(count);
@@ -240,7 +240,7 @@ pub fn t_has(q: &Q, k: SqlVal) -> bool {
 pub fn t_inject(q: &Q, mut values: Vec<SqlVal>) {
     let with_key = values.len() == q.cols.len();
     if with_key && t_has(q, values[0].clone()) {
-        fail(format!("there's already a row with {} {} in {}.", key(q), keytext(q, &values[0]), q.shown));
+        fail_as("AlreadyThere", format!("there's already a row with {} {} in {}.", key(q), keytext(q, &values[0]), q.shown));
     }
     let cols: Vec<&str> = if with_key { q.cols.to_vec() } else { q.cols[1..].to_vec() };
     if !with_key && q.textkey {
@@ -256,7 +256,7 @@ pub fn t_inject(q: &Q, mut values: Vec<SqlVal>) {
 pub fn t_remove(q: &Q, k: SqlVal) {
     let sql = format!("DELETE FROM \"{}\" WHERE \"{}\" = ?", q.table, key(q));
     if ok(exec(&q.db, &sql, std::slice::from_ref(&k))) == 0 {
-        fail(format!("there's no row with {} {} in {} to remove.", key(q), keytext(q, &k), q.shown));
+        fail_as("NotFound", format!("there's no row with {} {} in {} to remove.", key(q), keytext(q, &k), q.shown));
     }
 }
 
@@ -269,13 +269,13 @@ pub struct RowRef {
 
 pub fn t_get(q: &Q, k: SqlVal) -> RowRef {
     if !t_has(q, k.clone()) {
-        fail(format!("there's no row with {} {} in {}.", key(q), keytext(q, &k), q.shown));
+        fail_as("NotFound", format!("there's no row with {} {} in {}.", key(q), keytext(q, &k), q.shown));
     }
     RowRef { q: q.clone(), k }
 }
 
 fn gone(r: &RowRef) -> ! {
-    fail(format!("this row of {} ({} {}) has been removed.", r.q.shown, key(&r.q), keytext(&r.q, &r.k)))
+    fail_as("NotFound", format!("this row of {} ({} {}) has been removed.", r.q.shown, key(&r.q), keytext(&r.q, &r.k)))
 }
 
 pub fn r_get(r: &RowRef, col: &str) -> SqlVal {

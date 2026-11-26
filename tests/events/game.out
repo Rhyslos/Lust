@@ -22,10 +22,10 @@ queued Died to Some(2): []
 score 10
 0000000000001 Gun: pushed [1.0, 2.0, 0.5] turned [3.422854e-08, 0.9999999, 0.0]
 Ok(true)
-Err(LustError { file: "game.lst", line: Some(85), column: Some(9), message: "Pushed carries 2 values, but 1 came." })
-Err(LustError { file: "game.lst", line: Some(85), column: Some(9), message: "Pushed's push should be three numbers." })
+Err(LustError { file: "game.lst", line: Some(85), column: Some(9), message: "Pushed carries 2 values, but 1 came.", problem: "Other" })
+Err(LustError { file: "game.lst", line: Some(85), column: Some(9), message: "Pushed's push should be three numbers.", problem: "Other" })
 Ok(false)
-Err(LustError { file: "game.lst", line: Some(32), column: Some(9), message: "Hit's kind should be Fire or Ice." })
+Err(LustError { file: "game.lst", line: Some(32), column: Some(9), message: "Hit's kind should be Fire or Ice.", problem: "Other" })
 {"hp": Float(-2.0)}
 Ok(3)
 game.lst:80  dividing a whole number by zero doesn't work.

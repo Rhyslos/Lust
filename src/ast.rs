@@ -367,6 +367,8 @@ pub enum Stmt {
     Return(Option<Expr>, Pos),
     Try {
         body: Vec<Stmt>,
+        /// error (Problem p, string message): the Problem's name, when it's asked for.
+        problem: Option<(String, Pos)>,
         err: (String, Pos),
         handler: Vec<Stmt>,
         pos: Pos,

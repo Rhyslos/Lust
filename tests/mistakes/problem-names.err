@@ -1,0 +1,8 @@
+problem-names.lst:2:7  Problem is one of Lust's built-in states, so it can't be a name.
+problem-names.lst:3:7  Problem is one of Lust's built-in states, so it can't be a name.
+problem-names.lst:8:21  NotFund isn't an option of Problem. Did you mean NotFound? The options are NotFound, NotAllowed, AlreadyThere, BadJson, BadText, BadSave, OutOfRange, DividedByZero, Nothing, NoAnswer, Database, Stopped, Other.
+problem-names.lst:12:5  this check has no when for NotAllowed, AlreadyThere, BadText, BadSave, OutOfRange, DividedByZero, Nothing, NoAnswer, Database, Stopped and Other. A check covers every option of Problem: add when NotAllowed { … }
+problem-names.lst:16:24  BadJosn isn't an option of Problem. Did you mean BadJson? The options are NotFound, NotAllowed, AlreadyThere, BadJson, BadText, BadSave, OutOfRange, DividedByZero, Nothing, NoAnswer, Database, Stopped, Other.
+problem-names.lst:17:13  n is an int, but this is a Problem option.
+
+6 mistakes. Nothing was run.

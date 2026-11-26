@@ -13,6 +13,9 @@ use crate::types::Ty;
 
 pub const OBJECTS: &[&str] = &["Maths", "Files", "Time", "Json", "Web", "Random", "Rotation", "Colour", "Ease"];
 
+/// The built-in states that aren't objects too: their names can't be used for anything else.
+pub const STATES: &[&str] = &["Icon", "Problem"];
+
 /// `Ease` is a built-in object (`Ease:apply(Ease.OutBack, t)`) and a built-in state at the same
 /// time: its options are the easing curves, and the checker makes it the first state, so its
 /// number is always this.
@@ -20,6 +23,28 @@ pub const EASE: usize = 0;
 
 /// `Icon`, Lust's icons as a built-in state (`icon Icon.Trash;`), is always the second.
 pub const ICON: usize = 1;
+
+/// `Problem`, the kinds of failure `try … error (Problem p, string message)` tells apart, is
+/// always the third.
+pub const PROBLEM: usize = 2;
+
+/// Problem's options. Each failure in the runtimes (runtime.lua and native_rt.rs) names one of
+/// these, the same one in both; anything not named is `Other`.
+pub const PROBLEMS: &[&str] = &[
+    "NotFound",
+    "NotAllowed",
+    "AlreadyThere",
+    "BadJson",
+    "BadText",
+    "BadSave",
+    "OutOfRange",
+    "DividedByZero",
+    "Nothing",
+    "NoAnswer",
+    "Database",
+    "Stopped",
+    "Other",
+];
 
 /// Icon's options, one per icon, from its name: "triangle-alert" is TriangleAlert.
 pub fn icon_options() -> Vec<String> {

@@ -1027,8 +1027,17 @@ fn declared(stmts: &[Stmt], out: &mut HashSet<String>) {
                 }
                 declared(body, out);
             }
-            Stmt::Try { body, err, handler, .. } => {
+            Stmt::Try {
+                body,
+                problem,
+                err,
+                handler,
+                ..
+            } => {
                 out.insert(err.0.clone());
+                if let Some(p) = problem {
+                    out.insert(p.0.clone());
+                }
                 declared(body, out);
                 declared(handler, out);
             }
@@ -1806,10 +1815,20 @@ impl<'a> W<'a> {
                 }
                 None => out.push_str(&format!("{pad}return;\n")),
             },
-            Stmt::Try { body, err, handler, .. } => {
-                out.push_str(&format!("{pad}if let Some(e) = rt::attempt(|| {{\n"));
+            Stmt::Try {
+                body,
+                problem,
+                err,
+                handler,
+                ..
+            } => {
+                out.push_str(&format!("{pad}if let Some((p, e)) = rt::attempt_problem(|| {{\n"));
                 self.stmts(body, out, depth + 1);
                 out.push_str(&format!("{pad}}}) {{\n"));
+                match problem {
+                    Some((name, _)) => out.push_str(&format!("{pad}    let mut v_{name}: &'static str = p;\n")),
+                    None => out.push_str(&format!("{pad}    let _ = p;\n")),
+                }
                 out.push_str(&format!("{pad}    let mut v_{}: String = e;\n", err.0));
                 self.stmts(handler, out, depth + 1);
                 out.push_str(&format!("{pad}}}\n"));
