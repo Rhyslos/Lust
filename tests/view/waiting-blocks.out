@@ -1,0 +1,27 @@
+window "Gate" 320x200
+  column 0,0 320x146
+    text "Log: waiting; " 8,8 95x19
+    button "Wait" 8,31 61x33
+    button "Arm" 8,68 58x33
+    button "Patient" 8,105 78x33
+window "Gate" 320x200
+  column 0,0 320x146
+    text "Log: waiting; " 8,8 95x19
+    button "Wait" 8,31 61x33
+    button "Arm" 8,68 58x33
+    button "Patient" 8,105 78x33
+through after 2 presses
+window "Gate" 320x200
+  column 0,0 320x146
+    text "Log: waiting; through; " 8,8 159x19
+    button "Wait" 8,31 61x33
+    button "Arm" 8,68 58x33
+    button "Patient" 8,105 78x33
+patient done
+window "Gate" 320x200
+  column 0,0 320x146
+    text "Log: waiting; through; gave up; " 8,8 225x19
+    button "Wait" 8,31 61x33
+    button "Arm" 8,68 58x33
+    button "Patient" 8,105 78x33
+closed

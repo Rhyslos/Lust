@@ -1,0 +1,3 @@
+-- or after on a wait of seconds needs after too.
+wait 2 or 1;
+end

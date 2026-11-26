@@ -1,6 +1,6 @@
 # Waiting: the design
 
-> **Designed, and being built: step 1 is built (alpha 84).** This records what the project lead chose on 2026-11-19 (the direction) and 2026-11-26 (the details). Runs, `wait seconds;` pausing only its run, and `start call;` are built, and their rules are in [LUST.md](LUST.md) (section 11, Waiting). Once a part is built, it moves into LUST.md and is removed from this file.
+> **Designed, and being built: steps 1 and 2 are built (alpha 85).** This records what the project lead chose on 2026-11-19 (the direction) and 2026-11-26 (the details). Runs, `wait seconds;` pausing only its run, `start call;`, `wait { }` with questions and `or after` are built, and their rules are in [LUST.md](LUST.md) (section 11, Waiting). Once a part is built, it moves into LUST.md and is removed from this file.
 
 Waiting is Lust's answer to `async` and `await`. Any method can wait, and only the piece of work that's waiting pauses, never the window, the game or the rest of the program. No method is marked as one that waits, so there are no labels to spread through the code, which is how Lua's coroutines and game engines work.
 
@@ -81,12 +81,9 @@ Runs, `wait` pausing only its run, and a call waiting for what it calls are buil
 
 ### Words
 
-- **`wait { … }`:** waits for things to change. It holds questions and `check`s:
-  - **`is condition?`** on its own line: it has to be true. With several, all of them have to be true.
-  - **`check thing.state { when … { … } }`:** it has to be in one of the `when`s' options. When it is, that `when`'s block runs. With a `check`, the questions beside it still have to be true too.
-  - Lust looks again once a frame in a window, once a tick in an engine, and each time the clock moves in a plain program. If it's all true straight away, nothing waits.
-  - Anything else in the block (a `print`, a call) is a mistake that says the block only holds questions and `check`s.
-- **`… or after seconds { … }`:** a time limit on either kind of wait. If time runs out, the block runs. Either way, the code carries on after it.
+- **`wait { … }`** with questions and **`or after`** are built: see LUST.md, section 11. Still to build:
+  - **`check thing.state { when … { … } }`** inside `wait { }`: it has to be in one of the `when`s' options. When it is, that `when`'s block runs. With a `check`, the questions beside it still have to be true too. (Until then, `check` inside `wait { }` is a mistake that says it isn't built yet.)
+  - In an engine, a `wait { }` looks again once a tick (step 6; until then it goes on only if it's already true).
 - **`start name = call;`** (plain `start call;` is built) also gives the work a name in that place, like a variable, for `cancel`.
 - **`cancel name;`:** stops that work wherever it is: a `wait` it's in never finishes, and the lines after it don't run. Work it `start`ed carries on, unless it was given a name and is cancelled too. Cancelling work that's already done does nothing.
 - **Named work has a state,** the built-in state `Run`: `Waiting` (paused in a `wait`), `Going` (running), `Done` or `Cancelled`. So it's waited for like any state: `wait { is gate.state == Run.Done? }`, or `check gate.state { when Done { … } when Cancelled { … } }`. It changes only by itself or through `cancel`, never by `gate.state = …;`. What it does is seen through states, fields or events: a thing that loads sets its own state to `Load.Done`, and `wait { is map.state == Load.Done? }` waits for it.
@@ -99,13 +96,13 @@ Runs, `wait` pausing only its run, and a call waiting for what it calls are buil
 ### In each place
 
 - **A plain program:** (built) the program ends when its own code and every run it started are done, or cancelled once `cancel` is built.
-- **A window:** (built for `wait seconds;`) a `wait { }` looks again each frame.
+- **A window:** (built) a `wait { }` looks again each frame.
 - **An engine:** each component update and event handler is a run, and the engine moves waits along once a tick. How runs cross into the engine's own code is settled while building, and written into ENGINES.md.
 
 ## Build order
 
 1. ✅ **Runs, `start`, and `wait seconds;` pausing only its run,** in plain programs and windows, in both outputs. Lua uses coroutines; built programs get the same order of events. Built in alpha 84.
-2. **`wait { }` with questions,** and **`or after`**.
+2. ✅ **`wait { }` with questions,** and **`or after`**. Built in alpha 85.
 3. **Slow built-ins** (`Web:get` and the rest) pause only their run.
 4. **`check` inside `wait { }`.**
 5. **`cancel`**, **states cancel runs**, and **the circle check**.
@@ -117,6 +114,9 @@ Runs, `wait` pausing only its run, and a call waiting for what it calls are buil
   - **Stacks of their own (stackful coroutines), through the corosensei library** (MIT or Apache): chosen. A wait anywhere, however deep in calls, hooks, loops or `try`, pauses just its run, so the Rust Lust writes doesn't change shape, and runs stay on one thread, where the runtime's shared values (`Rc`) and per-thread state already live. Switching runs takes a few nanoseconds. Each stack is reserved, not used (128 MB of room, 20,000 calls deep; the computer hands over memory as it's touched), on Windows and Linux alike, and finished stacks are used again. corosensei is the library Wasmer uses for the same job, written in inline assembly with no C compiler needed, and works on Windows x86-64, Linux and macOS. The cost: one short `unsafe` block (a wait finding the run it's in), so built programs that use runs say `deny(unsafe_code)` with that one module allowed, instead of `forbid`. The `generator` library offers the same without that block, but it commits each stack's memory in full on Windows (thousands of runs would take gigabytes) and puts in its own crash handler, so it lost.
   - **Threads handing over a baton,** one going at a time: lost. The runtime's values (`Rc`, `RefCell`) and per-thread state (tweens, events, the database) can't move between threads safely, so it would need unsafe code everywhere instead of in one place, and each run would cost a whole thread.
   - **Lust writing waiting methods as state machines** (or Rust's `async`): lost. Every method that might wait, and every hook (which could be anything), would have to be rewritten as a state machine, with `try`, loops and values held across waits taken apart; the Rust would change shape everywhere, and get slower, for a small gain.
+- **`wait { }` looks again on the clock's 1/60 s steps** (decided 2026-11-26, step 2). A run in a `wait { }` waits like `wait seconds;` until the clock's next 1/60 s step (or its time limit, if that's sooner), looks, and waits again if it has to. Looking again whenever any other run goes on was the other way: it can see a change a little sooner, but it needs a second list of waiting runs beside the clock's, and a run that's woken by another waiter's change in the same moment could be missed. On the clock's steps, a window's frames, a plain program and later an engine's ticks all work alike, and runs look in the order they started waiting, the same in both outputs.
+- **A time limit that can't be reached is a mistake only when both are written as numbers** (step 2): `wait 2 or after 3 { … }` has a block that can never run, which is worth saying; `wait secs or after limit { … }` is fine, as which is shorter is only known as it runs.
+- **In an engine, `wait { }` doesn't wait yet** (step 2). Nothing else runs there while code waits (step 1 kept the engine's old `wait`), so questions that are false couldn't come true: it goes straight on when they're true, and otherwise stops with a message, rather than freezing the engine. Step 6 makes it wait once a tick.
 - **Programs that never need it don't carry it.** A program that waits and has runs besides its own code (`start`, done blocks, events or a window) gets the stacks; any other program runs its runs straight through, as before, and stays `forbid(unsafe_code)`. Engines' libraries have no runs until step 6, so they're unchanged.
 
 ## Still open

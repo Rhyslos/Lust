@@ -1,0 +1,21 @@
+-- Built as a library for an engine, wait { } goes straight on when its questions are true, and
+-- otherwise stops with a message: nothing else runs in an engine while it waits (yet).
+object Gate {
+    has {
+        bool open = false;
+    }
+}
+
+method bool through() {
+    wait {
+        is Gate.open?
+    }
+    return true;
+}
+
+method openUp() {
+    Gate.open = true;
+}
+
+pass through, openUp;
+end

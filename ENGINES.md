@@ -176,3 +176,10 @@ An engine moving from alpha 48 to alpha 67 or later reads everything below.
 - **Rust:** a library still has no unsafe code and no new dependencies. Built programs that wait while other runs go on use the corosensei library for runs' stacks; that's the shared runtime's, not the engine's.
 - **Lua:** a chunk for an engine is the same as before. `try` now goes through the runtime (`_L.try`), which is `pcall` when nothing waits inside it.
 - `start` is a word only before a call (`start openGate();`), so names called `start`, and calls like `start();`, still work.
+
+## alpha 85: waiting, step 2
+
+- `wait { is …? }` waits until every question is true, and `… or after seconds { … }` puts a time limit on a wait (LUST.md, section 11).
+- **In an engine nothing waits yet** (step 6): a `wait { }` whose questions are already true goes straight on, and one whose questions aren't stops the call with a message (`wait { } can't wait in an engine yet …`, problem `Other`), as nothing else runs while it would wait. `wait seconds or after limit { … }` waits the shorter of the two, as before, and runs the block when the limit was shorter.
+- **Rust and Lua:** the new calls are the shared runtime's (`rt::wait_for`, `rt::wait_or`; `_L.wait_for`, `_L.wait_or`); nothing changes for the engine's own code.
+- `after` is a word only straight after a wait's `or`, so engines' names called `after` still work.

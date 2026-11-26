@@ -926,6 +926,17 @@ fn walk_stmts(stmts: &[Stmt], f: &mut dyn FnMut(&Expr)) {
                 walk_stmts(body, f);
                 walk_stmts(handler, f);
             }
+            Stmt::Wait {
+                seconds, questions, limit, ..
+            } => {
+                for e in seconds.iter().chain(questions) {
+                    walk_expr(e, f);
+                }
+                if let Some((l, b)) = limit {
+                    walk_expr(l, f);
+                    walk_stmts(b, f);
+                }
+            }
             _ => {}
         }
     }
@@ -1061,6 +1072,7 @@ fn declared(stmts: &[Stmt], out: &mut HashSet<String>) {
                 declared(body, out);
                 declared(handler, out);
             }
+            Stmt::Wait { limit: Some((_, b)), .. } => declared(b, out),
             _ => {}
         }
     }
@@ -2197,6 +2209,32 @@ impl<'a> W<'a> {
                 out.push_str(&format!(
                     "{pad}    {keep}\n{pad}    rt::start(Box::new(move || {{ {at}let _ = {c}; }}));\n{pad}}}\n"
                 ));
+            }
+            // wait { is a? is b? }: rt::wait_for looks at the questions until they're all true;
+            // with or after, it gives back false when time ran out first, and the block runs.
+            Stmt::Wait {
+                seconds, questions, limit, ..
+            } => {
+                let lim = limit.as_ref().map(|(l, _)| self.coerced(l, &Ty::Float));
+                let call = match seconds {
+                    Some(secs) => {
+                        let sc = self.coerced(secs, &Ty::Float);
+                        format!("rt::wait_or({sc}, {})", lim.clone().unwrap_or_else(|| "f64::INFINITY".into()))
+                    }
+                    None => {
+                        let qs: Vec<String> = questions.iter().map(|q| format!("({})", self.expr(q))).collect();
+                        let l = lim.as_ref().map_or("None".to_string(), |l| format!("Some({l})"));
+                        format!("rt::wait_for(&mut || {}, {l})", qs.join(" && "))
+                    }
+                };
+                match limit {
+                    Some((_, body)) => {
+                        out.push_str(&format!("{pad}if !{call} {{\n"));
+                        self.stmts(body, out, depth + 1);
+                        out.push_str(&format!("{pad}}}\n"));
+                    }
+                    None => out.push_str(&format!("{pad}{call};\n")),
+                }
             }
             Stmt::Keep { value, into, .. } => {
                 let v = self.expr(value);

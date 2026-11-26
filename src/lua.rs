@@ -245,6 +245,7 @@ fn has_skip(stmts: &[Stmt]) -> bool {
         }
         Stmt::Match { arms, .. } => arms.iter().any(|a| has_skip(&a.body)),
         Stmt::Try { body, handler, .. } => has_skip(body) || has_skip(handler),
+        Stmt::Wait { limit: Some((_, b)), .. } => has_skip(b),
         _ => false,
     })
 }
@@ -1538,6 +1539,34 @@ impl<'a> W<'a> {
             Stmt::Start { call, .. } => {
                 let c = self.expr(call);
                 self.line(ln, &format!("_L.start(function() local _ = {c} end)"));
+            }
+            // wait { is a? is b? }: _L.wait_for looks at the questions until they're all true;
+            // with or after, it gives back false when time ran out first, and the block runs.
+            Stmt::Wait {
+                seconds, questions, limit, ..
+            } => {
+                let lim = limit.as_ref().map(|(l, _)| self.expr(l));
+                let call = match seconds {
+                    Some(secs) => {
+                        let sc = self.expr(secs);
+                        format!("_L.wait_or({sc}, {})", lim.clone().unwrap_or_else(|| "math.huge".into()))
+                    }
+                    None => {
+                        let qs: Vec<String> = questions.iter().map(|q| format!("({})", self.expr(q))).collect();
+                        let l = lim.clone().unwrap_or_else(|| "nil".into());
+                        format!("_L.wait_for(function() return {} end, {l})", qs.join(" and "))
+                    }
+                };
+                match limit {
+                    Some((_, body)) => {
+                        self.line(ln, &format!("if not {call} then"));
+                        self.indent += 1;
+                        self.stmts(body);
+                        self.indent -= 1;
+                        self.line(ln, "end");
+                    }
+                    None => self.line(ln, &call),
+                }
             }
             Stmt::Keep { value, into, .. } => {
                 let v = self.expr(value);

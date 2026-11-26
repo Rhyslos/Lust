@@ -730,6 +730,26 @@ mod no_unsafe {
         assert!(!lib.contains("corosensei"));
     }
 
+    /// A wait { } waits like wait seconds;: beside a start, the program gets runs' stacks, and
+    /// both outputs ask the questions through the runtime, with or after's block on false.
+    #[test]
+    fn wait_blocks_use_runs() {
+        let src = vec![(
+            "main.lst".to_string(),
+            "object Gate {\n    has {\n        bool open = false;\n    }\n}\nmethod openUp() {\n    Gate.open = true;\n}\nstart openUp();\nwait {\n    is Gate.open?\n} or after 2 {\n    print(\"late\");\n}\nwait 1 or after 0.5 {\n    print(\"limit\");\n}\nend\n"
+                .to_string(),
+        )];
+        let c = crate::front_from("main.lst", &src, &crate::Engine::default()).ok().unwrap();
+        let rust = crate::rust::write(&c.prog, &c.info, &c.files, false);
+        assert!(rust.contains("#![deny(unsafe_code)]"));
+        assert!(rust.contains("if !rt::wait_for(&mut ||"));
+        assert!(rust.contains(", Some("));
+        assert!(rust.contains("if !rt::wait_or("));
+        let lua = crate::lua::write(&c.prog, &c.info, true).code;
+        assert!(lua.contains("if not _L.wait_for(function() return"));
+        assert!(lua.contains("if not _L.wait_or(1, 0.5)"));
+    }
+
     /// The old way of writing a handler is a mistake that shows the new one.
     #[test]
     fn old_handlers_show_the_on_block() {

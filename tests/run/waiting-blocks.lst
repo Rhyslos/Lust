@@ -1,0 +1,164 @@
+-- wait { } waits until every question in it is true, looking again each time the clock moves a
+-- 1/60 s step. or after sets a time limit, and its block runs if time runs out first.
+
+state Door = [Shut, Open];
+
+class Gate {
+    has {
+        string name = "gate";
+        int opened = 0;
+        state = Door.Shut;
+    }
+
+    method open() {
+        state = Door.Open;
+        opened += 1;
+    }
+
+    method bool isOpen() {
+        return state == Door.Open;
+    }
+}
+
+object Bank {
+    has {
+        int coins = 0;
+        bool ready = false;
+    }
+}
+
+Gate gate = new Gate { name = "front" };
+
+method openLater(Gate g, float secs) {
+    wait secs;
+    print("opening");
+    g:open();
+}
+
+method addCoins(int n, float gap) {
+    loop n times {
+        wait gap;
+        Bank.coins += 1;
+    }
+}
+
+-- All true straight away: nothing waits.
+wait {
+    is Bank.coins == 0?
+    is gate.state == Door.Shut?
+}
+print("nothing waited");
+
+-- Waiting on a state, which another run changes.
+start openLater(gate, 0.5);
+wait {
+    is gate.state == Door.Open?
+}
+print("the gate is open:", gate.opened);
+
+-- Several questions: all of them have to be true. Method calls and other things' fields too.
+start addCoins(3, 0.25);
+start addCoins(2, 0.5);
+wait {
+    is Bank.coins >= 4?
+    is gate:isOpen()?
+    is gate.name == "front"?
+}
+print("coins", Bank.coins);
+
+-- or after: the questions come true first, so the block doesn't run.
+start addCoins(1, 0.1);
+wait {
+    is Bank.coins == 6?
+} or after 2 {
+    print("never shown");
+}
+print("six coins");
+
+-- or after: time runs out first.
+wait {
+    is Bank.coins == 100?
+} or after 0.5 {
+    print("gave up on 100 coins at", Bank.coins);
+}
+print("after giving up");
+
+-- or after on wait seconds: the shorter one wins.
+wait 3 or after 0.25 {
+    print("limit before the wait");
+}
+float limit = 5.0;
+wait 0.25 or after limit {
+    print("never shown either");
+}
+-- or after stays clear beside either's or, and inside a question's answer.
+bool quick = true;
+wait either quick? 0.1 or 2.0 or after 1 {
+    print("never shown with either");
+}
+is quick? then {
+    wait {
+        is Bank.coins == 6?
+    } or after 1 {
+        print("never shown in an answer");
+    }
+    print("in the answer");
+} or {
+    print("never the other case");
+}
+print("waits with limits done");
+
+-- From a run started alongside, and from an event's handler.
+event Ring(string who);
+
+object Porter {
+    has {
+        int rings = 0;
+    }
+
+    on {
+        Ring(string who) {
+            print("porter waits for", who);
+            wait {
+                is Bank.ready?
+            }
+            rings += 1;
+            print("porter lets in", who);
+        }
+    }
+}
+
+method watcher() {
+    wait {
+        is Bank.ready?
+        is Porter.rings == 0?
+    }
+    print("watcher saw ready first");
+}
+
+start watcher();
+send Ring("Ada");
+print("rang");
+wait 0.5;
+Bank.ready = true;
+print("ready");
+wait {
+    is Porter.rings == 1?
+}
+print("porter rang", Porter.rings);
+
+-- A time limit inside a loop, with stop in its block.
+int tries = 0;
+loop {
+    tries += 1;
+    wait {
+        is Bank.coins > 10?
+    } or after 0.1 {
+        print("try", tries, "timed out");
+        is tries == 3? then {
+            stop;
+        }
+    }
+}
+print("tries", tries);
+end

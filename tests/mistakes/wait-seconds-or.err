@@ -1,0 +1,3 @@
+wait-seconds-or.lst:2:8  a wait's time limit is written or after, then the seconds and what to do: wait { is door.open? } or after 5 { … }
+
+1 mistake. Nothing was run.

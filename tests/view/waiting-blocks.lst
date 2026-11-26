@@ -1,0 +1,40 @@
+-- A button whose code waits { } until another button has set something: the window keeps
+-- answering while it waits, and it looks again each frame. or after gives up in time.
+assembly App {
+    has {
+        string log = "";
+        bool armed = false;
+        int presses = 0;
+    }
+
+    view [title "Gate", width 320, height 200] {
+        column [gap 4, pad 8] {
+            text "Log: " + log;
+            button "Wait" {
+                log = log + "waiting; ";
+                wait {
+                    is armed?
+                    is presses >= 2?
+                }
+                log = log + "through; ";
+                print("through after", presses, "presses");
+            }
+            button "Arm" {
+                armed = true;
+                presses += 1;
+            }
+            button "Patient" {
+                wait {
+                    is presses > 5?
+                } or after 1 {
+                    log = log + "gave up; ";
+                }
+                print("patient done");
+            }
+        }
+    }
+}
+
+App:open();
+print("closed");
+end
