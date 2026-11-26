@@ -144,3 +144,12 @@ An engine moving from alpha 48 to alpha 67 or later reads everything below.
 - A state is set with `=` now, like any value: `now = Mood.Busy;`, and `state = Mood.Calm;` in a `has` or a method. `is` only asks questions. Game files that set a state with `is` (`state is Mood.Calm;`) get a mistake that shows the `=` way.
 - Nothing changes in the Lua or Rust that's written: an object's state still changes through the same call, which ends what was made in the option it leaves.
 - **The engine does:** changes `is` to `=` wherever its own Lust files, or the examples and templates it ships, set a state.
+
+## alpha 81: handlers go in an on block, and Lust's own events
+
+- A component's handlers go together in one `on { }` block, like `has { }`: `on { Hit(entity by, float damage) { … } Died() { … } }`. The old `on Hit(…) { … }` on its own is a mistake that shows the new form. Nothing changes in the Lua or Rust written for a component: `HANDLES` and `handle(event, values)` are as they were.
+- `send Hit(…) to entity;` is exactly as before: the host's `send_event`, `--library` only.
+- **Lust-side listeners:** any class or object can have an `on` block too, and `send Saved(…);` (no `to`) or `send Saved(…) to thing;` stays inside Lust: no host function, no engine queue. A component never hears these; only an entity send reaches it. Those events are delivered after every call into the library (`rt::catch` delivers before giving back: `update`, `handle`, `tick_objects`, `tick_tweens`, `start`, getters and setters), and in Lua after the chunk's `tick` and `tickTweens`, and after a component's `update` and `handle`. The chunk also has `settle()`, which delivers them, for an engine that runs Lust code another way.
+- **Events that reach the engine** (handled by a component, or sent to an entity) still carry only the engine's kinds. Events only Lust hears can carry anything, things of the game's classes too, so `events()` (Rust) and the chunk's `events` (Lua) list only the events the engine can carry.
+- A program whose only sends stay in Lust no longer needs `--library`.
+- **The engine does:** changes `on X(…) { … }` to the `on { }` block in its own Lust files, samples and templates.

@@ -1,0 +1,40 @@
+-- Events in a window: a button sends one, and it's heard before the window is drawn again.
+event Added(int n);
+
+object Tally {
+    has {
+        int total = 0;
+    }
+
+    on {
+        Added(int n) {
+            total += n;
+            print("heard {n}, total {total}");
+        }
+    }
+}
+
+assembly App {
+    has {
+        int clicks = 0;
+    }
+
+    on {
+        Added(int n) {
+            clicks += 1;
+        }
+    }
+
+    view [title "Events", width 300, height 200] {
+        column [gap 8, pad 16] {
+            text "Total {Tally.total}, clicks {clicks}";
+            button "Add two" {
+                send Added(2);
+                print("sent, total still {Tally.total}");
+            }
+        }
+    }
+}
+
+App:open();
+end

@@ -14,22 +14,26 @@ component Health {
         float hp = 10;
     }
 
-    on Hit(entity by) {
-        hp = hp - 1;
-    }
-
-    on Hit(entity by, float damage) {
-    }
-
-    on Missing() {
+    on {
+        Hit(entity by) {
+            hp = hp - 1;
+        }
+        Hit(entity by, float damage) {
+        }
+        Missing() {
+        }
+        Carry(Bag bag, int array numbers) {
+        }
     }
 
     method handle() {
     }
 }
 
-class Plain {
-    on Hit(entity by, float damage) {
+schema Plain {
+    on {
+        Hit(entity by, float damage) {
+        }
     }
 }
 
@@ -39,5 +43,6 @@ method go(entity e) {
     send Nope() to e;
     send Hit(e, 1) to 5;
     send Hit(e, 1);
+    send Carry(new Bag, []) to e;
 }
 end

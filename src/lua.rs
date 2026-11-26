@@ -321,7 +321,11 @@ impl<'a> W<'a> {
             }
         }
         let mut events = Vec::new();
+        // Only events the engine can carry: those that keep to its kinds.
         for (name, params) in &self.info.events {
+            if !params.iter().all(|(_, t)| crate::check::event_kind(t)) {
+                continue;
+            }
             let ps: Vec<String> = params.iter().map(|(n, t)| self.field_entry(n, t)).collect();
             events.push(format!("[{}] = {{ {} }}", lua_string(crate::ast::shown(name)), ps.join(", ")));
         }
@@ -933,7 +937,13 @@ impl<'a> W<'a> {
             }
         }
         self.class = None;
-        self.stmts(&prog.body);
+        // Events sent to Lust's own things are delivered after each statement here.
+        for s in &prog.body {
+            self.stmt(s);
+            if self.info.lust_events {
+                self.line(s.pos().line, "_L.settle()");
+            }
+        }
     }
 
     fn class(&mut self, c: &ClassDecl) {
@@ -1008,8 +1018,21 @@ impl<'a> W<'a> {
             self.indent -= 1;
             self.line(m.pos.line, "end");
         }
-        // A component's handlers run through handle(event, values).
+        // A component's handlers run through handle(event, values). Any other thing with an on
+        // block hears events sent in Lust, from when it's made.
         let handlers: Vec<&MethodDecl> = c.methods.iter().filter(|m| m.on.is_some()).collect();
+        if !c.is_component && !handlers.is_empty() {
+            self.line(c.pos.line, &format!("{table}.__listens = true"));
+        }
+        if c.is_component && self.info.lust_events {
+            // Events its update sends to Lust's own things are heard once it's done.
+            if self.info.classes[ci].methods.contains_key("update") {
+                self.line(
+                    c.pos.line,
+                    &format!("do local u = {table}.update; function {table}:update(dt) u(self, dt) _L.settle() end end"),
+                );
+            }
+        }
         if c.is_component {
             self.line(c.pos.line, &format!("function {table}:handle(event, values)"));
             self.indent += 1;
@@ -1025,6 +1048,9 @@ impl<'a> W<'a> {
                 self.line(m.pos.line, &format!("if event == {} then", lua_string(crate::ast::shown(ev))));
                 self.indent += 1;
                 self.line(m.pos.line, &format!("self:{}({})", lname(&m.name), args.join(", ")));
+                if self.info.lust_events {
+                    self.line(m.pos.line, "_L.settle()");
+                }
                 self.line(m.pos.line, "return true");
                 self.indent -= 1;
                 self.line(m.pos.line, "end");
@@ -1403,14 +1429,26 @@ impl<'a> W<'a> {
                 self.line(ln, "end");
             }
             Stmt::Send { event, args, to, .. } => {
+                // To an entity: the engine's queue. To a thing, or to everything that handles
+                // it: Lust's own, delivered once the code running now is done.
+                let engine = to.as_ref().is_some_and(|t| matches!(self.info.ty(t), Ty::Entity | Ty::Nothing));
+                let t = match to {
+                    Some(t) if engine => self.expr(t),
+                    Some(t) => format!("_L.target({})", self.expr(t)),
+                    None => "false".into(),
+                };
                 let vals: Vec<String> = args.iter().map(|a| self.expr(a)).collect();
-                let t = self.expr(to);
                 let mut parts = vec![format!("n = {}", vals.len())];
                 parts.extend(vals);
-                self.line(
-                    ln,
-                    &format!("_L.send({t}, {}, {{ {} }})", lua_string(crate::ast::shown(event)), parts.join(", ")),
-                );
+                if engine {
+                    self.line(
+                        ln,
+                        &format!("_L.send({t}, {}, {{ {} }})", lua_string(crate::ast::shown(event)), parts.join(", ")),
+                    );
+                } else {
+                    let h = lname(&format!("on{}{event}", crate::ast::MARK));
+                    self.line(ln, &format!("_L.post({t}, {}, {{ {} }})", lua_string(&h), parts.join(", ")));
+                }
             }
             Stmt::Tween {
                 place,

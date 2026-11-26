@@ -1,0 +1,50 @@
+-- Mistakes with events in any program.
+event Saved(string file);
+event Picked(Item it);
+
+class Item {
+    has {
+        string name = "";
+    }
+}
+
+class Editor {
+    on Saved(string file) {
+    }
+}
+
+class Doc {
+    on {
+        Saved(int file) {
+        }
+        Missing() {
+        }
+        Picked(Item it) {
+        }
+        Picked(Item it) {
+        }
+    }
+    on {
+    }
+}
+
+class Quiet {
+}
+
+component Holder {
+    on {
+        Picked(Item it) {
+        }
+    }
+}
+
+method go(entity e) {
+    Quiet q = new Quiet;
+    Doc d = new Doc;
+    send Saved("x") to q;
+    send Saved(3);
+    send Saved("a", "b") to d;
+    send Picked(new Item) to e;
+    send Saved("x") to 5;
+}
+end

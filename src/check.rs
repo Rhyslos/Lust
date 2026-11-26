@@ -159,8 +159,11 @@ pub struct Info {
     pub narrow_reads: HashMap<usize, Width>,
     /// Expressions whose int goes into a sized place, and is checked to fit on the way in.
     pub narrowing: HashMap<usize, Width>,
-    /// Where `send` is: like a native method, it needs the program using this as a library.
+    /// Where `send … to entity` is: like a native method, it needs the program using this as a
+    /// library.
     pub sends: Vec<Pos>,
+    /// Events stay in Lust too: a class has an on block, or something sends to one.
+    pub lust_events: bool,
     /// Colour words used as colour values (`colour warn = orange5;`), by expression: 0xrrggbb.
     pub colour_words: HashMap<usize, u32>,
     /// Names that read or change a variable at the top of the file (outside any { }), by
@@ -645,7 +648,8 @@ impl<'a> Checker<'a> {
                 c = self.info.classes[p].parent;
             }
         }
-        // What each event carries: the same kinds a component's fields hold.
+        // What each event carries: anything a variable holds. Only events that reach the engine
+        // keep to its kinds, which is checked where they do (engine_event).
         let mut done = std::collections::HashSet::new();
         for item in &prog.items {
             let Item::Event(e) = item else { continue };
@@ -656,16 +660,6 @@ impl<'a> Checker<'a> {
             let mut params = Vec::new();
             for p in &e.params {
                 let ty = self.resolve(&p.ty);
-                if !event_kind(&ty) {
-                    self.err(
-                        p.pos,
-                        format!(
-                            "an event carries what the engine can keep and show: bool, int, float, string, a state, vec3, vec2, rotation, colour and entity. {} is {}.",
-                            p.name,
-                            self.a(&ty)
-                        ),
-                    );
-                }
                 params.push((p.name.clone(), ty));
             }
             self.info.events.insert(e.name.clone(), params);
@@ -709,7 +703,14 @@ impl<'a> Checker<'a> {
                         if self.info.classes[ci].methods.contains_key(&m.name) {
                             match &m.on {
                                 Some((e, _)) => {
-                                    self.err(m.pos, format!("{} already handles {e}.", c.name));
+                                    self.err(
+                                        m.pos,
+                                        format!(
+                                            "{} already handles {}. Each event appears once in its on block.",
+                                            crate::ast::shown(&c.name),
+                                            crate::ast::shown(e)
+                                        ),
+                                    );
                                     continue;
                                 }
                                 None => self.err(m.pos, format!("{} already has a method called {}.", c.name, m.name)),
@@ -883,33 +884,6 @@ impl<'a> Checker<'a> {
                         );
                     }
                 }
-                let mut handled = std::collections::HashSet::new();
-                for m in &c.methods {
-                    let Some((ev, epos)) = &m.on else { continue };
-                    if !handled.insert(ev.clone()) {
-                        continue;
-                    }
-                    let shown = crate::ast::shown(ev).to_string();
-                    let Some(want) = self.info.events.get(ev).cloned() else {
-                        self.err(
-                            *epos,
-                            format!("there's no event called {shown}. Say what it carries first: event {shown}(entity by);"),
-                        );
-                        continue;
-                    };
-                    let sig = self.info.classes[ci].methods[&m.name].clone();
-                    let same = sig.params.len() == want.len() && sig.params.iter().zip(&want).all(|(a, b)| a.1 == b.1);
-                    if !same {
-                        let carries: Vec<String> = want.iter().map(|(n, t)| format!("{} {n}", self.show(t))).collect();
-                        self.err(
-                            *epos,
-                            format!(
-                                "a handler takes what its event carries, in the same order: on {shown}({}) {{ … }}",
-                                carries.join(", ")
-                            ),
-                        );
-                    }
-                }
                 if let Some(m) = c.methods.iter().find(|m| m.name == "update") {
                     let sig = &self.info.classes[ci].methods["update"];
                     if sig.ret != Ty::Void || sig.params.len() != 1 || sig.params[0].1 != Ty::Float {
@@ -920,12 +894,49 @@ impl<'a> Checker<'a> {
                     }
                 }
             }
+            // Handlers: each takes what its event carries. A component's events reach the
+            // engine, so they keep to its kinds.
+            let mut handled = std::collections::HashSet::new();
+            for m in &c.methods {
+                let Some((ev, epos)) = &m.on else { continue };
+                if !handled.insert(ev.clone()) {
+                    continue;
+                }
+                let shown = crate::ast::shown(ev).to_string();
+                let Some(want) = self.info.events.get(ev).cloned() else {
+                    self.err(
+                        *epos,
+                        format!("there's no event called {shown}. Say what it carries first: event {shown}(string file);"),
+                    );
+                    continue;
+                };
+                let sig = self.info.classes[ci].methods[&m.name].clone();
+                let same = sig.params.len() == want.len() && sig.params.iter().zip(&want).all(|(a, b)| a.1 == b.1);
+                if !same {
+                    let carries: Vec<String> = want.iter().map(|(n, t)| format!("{} {n}", self.show(t))).collect();
+                    self.err(
+                        *epos,
+                        format!(
+                            "a handler takes what its event carries, in the same order: {shown}({}) {{ … }}",
+                            carries.join(", ")
+                        ),
+                    );
+                }
+                if c.is_component {
+                    self.engine_event(ev, *epos);
+                } else {
+                    self.info.lust_events = true;
+                }
+            }
         }
         // Methods that replace a parent's must fit the same way.
         for c in &order {
             let Some(&ci) = self.info.class_index.get(&c.name) else { continue };
             let Some(parent) = self.info.classes[ci].parent else { continue };
             for m in &c.methods {
+                if m.on.is_some() {
+                    continue;
+                }
                 if let Some(pm) = self.info.method(parent, &m.name).cloned() {
                     let mine = self.info.classes[ci].methods[&m.name].clone();
                     let same = pm.ret == mine.ret
@@ -3105,6 +3116,28 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// An event that reaches the engine (a component handles it, or it's sent to an entity):
+    /// it carries only what the engine can keep and show.
+    fn engine_event(&mut self, event: &str, at: crate::ast::Pos) {
+        let Some(params) = self.info.events.get(event).cloned() else {
+            return;
+        };
+        let bad: Vec<String> = params
+            .iter()
+            .filter(|(_, t)| !event_kind(t))
+            .map(|(n, t)| format!("{n} is {}", self.a(t)))
+            .collect();
+        if !bad.is_empty() {
+            self.err(
+                at,
+                format!(
+                    "an event carries what the engine can keep and show: bool, int, float, string, a state, vec3, vec2, rotation, colour and entity. {}.",
+                    bad.join(", and ")
+                ),
+            );
+        }
+    }
+
     fn taken_by(&self, name: &str) -> Option<String> {
         if self.info.methods.contains_key(name) {
             return Some(format!("there's already a method called {name}"));
@@ -3121,7 +3154,6 @@ impl<'a> Checker<'a> {
                 to,
                 pos,
             } => {
-                self.info.sends.push(*pos);
                 let shown = crate::ast::shown(event).to_string();
                 let want = self.info.events.get(event).cloned();
                 match &want {
@@ -3154,8 +3186,56 @@ impl<'a> Checker<'a> {
                         }
                     }
                 }
-                let got = self.expr(to, ctx, Some(&Ty::Entity));
-                self.expect_fits(to, &got, &Ty::Entity, "an event goes to an entity");
+                let Some(to) = to else {
+                    // To every thing that handles it.
+                    self.info.lust_events = true;
+                    return;
+                };
+                let got = self.expr(to, ctx, None);
+                match got {
+                    // To an entity: the engine's queue.
+                    Ty::Entity | Ty::Nothing => {
+                        self.info.sends.push(*pos);
+                        self.engine_event(event, *epos);
+                    }
+                    Ty::Class(c) if self.info.classes[c].is_component => {
+                        self.err(
+                            to.pos,
+                            "a component hears events through the entity it's on, so send to that: send Hit(…) to this;",
+                        );
+                    }
+                    Ty::Class(c) => {
+                        self.info.lust_events = true;
+                        let h = format!("on{}{event}", crate::ast::MARK);
+                        // Its class, a class it's like, or one like it handles the event.
+                        let handles = (0..self.info.classes.len())
+                            .any(|k| self.info.classes[k].methods.contains_key(&h) && (self.info.is_like(c, k) || self.info.is_like(k, c)));
+                        if !handles && want.is_some() {
+                            let carries: Vec<String> = want
+                                .as_ref()
+                                .unwrap()
+                                .iter()
+                                .map(|(n, t)| format!("{} {n}", self.show(t)))
+                                .collect();
+                            self.err(
+                                to.pos,
+                                format!(
+                                    "{} doesn't handle {shown}. Give it on {{ {shown}({}) {{ … }} }}",
+                                    crate::ast::shown(&self.info.classes[c].name),
+                                    carries.join(", ")
+                                ),
+                            );
+                        }
+                    }
+                    Ty::Error => {}
+                    other => self.err(
+                        to.pos,
+                        format!(
+                            "an event goes to a thing with an on block, or to an entity, but this is {}.",
+                            self.a(&other)
+                        ),
+                    ),
+                }
             }
             Stmt::Tween {
                 place,
@@ -5975,8 +6055,9 @@ fn written_number(e: &Expr) -> Option<f64> {
     }
 }
 
-/// What a component's fields hold and an event carries: what the engine can keep and show.
-fn event_kind(t: &Ty) -> bool {
+/// What a component's fields hold and an event that reaches the engine carries: what the engine
+/// can keep and show.
+pub fn event_kind(t: &Ty) -> bool {
     matches!(
         t,
         Ty::Truth | Ty::Int | Ty::Float | Ty::Str | Ty::State(_) | Ty::Vec3 | Ty::Vec2 | Ty::Rot | Ty::Colour | Ty::Entity | Ty::Error

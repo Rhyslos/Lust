@@ -38,9 +38,11 @@ component Mover {
         }
     }
 
-    on Bumped(entity by, float force) {
-        speed = speed * 0.99 + force * 0.001;
-        mood = Mood.Calm;
+    on {
+        Bumped(entity by, float force) {
+            speed = speed * 0.99 + force * 0.001;
+            mood = Mood.Calm;
+        }
     }
 }
 end

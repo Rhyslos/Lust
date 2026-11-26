@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (alpha 80):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options, set with `=`), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too). Sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, tables and long lists, right-click menus, rows dragged to new places, dropped files, the mouse on a canvas, scrolling, pictures (SVG too), timers, keyboard shortcuts, fonts of your own, date and colour pickers, second windows, full screen, toasts, notifications and a tray icon, all drawn by Lust itself, sharp at any screen scaling, with input methods for typing any language and a tree for screen readers. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (alpha 81):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options, set with `=`), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error`, `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too). Events in any program (`event`, `on { }` and `send`), sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, tables and long lists, right-click menus, rows dragged to new places, dropped files, the mouse on a canvas, scrolling, pictures (SVG too), timers, keyboard shortcuts, fonts of your own, date and colour pickers, second windows, full screen, toasts, notifications and a tray icon, all drawn by Lust itself, sharp at any screen scaling, with input methods for typing any language and a tree for screen readers. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -612,6 +612,44 @@ shop.onSell = new hook {
 - A `new hook` can read the variables around it. It keeps their values as they were when the hook was made, and it can't change them (keep a value in an object's field to share changes: objects are shared, not copied).
 - A hook kept in a variable is called like a method on its own: `triple(5)`. One kept in a field is called with `:`, like a method: `shop:onSell("bread", 3);`, or `onSell("bread", 3);` inside the class.
 - Calling a hook that's `nothing` stops the program, so check first: `is shop.onSell !== nothing?`.
+
+### Events: telling things what happened
+
+An event says that something happened, and what comes with it. Any class, object, node or assembly can listen for events in an `on { }` block, written like `has { }`, and `send` hands one out:
+
+```
+event Saved(string file);
+event Closed();
+
+object AutoBackup {
+    has {
+        int copies = 0;
+    }
+
+    on {
+        Saved(string file) {
+            Files:write(file + ".bak", Files:read(file));
+            copies += 1;
+        }
+        Closed() {
+            print("Backed up {copies} times.");
+        }
+    }
+}
+
+send Saved("notes.txt");            -- every thing that handles Saved hears it
+send Saved("notes.txt") to editor;  -- only editor hears it
+```
+
+- **`event Name(…);`** says what an event carries, in order. It can carry anything a variable can hold, things of your own classes too: `event Picked(Item it);`. What's carried is shared, like any thing handed over: a handler that changes `it.name` changes the item.
+- **`on { }`** holds a thing's handlers, one for each event it hears: the event's name, what it carries in ( ) (the names can be its own), and a block. A thing has one `on` block, and each event appears in it once. Inside a handler, fields and methods are used as in a method.
+- **`send Name(…);`** reaches every thing that exists right now and handles the event. **`send Name(…) to thing;`** reaches only that one: a thing of a class, an object, a node or an assembly's piece. Sending to a thing whose class doesn't handle the event is a mistake (`Editor doesn't handle Saved. Give it on { Saved(string file) { … } }`), unless a class `like` it does: then the things of that class hear it, and the rest don't. An event no one handles does nothing.
+- **`like`:** a class hears the events the class it's like handles, and its own handler for an event replaces that class's, as methods do.
+- **Nothing runs inside `send`.** Events wait in a queue, and are heard **once the code running now is done**: after each statement at the top of the file (so a method that sends three events has them heard after it returns), after each thing a window does (a click, a key, a timer, a tween's done block), and as a `wait` starts. So `send Saved(f); print("sent");` prints `sent` before any handler runs.
+- **In order:** events are delivered in the order they were sent. An event sent while one is being delivered (Saved sends Closed) joins the end of the same queue. Each event reaches the things in the order they were made, objects first, in the order they're written, since they're made as the program starts. `lust run` and built programs do exactly the same.
+- **Things that end stop hearing.** A thing made in a state (section 8) that ended with it no longer hears events, nor does a closed node, until it opens again. A thing with an `on` block hears events from when it's made until it ends, **even when nothing holds it any more**: `send` can always reach it. So a thing made over and over that handles events should belong to a state that ends it, or be an object.
+- Sending to a thing that's `nothing`, or that has ended, stops the program, as calling its methods would.
+- Events can also go to the entities of a game engine, and components hear them there (section 21).
 
 ---
 
@@ -2318,7 +2356,7 @@ Tweens (section 17) move when the engine says: once a tick, **after the objects'
 
 ### Events
 
-Components tell each other things with events. An event says what it carries; a component handles it with `on`, and anything sends it to an entity with `send`:
+Components tell each other things with events (section 11). A component handles them in its `on { }` block, and anything sends one to an entity with `send … to`:
 
 ```
 event Hit(entity by, float damage);
@@ -2329,10 +2367,12 @@ component Health {
         float hp = 10;
     }
 
-    on Hit(entity by, float damage) {
-        hp = hp - damage;
-        is hp <= 0? then {
-            send Died() to this;
+    on {
+        Hit(entity by, float damage) {
+            hp = hp - damage;
+            is hp <= 0? then {
+                send Died() to this;
+            }
         }
     }
 }
@@ -2348,18 +2388,19 @@ component Gun {
 }
 ```
 
-- **`event Name(…)`** says what an event carries, in order. It carries the same kinds a component's fields hold: `bool`, `int`, `float`, `string`, a state, `vec3`, `vec2`, `rotation`, `colour` and `entity`.
-- **`on Name(…) { … }`** in a component runs when the event reaches the entity it's on. It takes what the event carries, in the same order (the names can be its own). Only components handle events, and each one handles an event once.
-- **`send Name(…) to target;`** hands the event to the engine, which queues it. Nothing runs straight away: the engine delivers the queue in order, to each component on the entity in order of their names. Events sent while delivering (Hit sends Damaged, which sends Died) join the end of the same tick's queue, so a game runs the same way every time.
-- The engine knows events by their names, so two files can't each have an event with the same name. A program with `send` needs the engine, so like native methods it's built with `lust build --library`; `lust run` on its own stops at the first `send`.
+- **`event Name(…)`** says what an event carries, in order. An event that reaches the engine (one a component handles, or one sent to an entity) carries the same kinds a component's fields hold: `bool`, `int`, `float`, `string`, a state, `vec3`, `vec2`, `rotation`, `colour` and `entity`. Events heard only by Lust's own things can carry anything.
+- **A component's `on { }` block** runs a handler when its event reaches the entity the component is on. It takes what the event carries, in the same order (the names can be its own). The old way, `on Hit(…) { … }` on its own, is a mistake now that shows the `on { }` form.
+- **`send Name(…) to target;`** with an entity hands the event to the engine, which queues it. Nothing runs straight away: the engine delivers the queue in order, to each component on the entity in order of their names. Events sent while delivering (Hit sends Damaged, which sends Died) join the end of the same tick's queue, so a game runs the same way every time.
+- **Components hear only the engine.** `send Name(…);` with no `to`, or `to` a thing of a class, stays in Lust: a game's objects and classes can have `on` blocks too, and hear those (section 11). Those events are delivered after each `update` and `handle` the engine runs, after `tick_objects` and `tick_tweens` (`tick` and `tickTweens` in Lua), and after every other call into the library.
+- The engine knows events by their names, so two files can't each have an event with the same name. A program that sends to an entity needs the engine, so like native methods it's built with `lust build --library`; `lust run` on its own stops at the first such `send`. Events that stay in Lust need nothing: a plain program with them runs with `lust run` and builds with `lust build`.
 
 Built as a library:
 
 - The engine's `Host` has `send_event(&self, to: Option<u64>, event: &str, values: Vec<Value>)`, which `send` calls.
 - Each component has `HANDLES`, the events it handles, and `handle(&self, event, &values)`, which runs its handler: `Ok(false)` if it has none for that event, and an error if the values are the wrong count or kind.
-- `game::events()` lists every event and what it carries, as `EventSchema { name, values }`.
+- `game::events()` lists every event the engine can carry (those that keep to its kinds) and what it carries, as `EventSchema { name, values }`.
 
-In LustScript, `send` calls the host's Lua function `send_event(to, name, values)`, with the values in a list (its count in `n`), and a component's `handle(event, values)` runs its handler.
+In LustScript, `send … to entity` calls the host's Lua function `send_event(to, name, values)`, with the values in a list (its count in `n`), and a component's `handle(event, values)` runs its handler. The chunk's `events` lists the events the engine can carry, and its `settle()` delivers the events waiting for Lust's own things, for an engine that runs Lust code some other way.
 
 ## 22. Reserved words
 
@@ -2385,7 +2426,7 @@ print      wait       ask
 
 Neither can the built-in objects: `Maths`, `Files`, `Time`, `Json`, `Web`, `Random`, `Rotation`, `Colour` and `Ease` (which is a state of easing curves too), and the built-in state `Icon`, Lust's icons. (`Rotation` and `Colour` with a capital are the objects; `rotation` and `colour` are the types.)
 
-`tween`, `to` and `over` are words only in a tween (and `to` after `send`), so they can still be names. So is `toast`, a word only at the start of a statement, and `App`, which a program's own assembly can be called.
+`tween`, `to` and `over` are words only in a tween (and `to` after `send`), so they can still be names. So are `event` and `send`, words only at the start of a line, and `on`, a word only in the body of a class, object, node, component or assembly. So is `toast`, a word only at the start of a statement, and `App`, which a program's own assembly can be called.
 
 The pieces of a view (`text`, `button`, `radio`, `switch`, `number`, `icon`, `table`, `list` and the rest) are words only at the start of a line inside a view, so they can still be names: `int number = 3;` works anywhere.
 

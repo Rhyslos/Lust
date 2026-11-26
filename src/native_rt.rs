@@ -140,11 +140,36 @@ fn failure(p: &(dyn std::any::Any + Send), files: &[&str]) -> LustError {
     error_at(files, (at >> 32) as u32, at as u32, payload_text(p))
 }
 
+// ----- events heard by Lust's own things -----
+
+thread_local! {
+    static SETTLE: std::cell::Cell<Option<fn()>> = const { std::cell::Cell::new(None) };
+}
+
+/// The program's delivery of its events (send Saved(…);): set once, as it starts.
+pub fn on_settle(f: fn()) {
+    SETTLE.with(|s| s.set(Some(f)));
+}
+
+/// Delivers the events waiting, in the order they were sent: after each top-level statement,
+/// window callback, tween's done block and library call, and as a wait starts.
+pub fn settle() {
+    if let Some(f) = SETTLE.with(|s| s.get()) {
+        f();
+    }
+}
+
 /// For Lust built as a library: runs Lust code for the program using it, and gives back a
-/// failure, with where it happened, instead of stopping that program.
+/// failure, with where it happened, instead of stopping that program. Events the code sent to
+/// Lust's own things are delivered before it gives back.
 pub fn catch<R>(files: &[&str], f: impl FnOnce() -> R) -> Result<R, LustError> {
     quiet();
     let depth = DEPTH.with(|c| c.get());
+    let f = || {
+        let r = f();
+        settle();
+        r
+    };
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
         Ok(r) => Ok(r),
         Err(p) => {
@@ -1369,6 +1394,8 @@ pub fn wait(s: f64) {
     if s.is_infinite() || s > 24.0 * 24.0 * 3600.0 {
         fail(format!("can't wait {} seconds; the longest wait is 24 days.", ftext(s)));
     }
+    // Events sent before the wait are heard as it starts.
+    settle();
     let start = std::time::Instant::now();
     let until = |secs: f64| {
         let due = start + std::time::Duration::from_secs_f64(secs.max(0.0));
@@ -1698,6 +1725,7 @@ pub fn tween_step(dt: f64) -> bool {
                 });
             }
         }
+        {
         let _tidy = Tidy;
         for i in 0..n {
             let Some(mut w) = TWEENS.with(|t| t.borrow_mut().list[i].take()) else { continue };
@@ -1722,6 +1750,9 @@ pub fn tween_step(dt: f64) -> bool {
                 TWEENS.with(|t| t.borrow_mut().list[i] = Some(w));
             }
         }
+        }
+        // Events the done blocks sent.
+        settle();
     }
     TWEENS.with(|t| t.borrow().live > 0)
 }

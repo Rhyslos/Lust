@@ -28,10 +28,12 @@ component Door {
         }
     }
 
-    on Shut() {
-        -- Starting again replaces the running tween; the old done block doesn't run.
-        tween open to 0 over 0.2 {
-            log("door shut");
+    on {
+        Shut() {
+            -- Starting again replaces the running tween; the old done block doesn't run.
+            tween open to 0 over 0.2 {
+                log("door shut");
+            }
         }
     }
 }
