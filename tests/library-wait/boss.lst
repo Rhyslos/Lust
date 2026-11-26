@@ -1,0 +1,31 @@
+-- Built as a library for an engine, a check in a wait { } goes straight on, running its when, when
+-- the state is already one of its options, and otherwise stops with a message, as wait { } does.
+state Mood = [Calm, Fleeing, Dead];
+
+object Boss {
+    has {
+        state = Mood.Calm;
+    }
+
+    method flee() {
+        state = Mood.Fleeing;
+    }
+}
+
+method string chase() {
+    wait {
+        check Boss.state {
+            when Fleeing, Dead {
+                return "chasing";
+            }
+        }
+    }
+    return "never";
+}
+
+method scare() {
+    Boss:flee();
+}
+
+pass chase, scare;
+end

@@ -2226,6 +2226,7 @@ impl<'a> Parser<'a> {
                         return Ok(Stmt::Wait {
                             seconds: Some(secs),
                             questions: Vec::new(),
+                            check: None,
                             limit,
                             pos: t.pos,
                         });
@@ -2429,13 +2430,15 @@ impl<'a> Parser<'a> {
         Ok(check)
     }
 
-    /// wait { is a? is b? } [or after 5 { … }]: questions only, each on its own line.
+    /// wait { is a? is b? check s { when … } } [or after 5 { … }]: questions, each on its own line,
+    /// and at most one check.
     fn wait_block(&mut self) -> R<Stmt> {
         let start = self.next().pos; // wait
         let open = self.next(); // {
         let d = self.depth;
         self.deeper()?;
         let mut questions = Vec::new();
+        let mut check = None;
         let mut others = false;
         let mut last_line = 0;
         loop {
@@ -2465,18 +2468,23 @@ impl<'a> Parser<'a> {
                 }
                 continue;
             }
-            others = true;
             if self.at_word("check") {
-                self.diags.add(
-                    here,
-                    "check inside a wait { } isn't built yet. For now, wait with a question for each option: wait { is boss.state == Boss.Dead? }",
-                );
-            } else {
-                self.diags.add(
-                    here,
-                    "a wait { } holds only questions, each written is …? on its own line: wait { is door.open? }. Put other code after the wait.",
-                );
+                let c = self.match_stmt()?;
+                if check.is_some() {
+                    self.diags.add(
+                        here,
+                        "a wait { } has one check at most: it waits until that state is one of its options. Wait for anything else with a question beside it: is door.state == Door.Open?",
+                    );
+                } else {
+                    check = Some(Box::new(c));
+                }
+                continue;
             }
+            others = true;
+            self.diags.add(
+                here,
+                "a wait { } holds only questions, each written is …? on its own line, and a check of a state's options: wait { is door.open? }. Put other code after the wait.",
+            );
             // Read past it, so the rest is still checked.
             let d2 = self.depth;
             if self.statement().is_err() {
@@ -2485,7 +2493,7 @@ impl<'a> Parser<'a> {
             self.depth = d2;
         }
         self.depth = d;
-        if questions.is_empty() && !others {
+        if questions.is_empty() && check.is_none() && !others {
             self.diags.add(
                 start,
                 "this wait { } has nothing to wait for. Put a question in it: wait { is door.open? }",
@@ -2498,6 +2506,7 @@ impl<'a> Parser<'a> {
         Ok(Stmt::Wait {
             seconds: None,
             questions,
+            check,
             limit,
             pos: start,
         })

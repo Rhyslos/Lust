@@ -14,6 +14,15 @@ use crate::ast::*;
 use crate::check::{CallRes, Info, NameRes};
 use crate::types::Ty;
 
+/// Is the value in `m` the option `o` (or one inside it)?
+fn arm_test(m: &str, o: &str, opts: &[String]) -> String {
+    match o {
+        "true" | "false" if opts.is_empty() => format!("{m} == {o}"),
+        _ if opts.iter().any(|x| x.starts_with(&format!("{o}."))) => format!("rt::within({m}, {o:?})"),
+        _ => format!("{m} == {o:?}"),
+    }
+}
+
 pub const RUNTIME: &str = include_str!("native_rt.rs");
 pub const DB_RUNTIME: &str = include_str!("native_db.rs");
 pub const WEB_RUNTIME: &str = include_str!("native_web.rs");
@@ -930,10 +939,17 @@ fn walk_stmts(stmts: &[Stmt], f: &mut dyn FnMut(&Expr)) {
                 walk_stmts(handler, f);
             }
             Stmt::Wait {
-                seconds, questions, limit, ..
+                seconds,
+                questions,
+                check,
+                limit,
+                ..
             } => {
                 for e in seconds.iter().chain(questions) {
                     walk_expr(e, f);
+                }
+                if let Some(c) = check {
+                    walk_stmts(std::slice::from_ref(&**c), f);
                 }
                 if let Some((l, b)) = limit {
                     walk_expr(l, f);
@@ -1075,7 +1091,14 @@ fn declared(stmts: &[Stmt], out: &mut HashSet<String>) {
                 declared(body, out);
                 declared(handler, out);
             }
-            Stmt::Wait { limit: Some((_, b)), .. } => declared(b, out),
+            Stmt::Wait { check, limit, .. } => {
+                if let Some(c) = check {
+                    declared(std::slice::from_ref(&**c), out);
+                }
+                if let Some((_, b)) = limit {
+                    declared(b, out);
+                }
+            }
             _ => {}
         }
     }
@@ -1699,6 +1722,35 @@ impl<'a> W<'a> {
         self.tmp
     }
 
+    /// A check's state's options, and the ones inside each (none for a bool).
+    fn options_of(&self, subject: &Expr) -> Vec<String> {
+        match self.info.ty(subject) {
+            Ty::State(si) => self.info.states[si].options.clone(),
+            _ => vec![],
+        }
+    }
+
+    /// A check's whens, at `depth`, on the value in `m`, which is always one of their options:
+    /// every option has a when in a plain check, and a check in a wait runs once it's one of
+    /// them. So the last one needs no question.
+    fn match_arms(&mut self, m: &str, arms: &[MatchArm], opts: &[String], out: &mut String, depth: usize) {
+        let inner = "    ".repeat(depth);
+        for (i, arm) in arms.iter().enumerate() {
+            if i + 1 == arms.len() && i > 0 {
+                out.push_str(&format!("{inner}}} else {{\n"));
+            } else {
+                let tests: Vec<String> = arm.options.iter().map(|(o, _)| arm_test(m, o, opts)).collect();
+                let cond = if arms.len() == 1 { "true".to_string() } else { tests.join(" || ") };
+                let word = if i == 0 { "if" } else { "} else if" };
+                out.push_str(&format!("{inner}{word} {cond} {{\n"));
+            }
+            self.stmts(&arm.body, out, depth + 1);
+        }
+        if !arms.is_empty() {
+            out.push_str(&format!("{inner}}}\n"));
+        }
+    }
+
     // ----- statements -----
 
     fn stmts(&mut self, stmts: &[Stmt], out: &mut String, depth: usize) {
@@ -1737,35 +1789,9 @@ impl<'a> W<'a> {
             Stmt::Match { subject, arms, .. } => {
                 let v = self.expr(subject);
                 let m = format!("m{}", self.fresh());
-                let opts = match self.info.ty(subject) {
-                    Ty::State(si) => self.info.states[si].options.clone(),
-                    _ => vec![],
-                };
+                let opts = self.options_of(subject);
                 out.push_str(&format!("{pad}{{\n{pad}    let {m} = {v};\n"));
-                let inner = "    ".repeat(depth + 1);
-                for (i, arm) in arms.iter().enumerate() {
-                    // Every option has a when, so the last one needs no question.
-                    if i + 1 == arms.len() && i > 0 {
-                        out.push_str(&format!("{inner}}} else {{\n"));
-                    } else {
-                        let tests: Vec<String> = arm
-                            .options
-                            .iter()
-                            .map(|(o, _)| match o.as_str() {
-                                "true" | "false" if opts.is_empty() => format!("{m} == {o}"),
-                                _ if opts.iter().any(|x| x.starts_with(&format!("{o}."))) => format!("rt::within({m}, {o:?})"),
-                                _ => format!("{m} == {o:?}"),
-                            })
-                            .collect();
-                        let cond = if arms.len() == 1 { "true".to_string() } else { tests.join(" || ") };
-                        let word = if i == 0 { "if" } else { "} else if" };
-                        out.push_str(&format!("{inner}{word} {cond} {{\n"));
-                    }
-                    self.stmts(&arm.body, out, depth + 2);
-                }
-                if !arms.is_empty() {
-                    out.push_str(&format!("{inner}}}\n"));
-                }
+                self.match_arms(&m, arms, &opts, out, depth + 1);
                 out.push_str(&format!("{pad}}}\n"));
             }
             Stmt::If { branches, otherwise, .. } => {
@@ -2215,28 +2241,67 @@ impl<'a> W<'a> {
             }
             // wait { is a? is b? }: rt::wait_for looks at the questions until they're all true;
             // with or after, it gives back false when time ran out first, and the block runs.
+            // wait { check s { when … } }: the questions take the state as they look, and once
+            // it's one of the whens' options, that when runs on what they saw.
             Stmt::Wait {
-                seconds, questions, limit, ..
+                seconds,
+                questions,
+                check,
+                limit,
+                ..
             } => {
                 let lim = limit.as_ref().map(|(l, _)| self.coerced(l, &Ty::Float));
+                let mut seen = None;
                 let call = match seconds {
                     Some(secs) => {
                         let sc = self.coerced(secs, &Ty::Float);
                         format!("rt::wait_or({sc}, {})", lim.clone().unwrap_or_else(|| "f64::INFINITY".into()))
                     }
                     None => {
-                        let qs: Vec<String> = questions.iter().map(|q| format!("({})", self.expr(q))).collect();
+                        let mut qs: Vec<String> = questions.iter().map(|q| format!("({})", self.expr(q))).collect();
+                        let mut take = String::new();
+                        if let Some(Stmt::Match { subject, arms, .. }) = check.as_deref() {
+                            let v = self.expr(subject);
+                            let m = format!("m{}", self.fresh());
+                            let opts = self.options_of(subject);
+                            let tests: Vec<String> = arms
+                                .iter()
+                                .flat_map(|a| a.options.iter().map(|(o, _)| arm_test(&m, o, &opts)))
+                                .collect();
+                            qs.push(format!("({})", tests.join(" || ")));
+                            take = format!("{m} = {v}; ");
+                            seen = Some((m, arms, opts));
+                        }
                         let l = lim.as_ref().map_or("None".to_string(), |l| format!("Some({l})"));
-                        format!("rt::wait_for(&mut || {}, {l})", qs.join(" && "))
+                        format!("rt::wait_for(&mut || {{ {take}{} }}, {l})", qs.join(" && "))
                     }
+                };
+                let (pad, depth) = match &seen {
+                    Some((m, _, _)) => {
+                        out.push_str(&format!("{pad}{{\n{pad}    let mut {m}: &'static str = \"\";\n"));
+                        (format!("{pad}    "), depth + 1)
+                    }
+                    None => (pad.clone(), depth),
                 };
                 match limit {
                     Some((_, body)) => {
                         out.push_str(&format!("{pad}if !{call} {{\n"));
                         self.stmts(body, out, depth + 1);
+                        if let Some((m, arms, opts)) = &seen {
+                            out.push_str(&format!("{pad}}} else {{\n"));
+                            self.match_arms(m, arms, opts, out, depth + 1);
+                        }
                         out.push_str(&format!("{pad}}}\n"));
                     }
-                    None => out.push_str(&format!("{pad}{call};\n")),
+                    None => {
+                        out.push_str(&format!("{pad}{call};\n"));
+                        if let Some((m, arms, opts)) = &seen {
+                            self.match_arms(m, arms, opts, out, depth);
+                        }
+                    }
+                }
+                if seen.is_some() {
+                    out.push_str(&format!("{}}}\n", &pad[4..]));
                 }
             }
             Stmt::Keep { value, into, .. } => {

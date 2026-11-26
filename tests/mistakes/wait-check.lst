@@ -1,0 +1,51 @@
+-- check inside wait { } goes through a state's options, names real ones, and comes once.
+state Mood = [Calm, Fleeing, Dead];
+
+object Boss {
+    has {
+        int hp = 3;
+        bool awake = false;
+        state = Mood.Calm;
+    }
+}
+
+wait {
+    check Boss.hp {
+        when Calm { print("no"); }
+    }
+}
+wait {
+    check Boss.awake {
+        when true { print("no"); }
+    }
+}
+wait {
+    check Boss.state {
+        when Sleeping { print("no"); }
+        when Mood.Dead { print("no"); }
+    }
+}
+wait {
+    check Boss.state {
+        when Dead { print("dead"); }
+    }
+    check Boss.state {
+        when Fleeing { print("fleeing"); }
+    }
+}
+wait {
+    check Boss.state {
+    }
+}
+wait {
+    check Boss.state {
+        when Dead { print("dead"); }
+        when Dead { print("again"); }
+    }
+    print("not a question");
+}
+-- An ordinary check still covers every option.
+check Boss.state {
+    when Dead { print("dead"); }
+}
+end

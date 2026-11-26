@@ -2833,7 +2833,9 @@ impl<'a> Checker<'a> {
     /// match x { when … { } }: x is a state option or a bool, and every option has exactly one
     /// when that runs for it. A when for an option covers the options inside it, so a more
     /// particular one goes first (when ActiveGame.Combat, then when ActiveGame).
-    fn match_stmt(&mut self, subject: &Expr, arms: &[MatchArm], pos: Pos, ctx: &mut Ctx) {
+    /// check: every option has a when. In a wait { } (`waiting`), the check waits until the state
+    /// is one of its whens' options instead, so it covers only the ones it names, and only states.
+    fn match_stmt(&mut self, subject: &Expr, arms: &[MatchArm], pos: Pos, waiting: bool, ctx: &mut Ctx) {
         let t = self.expr(subject, ctx, None);
         // Every option there is, and the ones inside each (a bool's are true and false).
         let (whole, opts): (String, Vec<String>) = match &t {
@@ -2841,8 +2843,21 @@ impl<'a> Checker<'a> {
                 let st = &self.info.states[*si];
                 (crate::ast::shown(&st.name).to_string(), st.options.clone())
             }
-            Ty::Truth => ("a bool".into(), vec!["true".into(), "false".into()]),
             Ty::Error => (String::new(), vec![]),
+            other if waiting => {
+                let a = self.a(other);
+                let ask = if *other == Ty::Truth {
+                    format!("To wait for it to be true, ask: wait {{ is {}? }}", describe(subject))
+                } else {
+                    "To wait for anything else, ask a question: wait { is hp == 0? }".to_string()
+                };
+                self.err(
+                    subject.pos,
+                    format!("a check in a wait {{ }} waits for a state to be one of its options, but this is {a}. {ask}"),
+                );
+                (String::new(), vec![])
+            }
+            Ty::Truth => ("a bool".into(), vec!["true".into(), "false".into()]),
             other => {
                 let a = self.a(other);
                 self.err(
@@ -2901,6 +2916,18 @@ impl<'a> Checker<'a> {
             self.block(&arm.body, ctx);
         }
         if !known {
+            return;
+        }
+        if waiting {
+            if arms.is_empty() {
+                self.err(
+                    pos,
+                    format!(
+                        "this check has no when, so the wait could never end. Add a when for each option to wait for: when {} {{ … }}",
+                        opts[0]
+                    ),
+                );
+            }
             return;
         }
         // What's left: an option on its own counts once, not again for each option inside it.
@@ -3437,7 +3464,7 @@ impl<'a> Checker<'a> {
                     );
                 }
             }
-            Stmt::Match { subject, arms, pos } => self.match_stmt(subject, arms, *pos, ctx),
+            Stmt::Match { subject, arms, pos } => self.match_stmt(subject, arms, *pos, false, ctx),
             Stmt::If { branches, otherwise, .. } => {
                 for (cond, body) in branches {
                     let t = self.expr(cond, ctx, Some(&Ty::Truth));
@@ -3646,7 +3673,11 @@ impl<'a> Checker<'a> {
                 self.expr(call, ctx, None);
             }
             Stmt::Wait {
-                seconds, questions, limit, ..
+                seconds,
+                questions,
+                check,
+                limit,
+                ..
             } => {
                 self.info.waits = true;
                 if let Some(secs) = seconds {
@@ -3656,6 +3687,9 @@ impl<'a> Checker<'a> {
                 for q in questions {
                     let t = self.expr(q, ctx, Some(&Ty::Truth));
                     self.expect_truth(q, &t, "a question in a wait");
+                }
+                if let Some(Stmt::Match { subject, arms, pos }) = check.as_deref() {
+                    self.match_stmt(subject, arms, *pos, true, ctx);
                 }
                 if let Some((l, body)) = limit {
                     let t = self.expr(l, ctx, Some(&Ty::Float));
@@ -6233,6 +6267,8 @@ pub fn returns(stmts: &[Stmt]) -> bool {
         } => branches.iter().all(|(_, b)| returns(b)) && returns(o),
         // Every option has its when, so one of them always runs.
         Stmt::Match { arms, .. } => !arms.is_empty() && arms.iter().all(|a| returns(&a.body)),
+        // The wait is over only once one of its check's whens runs, unless time runs out first.
+        Stmt::Wait { check: Some(c), limit, .. } => returns(std::slice::from_ref(&**c)) && limit.as_ref().is_none_or(|(_, b)| returns(b)),
         Stmt::Try { body, handler, .. } => returns(body) && returns(handler),
         Stmt::Loop {
             kind: LoopKind::Forever,
@@ -6251,7 +6287,9 @@ fn has_stop(stmts: &[Stmt]) -> bool {
         }
         Stmt::Match { arms, .. } => arms.iter().any(|a| has_stop(&a.body)),
         Stmt::Try { body, handler, .. } => has_stop(body) || has_stop(handler),
-        Stmt::Wait { limit: Some((_, b)), .. } => has_stop(b),
+        Stmt::Wait { check, limit, .. } => {
+            check.as_deref().is_some_and(|c| has_stop(std::slice::from_ref(c))) || limit.as_ref().is_some_and(|(_, b)| has_stop(b))
+        }
         _ => false,
     })
 }

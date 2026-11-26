@@ -1,6 +1,6 @@
 # Waiting: the design
 
-> **Designed, and being built: steps 1 to 3 are built (alpha 86).** This records what the project lead chose on 2026-11-19 (the direction) and 2026-11-26 (the details). Runs, `wait seconds;` pausing only its run, `start call;`, `wait { }` with questions, `or after`, and slow built-ins pausing only their run are built, and their rules are in [LUST.md](LUST.md) (section 11, Waiting). Once a part is built, it moves into LUST.md and is removed from this file.
+> **Designed, and being built: steps 1 to 4 are built (alpha 87).** This records what the project lead chose on 2026-11-19 (the direction) and 2026-11-26 (the details). Runs, `wait seconds;` pausing only its run, `start call;`, `wait { }` with questions and a `check`, `or after`, and slow built-ins pausing only their run are built, and their rules are in [LUST.md](LUST.md) (section 11, Waiting). Once a part is built, it moves into LUST.md and is removed from this file.
 
 Waiting is Lust's answer to `async` and `await`. Any method can wait, and only the piece of work that's waiting pauses, never the window, the game or the rest of the program. No method is marked as one that waits, so there are no labels to spread through the code, which is how Lua's coroutines and game engines work.
 
@@ -81,8 +81,7 @@ Runs, `wait` pausing only its run, a call waiting for what it calls, and slow bu
 
 ### Words
 
-- **`wait { … }`** with questions and **`or after`** are built: see LUST.md, section 11. Still to build:
-  - **`check thing.state { when … { … } }`** inside `wait { }`: it has to be in one of the `when`s' options. When it is, that `when`'s block runs. With a `check`, the questions beside it still have to be true too. (Until then, `check` inside `wait { }` is a mistake that says it isn't built yet.)
+- **`wait { … }`** with questions and a `check`, and **`or after`**, are built: see LUST.md, section 11. Still to build:
   - In an engine, a `wait { }` looks again once a tick (step 6; until then it goes on only if it's already true).
 - **`start name = call;`** (plain `start call;` is built) also gives the work a name in that place, like a variable, for `cancel`.
 - **`cancel name;`:** stops that work wherever it is: a `wait` it's in never finishes, and the lines after it don't run. Work it `start`ed carries on, unless it was given a name and is cancelled too. Cancelling work that's already done does nothing.
@@ -104,7 +103,7 @@ Runs, `wait` pausing only its run, a call waiting for what it calls, and slow bu
 1. ✅ **Runs, `start`, and `wait seconds;` pausing only its run,** in plain programs and windows, in both outputs. Lua uses coroutines; built programs get the same order of events. Built in alpha 84.
 2. ✅ **`wait { }` with questions,** and **`or after`**. Built in alpha 85.
 3. ✅ **Slow built-ins** (`Web:get`, `Web:post` and the file boxes) pause only their run. Built in alpha 86.
-4. **`check` inside `wait { }`.**
+4. ✅ **`check` inside `wait { }`.** Built in alpha 87.
 5. **`cancel`**, **states cancel runs**, and **the circle check**.
 6. **Engines:** runs inside components' updates and handlers.
 
@@ -124,6 +123,9 @@ Runs, `wait` pausing only its run, a call waiting for what it calls, and slow bu
 - **Which built-ins** (step 3): asking a website and the file boxes, where the wait is long and the window freezing is the problem. Not files and databases: they're quick, and runs working on the same file or table at once would see each other's half-done work (and SQLite's connection lives on the program's thread). Not `ask(…)`: it types into the console, which other runs would print over. Not `Web:serve` yet: a server that pauses only its run never ends, so it needs `cancel` (step 5) first. On macOS the file boxes open only on the main thread, so there they still hold everything up.
 - **Where a run can't pause, slow built-ins hold everything up, as before** (step 3): in an engine, in the code that draws a view, and in a route's method answering a request (Lua can't pause inside the `pcall` that catches its failure, so neither output does, and the answers stay the same).
 - **No mistakes are new** (step 3): a slow built-in is an ordinary call, so it's checked as before; a program that asks a website from a run gets runs' stacks as a program that waits does.
+- **One `check` per `wait { }`** (decided 2026-11-26, step 4). All of several checks having to match was the other way, but then which `when` runs, one from each check in turn or only the first, isn't clear from reading it, and the same can be written with one check and questions beside it. A second check is a mistake that says so.
+- **The `when` runs on the option the last look saw** (step 4): each look takes the state once, asks the questions and the `when`s' options on it, and once they match, the `when`s are gone through on that same value, so a state that can only be read by calling a method is read once a look, and the `when` that runs is always one that matched.
+- **A `check` in a `wait { }` is for states only** (step 4): a bool's `when true` is a question (`wait { is door.open? }`), which the mistake shows. A check with no `when` could never end the wait, so it's a mistake too.
 
 ## Still open
 - A time limit on a slow built-in call itself: `string page = Web:get(url) or after 10 { … };`.

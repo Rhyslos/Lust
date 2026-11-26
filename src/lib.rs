@@ -750,6 +750,26 @@ mod no_unsafe {
         assert!(lua.contains("if not _L.wait_or(1, 0.5)"));
     }
 
+    /// A check in a wait { }: both outputs take the state as they look, ask its whens' options
+    /// beside the questions, and run the whens on what they saw once the wait is over.
+    #[test]
+    fn wait_checks_take_the_state() {
+        let src = vec![(
+            "main.lst".to_string(),
+            "state Fight = [Idle, Battle [Melee, Ranged], Over];\nobject Arena {\n    has {\n        Fight now = Fight.Idle;\n        bool lit = false;\n    }\n}\nmethod later() {\n    Arena.now = Fight.Battle.Melee;\n    Arena.lit = true;\n}\nstart later();\nwait {\n    is Arena.lit?\n    check Arena.now {\n        when Battle.Ranged { print(\"ranged\"); }\n        when Battle { print(\"battle\"); }\n    }\n} or after 2 {\n    print(\"late\");\n}\nend\n"
+                .to_string(),
+        )];
+        let c = crate::front_from("main.lst", &src, &crate::Engine::default()).ok().unwrap();
+        let rust = crate::rust::write(&c.prog, &c.info, &c.files, false);
+        assert!(rust.contains(": &'static str = \"\";"), "{rust}");
+        assert!(rust.contains("rt::within(m"), "{rust}");
+        assert!(rust.contains("== \"Battle.Ranged\" || rt::within("), "{rust}");
+        assert!(rust.contains("} else {"), "{rust}");
+        let lua = crate::lua::write(&c.prog, &c.info, true).code;
+        assert!(lua.contains("if not _L.wait_for(function() _seen"), "{lua}");
+        assert!(lua.contains("_L.within(_seen"), "{lua}");
+    }
+
     /// The old way of writing a handler is a mistake that shows the new one.
     #[test]
     fn old_handlers_show_the_on_block() {

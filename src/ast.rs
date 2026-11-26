@@ -437,6 +437,9 @@ pub enum Stmt {
         seconds: Option<Expr>,
         /// wait { }'s questions, each `is …?` on its own line.
         questions: Vec<Expr>,
+        /// wait { check boss.state { when Dead { … } } }: a Stmt::Match whose state has to be in
+        /// one of its whens' options; that when's block runs once the wait is over.
+        check: Option<Box<Stmt>>,
         /// or after seconds { … }: the time limit, and what runs if it runs out first.
         limit: Option<(Expr, Vec<Stmt>)>,
         pos: Pos,

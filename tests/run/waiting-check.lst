@@ -1,0 +1,240 @@
+-- check inside wait { } waits until a state is one of its whens' options, then that when runs,
+-- once. It doesn't have to cover every option: it waits until it's one of these.
+
+state Mood = [Calm, Fleeing, Dead];
+
+state Fight = [
+    Idle,
+    Battle [
+        Melee,
+        Ranged
+    ],
+    Over
+];
+
+class Boss {
+    has {
+        string name = "boss";
+        int hp = 3;
+        state = Mood.Calm;
+    }
+
+    method flee() {
+        state = Mood.Fleeing;
+    }
+
+    method die() {
+        hp = 0;
+        state = Mood.Dead;
+    }
+}
+
+object Arena {
+    has {
+        Fight now = Fight.Idle;
+        Problem last = Problem.Other;
+        bool lit = false;
+    }
+}
+
+Boss boss = new Boss { name = "Grim" };
+
+method scare(Boss b, float secs) {
+    wait secs;
+    print("scared");
+    b:flee();
+}
+
+method fightLater() {
+    wait 0.25;
+    Arena.now = Fight.Battle.Ranged;
+    wait 0.25;
+    Arena.lit = true;
+}
+
+-- A state changing from another run: the when for it runs, once.
+start scare(boss, 0.5);
+wait {
+    check boss.state {
+        when Dead {
+            print("Won!");
+        }
+        when Fleeing {
+            print("chase", boss.name);
+        }
+    }
+}
+print("after the first wait");
+
+-- Already one of them at the start: nothing waits, and its when runs straight away.
+wait {
+    check boss.state {
+        when Fleeing, Dead {
+            print("already", boss.state);
+        }
+    }
+}
+
+-- Every option covered is fine too: it just doesn't wait.
+wait {
+    check boss.state {
+        when Calm { print("calm"); }
+        when Fleeing { print("still fleeing"); }
+        when Dead { print("dead"); }
+    }
+}
+
+-- Options inside options: when Battle matches Battle.Ranged, and a more particular one first wins.
+start fightLater();
+wait {
+    check Arena.now {
+        when Battle.Melee {
+            print("melee");
+        }
+        when Battle {
+            print("battle:", Arena.now);
+        }
+    }
+}
+
+-- Questions beside the check have to be true too before the when runs.
+Arena.lit = false;
+start fightLater();
+wait {
+    is Arena.lit?
+    check Arena.now {
+        when Battle.Ranged {
+            print("ranged, and lit:", Arena.lit);
+        }
+    }
+    is boss.hp > 0?
+}
+
+-- or after: time runs out first, so no when runs.
+wait {
+    check boss.state {
+        when Dead {
+            print("never shown");
+        }
+    }
+} or after 0.5 {
+    print("too slow");
+}
+print("after too slow");
+
+-- or after: the check matches first, so its when runs and the block doesn't.
+method killLater(Boss b) {
+    wait 0.1;
+    b:die();
+}
+start killLater(boss);
+wait {
+    check boss.state {
+        when Dead {
+            print("won in time, hp", boss.hp);
+        }
+    }
+} or after 2 {
+    print("never shown either");
+}
+
+-- A when block that waits: it's ordinary code in the run.
+Arena.now = Fight.Idle;
+method endLater() {
+    wait 0.2;
+    Arena.now = Fight.Over;
+}
+start endLater();
+wait {
+    check Arena.now {
+        when Over {
+            print("over, resting");
+            wait 0.5;
+            print("rested");
+        }
+    }
+}
+
+-- A Problem, set by another run when its try catches one.
+method failLater() {
+    wait 0.1;
+    try {
+        int n = "twelve".int();
+        print(n);
+    } error (Problem p, string m) {
+        Arena.last = p;
+    }
+}
+start failLater();
+wait {
+    check Arena.last {
+        when NotFound, BadJson {
+            print("never shown: not found");
+        }
+        when BadText {
+            print("problem:", Arena.last);
+        }
+    }
+}
+
+-- A when with return, in a method, and stop in a loop.
+method string firstMove() {
+    wait {
+        check Arena.now {
+            when Over {
+                return "over";
+            }
+        }
+    }
+    return "never";
+}
+print(firstMove());
+
+int rounds = 0;
+loop {
+    rounds += 1;
+    wait {
+        check boss.state {
+            when Dead {
+                is rounds == 2? then {
+                    stop;
+                }
+            }
+        }
+    }
+}
+print("rounds", rounds);
+
+-- From an event's handler, while the program's own code waits on another state.
+event Wake();
+
+object Guard {
+    has {
+        state = Mood.Calm;
+    }
+
+    on {
+        Wake() {
+            wait {
+                check Arena.now {
+                    when Idle {
+                        print("guard sees idle");
+                        state = Mood.Fleeing;
+                    }
+                }
+            }
+        }
+    }
+}
+
+send Wake();
+wait 0.1;
+Arena.now = Fight.Idle;
+wait {
+    check Guard.state {
+        when Fleeing {
+            print("guard fled");
+        }
+    }
+}
+end

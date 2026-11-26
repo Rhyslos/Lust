@@ -1,0 +1,11 @@
+wait-check.lst:13:11  a check in a wait { } waits for a state to be one of its options, but this is an int. To wait for anything else, ask a question: wait { is hp == 0? }
+wait-check.lst:18:11  a check in a wait { } waits for a state to be one of its options, but this is a bool. To wait for it to be true, ask: wait { is Boss.awake? }
+wait-check.lst:24:14  Mood has no option called Sleeping. Did you mean Fleeing?
+wait-check.lst:25:14  a check knows it's a Mood, so write the option on its own: when Dead { … }
+wait-check.lst:32:5  a wait { } has one check at most: it waits until that state is one of its options. Wait for anything else with a question beside it: is door.state == Door.Open?
+wait-check.lst:37:5  this check has no when, so the wait could never end. Add a when for each option to wait for: when Calm { … }
+wait-check.lst:43:14  there's already a when for Dead in this check.
+wait-check.lst:45:5  a wait { } holds only questions, each written is …? on its own line, and a check of a state's options: wait { is door.open? }. Put other code after the wait.
+wait-check.lst:48:1  this check has no when for Calm and Fleeing. A check covers every option of Mood: add when Calm { … }
+
+9 mistakes. Nothing was run.
