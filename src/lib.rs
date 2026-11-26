@@ -1278,6 +1278,45 @@ mod vector_json {
     }
 
     #[test]
+    fn answers_send_the_same_numbers_in_both_runtimes() {
+        assert_eq!(rt::ANSWERS, crate::stdlib::ANSWERS);
+        let lua = include_str!("runtime.lua");
+        for &(name, code) in crate::stdlib::ANSWERS {
+            assert!(
+                lua.contains(&format!("{name} = {code},")),
+                "{name} = {code} isn't in runtime.lua's answers"
+            );
+        }
+        // Every option is a different answer, and an error one.
+        let mut codes: Vec<u16> = crate::stdlib::ANSWERS.iter().map(|(_, c)| *c).collect();
+        codes.sort();
+        codes.dedup();
+        assert_eq!(codes.len(), crate::stdlib::ANSWERS.len());
+        assert!(codes.iter().all(|c| (400..600).contains(c)));
+    }
+
+    #[test]
+    fn weekdays_are_days_options() {
+        let days: Vec<&str> = [
+            "2026-11-23",
+            "2026-11-24",
+            "2026-11-25",
+            "2026-11-26",
+            "2026-11-27",
+            "2026-11-28",
+            "2026-11-29",
+        ]
+        .iter()
+        .map(|d| rt::time_weekday(d.to_string()))
+        .collect();
+        assert_eq!(days, crate::stdlib::DAYS);
+        // Requests are sent as their names in capitals, the route words.
+        for r in crate::stdlib::REQUESTS {
+            assert!(matches!(r.to_uppercase().as_str(), "GET" | "POST" | "PUT" | "DELETE"));
+        }
+    }
+
+    #[test]
     fn tweens_step_and_replace_in_order() {
         let place = std::rc::Rc::new(std::cell::RefCell::new(0.0f64));
         let done = std::rc::Rc::new(std::cell::Cell::new(0));

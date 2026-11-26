@@ -1,0 +1,73 @@
+-- Built-in states for fixed choices: Day from Time:weekday, Request for Web:request, and
+-- Answer for Web:fail, both ways.
+
+-- Day: what Time:weekday gives back.
+method string kindOf(Day d) {
+    check d {
+        when Monday { return "start of the week"; }
+        when Tuesday, Wednesday, Thursday { return "midweek"; }
+        when Friday { return "nearly there"; }
+        when Saturday, Sunday { return "weekend"; }
+    }
+    return "";
+}
+
+loop (string date in ["2026-11-23", "2026-11-24", "2026-11-25", "2026-11-26", "2026-11-27", "2026-11-28", "2026-11-29", "1970-01-01", "2000-02-29", "1900-01-01"]) {
+    Day d = Time:weekday(date);
+    print(date + " " + d.text() + ", " + kindOf(d));
+}
+Day today = Time:weekday("2026-11-26");
+print(today == Day.Thursday);
+print(today != Day.Sunday);
+print(Day.Monday == Time:weekday("2026-11-30"));
+loop (Day d in Day) {
+    print(d);
+}
+
+-- Answer: what Web:fail answers with, as its number.
+method string answer(string name) {
+    loop (Answer a in Answer) {
+        is a.text() == name? then {
+            Web:fail(a, "answered " + name + ".");
+        }
+    }
+    return "no such answer: " + name;
+}
+
+method string ok() {
+    return "fine";
+}
+
+method gone() {
+    Request kind = Request.Delete;
+    print("removed with " + kind.text());
+}
+
+route "/api" {
+    get "/answer/:name" => answer;
+    get "/ok" => ok;
+    put "/ok" => ok;
+    post "/ok" => ok;
+    delete "/ok" => gone;
+}
+
+loop (Answer a in Answer) {
+    print(Web:request(Request.Get, "/api/answer/" + a.text(), ""));
+}
+print(Web:request(Request.Get, "/api/answer/Nope", ""));
+
+-- Request: each kind against the routes, kept in variables too.
+loop (Request r in Request) {
+    print(r.text() + ": " + Web:request(r, "/api/ok", ""));
+}
+Request kind = Request.Put;
+print(Web:request(kind, "/api/answer/NotFound", ""));
+print(Web:request(Request.Post, "/api/nowhere", ""));
+
+-- A Web:fail outside a route still stops with Problem.Stopped.
+try {
+    Web:fail(Answer.Broken, "not in a route.");
+} error (Problem p, string message) {
+    print(p.text() + ": " + message);
+}
+end

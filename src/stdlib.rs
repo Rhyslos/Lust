@@ -14,7 +14,7 @@ use crate::types::Ty;
 pub const OBJECTS: &[&str] = &["Maths", "Files", "Time", "Json", "Web", "Random", "Rotation", "Colour", "Ease"];
 
 /// The built-in states that aren't objects too: their names can't be used for anything else.
-pub const STATES: &[&str] = &["Icon", "Problem"];
+pub const STATES: &[&str] = &["Icon", "Problem", "Day", "Request", "Answer"];
 
 /// `Ease` is a built-in object (`Ease:apply(Ease.OutBack, t)`) and a built-in state at the same
 /// time: its options are the easing curves, and the checker makes it the first state, so its
@@ -27,6 +27,49 @@ pub const ICON: usize = 1;
 /// `Problem`, the kinds of failure `try … error (Problem p, string message)` tells apart, is
 /// always the third.
 pub const PROBLEM: usize = 2;
+
+/// `Day`, the days of the week `Time:weekday` gives back, is always the fourth.
+pub const DAY: usize = 3;
+
+/// `Request`, the kinds of request `Web:request` sends (the route words `get`, `post`, `put`
+/// and `delete`), is always the fifth.
+pub const REQUEST: usize = 4;
+
+/// `Answer`, the statuses `Web:fail` answers with, is always the sixth.
+pub const ANSWER: usize = 5;
+
+/// Day's options, Monday first, as `Time:weekday` names them.
+pub const DAYS: &[&str] = &["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+/// Request's options. Each is sent as its name in capitals (`Get` is GET).
+pub const REQUESTS: &[&str] = &["Get", "Post", "Put", "Delete"];
+
+/// Answer's options and the status each sends. The runtimes (runtime.lua and native_rt.rs)
+/// each keep the same list, which a test checks.
+pub const ANSWERS: &[(&str, u16)] = &[
+    ("BadRequest", 400),
+    ("NotSignedIn", 401),
+    ("NotAllowed", 403),
+    ("NotFound", 404),
+    ("Conflict", 409),
+    ("Gone", 410),
+    ("TooBig", 413),
+    ("TooMany", 429),
+    ("Broken", 500),
+    ("Busy", 503),
+];
+
+/// The built-in states after Ease and Icon, by number, with their options: each is made by the
+/// checker in this order.
+pub fn plain_states() -> Vec<(usize, &'static str, Vec<String>)> {
+    let own = |l: &[&str]| l.iter().map(|o| o.to_string()).collect::<Vec<_>>();
+    vec![
+        (PROBLEM, "Problem", own(PROBLEMS)),
+        (DAY, "Day", own(DAYS)),
+        (REQUEST, "Request", own(REQUESTS)),
+        (ANSWER, "Answer", ANSWERS.iter().map(|(o, _)| o.to_string()).collect()),
+    ]
+}
 
 /// Problem's options. Each failure in the runtimes (runtime.lua and native_rt.rs) names one of
 /// these, the same one in both; anything not named is `Other`.
@@ -196,11 +239,11 @@ pub fn object_method(obj: &str, m: &str, args: &[Ty]) -> Option<Result<Lib, Stri
         ("Web", "post") => lib("web_post", vec![("address", Str), ("body", Str)], Str),
         ("Time", "addDays") => lib("time_addDays", vec![("date", Str), ("days", Int)], Str),
         ("Time", "daysBetween") => lib("time_daysBetween", vec![("from", Str), ("to", Str)], Int),
-        ("Time", "weekday") => lib("time_weekday", vec![("date", Str)], Str),
+        ("Time", "weekday") => lib("time_weekday", vec![("date", Str)], State(DAY)),
         ("Time", "isDate") => lib("time_isDate", vec![("text", Str)], Truth),
         ("Web", "serve") => lib("web_serve", vec![("port", Int)], Void),
-        ("Web", "request") => lib("web_request", vec![("method", Str), ("path", Str), ("body", Str)], Str),
-        ("Web", "fail") => lib("web_fail", vec![("status", Int), ("message", Str)], Void),
+        ("Web", "request") => lib("web_request", vec![("kind", State(REQUEST)), ("path", Str), ("body", Str)], Str),
+        ("Web", "fail") => lib("web_fail", vec![("answer", State(ANSWER)), ("message", Str)], Void),
         ("Time", "date" | "time") => lib(&format!("time_{m}"), vec![], Str),
         _ => return None,
     })

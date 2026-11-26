@@ -178,8 +178,9 @@ pub struct Info {
     pub uses_ease: bool,
     /// The program names `Icon`'s options as a list (loop or #), so Lua makes its table.
     pub uses_icon: bool,
-    /// The program names `Problem` as a list (loop or #), so Lua makes its table.
-    pub uses_problem: bool,
+    /// The other built-in states (Problem, Day, Request, Answer) the program names as a list
+    /// (loop or #), so Lua makes their tables.
+    pub uses_states: std::collections::BTreeSet<usize>,
     /// A view has a datePicker, which shows today by the computer's clock.
     pub uses_dates: bool,
 }
@@ -344,6 +345,14 @@ fn num_shown(x: f64) -> String {
     }
 }
 
+/// "a, b and c".
+fn and_list(items: &[String]) -> String {
+    match items.split_last() {
+        Some((last, rest)) if !rest.is_empty() => format!("{} and {last}", rest.join(", ")),
+        _ => items.join(""),
+    }
+}
+
 fn suggest(name: &str, candidates: impl IntoIterator<Item = String>) -> String {
     let lower = name.to_lowercase();
     let mut best: Option<(usize, String)> = None;
@@ -430,10 +439,10 @@ impl<'a> Checker<'a> {
     /// shown with its state's name in front when there's a state that has it.
     fn old_is_msg(&self, target: &str, value: &Expr, is_state: bool) -> String {
         let shown = match &value.kind {
-            ExprKind::Name(n) => self
-                .info
-                .states
+            // The program's own states first, then the built-in ones (Answer has Busy too).
+            ExprKind::Name(n) => self.info.states[crate::stdlib::ANSWER + 1..]
                 .iter()
+                .chain(&self.info.states[..=crate::stdlib::ANSWER])
                 .find(|st| st.options.iter().any(|o| o == n))
                 .map(|st| format!("{}.{n}", st.name))
                 .unwrap_or_else(|| n.clone()),
@@ -469,13 +478,16 @@ impl<'a> Checker<'a> {
             name: "Icon".into(),
             options: crate::stdlib::icon_options(),
         });
-        // Problem, the built-in state of the kinds of failure, is always the third.
-        self.info.state_index.insert("Problem".into(), crate::stdlib::PROBLEM);
-        self.state_names.push("Problem".into());
-        self.info.states.push(StateInfo {
-            name: "Problem".into(),
-            options: crate::stdlib::PROBLEMS.iter().map(|e| e.to_string()).collect(),
-        });
+        // Then Problem (the kinds of failure), Day, Request and Answer, in that order.
+        for (i, name, options) in crate::stdlib::plain_states() {
+            debug_assert_eq!(i, self.info.states.len());
+            self.info.state_index.insert(name.into(), i);
+            self.state_names.push(name.into());
+            self.info.states.push(StateInfo {
+                name: name.into(),
+                options,
+            });
+        }
         // 1. Names of states, classes and methods, so everything can refer to everything.
         for item in &prog.items {
             match item {
@@ -2644,6 +2656,62 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// Text written where a state's option is wanted, naming one of its options (`"Monday"` for
+    /// a Day): which option to write instead.
+    fn option_for_text(&self, e: &Expr, want: &Ty) -> Option<String> {
+        let (Ty::State(s), ExprKind::Str(text)) = (want, &e.kind) else {
+            return None;
+        };
+        let st = &self.info.states[*s];
+        let o = st.options.iter().find(|o| o.eq_ignore_ascii_case(text))?;
+        Some(format!("{}.{o}", st.name))
+    }
+
+    /// `Web:request("GET", …)` and `Web:fail(404, …)`, the way they were written before Request
+    /// and Answer were states: a mistake that says which option to write. True when it's one.
+    fn old_choice(&mut self, e: &Expr, got: &Ty, want: &Ty, call: &str) -> bool {
+        let Ty::State(s) = want else { return false };
+        let (s, shown) = (*s, self.info.states[*s].name.clone());
+        let options = self.info.states[s].options.clone();
+        let (first, var) = if s == crate::stdlib::ANSWER {
+            ("NotFound", "answer")
+        } else {
+            (options[0].as_str(), "kind")
+        };
+        let fix = match (got, &e.kind) {
+            _ if s != crate::stdlib::REQUEST && s != crate::stdlib::ANSWER => return false,
+            (Ty::Str, ExprKind::Str(_)) if self.option_for_text(e, want).is_some() => {
+                format!(" Write {} here.", self.option_for_text(e, want).unwrap_or_default())
+            }
+            (Ty::Str, ExprKind::Str(text)) if s == crate::stdlib::REQUEST => {
+                let hint = suggest(text, options.clone()).replace("Did you mean ", &format!("Did you mean {shown}."));
+                format!(
+                    " There's no kind of request called \"{text}\".{hint} The options are {}.",
+                    and_list(&options)
+                )
+            }
+            (Ty::Int, ExprKind::Int(n)) if s == crate::stdlib::ANSWER => {
+                match crate::stdlib::ANSWERS.iter().find(|(_, code)| i64::from(*code) == *n) {
+                    Some((o, _)) => format!(" Write {shown}.{o} here."),
+                    None => {
+                        let all: Vec<String> = crate::stdlib::ANSWERS.iter().map(|(o, c)| format!("{o} ({c})")).collect();
+                        format!(" None of them is {n}. The options are {}.", and_list(&all))
+                    }
+                }
+            }
+            (Ty::Str | Ty::Int, _) => {
+                format!(" Keep one in a variable of its own: {shown} {var} = {shown}.{first};")
+            }
+            _ => return false,
+        };
+        let what = if *got == Ty::Str { "text" } else { "a number" };
+        self.err(
+            e.pos,
+            format!("{call} takes one of {shown}'s options now, like {shown}.{first}, not {what}.{fix}"),
+        );
+        true
+    }
+
     fn method_body(&mut self, m: &MethodDecl, class: Option<usize>) {
         let sig = match class {
             Some(c) => self.info.classes[c].methods.get(&m.name).cloned(),
@@ -3816,6 +3884,9 @@ impl<'a> Checker<'a> {
                 if *w == Ty::Int { "int" } else { "float" }
             ),
             (Ty::Nothing, _) => " Only things made from classes, and hooks, can be nothing.".into(),
+            (Ty::Str, Ty::State(_)) if self.option_for_text(e, want).is_some() => {
+                format!(" Write {} here.", self.option_for_text(e, want).unwrap_or_default())
+            }
             (_, Ty::Colour) if matches!(&e.kind, ExprKind::Name(n) if crate::words::rgb(n).is_some()) => {
                 format!(" {} is a name here, which comes before the colour word.", describe(e))
             }
@@ -4377,8 +4448,8 @@ impl<'a> Checker<'a> {
             if s == crate::stdlib::ICON {
                 self.info.uses_icon = true;
             }
-            if s == crate::stdlib::PROBLEM {
-                self.info.uses_problem = true;
+            if (crate::stdlib::PROBLEM..=crate::stdlib::ANSWER).contains(&s) {
+                self.info.uses_states.insert(s);
             }
             self.info.names.insert(e.id, NameRes::StateList);
             self.info.options.insert(e.id, (s, String::new()));
@@ -4878,7 +4949,9 @@ impl<'a> Checker<'a> {
                             );
                         } else {
                             for ((a, got), (pn, pt)) in args.iter().zip(&types).zip(&lib.params) {
-                                self.expect_fits(a, got, pt, &format!("{obj}:{m}'s {pn} is {}", self.a(pt)));
+                                if !self.old_choice(a, got, pt, &format!("{obj}:{m}")) {
+                                    self.expect_fits(a, got, pt, &format!("{obj}:{m}'s {pn} is {}", self.a(pt)));
+                                }
                             }
                         }
                         let ret = lib.ret.clone();
@@ -5911,9 +5984,15 @@ impl<'a> Checker<'a> {
                 let ok = self.fits(&lt, &rt) || self.fits(&rt, &lt) || (lt.is_number() && rt.is_number());
                 if !ok {
                     let fix = if (lt.is_number() && rt == Ty::Str) || (rt.is_number() && lt == Ty::Str) {
-                        " Turn one into the other first, with .text() or .int()."
+                        " Turn one into the other first, with .text() or .int().".to_string()
+                    } else if let Some((o, ExprKind::Str(text))) = self
+                        .option_for_text(r, &lt)
+                        .map(|o| (o, &r.kind))
+                        .or_else(|| self.option_for_text(l, &rt).map(|o| (o, &l.kind)))
+                    {
+                        format!(" Write {o} instead of \"{text}\".")
                     } else {
-                        ""
+                        String::new()
                     };
                     self.err(
                         opos,

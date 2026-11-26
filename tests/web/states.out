@@ -1,0 +1,39 @@
+2026-11-23 Monday, start of the week
+2026-11-24 Tuesday, midweek
+2026-11-25 Wednesday, midweek
+2026-11-26 Thursday, midweek
+2026-11-27 Friday, nearly there
+2026-11-28 Saturday, weekend
+2026-11-29 Sunday, weekend
+1970-01-01 Thursday, midweek
+2000-02-29 Tuesday, midweek
+1900-01-01 Monday, start of the week
+true
+true
+true
+Monday
+Tuesday
+Wednesday
+Thursday
+Friday
+Saturday
+Sunday
+400 {"error":"answered BadRequest."}
+401 {"error":"answered NotSignedIn."}
+403 {"error":"answered NotAllowed."}
+404 {"error":"answered NotFound."}
+409 {"error":"answered Conflict."}
+410 {"error":"answered Gone."}
+413 {"error":"answered TooBig."}
+429 {"error":"answered TooMany."}
+500 {"error":"answered Broken."}
+503 {"error":"answered Busy."}
+200 "no such answer: Nope"
+Get: 200 "fine"
+Post: 200 "fine"
+Put: 200 "fine"
+removed with Delete
+Delete: 204
+405 {"error":"/api/answer/NotFound answers GET, not PUT."}
+404 {"error":"there's nothing at /api/nowhere."}
+Stopped: not in a route.

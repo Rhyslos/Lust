@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (alpha 82):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options, set with `=`), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error` (with `Problem`, the kinds of failure, as a built-in state), `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too). Events in any program (`event`, `on { }` and `send`), sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, tables and long lists, right-click menus, rows dragged to new places, dropped files, the mouse on a canvas, scrolling, pictures (SVG too), timers, keyboard shortcuts, fonts of your own, date and colour pickers, second windows, full screen, toasts, notifications and a tray icon, all drawn by Lust itself, sharp at any screen scaling, with input methods for typing any language and a tree for screen readers. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (alpha 83):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options, set with `=`), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error` (with `Problem`, the kinds of failure, as a built-in state), `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too), with built-in states for their fixed choices (`Day`, `Request` and `Answer`). Events in any program (`event`, `on { }` and `send`), sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, tables and long lists, right-click menus, rows dragged to new places, dropped files, the mouse on a canvas, scrolling, pictures (SVG too), timers, keyboard shortcuts, fonts of your own, date and colour pickers, second windows, full screen, toasts, notifications and a tray icon, all drawn by Lust itself, sharp at any screen scaling, with input methods for typing any language and a tree for screen readers. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -1925,11 +1925,40 @@ Web:serve(8080);
 - A route block lists paths, each answered by a method. `get`, `post`, `put` and `delete` are the kinds of request. The text after `route` goes in front of every path, and can be left out.
 - **The method's values come from the request.** A value named like a `:name` in the path comes from the path: an `int`, a `float` or a `string`. Any other value comes from the request's body, read as JSON: usually a schema. There can be one of those at most.
 - **What the method gives back is the answer,** as JSON, with status 200. A method that gives nothing back answers 204.
-- **`Web:fail(404, "there's no user 9.");`** stops and answers with that status, as `{"error": "…"}`. A path value that isn't a number, or a body that doesn't fit, answers 400 by itself. Any other error answers 500 with its message.
+- **`Web:fail(Answer.NotFound, "there's no user 9.");`** stops and answers with that status, as `{"error": "…"}`. The answer is an option of `Answer`, a built-in state, and goes over the network as its number (below). A path value that isn't a number, or a body that doesn't fit, answers 400 by itself. Any other error answers 500 with its message.
 - A path nobody answers gives 404. One that's answered, but not for that kind of request, gives 405.
 - **`Web:serve(8080);`** answers requests on that port until the program is stopped. Every file's routes are served. `pass route;` is fine to write but not needed.
-- **`Web:request("GET", "/api/users/2", "")`** tries a route without a network, and gives back the status and the answer as text: `200 {"id":2,"name":"Bo"}`. Good for testing.
+- **`Web:request(Request.Get, "/api/users/2", "")`** tries a route without a network, and gives back the status and the answer as text: `200 {"id":2,"name":"Bo"}`. Good for testing. The kind of request is an option of `Request`, a built-in state, one for each route word.
 - Requests are read and answered several at once, so a slow visitor doesn't hold up the others. The methods that answer run one at a time, so they never get in each other's way.
+
+### Request and Answer
+
+The kinds of request and the answers a server sends are fixed choices, so they're built-in states, not text or numbers.
+
+| `Request` | Sent as | Answered by |
+| --- | --- | --- |
+| `Request.Get` | GET | `get "…" => …;` |
+| `Request.Post` | POST | `post "…" => …;` |
+| `Request.Put` | PUT | `put "…" => …;` |
+| `Request.Delete` | DELETE | `delete "…" => …;` |
+
+| `Answer` | Number | When |
+| --- | --- | --- |
+| `Answer.BadRequest` | 400 | the request doesn't make sense: something's missing or wrong in it |
+| `Answer.NotSignedIn` | 401 | whoever asked has to sign in first |
+| `Answer.NotAllowed` | 403 | whoever asked is known, but isn't allowed to do this |
+| `Answer.NotFound` | 404 | what was asked for isn't there |
+| `Answer.Conflict` | 409 | it can't be done as things are now: the name is taken, say |
+| `Answer.Gone` | 410 | it was there, but it's been removed for good |
+| `Answer.TooBig` | 413 | what was sent is too big |
+| `Answer.TooMany` | 429 | too many requests: slow down and try again later |
+| `Answer.Broken` | 500 | something went wrong on the server |
+| `Answer.Busy` | 503 | the server can't answer just now: try again later |
+
+- Both are states like any other: kept in variables (`Request kind = Request.Put;`), gone through with `loop (Answer a in Answer)`, and shown as their names.
+- The old way, text for the request (`Web:request("GET", …)`) and a number for the answer (`Web:fail(404, …)`), is a mistake that says which option to write: `Write Request.Get here.`, `Write Answer.NotFound here.` A number with no option (`Web:fail(418, …)`) lists them all.
+- What `Web:request` gives back still starts with the status as a number (`404 {"error":…}`), the way it arrives over the network.
+- `Request` and `Answer` are Lust's names, so nothing of your own can be called either (section 22).
 
 ### Asking other websites
 
@@ -2061,8 +2090,27 @@ Lust comes with these objects. Their methods are called like any object's: `Math
 | `Time:date()`, `Time:time()` | today's date as `"2026-10-21"`, and the time as `"14:05:09"`, by the computer's clock |
 | `Time:addDays(date, n)` | the date n days later (or earlier, with a minus) |
 | `Time:daysBetween(from, to)` | how many days from one date to the other |
-| `Time:weekday(date)` | `"Monday"` to `"Sunday"` |
+| `Time:weekday(date)` | the day of the week, as an option of the built-in state `Day`: `Day.Monday` to `Day.Sunday` |
 | `Time:isDate(text)` | true if it's a real date, written like `"2026-10-21"` |
+
+**Days are a state.** A day of the week is a fixed choice, so `Time:weekday` gives back an option of `Day`, a built-in state, not text:
+
+```
+Day d = Time:weekday("2026-11-26");     -- Day.Thursday
+is d == Day.Saturday || d == Day.Sunday? then { print("weekend"); }
+check Time:weekday(due) {
+    when Saturday, Sunday { print("it's due at the weekend"); }
+    when Monday, Tuesday, Wednesday, Thursday, Friday { print("it's due on a weekday"); }
+}
+```
+
+| `Day`'s options, in order |
+| --- |
+| `Monday`, `Tuesday`, `Wednesday`, `Thursday`, `Friday`, `Saturday`, `Sunday` |
+
+- Like any state, a `check` covers every option, `loop (Day d in Day)` goes through them from Monday, and `d.text()` (or `print(d)`) gives its name, `"Thursday"`.
+- Comparing one with text (`Time:weekday(due) == "Monday"`) is a mistake that says to write `Day.Monday` instead.
+- `Day` is one of Lust's names, so nothing of your own can be called `Day` (section 22). Months have no state: no built-in gives one back.
 
 **Json** turns values into JSON text and back:
 
@@ -2468,7 +2516,7 @@ The built-ins can't be used as names either:
 print      wait       ask
 ```
 
-Neither can the built-in objects: `Maths`, `Files`, `Time`, `Json`, `Web`, `Random`, `Rotation`, `Colour` and `Ease` (which is a state of easing curves too), and the built-in states `Icon`, Lust's icons, and `Problem`, the kinds of failure (section 15). (`Rotation` and `Colour` with a capital are the objects; `rotation` and `colour` are the types.)
+Neither can the built-in objects: `Maths`, `Files`, `Time`, `Json`, `Web`, `Random`, `Rotation`, `Colour` and `Ease` (which is a state of easing curves too), and the built-in states `Icon`, Lust's icons, `Problem`, the kinds of failure (section 15), `Day`, the days of the week (section 19), and `Request` and `Answer`, the kinds of request and the answers a server sends (section 18). (`Rotation` and `Colour` with a capital are the objects; `rotation` and `colour` are the types.)
 
 `tween`, `to` and `over` are words only in a tween (and `to` after `send`), so they can still be names. So are `event` and `send`, words only at the start of a line, and `on`, a word only in the body of a class, object, node, component or assembly. So is `toast`, a word only at the start of a statement, and `App`, which a program's own assembly can be called.
 

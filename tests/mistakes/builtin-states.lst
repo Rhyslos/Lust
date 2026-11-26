@@ -1,0 +1,38 @@
+-- Day, Request and Answer are built-in states: the old text and number forms, and misspelt options.
+method int refuse(int n) {
+    Web:fail(404, "there's nothing here.");
+    Web:fail(403, "not for you.");
+    Web:fail(418, "a teapot.");
+    int code = 404;
+    Web:fail(code, "nothing.");
+    Web:fail("NotFound", "nothing.");
+    Web:fail(Answer.NotFund, "nothing.");
+    Web:fail(Problem.NotFound, "nothing.");
+    return n;
+}
+
+route "/api" {
+    get "/refuse/:n" => refuse;
+}
+
+print(Web:request("GET", "/api/refuse/1", ""));
+print(Web:request("post", "/api/refuse/1", ""));
+print(Web:request("Delete", "/api/refuse/1", ""));
+print(Web:request("PATCH", "/api/refuse/1", ""));
+string kind = "GET";
+print(Web:request(kind, "/api/refuse/1", ""));
+print(Web:request(Request.Gte, "/api/refuse/1", ""));
+print(Web:request(1, "/api/refuse/1", ""));
+
+string day = Time:weekday("2026-11-26");
+print(Time:weekday("2026-11-26") == "Thursday");
+print("monday" != Time:weekday("2026-11-26"));
+Day d = "Monday";
+Day e = Day.Mondy;
+Day f = Day.Weekend;
+
+state Request = [Waiting, Done];
+class Answer {
+}
+int Day = 3;
+end
