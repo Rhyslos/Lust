@@ -430,6 +430,17 @@ pub enum Stmt {
         call: Expr,
         pos: Pos,
     },
+    /// wait { is door.open? } or after 5 { … }: waits until every question is true; or wait 2
+    /// or after 1 { … }: a wait of seconds with a time limit. (A plain wait 2; is a call.)
+    Wait {
+        /// wait 2 or after 1 { … }: the seconds. None for wait { }.
+        seconds: Option<Expr>,
+        /// wait { }'s questions, each `is …?` on its own line.
+        questions: Vec<Expr>,
+        /// or after seconds { … }: the time limit, and what runs if it runs out first.
+        limit: Option<(Expr, Vec<Stmt>)>,
+        pos: Pos,
+    },
     /// keep sword in player.bag; or keep sword;
     Keep {
         value: Expr,
@@ -450,6 +461,7 @@ impl Stmt {
             | Stmt::Lua { pos, .. }
             | Stmt::Keep { pos, .. }
             | Stmt::Start { pos, .. }
+            | Stmt::Wait { pos, .. }
             | Stmt::SaveDecl { pos, .. }
             | Stmt::Element { pos, .. }
             | Stmt::Send { pos, .. }

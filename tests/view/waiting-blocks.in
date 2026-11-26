@@ -1,0 +1,11 @@
+click Wait
+click Patient
+dump
+click Arm
+wait 0.1
+dump
+click Arm
+wait 0.1
+dump
+wait 1
+dump

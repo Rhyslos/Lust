@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (alpha 84):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options, set with `=`), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error` (with `Problem`, the kinds of failure, as a built-in state), `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too), with built-in states for their fixed choices (`Day`, `Request` and `Answer`). Waiting pauses only the run that waits (`wait`, and `start` to run a call alongside). Events in any program (`event`, `on { }` and `send`), sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, tables and long lists, right-click menus, rows dragged to new places, dropped files, the mouse on a canvas, scrolling, pictures (SVG too), timers, keyboard shortcuts, fonts of your own, date and colour pickers, second windows, full screen, toasts, notifications and a tray icon, all drawn by Lust itself, sharp at any screen scaling, with input methods for typing any language and a tree for screen readers. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (alpha 85):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options, set with `=`), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error` (with `Problem`, the kinds of failure, as a built-in state), `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too), with built-in states for their fixed choices (`Day`, `Request` and `Answer`). Waiting pauses only the run that waits (`wait`, `wait { }` until questions are true, `or after` time limits, and `start` to run a call alongside). Events in any program (`event`, `on { }` and `send`), sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, tables and long lists, right-click menus, rows dragged to new places, dropped files, the mouse on a canvas, scrolling, pictures (SVG too), timers, keyboard shortcuts, fonts of your own, date and colour pickers, second windows, full screen, toasts, notifications and a tray icon, all drawn by Lust itself, sharp at any screen scaling, with input methods for typing any language and a tree for screen readers. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -678,9 +678,54 @@ print("Gate open");
 - **In a window,** each callback is a run, so a button whose code waits doesn't freeze the window: the other buttons still work. A wait in the code that draws the view (outside any callback) stops the program with a message saying where to put it instead.
 - **Failures:** a `try` inside a run catches that run's own failures, waits and all. A failure no `try` in its own run catches stops the program, even if the code that started the run was inside a `try`.
 - **Lust's own clock.** Runs wait on the same clock as tweens and timers. In a view's tests, `wait 2.5` in the test moves every run's clock along (section 17); `lust test` runs waits without taking the real time, so tests stay quick and give the same results every time.
-- **In an engine** (a library or components), runs aren't there yet: `start` just calls the method, and `wait` pauses everything while tweens move, as before.
+- **In an engine** (a library or components), runs aren't there yet: see below.
 
-`start gate = openGate();` (a name, to `cancel` it), `wait { }` blocks that wait for states to change, and `or after` time limits are designed in [WAITING.md](WAITING.md) and come next.
+### Waiting for things to be true: wait { }
+
+`wait { … }` waits until things are true. It holds questions, each `is …?` on its own line, and every one of them has to be true. Lust waits for things to change, not for code to finish: a run that loads something sets a field or a state when it's done, and the code that needs it waits for that.
+
+```
+start openGate();
+wait {                           -- until the gate is open
+    is gate.state == Door.Open?
+}
+print("Through the gate");
+
+start map:load();                -- each sets its own state when it's finished
+start sounds:load();
+wait {                           -- until both are: every question has to be true
+    is map.state == Load.Done?
+    is sounds.state == Load.Done?
+}
+
+wait {
+    is door.state == Door.Open?
+} or after 5 {                   -- a time limit: this runs if 5 seconds go by first
+    print("The door never opened.");
+}
+```
+
+- **Only questions:** a question asks about anything a question can, fields, states, other things' fields, and methods that give back a bool (`is gate:isOpen()?`), and needs a yes-or-no answer. Anything else in the block, a `print`, a call, a variable, is a mistake that says the block holds only questions; put that code after the wait. A `wait { }` with no questions is a mistake too. (`check` inside `wait { }`, to wait until a state is one of several options, is designed in [WAITING.md](WAITING.md) and not built yet.)
+- **If they're all true straight away, nothing waits.** Events sent before the wait are heard first, as for `wait seconds;`.
+- **Lust looks again** each time the clock moves a 1/60 s step: once a frame in a window, and in a plain program on the same clock as `wait seconds;` and tweens, so something another run sets at 0.5 seconds is seen by 0.5 seconds and one step at the latest, and the code after the wait goes on there and then. Runs waiting at the same moment look in the order they started waiting.
+- **Looking runs the questions,** so a method in a question is called at every look. Lust has no `=` or `+=` inside a question, but a method can still change things: keep the methods a wait calls to asking.
+- **Where:** it pauses only its run, as `wait seconds;` does, so it works in the program's own code, in methods started with `start`, in event handlers, in a tween's done block and in a window's callbacks. In the code that draws a view (outside any callback) it stops the program with a message, as `wait seconds;` does.
+- **A wait no one can end** (nothing will ever make the questions true) waits for ever, so give it a time limit when that can happen. Lust noticing this by itself comes with `cancel` (WAITING.md, step 5).
+
+### Time limits: or after
+
+**`… or after seconds { … }`** puts a time limit on a wait: `wait { … } or after 5 { … }`, or `wait 10 or after 2 { … }`. If time runs out first, the block runs; if the wait is over first, it doesn't. Either way, the code after it carries on.
+
+- The block is ordinary code, and `stop`, `skip` and `return` in it work as anywhere else.
+- When the questions come true at the very moment time runs out, the wait wins and the block doesn't run. On `wait seconds;`, the limit only matters when it's shorter: `wait 10 or after 2 { … }` waits 2 seconds and runs the block. A limit that's never reached because both are written as numbers (`wait 2 or after 3 { … }`) is a mistake, as its block could never run; with variables, a longer limit just never runs out.
+- The limit is a number of seconds, 0 or more: anything else is a mistake, and a limit below 0 (from a variable) stops with `Problem.OutOfRange`.
+- `after` is a word only straight after a wait's `or`, so it can still be a name. A wait's `or` always comes with `after`: `wait { … } or { … }` is a mistake that shows how to write it.
+
+### In an engine
+
+In an engine (a library or components), runs aren't there yet: `start` just calls the method, and `wait seconds;` pauses everything while tweens move, as before. Nothing else runs while code waits there, so a `wait { }` goes straight on when its questions are already true, and otherwise stops with a message saying it can't wait in an engine yet. `or after` on `wait seconds;` works as it does elsewhere.
+
+`start gate = openGate();` (a name, to `cancel` it) and `check` inside `wait { }` are designed in [WAITING.md](WAITING.md) and come next.
 
 ---
 
@@ -2012,6 +2057,7 @@ string reply = Web:post("https://example.com/scores", Json:write(score));
 | `print(x);` | shows `x` on its own line. Any type: numbers, text, bools, lists, vectors, colours, states and `nothing` |
 | `print(a, b, c);` | shows several values on one line, with a space between each: `print("Score:", score, "lives:", lives);` |
 | `wait seconds;` | pauses its own run while everything else goes on (section 11, Waiting) |
+| `wait { is …? }` | pauses its own run until every question is true, with `or after seconds { … }` for a time limit (section 11, Waiting) |
 | `ask(question)` | shows a question and gives back what's typed |
 
 ### Random numbers
@@ -2549,7 +2595,7 @@ print      wait       ask
 
 Neither can the built-in objects: `Maths`, `Files`, `Time`, `Json`, `Web`, `Random`, `Rotation`, `Colour` and `Ease` (which is a state of easing curves too), and the built-in states `Icon`, Lust's icons, `Problem`, the kinds of failure (section 15), `Day`, the days of the week (section 19), and `Request` and `Answer`, the kinds of request and the answers a server sends (section 18). (`Rotation` and `Colour` with a capital are the objects; `rotation` and `colour` are the types.)
 
-`tween`, `to` and `over` are words only in a tween (and `to` after `send`), so they can still be names. So are `event` and `send`, words only at the start of a line, and `on`, a word only in the body of a class, object, node, component or assembly. So are `toast`, a word only at the start of a statement, `start`, a word only before a call, and `App`, which a program's own assembly can be called.
+`tween`, `to` and `over` are words only in a tween (and `to` after `send`), so they can still be names. So are `event` and `send`, words only at the start of a line, and `on`, a word only in the body of a class, object, node, component or assembly. So are `toast`, a word only at the start of a statement, `start`, a word only before a call, `after`, a word only after a wait's `or`, and `App`, which a program's own assembly can be called.
 
 The pieces of a view (`text`, `button`, `radio`, `switch`, `number`, `icon`, `table`, `list` and the rest) are words only at the start of a line inside a view, so they can still be names: `int number = 3;` works anywhere.
 

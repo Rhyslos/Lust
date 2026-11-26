@@ -2214,10 +2214,22 @@ impl<'a> Parser<'a> {
                     self.semi()?;
                     return Ok(Stmt::Keep { value, into, pos: t.pos });
                 }
-                // wait 0.5; is a built-in that takes its value without ( ).
+                // wait { is door.open? }: waits until every question is true.
+                "wait" if self.peek(1).is_sym("{") => return self.wait_block(),
+                // wait 0.5; is a built-in that takes its value without ( ), and can have a time
+                // limit: wait 2 or after 1 { … }
                 "wait" if !self.peek(1).is_sym("(") => {
                     self.next();
                     let secs = self.expr()?;
+                    if self.at_word("or") {
+                        let limit = self.wait_limit()?;
+                        return Ok(Stmt::Wait {
+                            seconds: Some(secs),
+                            questions: Vec::new(),
+                            limit,
+                            pos: t.pos,
+                        });
+                    }
                     self.semi()?;
                     return Ok(Stmt::Expr(self.mk(t.pos, ExprKind::Call("wait".into(), vec![secs]))));
                 }
@@ -2415,6 +2427,98 @@ impl<'a> Parser<'a> {
         }
         self.next();
         Ok(check)
+    }
+
+    /// wait { is a? is b? } [or after 5 { … }]: questions only, each on its own line.
+    fn wait_block(&mut self) -> R<Stmt> {
+        let start = self.next().pos; // wait
+        let open = self.next(); // {
+        let d = self.depth;
+        self.deeper()?;
+        let mut questions = Vec::new();
+        let mut others = false;
+        let mut last_line = 0;
+        loop {
+            if self.at_sym("}") {
+                self.next();
+                break;
+            }
+            if self.at_eof() || (self.at_word("end") && self.peek(1).kind == Tk::Eof) {
+                return self.fail(open.pos, "this { is never closed. Add a } where the wait ends.");
+            }
+            let here = self.cur().pos;
+            if self.at_word("is") {
+                if here.line == last_line {
+                    self.diags.add(here, "each question in a wait { } goes on its own line.");
+                }
+                self.next();
+                questions.push(self.question()?);
+                last_line = self.prev_end().line;
+                if self.at_word("then") {
+                    let p = self.cur().pos;
+                    self.diags.add(
+                        p,
+                        "a question in a wait { } has no then: the wait is over once it's true, and the code after the wait runs. wait { is door.open? }",
+                    );
+                    self.next();
+                    self.block("the answer")?;
+                }
+                continue;
+            }
+            others = true;
+            if self.at_word("check") {
+                self.diags.add(
+                    here,
+                    "check inside a wait { } isn't built yet. For now, wait with a question for each option: wait { is boss.state == Boss.Dead? }",
+                );
+            } else {
+                self.diags.add(
+                    here,
+                    "a wait { } holds only questions, each written is …? on its own line: wait { is door.open? }. Put other code after the wait.",
+                );
+            }
+            // Read past it, so the rest is still checked.
+            let d2 = self.depth;
+            if self.statement().is_err() {
+                self.recover();
+            }
+            self.depth = d2;
+        }
+        self.depth = d;
+        if questions.is_empty() && !others {
+            self.diags.add(
+                start,
+                "this wait { } has nothing to wait for. Put a question in it: wait { is door.open? }",
+            );
+        }
+        let limit = if self.at_word("or") { self.wait_limit()? } else { None };
+        if self.at_sym(";") {
+            self.next();
+        }
+        Ok(Stmt::Wait {
+            seconds: None,
+            questions,
+            limit,
+            pos: start,
+        })
+    }
+
+    /// or after 5 { … }: a wait's time limit, and what runs if it runs out first.
+    fn wait_limit(&mut self) -> R<Option<(Expr, Vec<Stmt>)>> {
+        let at = self.next().pos; // or
+        if !self.at_word("after") {
+            return self.fail(
+                at,
+                "a wait's time limit is written or after, then the seconds and what to do: wait { is door.open? } or after 5 { … }",
+            );
+        }
+        self.next();
+        let secs = self.expr()?;
+        let body = self.block("what happens when time runs out")?;
+        if self.at_sym(";") {
+            self.next();
+        }
+        Ok(Some((secs, body)))
     }
 
     fn if_chain(&mut self) -> R<Stmt> {

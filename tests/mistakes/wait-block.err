@@ -1,0 +1,15 @@
+wait-block.lst:17:5  a wait { } holds only questions, each written is …? on its own line: wait { is door.open? }. Put other code after the wait.
+wait-block.lst:20:5  check inside a wait { } isn't built yet. For now, wait with a question for each option: wait { is boss.state == Boss.Dead? }
+wait-block.lst:26:8  a question in a wait needs a yes-or-no answer, but this is an int. Compare it, like Gate.hp > 0
+wait-block.lst:27:8  a question in a wait needs a yes-or-no answer, but this is an int. Compare it, like count(…) > 0
+wait-block.lst:28:8  a question in a wait needs a yes-or-no answer, but this is a string. Compare it, like this == "Ada"
+wait-block.lst:30:1  this wait { } has nothing to wait for. Put a question in it: wait { is door.open? }
+wait-block.lst:33:22  each question in a wait { } goes on its own line.
+wait-block.lst:36:22  a question in a wait { } has no then: the wait is over once it's true, and the code after the wait runs. wait { is door.open? }
+wait-block.lst:42:12  or after's time limit is a number of seconds, but this is a string. Use .float() to turn text into a number.
+wait-block.lst:46:5  a wait { } holds only questions, each written is …? on its own line: wait { is door.open? }. Put other code after the wait.
+wait-block.lst:49:17  this time limit never runs out: the wait itself is over after 2 seconds, so a limit of 3 is never reached. Make the limit shorter, or leave out or after.
+wait-block.lst:52:17  this time limit never runs out: the wait itself is over after 2 seconds, so a limit of 2 is never reached. Make the limit shorter, or leave out or after.
+wait-block.lst:55:17  or after's time limit is a number of seconds, but this is a bool.
+
+13 mistakes. Nothing was run.

@@ -1642,6 +1642,53 @@ function L.wait(s)
   run_until(clock_now + s, seq)
 end
 
+-- wait 2 or after 1 { … }: waits the shorter of the two. Gives back false when the time limit
+-- ran out first (the wait is over first when they're the same).
+function L.wait_or(s, limit)
+  if limit < 0 or limit ~= limit then error(problem("OutOfRange", "a time limit can't be " .. L.ftext(limit) .. " seconds."), 2) end
+  if s < 0 or s ~= s then error(problem("OutOfRange", "can't wait " .. L.ftext(s) .. " seconds."), 2) end
+  if runs_on and not current and viewing > 0 then
+    error("this wait would stop the window, so it can't go here. Put it in a button's or a timer's code, or in a method started with start.", 2)
+  end
+  if limit < s then
+    L.wait(limit)
+    return false
+  end
+  L.wait(s)
+  return true
+end
+
+-- wait { … }: look() asks the questions. If they're all true, nothing waits; otherwise the run
+-- looks again each time the clock moves a 1/60 s step (each frame in a window), until they are,
+-- or until limit seconds have gone by. Gives back false when time ran out first.
+function L.wait_for(look, limit)
+  if limit and (limit < 0 or limit ~= limit) then
+    error(problem("OutOfRange", "a time limit can't be " .. L.ftext(limit) .. " seconds."), 2)
+  end
+  -- Events sent before the wait are heard as it starts.
+  L.settle()
+  if look() then return true end
+  if not runs_on then
+    error("wait { } can't wait in an engine yet: nothing else runs while it waits, so its questions could never come true. Runs come to engines later.", 2)
+  end
+  if not current and viewing > 0 then
+    error("this wait would stop the window, so it can't go here. Put it in a button's or a timer's code, or in a method started with start.", 2)
+  end
+  local due = limit and clock_now + limit
+  while true do
+    local at = (floor((clock_now + 1e-9) * 60) + 1) / 60
+    if due and due < at then at = due end
+    if current then
+      coroutine.yield(at)
+    else
+      seq = seq + 1
+      run_until(at, seq)
+    end
+    if look() then return true end
+    if due and clock_now + 1e-9 >= due then return false end
+  end
+end
+
 -- wait in an engine: pauses everything, while tweens move on.
 function L.wait_all(s)
   if not os or not os.clock then error("wait isn't available here. Use the host program's timers.", 3) end

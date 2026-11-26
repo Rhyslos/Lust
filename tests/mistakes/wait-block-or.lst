@@ -1,0 +1,8 @@
+-- A wait's time limit is or after, not or on its own.
+bool done = false;
+wait {
+    is done?
+} or {
+    print("too slow");
+}
+end

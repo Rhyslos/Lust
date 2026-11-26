@@ -474,6 +474,7 @@ fn value_names(p: &Program, out: &mut HashSet<String>) {
                     stmts(body, out);
                     stmts(handler, out);
                 }
+                Stmt::Wait { limit: Some((_, b)), .. } => stmts(b, out),
                 Stmt::Element {
                     children,
                     action,
@@ -741,6 +742,20 @@ impl<'a> Renamer<'a> {
                 }
             }
             Stmt::Start { call, .. } => self.expr(call),
+            Stmt::Wait {
+                seconds, questions, limit, ..
+            } => {
+                if let Some(s) = seconds {
+                    self.expr(s);
+                }
+                for q in questions {
+                    self.expr(q);
+                }
+                if let Some((l, b)) = limit {
+                    self.expr(l);
+                    self.stmts(b);
+                }
+            }
             Stmt::Keep { value, into, .. } => {
                 self.expr(value);
                 if let Some(i) = into {

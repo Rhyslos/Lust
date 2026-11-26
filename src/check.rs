@@ -3645,6 +3645,37 @@ impl<'a> Checker<'a> {
                 }
                 self.expr(call, ctx, None);
             }
+            Stmt::Wait {
+                seconds, questions, limit, ..
+            } => {
+                self.info.waits = true;
+                if let Some(secs) = seconds {
+                    let t = self.expr(secs, ctx, Some(&Ty::Float));
+                    self.expect_fits(secs, &t, &Ty::Float, "wait's seconds is a number");
+                }
+                for q in questions {
+                    let t = self.expr(q, ctx, Some(&Ty::Truth));
+                    self.expect_truth(q, &t, "a question in a wait");
+                }
+                if let Some((l, body)) = limit {
+                    let t = self.expr(l, ctx, Some(&Ty::Float));
+                    self.expect_fits(l, &t, &Ty::Float, "or after's time limit is a number of seconds");
+                    // wait 2 or after 3 { … }: the wait is always over first.
+                    if let (Some(s), Some(n)) = (seconds.as_ref().and_then(literal_number), literal_number(l)) {
+                        if n >= s {
+                            self.err(
+                                l.pos,
+                                format!(
+                                    "this time limit never runs out: the wait itself is over after {} seconds, so a limit of {} is never reached. Make the limit shorter, or leave out or after.",
+                                    num_shown(s),
+                                    num_shown(n)
+                                ),
+                            );
+                        }
+                    }
+                    self.block(body, ctx);
+                }
+            }
             Stmt::Keep { value, into, pos } => {
                 let t = self.expr(value, ctx, None);
                 if !matches!(t, Ty::Class(_) | Ty::Error) {
@@ -6220,6 +6251,7 @@ fn has_stop(stmts: &[Stmt]) -> bool {
         }
         Stmt::Match { arms, .. } => arms.iter().any(|a| has_stop(&a.body)),
         Stmt::Try { body, handler, .. } => has_stop(body) || has_stop(handler),
+        Stmt::Wait { limit: Some((_, b)), .. } => has_stop(b),
         _ => false,
     })
 }

@@ -1474,6 +1474,66 @@ pub fn wait(s: f64) {
     run_until(Some((due, seq)));
 }
 
+/// wait 2 or after 1 { … }: waits the shorter of the two. Gives back false when the time limit
+/// ran out first (the wait is over first when they're the same).
+pub fn wait_or(s: f64, limit: f64) -> bool {
+    if limit < 0.0 || limit.is_nan() {
+        fail_as("OutOfRange", format!("a time limit can't be {} seconds.", ftext(limit)));
+    }
+    if limit < s {
+        wait(limit);
+        false
+    } else {
+        wait(s);
+        true
+    }
+}
+
+/// wait { … }: `look` asks the questions. If they're all true, nothing waits; otherwise the run
+/// looks again each time the clock moves a 1/60 s step (each frame in a window), until they are,
+/// or until `limit` seconds have gone by. Gives back false when time ran out first.
+pub fn wait_for(look: &mut dyn FnMut() -> bool, limit: Option<f64>) -> bool {
+    if let Some(l) = limit.filter(|l| *l < 0.0 || l.is_nan()) {
+        fail_as("OutOfRange", format!("a time limit can't be {} seconds.", ftext(l)));
+    }
+    // Events sent before the wait are heard as it starts.
+    settle();
+    if look() {
+        return true;
+    }
+    if !RUNS.with(|r| r.borrow().on) {
+        fail("wait { } can't wait in an engine yet: nothing else runs while it waits, so its questions could never come true. Runs come to engines later.".into());
+    }
+    let in_run = runs::in_run();
+    if !in_run && TWEENS.with(|t| t.borrow().viewing) > 0 {
+        fail("this wait would stop the window, so it can't go here. Put it in a button's or a timer's code, or in a method started with start.".into());
+    }
+    let due = limit.map(|l| TWEENS.with(|t| t.borrow().clock_now) + l);
+    loop {
+        let now = TWEENS.with(|t| t.borrow().clock_now);
+        let mut at = (((now + 1e-9) * 60.0).floor() + 1.0) / 60.0;
+        if let Some(d) = due.filter(|d| *d < at) {
+            at = d;
+        }
+        if in_run {
+            runs::pause(at);
+        } else {
+            let seq = RUNS.with(|r| {
+                let mut r = r.borrow_mut();
+                r.seq += 1;
+                r.seq
+            });
+            run_until(Some((at, seq)));
+        }
+        if look() {
+            return true;
+        }
+        if due.is_some_and(|d| TWEENS.with(|t| t.borrow().clock_now) + 1e-9 >= d) {
+            return false;
+        }
+    }
+}
+
 /// wait in an engine: pauses everything, while tweens move on.
 fn wait_all(s: f64) {
     // Events sent before the wait are heard as it starts.

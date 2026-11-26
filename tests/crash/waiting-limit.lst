@@ -1,0 +1,17 @@
+-- A time limit below 0 seconds stops the program; try catches it as OutOfRange.
+bool done = false;
+float limit = -1.0;
+try {
+    wait 1 or after limit {
+        print("never");
+    }
+} error (Problem p, string m) {
+    print(p, m);
+}
+wait {
+    is done?
+} or after limit {
+    print("never");
+}
+print("never here");
+end

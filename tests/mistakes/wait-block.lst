@@ -1,0 +1,57 @@
+-- wait { } holds only questions, each on its own line, and or after takes seconds.
+state Door = [Shut, Open];
+
+object Gate {
+    has {
+        int hp = 3;
+        state = Door.Shut;
+    }
+}
+
+method int count() {
+    return 2;
+}
+
+wait {
+    is Gate.hp == 0?
+    print("waiting");
+}
+wait {
+    check Gate.state {
+        when Open { print("open"); }
+        when Shut { print("shut"); }
+    }
+}
+wait {
+    is Gate.hp?
+    is count()?
+    is "yes"?
+}
+wait {
+}
+wait {
+    is Gate.hp == 0? is Gate.state == Door.Open?
+}
+wait {
+    is Gate.hp == 0? then {
+        print("no");
+    }
+}
+wait {
+    is Gate.hp == 0?
+} or after "soon" {
+    print("too slow");
+}
+wait {
+    count();
+} or after 1 {
+}
+wait 2 or after 3 {
+    print("never");
+}
+wait 2 or after 2 {
+    print("never");
+}
+wait 2 or after true {
+}
+end
