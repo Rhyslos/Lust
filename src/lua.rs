@@ -220,6 +220,15 @@ fn const_vec(items: &[Expr]) -> Option<String> {
     Some(format!("_L.vec({})", parts.join(", ")))
 }
 
+/// Is the value in `m` the option `o` (or one inside it)?
+fn arm_test(m: &str, o: &str, opts: &[String]) -> String {
+    match o {
+        "true" | "false" if opts.is_empty() => format!("{m} == {o}"),
+        _ if opts.iter().any(|x| x.starts_with(&format!("{o}."))) => format!("_L.within({m}, {})", lua_string(o)),
+        _ => format!("{m} == {}", lua_string(o)),
+    }
+}
+
 fn lua_string(s: &str) -> String {
     let mut out = String::from("\"");
     for c in s.chars() {
@@ -245,7 +254,9 @@ fn has_skip(stmts: &[Stmt]) -> bool {
         }
         Stmt::Match { arms, .. } => arms.iter().any(|a| has_skip(&a.body)),
         Stmt::Try { body, handler, .. } => has_skip(body) || has_skip(handler),
-        Stmt::Wait { limit: Some((_, b)), .. } => has_skip(b),
+        Stmt::Wait { check, limit, .. } => {
+            check.as_deref().is_some_and(|c| has_skip(std::slice::from_ref(c))) || limit.as_ref().is_some_and(|(_, b)| has_skip(b))
+        }
         _ => false,
     })
 }
@@ -264,6 +275,36 @@ impl<'a> W<'a> {
     fn fresh(&mut self, base: &str) -> String {
         self.tmp += 1;
         format!("_{base}{}", self.tmp)
+    }
+
+    /// A check's state's options, and the ones inside each (none for a bool).
+    fn options_of(&self, subject: &Expr) -> Vec<String> {
+        match self.info.ty(subject) {
+            Ty::State(si) => self.info.states[si].options.clone(),
+            _ => vec![],
+        }
+    }
+
+    /// A check's whens, on the value in `m`, which is always one of their options: every option
+    /// has a when in a plain check, and a check in a wait runs once it's one of them. So the last
+    /// one needs no question.
+    fn match_arms(&mut self, ln: u32, m: &str, arms: &[MatchArm], opts: &[String]) {
+        for (i, arm) in arms.iter().enumerate() {
+            if i + 1 == arms.len() && i > 0 {
+                self.line(arm.pos.line, "else");
+            } else {
+                let tests: Vec<String> = arm.options.iter().map(|(o, _)| arm_test(m, o, opts)).collect();
+                let word = if i == 0 { "if" } else { "elseif" };
+                let cond = if arms.len() == 1 { "true".to_string() } else { tests.join(" or ") };
+                self.line(arm.pos.line, &format!("{word} {cond} then"));
+            }
+            self.indent += 1;
+            self.stmts(&arm.body);
+            self.indent -= 1;
+        }
+        if !arms.is_empty() {
+            self.line(ln, "end");
+        }
     }
 
     /// { key, shown name, kind } for a component's field or what an event carries; a state's
@@ -1164,40 +1205,11 @@ impl<'a> W<'a> {
             Stmt::Match { subject, arms, .. } => {
                 let v = self.expr(subject);
                 let m = self.fresh("match");
-                let opts = match self.info.ty(subject) {
-                    Ty::State(si) => self.info.states[si].options.clone(),
-                    _ => vec![],
-                };
+                let opts = self.options_of(subject);
                 self.line(ln, "do");
                 self.indent += 1;
                 self.line(ln, &format!("local {m} = {v}"));
-                for (i, arm) in arms.iter().enumerate() {
-                    // Every option has a when, so the last one needs no question.
-                    if i + 1 == arms.len() && i > 0 {
-                        self.line(arm.pos.line, "else");
-                    } else {
-                        let tests: Vec<String> = arm
-                            .options
-                            .iter()
-                            .map(|(o, _)| match o.as_str() {
-                                "true" | "false" if opts.is_empty() => format!("{m} == {o}"),
-                                _ if opts.iter().any(|x| x.starts_with(&format!("{o}."))) => {
-                                    format!("_L.within({m}, {})", lua_string(o))
-                                }
-                                _ => format!("{m} == {}", lua_string(o)),
-                            })
-                            .collect();
-                        let word = if i == 0 { "if" } else { "elseif" };
-                        let cond = if arms.len() == 1 { "true".to_string() } else { tests.join(" or ") };
-                        self.line(arm.pos.line, &format!("{word} {cond} then"));
-                    }
-                    self.indent += 1;
-                    self.stmts(&arm.body);
-                    self.indent -= 1;
-                }
-                if !arms.is_empty() {
-                    self.line(ln, "end");
-                }
+                self.match_arms(ln, &m, arms, &opts);
                 self.indent -= 1;
                 self.line(ln, "end");
             }
@@ -1542,30 +1554,70 @@ impl<'a> W<'a> {
             }
             // wait { is a? is b? }: _L.wait_for looks at the questions until they're all true;
             // with or after, it gives back false when time ran out first, and the block runs.
+            // wait { check s { when … } }: the questions take the state as they look, and once
+            // it's one of the whens' options, that when runs on what they saw.
             Stmt::Wait {
-                seconds, questions, limit, ..
+                seconds,
+                questions,
+                check,
+                limit,
+                ..
             } => {
                 let lim = limit.as_ref().map(|(l, _)| self.expr(l));
+                let mut seen = None;
                 let call = match seconds {
                     Some(secs) => {
                         let sc = self.expr(secs);
                         format!("_L.wait_or({sc}, {})", lim.clone().unwrap_or_else(|| "math.huge".into()))
                     }
                     None => {
-                        let qs: Vec<String> = questions.iter().map(|q| format!("({})", self.expr(q))).collect();
+                        let mut qs: Vec<String> = questions.iter().map(|q| format!("({})", self.expr(q))).collect();
+                        let mut take = String::new();
+                        if let Some(Stmt::Match { subject, arms, .. }) = check.as_deref() {
+                            let v = self.expr(subject);
+                            let m = self.fresh("seen");
+                            let opts = self.options_of(subject);
+                            let tests: Vec<String> = arms
+                                .iter()
+                                .flat_map(|a| a.options.iter().map(|(o, _)| arm_test(&m, o, &opts)))
+                                .collect();
+                            qs.push(format!("({})", tests.join(" or ")));
+                            take = format!("{m} = {v}; ");
+                            seen = Some((m, arms, opts));
+                        }
                         let l = lim.clone().unwrap_or_else(|| "nil".into());
-                        format!("_L.wait_for(function() return {} end, {l})", qs.join(" and "))
+                        format!("_L.wait_for(function() {take}return {} end, {l})", qs.join(" and "))
                     }
                 };
+                if let Some((m, _, _)) = &seen {
+                    self.line(ln, "do");
+                    self.indent += 1;
+                    self.line(ln, &format!("local {m}"));
+                }
                 match limit {
                     Some((_, body)) => {
                         self.line(ln, &format!("if not {call} then"));
                         self.indent += 1;
                         self.stmts(body);
                         self.indent -= 1;
+                        if let Some((m, arms, opts)) = &seen {
+                            self.line(ln, "else");
+                            self.indent += 1;
+                            self.match_arms(ln, m, arms, opts);
+                            self.indent -= 1;
+                        }
                         self.line(ln, "end");
                     }
-                    None => self.line(ln, &call),
+                    None => {
+                        self.line(ln, &call);
+                        if let Some((m, arms, opts)) = &seen {
+                            self.match_arms(ln, m, arms, opts);
+                        }
+                    }
+                }
+                if seen.is_some() {
+                    self.indent -= 1;
+                    self.line(ln, "end");
                 }
             }
             Stmt::Keep { value, into, .. } => {

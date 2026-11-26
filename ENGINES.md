@@ -190,3 +190,9 @@ An engine moving from alpha 48 to alpha 67 or later reads everything below.
 - **In an engine nothing changes** (runs come in step 6): a call that asks a website holds the call up until the answer comes, with the same text and the same `Problem` on failure, as before.
 - **Rust:** a library still has no unsafe code and no new dependencies. The request now happens on a thread of its own, which the library waits for, so the engine sees no difference.
 - **Lua:** nothing changes for a chunk in an engine. `lust run` gives the runtime new host calls (`http_start`, `choose_open_start`, `choose_save_start`, `choose_folder_start`, `slow_look`, `slow_wait`); a host without them gets the old blocking `http` and `choose_*` calls, as before.
+
+## alpha 87: waiting, step 4
+
+- A `check` inside `wait { }` waits until a state is one of its `when`s' options, then runs that `when` (LUST.md, section 11).
+- **In an engine nothing waits yet** (step 6): as for `wait { }`, it goes straight on, running its `when`, when the state is already one of its options and the questions are true, and otherwise stops the call with the same message (problem `Other`).
+- **Rust and Lua:** it goes through the same runtime calls as `wait { }` (`rt::wait_for`, `_L.wait_for`); nothing is new for the engine.

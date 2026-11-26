@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (alpha 86):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options, set with `=`), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error` (with `Problem`, the kinds of failure, as a built-in state), `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too), with built-in states for their fixed choices (`Day`, `Request` and `Answer`). Waiting pauses only the run that waits (`wait`, `wait { }` until questions are true, `or after` time limits, and `start` to run a call alongside), and so do asking a website and the computer's own file boxes. Events in any program (`event`, `on { }` and `send`), sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, tables and long lists, right-click menus, rows dragged to new places, dropped files, the mouse on a canvas, scrolling, pictures (SVG too), timers, keyboard shortcuts, fonts of your own, date and colour pickers, second windows, full screen, toasts, notifications and a tray icon, all drawn by Lust itself, sharp at any screen scaling, with input methods for typing any language and a tree for screen readers. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (alpha 87):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options, set with `=`), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error` (with `Problem`, the kinds of failure, as a built-in state), `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too), with built-in states for their fixed choices (`Day`, `Request` and `Answer`). Waiting pauses only the run that waits (`wait`, `wait { }` until questions are true or a state is one of a `check`'s options, `or after` time limits, and `start` to run a call alongside), and so do asking a website and the computer's own file boxes. Events in any program (`event`, `on { }` and `send`), sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, tables and long lists, right-click menus, rows dragged to new places, dropped files, the mouse on a canvas, scrolling, pictures (SVG too), timers, keyboard shortcuts, fonts of your own, date and colour pickers, second windows, full screen, toasts, notifications and a tray icon, all drawn by Lust itself, sharp at any screen scaling, with input methods for typing any language and a tree for screen readers. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -168,7 +168,7 @@ check mood {
 }
 ```
 
-- **Every option is covered, always.** A check has no "anything else": leave an option out and Lust says which one is missing. So when a state gets a new option, Lust points at every check that needs a `when` for it.
+- **Every option is covered, always.** A check has no "anything else": leave an option out and Lust says which one is missing. So when a state gets a new option, Lust points at every check that needs a `when` for it. The one exception is a check inside `wait { }` (section 11), which waits until the state is one of the options it names, so it names only those.
 - **One `when` can cover several options:** `when Busy, Angry { … }`.
 - **Options inside options:** a `when` for an option covers the options inside it, the same way `==` does. A more particular one goes first, and the general one after it catches the rest:
 
@@ -728,12 +728,35 @@ wait {
 }
 ```
 
-- **Only questions:** a question asks about anything a question can, fields, states, other things' fields, and methods that give back a bool (`is gate:isOpen()?`), and needs a yes-or-no answer. Anything else in the block, a `print`, a call, a variable, is a mistake that says the block holds only questions; put that code after the wait. A `wait { }` with no questions is a mistake too. (`check` inside `wait { }`, to wait until a state is one of several options, is designed in [WAITING.md](WAITING.md) and not built yet.)
+- **Only questions:** a question asks about anything a question can, fields, states, other things' fields, and methods that give back a bool (`is gate:isOpen()?`), and needs a yes-or-no answer. Anything else in the block, a `print`, a call, a variable, is a mistake that says the block holds only questions; put that code after the wait. A `wait { }` with no questions is a mistake too. The one other thing it can hold is a `check` (below).
 - **If they're all true straight away, nothing waits.** Events sent before the wait are heard first, as for `wait seconds;`.
 - **Lust looks again** each time the clock moves a 1/60 s step: once a frame in a window, and in a plain program on the same clock as `wait seconds;` and tweens, so something another run sets at 0.5 seconds is seen by 0.5 seconds and one step at the latest, and the code after the wait goes on there and then. Runs waiting at the same moment look in the order they started waiting.
 - **Looking runs the questions,** so a method in a question is called at every look. Lust has no `=` or `+=` inside a question, but a method can still change things: keep the methods a wait calls to asking.
 - **Where:** it pauses only its run, as `wait seconds;` does, so it works in the program's own code, in methods started with `start`, in event handlers, in a tween's done block and in a window's callbacks. In the code that draws a view (outside any callback) it stops the program with a message, as `wait seconds;` does.
 - **A wait no one can end** (nothing will ever make the questions true) waits for ever, so give it a time limit when that can happen. Lust noticing this by itself comes with `cancel` (WAITING.md, step 5).
+
+### Waiting for one of several options: check inside wait { }
+
+A `check` inside a `wait { }` waits until a state is one of its `when`s' options. When it is, that `when`'s block runs, once, and the wait is over:
+
+```
+wait {                           -- until the boss is in one of these, then that one runs
+    check boss.state {
+        when Dead { print("Won!"); }
+        when Fleeing { chase(boss); }
+    }
+} or after 60 {
+    print("Too slow.");
+}
+```
+
+- **It names only the options to wait for.** An ordinary `check` covers every option, but this one waits until the state is one of these, so it needn't: above, the wait goes on while the boss is `Calm`. Everywhere else, a `check` still has to cover every option.
+- **Options inside options** work as in any `check` (section 5): `when Battle` matches `Battle.Melee` too, a more particular `when` goes first, and the first `when` that matches is the one that runs.
+- **With questions beside it,** they have to be true too before the `when` runs: `wait { is door.open? check boss.state { … } }` waits until the door is open and the boss is in one of the options, in either order.
+- **One `check` per `wait { }`.** Two would leave it unclear which block runs, or whether both do, so a second one is a mistake. Wait for anything else with a question beside it: `is gate.state == Door.Open?`.
+- **The `when`'s block runs in the waiting run,** straight after the wait ends and on the option the last look saw, so it's ordinary code: it can wait itself, and `return`, `stop` and `skip` work as anywhere else.
+- **If it already matches,** nothing waits, and its `when` runs straight away. **If time runs out first** (`or after`), no `when` runs, only the time limit's block.
+- **Only states:** a check over a bool or anything else in a `wait { }` is a mistake that shows the question to ask instead (`wait { is door.open? }`). A check with no `when`, or a `when` naming an option the state doesn't have, is a mistake too.
 
 ### Time limits: or after
 
@@ -746,9 +769,9 @@ wait {
 
 ### In an engine
 
-In an engine (a library or components), runs aren't there yet: `start` just calls the method, and `wait seconds;` pauses everything while tweens move, as before. Asking a website or opening a file box holds the call up until the answer comes, as before. Nothing else runs while code waits there, so a `wait { }` goes straight on when its questions are already true, and otherwise stops with a message saying it can't wait in an engine yet. `or after` on `wait seconds;` works as it does elsewhere.
+In an engine (a library or components), runs aren't there yet: `start` just calls the method, and `wait seconds;` pauses everything while tweens move, as before. Asking a website or opening a file box holds the call up until the answer comes, as before. Nothing else runs while code waits there, so a `wait { }` goes straight on when its questions are already true (and its `check`'s state is already one of its options, whose `when` then runs), and otherwise stops with a message saying it can't wait in an engine yet. `or after` on `wait seconds;` works as it does elsewhere.
 
-`start gate = openGate();` (a name, to `cancel` it) and `check` inside `wait { }` are designed in [WAITING.md](WAITING.md) and come next.
+`start gate = openGate();` (a name, to `cancel` it) is designed in [WAITING.md](WAITING.md) and comes next.
 
 ---
 
