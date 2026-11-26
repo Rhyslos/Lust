@@ -80,7 +80,7 @@ The order Lust gets built in. Each step makes Lust more useful on its own, and n
 | ✅ | **14.29 Icons are a state:** `Icon`, a built-in state like `Ease`, has one option per icon, so icons are written `icon Icon.Trash;` and a wrong name is a mistake before running; text (`icon "trash"`) is a mistake that says which option to write. Keyboard shortcuts stay text (`key "ctrl + s"`) | Done (alpha 79) |
 | ✅ | **14.30 Things the engine makes:** a class in the engine's own files with `method entity made() native;` is made by the engine, so `new Fighter { position = gate }` gives back the entity it becomes (or nothing, for a sound: `new Horn { at = gate };` on its own line). It doesn't end with a state. A `new` of any other class on its own line is a mistake, since nothing keeps it |
 | | 🏁 *Lust's first release that isn't a test version.* | |
-| | **Waiting:** only the piece of work that waits pauses; `start`, `wait until`, `or after`, `wait all` and `wait first`; built in the steps listed in [WAITING.md](WAITING.md) | Designed (2026-11-26) |
+| | **Waiting:** only the piece of work that waits pauses; `start`, `wait { }` holding questions and `check`s (Lust waits for states to change, not for code to finish), and `or after`; built in the steps listed in [WAITING.md](WAITING.md) | Designed (2026-11-26) |
 | | **15. LustQL:** `.lql` files holding a database's tables, links, rules and questions in SQL's own words; transactions, shape changes, word search and media; built in the steps listed in [LUSTQL.md](LUSTQL.md) | Designed (2026-11-19) |
 
 ## Decisions along the way

@@ -11,9 +11,10 @@ Waiting is Lust's answer to `async` and `await`. Any method can wait, and only t
 | Labels such as `async` | **None.** Any method can wait |
 | A method calls one that waits | **It waits for it too**, as with `await` |
 | Running something alongside | **`start`:** `start openGate();` runs it alongside, and the next line runs straight away |
-| Waiting for something to be true | **`wait until …`:** `wait until door.state == Door.Open;` |
-| A time limit | **`or after`:** `wait until … or after 5 { … }`, where the block runs if time ran out |
-| Several things at once | **Blocks:** `wait all { … }` and `wait first { … }` |
+| Waiting for something to be true | **A `wait { }` block of questions:** `wait { is door.state == Door.Open? }`. Lust waits for states to change, not for code to finish |
+| Waiting for whichever comes first | **`check` inside `wait { }`:** it waits until the state is one of its `when`s, then runs that one |
+| A time limit | **`or after`:** `wait { … } or after 5 { … }`, where the block runs if time ran out |
+| Several things at once | **More questions in the block:** all of them have to be true. Work running alongside shows it's done through its state (so no `wait all` or `wait first`) |
 | The window and the game | **Never freeze.** Clicks, keys, timers, events and engine ticks each run on their own |
 | Waiting in a circle | **Noticed.** Lust stops with a message naming the circle |
 | States | **Clean up.** A wait started during a state is cancelled when that state ends (`keep` aside) |
@@ -33,19 +34,26 @@ print("Gate opening");
 openGate();                      -- waits here until the gate is open
 print("Gate open");
 
-wait until door.state == Door.Open or after 5 {
+wait {                           -- until the door is open
+    is door.state == Door.Open?
+} or after 5 {
     print("The door never opened.");
 }
 
-wait all {                       -- each line runs alongside; done when all are
-    loadMap();
-    loadSounds();
-    loadPlayer();
+start map:load();                -- each sets its own state to Load.Done when it's finished
+start sounds:load();
+wait {                           -- until both are: every question has to be true
+    is map.state == Load.Done?
+    is sounds.state == Load.Done?
 }
 
-wait first {                     -- done when the first one is
-    wait until boss.hp <= 0;
-    wait 60;
+wait {                           -- until the boss is in one of these, then that one runs
+    check boss.state {
+        when Dead { print("Won!"); }
+        when Fleeing { chase(boss); }
+    }
+} or after 60 {
+    print("Too slow.");
 }
 ```
 
@@ -61,10 +69,13 @@ wait first {                     -- done when the first one is
 ### Words
 
 - **`wait seconds;`:** lets that many seconds go by.
-- **`wait until condition;`:** waits until the condition is true. It's checked once a frame in a window, once a tick in an engine, and once each time the clock moves in a plain program.
+- **`wait { … }`:** waits for things to change. It holds questions and `check`s:
+  - **`is condition?`** on its own line: it has to be true. With several, all of them have to be true.
+  - **`check thing.state { when … { … } }`:** it has to be in one of the `when`s' options. When it is, that `when`'s block runs. With a `check`, the questions beside it still have to be true too.
+  - Lust looks again once a frame in a window, once a tick in an engine, and each time the clock moves in a plain program. If it's all true straight away, nothing waits.
+  - Anything else in the block (a `print`, a call) is a mistake that says the block only holds questions and `check`s.
 - **`… or after seconds { … }`:** a time limit on either kind of wait. If time runs out, the block runs. Either way, the code carries on after it.
-- **`start call;`:** runs a method call alongside. It gives nothing back. What it does is seen through fields, events, or a `wait until` on what it changes.
-- **`wait all { … }`:** each statement inside runs alongside the others, and the block is done when all of them are. **`wait first { … }`:** done when the first one is, and the others are stopped there.
+- **`start call;`:** runs a method call alongside. It gives nothing back. What it does is seen through states, fields or events: a thing that loads sets its own state to `Load.Done`, and `wait { is map.state == Load.Done? }` waits for it.
 
 ### Safety
 
@@ -83,9 +94,9 @@ wait first {                     -- done when the first one is
 ## Build order
 
 1. **Runs, `start`, and `wait seconds;` pausing only its run,** in plain programs and windows, in both outputs. Lua uses coroutines; built programs get the same order of events.
-2. **`wait until`** and **`or after`**.
+2. **`wait { }` with questions,** and **`or after`**.
 3. **Slow built-ins** (`Web:get` and the rest) pause only their run.
-4. **`wait all` and `wait first`.**
+4. **`check` inside `wait { }`.**
 5. **States cancel runs**, and **the circle check**.
 6. **Engines:** runs inside components' updates and handlers.
 

@@ -113,7 +113,7 @@ To work out: how `when` fits with `tick()`, what happens with states inside stat
 
 Each object gets its own `tick()`, and `wait` pauses just that object while the rest carry on. LUST.md already promises this for the engine.
 
-**Waiting, Lust's answer to async and await,** is designed now: see [WAITING.md](WAITING.md) (`start`, `wait until`, `or after`, `wait all` and `wait first`).
+**Waiting, Lust's answer to async and await,** is designed now: see [WAITING.md](WAITING.md) (`start`, `wait { }` holding questions and `check`s, and `or after`).
 
 ### Smaller additions
 
