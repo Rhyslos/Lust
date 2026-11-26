@@ -703,6 +703,7 @@ impl<'a> Parser<'a> {
         let mut fields = Vec::new();
         let mut methods = Vec::new();
         let mut seen_has = false;
+        let mut seen_on = false;
         loop {
             if self.at_sym("}") {
                 self.next();
@@ -727,19 +728,16 @@ impl<'a> Parser<'a> {
                     Ok(m) => methods.push(m),
                     Err(_) => self.recover(),
                 }
+            } else if self.at_word("on") && self.peek(1).is_sym("{") {
+                self.on_block(&mut methods, &mut seen_on);
             } else if self.at_word("on") && matches!(self.peek(1).kind, Tk::Ident(_)) && self.peek(2).is_sym("(") {
-                if !is_component {
-                    let p = self.cur().pos;
-                    self.diags.add(p, format!("only a component handles events with on, since events go to the entities components are on. {name} is a {what}."));
-                }
-                match self.handler_decl() {
-                    Ok(m) => methods.push(m),
-                    Err(_) => self.recover(),
-                }
+                self.old_handler(&mut methods);
             } else {
                 let pos = self.cur().pos;
-                self.diags
-                    .add(pos, format!("a {what} holds a has block and methods. Fields go inside has {{ }}."));
+                self.diags.add(
+                    pos,
+                    format!("a {what} holds a has block, methods and an on block. Fields go inside has {{ }}."),
+                );
                 self.recover();
             }
         }
@@ -879,6 +877,7 @@ impl<'a> Parser<'a> {
         let mut fields = Vec::new();
         let mut methods = Vec::new();
         let mut view: Option<ViewDecl> = None;
+        let mut seen_on = false;
         loop {
             if self.at_sym("}") {
                 self.next();
@@ -899,6 +898,14 @@ impl<'a> Parser<'a> {
                     Ok(m) => methods.push(m),
                     Err(_) => self.recover(),
                 }
+                continue;
+            }
+            if self.at_word("on") && self.peek(1).is_sym("{") {
+                self.on_block(&mut methods, &mut seen_on);
+                continue;
+            }
+            if self.at_word("on") && matches!(self.peek(1).kind, Tk::Ident(_)) && self.peek(2).is_sym("(") {
+                self.old_handler(&mut methods);
                 continue;
             }
             if self.at_word("view") {
@@ -943,7 +950,7 @@ impl<'a> Parser<'a> {
                 let pos = self.cur().pos;
                 self.diags.add(
                     pos,
-                    "an assembly holds a has block, methods and a view, or recipes: create Item { name = \"Potion\"; }",
+                    "an assembly holds a has block, methods, an on block and a view, or recipes: create Item { name = \"Potion\"; }",
                 );
                 self.recover();
                 continue;
@@ -1684,13 +1691,61 @@ impl<'a> Parser<'a> {
         Ok(EventDecl { name, pos, params })
     }
 
-    /// on Hit(entity by, float damage) { … }: what a component does when the event comes.
+    /// on { Saved(string file) { … } Closed() { … } }: what a thing does when each event comes.
+    fn on_block(&mut self, methods: &mut Vec<MethodDecl>, seen: &mut bool) {
+        let o = self.next(); // on
+        if *seen {
+            self.diags.add(o.pos, "a thing has one on block. Put all its handlers in it.");
+        }
+        *seen = true;
+        let open = self.next(); // {
+        loop {
+            if self.at_sym("}") {
+                self.next();
+                return;
+            }
+            if self.at_eof() {
+                self.diags.add(open.pos, "this on { is never closed.");
+                return;
+            }
+            if matches!(self.cur().kind, Tk::Ident(_)) && self.peek(1).is_sym("(") {
+                match self.handler_decl() {
+                    Ok(m) => methods.push(m),
+                    Err(_) => self.recover(),
+                }
+            } else {
+                let pos = self.cur().pos;
+                self.diags
+                    .add(pos, "an on block holds handlers, one for each event: Saved(string file) { … }");
+                self.recover();
+            }
+        }
+    }
+
+    /// on Hit(…) { … } on its own, the old way: a mistake that shows the new one, read anyway so
+    /// the rest can be checked.
+    fn old_handler(&mut self, methods: &mut Vec<MethodDecl>) {
+        let o = self.next(); // on
+        match self.handler_decl() {
+            Ok(m) => {
+                let ps: Vec<String> = m.params.iter().map(|p| format!("{} {}", p.ty, p.name)).collect();
+                let ev = m.on.as_ref().map(|e| e.0.clone()).unwrap_or_default();
+                self.diags.add(
+                    o.pos,
+                    format!("handlers go together in an on block now: on {{ {ev}({}) {{ … }} }}", ps.join(", ")),
+                );
+                methods.push(m);
+            }
+            Err(_) => self.recover(),
+        }
+    }
+
+    /// Hit(entity by, float damage) { … }: one handler in an on block.
     fn handler_decl(&mut self) -> R<MethodDecl> {
-        self.next(); // on
         let (event, epos) = self.ident("the event's name")?;
         self.expect_sym(
             "(",
-            &format!("a handler takes what the event carries in ( ): on {event}(entity by) {{ … }}"),
+            &format!("a handler takes what the event carries in ( ): {event}(entity by) {{ … }}"),
         )?;
         let params = self.param_list()?;
         let body = self.block("the handler")?;
@@ -1986,12 +2041,11 @@ impl<'a> Parser<'a> {
                 }
             }
             self.next();
-            if !self.at_word("to") {
-                let p = self.cur().pos;
-                return self.fail(p, format!("send says which entity the event goes to: send {event}(…) to target;"));
+            let mut to = None;
+            if self.at_word("to") {
+                self.next();
+                to = Some(self.expr()?);
             }
-            self.next();
-            let to = self.expr()?;
             self.semi()?;
             return Ok(Stmt::Send {
                 event,

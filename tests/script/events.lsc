@@ -3,22 +3,35 @@ fetch lua;
 
 event Hit(entity by, float damage);
 event Pushed(vec3 push);
+event Seen(string what);
+
+-- Heard in Lust: delivered once the component's handle is done.
+object Watcher {
+    on {
+        Seen(string what) {
+            print("watcher saw " + what);
+        }
+    }
+}
 
 component Health {
     has {
         float hp = 10;
     }
 
-    on Hit(entity by, float damage) {
-        hp = hp - damage;
-        print(me.text() + " hit by " + by.text() + ", " + hp.text() + " left");
-        is hp <= 0? then {
-            send Pushed([0, 0, 1]) to by;
+    on {
+        Hit(entity by, float damage) {
+            hp = hp - damage;
+            send Seen("a hit");
+            print(me.text() + " hit by " + by.text() + ", " + hp.text() + " left");
+            is hp <= 0? then {
+                send Pushed([0, 0, 1]) to by;
+            }
         }
-    }
 
-    on Pushed(vec3 push) {
-        print("pushed " + push.text());
+        Pushed(vec3 push) {
+            print("pushed " + push.text());
+        }
     }
 }
 

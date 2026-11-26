@@ -1,0 +1,167 @@
+-- Events in any program: things with an on block hear send, once the code running now is done.
+state Phase = [Calm, Busy];
+
+event Saved(string file);
+event Closed();
+event Picked(Item it);
+event Nobody(int n);
+event Ping(int n);
+event Mixed(int array xs, vec3 at, hook int(int n) f, string map names);
+
+class Item {
+    has {
+        string name = "";
+    }
+}
+
+class Editor {
+    has {
+        string name = "";
+        int saves = 0;
+    }
+
+    on {
+        Saved(string file) {
+            saves += 1;
+            print("{name} saw {file} saved ({saves})");
+        }
+        Picked(Item it) {
+            print("{name} picked {it.name}");
+            it.name = it.name + "!";
+        }
+    }
+
+    method string label() {
+        return "editor " + name;
+    }
+}
+
+-- Like Editor: it hears what Editor does, and its own handler replaces Editor's.
+class Viewer like Editor {
+    on {
+        Saved(string file) {
+            print("{name} reloads {file}");
+        }
+        Ping(int n) {
+            print("{name} pong {n}");
+            is n < 3? then {
+                send Ping(n + 1);
+                print("{name} sent ping {n + 1}");
+            }
+        }
+    }
+}
+
+object Mixer {
+    on {
+        Mixed(int array xs, vec3 at, hook int(int n) f, string map names) {
+            xs:inject(f(#xs));
+            string who = names["a"];
+            print("{#xs} {at.x} {who}");
+        }
+    }
+}
+
+object AutoBackup {
+    has {
+        int copies = 0;
+    }
+
+    on {
+        Saved(string file) {
+            copies += 1;
+            print("backup of {file}");
+            send Closed();
+        }
+        Closed() {
+            print("Backed up {copies} times.");
+        }
+    }
+}
+
+-- A thing with a state: what it makes in Busy ends when it goes back to Calm.
+class Desk {
+    has {
+        state = Phase.Calm;
+        Editor kept = nothing;
+    }
+
+    method open() {
+        state = Phase.Busy;
+        -- Nothing holds it, but it hears events until Busy ends.
+        Editor temp = new Editor { name = "temp" };
+        Editor k = new Editor { name = "kept" };
+        keep k;
+        kept = k;
+    }
+
+    method close() {
+        state = Phase.Calm;
+    }
+}
+
+node Room {
+    on {
+        Closed() {
+            print("the room hears it");
+        }
+    }
+}
+
+Editor a = new Editor { name = "A" };
+Viewer b = new Viewer { name = "B" };
+
+-- Nothing runs inside send: the handlers run once this statement is done.
+method saveNotes() {
+    print("before");
+    send Saved("notes.txt");
+    print("after, not yet heard");
+}
+saveNotes();
+
+-- Sent to one thing only.
+send Saved("one.txt") to b;
+send Saved("own.txt") to AutoBackup;
+
+-- Things carried in events are shared, not copied.
+Item sword = new Item { name = "sword" };
+method pick(Item it, Editor e) {
+    send Picked(it) to e;
+    print("still {it.name}");
+}
+pick(sword, a);
+print("now {sword.name}");
+
+-- Events sent while delivering join the end of the queue.
+send Ping(1) to b;
+
+-- No one handles Nobody: nothing happens.
+send Nobody(4);
+
+-- Ended things no longer hear.
+Desk desk = new Desk;
+desk:open();
+send Saved("desk.txt");
+desk:close();
+send Saved("later.txt");
+
+-- A closed node doesn't hear; an open one does.
+send Closed();
+Room:open();
+send Closed();
+Room:close();
+
+-- Several in one statement: delivered after it, in the order sent.
+method saveTwice() {
+    send Saved("x");
+    send Saved("y");
+    print("saveTwice done");
+}
+saveTwice();
+-- Anything a variable holds can be carried.
+int array nums = [1, 2];
+string map names = ["a" "Ann"];
+send Mixed(nums, [1, 2, 3], new hook { return n * 10; }, names);
+print("{#nums} {nums[2]}");
+print("{a.saves} {b.saves} {AutoBackup.copies}");
+end

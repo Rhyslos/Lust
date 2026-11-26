@@ -7,8 +7,10 @@ component Counter {
         int count = 0;
     }
 
-    on Hit(int n) {
-        count = count + n;
+    on {
+        Hit(int n) {
+            count = count + n;
+        }
     }
 }
 

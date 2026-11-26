@@ -47,8 +47,12 @@ fn host(lua: &Lua) -> mlua::Result<()> {
     h.set(
         "ui_open",
         lua.create_function(
-            |_, (settings, view, tweens): (mlua::Table, mlua::Function, Option<mlua::Function>)| {
+            |_, (settings, view, tweens, settle): (mlua::Table, mlua::Function, Option<mlua::Function>, Option<mlua::Function>)| {
                 let s = ui_styles(&settings)?;
+                // After each callback, the events it sent are delivered (the runtime's L.settle).
+                if let Some(f) = settle {
+                    crate::native_ui::on_settle(Rc::new(move || f.call::<()>(()).map_err(|e| raw_error(&e))));
+                }
                 let mut build = || -> Result<(crate::native_ui::Node, Vec<crate::native_ui::Action>), String> {
                     let t: mlua::Table = view.call(()).map_err(|e| raw_error(&e))?;
                     let mut actions = Vec::new();

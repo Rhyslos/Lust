@@ -1,0 +1,13 @@
+events-everywhere.lst:12:5  handlers go together in an on block now: on { Saved(string file) { … } }
+events-everywhere.lst:18:9  a handler takes what its event carries, in the same order: Saved(string file) { … }
+events-everywhere.lst:20:9  there's no event called Missing. Say what it carries first: event Missing(string file);
+events-everywhere.lst:24:9  Doc already handles Picked. Each event appears once in its on block.
+events-everywhere.lst:27:5  a thing has one on block. Put all its handlers in it.
+events-everywhere.lst:36:9  an event carries what the engine can keep and show: bool, int, float, string, a state, vec3, vec2, rotation, colour and entity. it is an Item.
+events-everywhere.lst:44:24  Quiet doesn't handle Saved. Give it on { Saved(string file) { … } }
+events-everywhere.lst:45:16  Saved's file is a string, but this is an int. Use .text() to turn it into text.
+events-everywhere.lst:46:10  Saved carries 1 value, (string file), but this sends 2.
+events-everywhere.lst:47:10  an event carries what the engine can keep and show: bool, int, float, string, a state, vec3, vec2, rotation, colour and entity. it is an Item.
+events-everywhere.lst:48:24  an event goes to a thing with an on block, or to an entity, but this is an int.
+
+11 mistakes. Nothing was run.

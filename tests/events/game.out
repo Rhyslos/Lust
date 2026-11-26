@@ -2,6 +2,7 @@ event Damaged [("amount", Float)]
 event Died []
 event Hit [("by", Entity), ("damage", Float), ("kind", Choice(["Fire", "Ice"]))]
 event Pushed [("push", Vec3), ("turn", Rotation)]
+event Scored [("points", Int)]
 Armor handles ["Damaged", "Hit"], Health ["Died", "Hit"], Gun ["Pushed"]
 tick 0
 queued Hit to Some(2): [Entity(Some(1)), Float(6.0), Text("Fire")]
@@ -18,14 +19,15 @@ queued Damaged to Some(2): [Float(6.0)]
 queued Died to Some(2): []
 0000000000002 Armor: took 6.0
 0000000000002 Health: died
+score 10
 0000000000001 Gun: pushed [1.0, 2.0, 0.5] turned [3.422854e-08, 0.9999999, 0.0]
 Ok(true)
-Err(LustError { file: "game.lst", line: Some(64), column: Some(8), message: "Pushed carries 2 values, but 1 came." })
-Err(LustError { file: "game.lst", line: Some(64), column: Some(8), message: "Pushed's push should be three numbers." })
+Err(LustError { file: "game.lst", line: Some(85), column: Some(9), message: "Pushed carries 2 values, but 1 came." })
+Err(LustError { file: "game.lst", line: Some(85), column: Some(9), message: "Pushed's push should be three numbers." })
 Ok(false)
-Err(LustError { file: "game.lst", line: Some(16), column: Some(8), message: "Hit's kind should be Fire or Ice." })
+Err(LustError { file: "game.lst", line: Some(32), column: Some(9), message: "Hit's kind should be Fire or Ice." })
 {"hp": Float(-2.0)}
 Ok(3)
-game.lst:60  dividing a whole number by zero doesn't work.
-"game.lst" Some(60) Some(13)
+game.lst:80  dividing a whole number by zero doesn't work.
+"game.lst" Some(80) Some(13)
 Lust 2.0.0

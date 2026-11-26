@@ -237,8 +237,13 @@ pub fn write(prog: &Program, info: &Info, files: &[String], library: bool) -> St
                 format!("{name} is already closed.")
             ));
         }
+        let listen = if info.lust_events && listens(info, ci) {
+            format!("ev_listen(Lis::R{root}(this.clone()), false); ")
+        } else {
+            String::new()
+        };
         defs.push_str(&format!(
-            "fn new{ci}() -> Rc<RefCell<O{root}>> {{ let this = Rc::new(RefCell::new(O{root} {{ class: ID_{ci}, ..Default::default() }})); init{ci}(&this); this }}\n"
+            "fn new{ci}() -> Rc<RefCell<O{root}>> {{ let this = Rc::new(RefCell::new(O{root} {{ class: ID_{ci}, ..Default::default() }})); {listen}init{ci}(&this); this }}\n"
         ));
         w.class = Some(ci);
         for m in &c.methods {
@@ -331,6 +336,10 @@ pub fn write(prog: &Program, info: &Info, files: &[String], library: bool) -> St
                 arms.join(" ")
             ));
         }
+    }
+
+    if info.lust_events {
+        defs.push_str(&w.event_machinery());
     }
 
     if crate::stdlib::uses_json(info) {
@@ -444,7 +453,15 @@ pub fn write(prog: &Program, info: &Info, files: &[String], library: bool) -> St
         } else {
             format!("new{ci}()")
         };
-        objects.push_str(&format!("    {{ let o = {make}; OBJ{ci}.with(|x| *x.borrow_mut() = Some(o)); }}\n"));
+        // A node hears events while it's open, from when it's first made (closed).
+        let listen = if c.is_node && info.lust_events && listens(info, ci) {
+            format!("ev_listen(Lis::R{root}(o.clone()), true); ")
+        } else {
+            String::new()
+        };
+        objects.push_str(&format!(
+            "    {{ let o = {make}; {listen}OBJ{ci}.with(|x| *x.borrow_mut() = Some(o)); }}\n"
+        ));
     }
     // States aren't types in Rust: options are &'static str.
 
@@ -509,8 +526,23 @@ pub fn write(prog: &Program, info: &Info, files: &[String], library: bool) -> St
             tables.join(", ")
         ));
     }
+    if info.lust_events {
+        body.insert_str(0, "    rt::on_settle(ev_settle);\n");
+        if views(info) {
+            body.insert_str(
+                0,
+                "    rt::ui::on_settle(Rc::new(|| match rt::attempt(ev_settle) { None => Ok(()), Some(e) => Err(e) }));\n",
+            );
+        }
+    }
     body.push_str(&objects);
-    w.stmts(&prog.body, &mut body, 1);
+    // Events sent to Lust's own things are delivered after each statement here.
+    for s in &prog.body {
+        w.stmt(s, &mut body, 1);
+        if info.lust_events {
+            body.push_str("    ev_settle();\n");
+        }
+    }
 
     // Row structs, written last since writing found them.
     let mut rows = String::new();
@@ -820,7 +852,9 @@ fn walk_stmts(stmts: &[Stmt], f: &mut dyn FnMut(&Expr)) {
                 for a in args {
                     walk_expr(a, f);
                 }
-                walk_expr(to, f);
+                if let Some(t) = to {
+                    walk_expr(t, f);
+                }
             }
             Stmt::Tween {
                 place,
@@ -1089,6 +1123,75 @@ impl<'a> W<'a> {
     /// The Rust the program using a library sees. Every class gets a type of its own (so native
     /// methods can name them), and what the first file passes gets made, read, changed and called.
     /// Each call gives back Lust's failure as text instead of stopping the program.
+    /// Events heard by Lust's own things: who listens (in the order they were made), the queue,
+    /// and delivery. Lis is a thing that hears events, Ev an event with what it carries.
+    fn event_machinery(&mut self) -> String {
+        let info = self.info;
+        let n = info.classes.len();
+        let mut out = String::new();
+        let roots: Vec<usize> = (0..n)
+            .filter(|&r| info.classes[r].parent.is_none() && (0..n).any(|c| self.root(c) == r && listens(info, c)))
+            .collect();
+        let lis: Vec<String> = roots.iter().map(|r| format!("R{r}(Rc<RefCell<O{r}>>), ")).collect();
+        out.push_str(&format!("#[derive(Clone)]\nenum Lis {{ {}Nobody }}\n", lis.concat()));
+        let mut evs = Vec::new();
+        for (i, (_, params)) in info.events.iter().enumerate() {
+            let ts: Vec<String> = params.iter().map(|(_, t)| self.ty(t)).collect();
+            evs.push(format!("E{i}({}), ", ts.join(", ")));
+        }
+        out.push_str(&format!("#[derive(Clone)]\nenum Ev {{ {}Nothing }}\n", evs.concat()));
+        out.push_str(
+            "thread_local! {\n    static EV_LIS: RefCell<Vec<(Lis, bool)>> = RefCell::new(Vec::new());\n    static EV_Q: RefCell<std::collections::VecDeque<(Ev, Option<Lis>)>> = RefCell::new(std::collections::VecDeque::new());\n    static EV_BUSY: std::cell::Cell<bool> = std::cell::Cell::new(false);\n}\n",
+        );
+        out.push_str("fn ev_listen(l: Lis, node: bool) { EV_LIS.with(|x| x.borrow_mut().push((l, node))); }\n");
+        out.push_str("fn ev_post(e: Ev, to: Option<Lis>) { EV_Q.with(|q| q.borrow_mut().push_back((e, to))); }\n");
+        // One thing hears one event: its class's handler, or the nearest one up the classes it's like.
+        let mut arms = String::new();
+        let mut gone = String::new();
+        for &r in &roots {
+            let family: Vec<usize> = (0..n).filter(|&c| self.root(c) == r).collect();
+            let mut ev_arms = String::new();
+            for (i, (ev, params)) in info.events.iter().enumerate() {
+                let h = format!("on{}{ev}", crate::ast::MARK);
+                let mut class_arms = String::new();
+                for &c in &family {
+                    if !listens(info, c) {
+                        continue;
+                    }
+                    let mut cur = Some(c);
+                    while let Some(x) = cur {
+                        if info.classes[x].methods.contains_key(&h) {
+                            let mut a = vec!["o".to_string()];
+                            a.extend((0..params.len()).map(|k| format!("a{k}.clone()")));
+                            class_arms.push_str(&format!("ID_{c} => m{x}_{}({}), ", ident(&h), a.join(", ")));
+                            break;
+                        }
+                        cur = info.classes[x].parent;
+                    }
+                }
+                if class_arms.is_empty() {
+                    continue;
+                }
+                let binds: Vec<String> = (0..params.len()).map(|k| format!("a{k}")).collect();
+                ev_arms.push_str(&format!("Ev::E{i}({}) => match c {{ {class_arms}_ => {{}} }}, ", binds.join(", ")));
+            }
+            arms.push_str(&format!(
+                "        Lis::R{r}(o) => {{ if o.borrow().ended.is_some() {{ return; }} let c = o.borrow().class; match e {{ {ev_arms}_ => {{}} }} }}\n"
+            ));
+            gone.push_str(&format!("Lis::R{r}(o) => o.borrow().ended.is_some(), "));
+        }
+        out.push_str(&format!(
+            "#[allow(unused_variables)]\nfn ev_hear(l: &Lis, e: &Ev) {{\n    match l {{\n{arms}        Lis::Nobody => {{}}\n    }}\n}}\n"
+        ));
+        out.push_str(&format!(
+            "fn ev_gone(l: &Lis) -> bool {{ match l {{ {gone}Lis::Nobody => true }} }}\n"
+        ));
+        out.push_str(
+            "/// Delivers the events waiting, in the order they were sent. Events sent while delivering\n/// join the end of the same queue.\nfn ev_settle() {\n    if EV_BUSY.with(|b| b.get()) {\n        return;\n    }\n    struct Busy;\n    impl Drop for Busy {\n        fn drop(&mut self) {\n            EV_BUSY.with(|b| b.set(false));\n        }\n    }\n    EV_BUSY.with(|b| b.set(true));\n    let _busy = Busy;\n    while let Some((e, to)) = EV_Q.with(|q| q.borrow_mut().pop_front()) {\n        match to {\n            Some(l) => ev_hear(&l, &e),\n            None => {\n                // Things made while it's delivered hear the next event, not this one.\n                let all: Vec<Lis> = EV_LIS.with(|x| x.borrow().iter().map(|(l, _)| l.clone()).collect());\n                for l in &all {\n                    ev_hear(l, &e);\n                }\n                // Things that ended are let go; a closed node can open again.\n                EV_LIS.with(|x| x.borrow_mut().retain(|(l, node)| *node || !ev_gone(l)));\n            }\n        }\n    }\n}\n",
+        );
+        out
+    }
+
     fn library_api(&mut self, prog: &Program, class_decls: &[&ClassDecl]) -> String {
         let info = self.info;
         let exported = |n: &str| prog.passes.iter().any(|(p, _)| p == n);
@@ -1229,7 +1332,11 @@ impl<'a> W<'a> {
                 comps.iter().map(|c| format!("{c}::schema()")).collect::<Vec<_>>().join(", ")
             ));
             let mut evs = Vec::new();
+            // Only events the engine can carry: those that keep to its kinds.
             for (name, params) in &info.events {
+                if !params.iter().all(|(_, t)| crate::check::event_kind(t)) {
+                    continue;
+                }
                 let mut vals = Vec::new();
                 for (n, t) in params {
                     if let Some((kind, _)) = self.value_kind(t) {
@@ -1406,7 +1513,7 @@ impl<'a> W<'a> {
 "
             ));
         }
-        // Handlers: on Hit(…) { … } runs through handle("Hit", values).
+        // Handlers: Hit(…) { … } in its on block runs through handle("Hit", values).
         let root = self.root(ci);
         let mut handles = Vec::new();
         let mut arms = String::new();
@@ -1931,7 +2038,37 @@ impl<'a> W<'a> {
                 }
                 out.push_str(&format!("{pad}}}\n"));
             }
+            Stmt::Send { event, args, to, .. } if !to.as_ref().is_some_and(|t| matches!(self.info.ty(t), Ty::Entity | Ty::Nothing)) => {
+                // To a thing, or to everything that handles it: Lust's own queue, delivered once
+                // the code running now is done.
+                let want = self.info.events.get(event).cloned().unwrap_or_default();
+                out.push_str(&format!("{pad}{{\n"));
+                let target = match to {
+                    Some(t) => {
+                        let root = match self.info.ty(t) {
+                            Ty::Class(c) => self.root(c),
+                            _ => 0,
+                        };
+                        let v = self.expr(t);
+                        out.push_str(&format!("{pad}    let to = rt::obj(&{v});\n"));
+                        format!("Some(Lis::R{root}(to))")
+                    }
+                    None => "None".into(),
+                };
+                let mut values = Vec::new();
+                for (i, (a, (_, t))) in args.iter().zip(&want).enumerate() {
+                    let v = self.coerced(a, t);
+                    out.push_str(&format!("{pad}    let a{i} = {v};\n"));
+                    values.push(format!("a{i}"));
+                }
+                out.push_str(&format!(
+                    "{pad}    ev_post(Ev::E{}({}), {target});\n{pad}}}\n",
+                    event_no(self.info, event),
+                    values.join(", ")
+                ));
+            }
             Stmt::Send { event, args, to, .. } => {
+                let to = to.as_ref().unwrap();
                 let shown = crate::ast::shown(event).to_string();
                 if !self.library {
                     let msg = format!("send {shown}(…) goes to the engine using this Lust as a library (lust build --library), so it can't run on its own.");
@@ -3561,6 +3698,31 @@ fn a_kind(t: &Ty) -> &'static str {
         Ty::Entity => "an entity",
         _ => "something else",
     }
+}
+
+/// Whether things of this class hear events sent in Lust: it, or a class it's like, has an on
+/// block. A component's events go through the engine instead.
+fn listens(info: &Info, c: usize) -> bool {
+    if info.classes[c].is_component {
+        return false;
+    }
+    let mut cur = Some(c);
+    while let Some(x) = cur {
+        if info.classes[x]
+            .methods
+            .keys()
+            .any(|m| m.starts_with(&format!("on{}", crate::ast::MARK)))
+        {
+            return true;
+        }
+        cur = info.classes[x].parent;
+    }
+    false
+}
+
+/// The number of an event among them all, for its Ev variant.
+fn event_no(info: &Info, event: &str) -> usize {
+    info.events.keys().position(|k| k == event).unwrap_or(0)
 }
 
 fn ident(n: &str) -> String {

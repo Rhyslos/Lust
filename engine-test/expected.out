@@ -20,8 +20,8 @@ tick 1
   0000000000002 shield at 0.0 after a hit from 0000000000001, pushed [4.0, 0.1, -1.0]
 tick 2
   Hit carries Vector([6.0, 0.15, -2.0])
-  main.lst:41  dividing a whole number by zero doesn't work.
-  = main.lst Some(41) Some(17)
+  main.lst:42  dividing a whole number by zero doesn't work.
+  = main.lst Some(42) Some(21)
   0000000000002 shield at -2.5 after a hit from 0000000000001, pushed [6.0, 0.15, -2.0]
 tick 3
 changed: ["Turret"]

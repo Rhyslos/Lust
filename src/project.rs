@@ -630,6 +630,8 @@ impl<'a> Renamer<'a> {
     fn method(&mut self, m: &mut MethodDecl) {
         if let Some((e, pos)) = &mut m.on {
             self.name(e, *pos, false);
+            // The handler is named after the event as it's known everywhere.
+            m.name = format!("on{}{e}", crate::ast::MARK);
         }
         if let Some(r) = &mut m.ret {
             self.ty(r);
@@ -755,7 +757,9 @@ impl<'a> Renamer<'a> {
                 for a in args {
                     self.expr(a);
                 }
-                self.expr(to);
+                if let Some(t) = to {
+                    self.expr(t);
+                }
             }
             Stmt::Element {
                 arg,

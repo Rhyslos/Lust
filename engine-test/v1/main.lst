@@ -34,11 +34,13 @@ component Shield {
         int layers = 0;
     }
 
-    on Hit(entity by, float damage, vec3 push) {
-        strength = strength - damage;
-        log(me.text() + " shield at " + strength.text() + " after a hit from " + by.text() + ", pushed " + push.text());
-        is strength < 0? then {
-            int broken = 1 / layers;
+    on {
+        Hit(entity by, float damage, vec3 push) {
+            strength = strength - damage;
+            log(me.text() + " shield at " + strength.text() + " after a hit from " + by.text() + ", pushed " + push.text());
+            is strength < 0? then {
+                int broken = 1 / layers;
+            }
         }
     }
 }

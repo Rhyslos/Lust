@@ -190,7 +190,7 @@ pub struct MatchArm {
     pub pos: Pos,
 }
 
-/// An event a game sends to entities, and its components handle with on: what it carries.
+/// An event: what it carries. Things handle it in their on { } block, and send hands it out.
 pub struct EventDecl {
     pub name: String,
     pub pos: Pos,
@@ -315,7 +315,7 @@ pub struct MethodDecl {
     /// `method Vector3 position() native;`: the body is outside Lust, in the program that uses
     /// this Lust as a library (or, in LustScript, the host's Lua).
     pub native: bool,
-    /// `on Hit(entity by, float damage) { … }` in a component: the event it handles.
+    /// `Hit(entity by, float damage) { … }` in an `on { }` block: the event it handles.
     pub on: Option<(String, Pos)>,
     /// `method vec3 entity:position() native;`: a method on the engine's `entity`, given only by
     /// the engine's own files (its host folders), and always native.
@@ -404,12 +404,12 @@ pub enum Stmt {
         extra: Vec<Attached>,
         pos: Pos,
     },
-    /// send Hit(me, 10.0) to target;
+    /// send Hit(me, 10.0) to target;, or send Saved(file); to everything that handles it.
     Send {
         event: String,
         epos: Pos,
         args: Vec<Expr>,
-        to: Expr,
+        to: Option<Expr>,
         pos: Pos,
     },
     /// tween hp to 0 over 0.5 [ease OutCubic] { … }: moves a field or a top-level variable to a

@@ -679,8 +679,42 @@ mod no_unsafe {
     #[test]
     fn components_and_events() {
         safe(&library(
-            "event Hit(float d);\ncomponent Health {\n    has {\n        float hp = 1;\n    }\n    on Hit(float d) {\n        hp = hp - d;\n        send Hit(d) to me;\n    }\n}\nend\n",
+            "event Hit(float d);\ncomponent Health {\n    has {\n        float hp = 1;\n    }\n    on {\n        Hit(float d) {\n            hp = hp - d;\n            send Hit(d) to me;\n        }\n    }\n}\nend\n",
         ));
+    }
+
+    /// Events heard by Lust's own things: no host function, a queue that's delivered, and the
+    /// engine's list keeps only the events it can carry.
+    #[test]
+    fn lust_side_events() {
+        let src = "class Item {\n    has {\n        int n = 0;\n    }\n}\nevent Picked(Item it);\nevent Hit(float d);\nobject Bag {\n    on {\n        Picked(Item it) {\n            print(it.n.text());\n        }\n    }\n}\nsend Picked(new Item);\nsend Picked(new Item) to Bag;\nend\n";
+        let rust = library(src);
+        safe(&rust);
+        assert!(!rust.contains("fn send_event"));
+        assert!(rust.contains("fn ev_settle()"));
+        assert!(rust.contains("ev_post(Ev::E1(a0), None)"));
+        assert!(rust.contains("name: \"Hit\""));
+        assert!(!rust.contains("name: \"Picked\""));
+        let lua = crate::to_lua("game.lst", &[("game.lst".to_string(), src.to_string())])
+            .ok()
+            .unwrap();
+        assert!(lua.code.contains("_L.post(false, \"on__Picked\""));
+        assert!(lua.code.contains("_L.post(_L.target("));
+        assert!(lua.code.contains(".__listens = true"));
+    }
+
+    /// The old way of writing a handler is a mistake that shows the new one.
+    #[test]
+    fn old_handlers_show_the_on_block() {
+        let src = "event Hit(float d);\nclass A {\n    on Hit(float d) {\n    }\n}\nend\n";
+        let Err(p) = crate::check("game.lst", &[("game.lst".to_string(), src.to_string())]) else {
+            panic!("no mistake");
+        };
+        assert!(
+            p.iter().any(|x| x.to_string().contains("on { Hit(float d) { … } }")),
+            "{}",
+            p.iter().map(|x| x.to_string()).collect::<Vec<_>>().join("\n")
+        );
     }
 }
 

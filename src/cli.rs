@@ -189,7 +189,7 @@ fn command(args: Vec<String>) -> ExitCode {
                 ..
             }) => {
                 eprintln!(
-                    "{display} has native methods or sends events, which need the Rust program that uses it, so it can't be a program of its own. Build it as a library: lust build {display} --library"
+                    "{display} has native methods or sends events to entities, which need the Rust program that uses it, so it can't be a program of its own. Build it as a library: lust build {display} --library"
                 );
                 ExitCode::from(1)
             }

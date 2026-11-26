@@ -154,7 +154,18 @@ thread_local! {
 fn run_with(action: &mut Action, value: SV) -> Result<(), String> {
     INCOMING.with(|i| *i.borrow_mut() = value);
     data_may_change();
-    action()
+    action()?;
+    // Events the callback sent are heard before the view is drawn again.
+    SETTLE.with(|s| s.borrow().clone()).map_or(Ok(()), |f| f())
+}
+
+thread_local! {
+    static SETTLE: std::cell::RefCell<Option<std::rc::Rc<dyn Fn() -> Result<(), String>>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// What runs after every callback a window runs: the program's delivery of its events.
+pub fn on_settle(f: std::rc::Rc<dyn Fn() -> Result<(), String>>) {
+    SETTLE.with(|s| *s.borrow_mut() = Some(f));
 }
 
 pub fn incoming() -> SV {

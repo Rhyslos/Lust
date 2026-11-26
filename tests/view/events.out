@@ -1,0 +1,8 @@
+sent, total still 0
+heard 2, total 2
+sent, total still 2
+heard 2, total 4
+window "Events" 300x200
+  column 0,0 300x92
+    text "Total 4, clicks 2" 16,16 113x19
+    button "Add two" 16,43 88x33

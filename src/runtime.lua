@@ -855,6 +855,67 @@ function L.send(to, name, values)
   f(to, name, values)
 end
 
+-- ----- events heard by Lust's own things -----
+
+-- Things whose class has an on block, in the order they were made; and the events waiting, each
+-- { thing or false for everything, handler's name, values with their count in n }.
+local listeners = {}
+local queue, qhead, qtail = {}, 1, 0
+local delivering = false
+function L.listen(o) listeners[#listeners + 1] = o end
+-- send Saved(…) to editor: it must be there to send to.
+function L.target(o)
+  if o == nil then error("this is nothing, so it has no fields or methods. Check first: is it !== nothing?", 2) end
+  local mt = getmetatable(o)
+  if mt.__ended then error(mt.__ended, 2) end
+  if mt.__closed then
+    local n = mt.__class.__node
+    error(n .. " is closed. Open it first: " .. n .. ":open();", 2)
+  end
+  return o
+end
+function L.post(to, h, values)
+  qtail = qtail + 1
+  queue[qtail] = { to, h, values }
+end
+-- One thing hears an event, unless it has ended (or its node is closed) or doesn't handle it.
+local function hear(o, h, v)
+  local mt = getmetatable(o)
+  if mt.__ended or mt.__closed then return end
+  local f = mt[h]
+  if f then f(o, unpack(v, 1, v.n)) end
+end
+local function deliver()
+  while qhead <= qtail do
+    local x = queue[qhead]
+    queue[qhead] = nil
+    qhead = qhead + 1
+    if x[1] then
+      hear(x[1], x[2], x[3])
+    else
+      -- Things made while it's delivered hear the next event, not this one.
+      local n = #listeners
+      for i = 1, n do hear(listeners[i], x[2], x[3]) end
+      -- Things that ended are let go; a closed node can open again.
+      local kept = {}
+      for i = 1, #listeners do
+        local o = listeners[i]
+        if not getmetatable(o).__ended then kept[#kept + 1] = o end
+      end
+      listeners = kept
+    end
+  end
+end
+-- Delivers the events waiting, in the order they were sent. Events sent while delivering join
+-- the end of the same queue.
+function L.settle()
+  if delivering or qhead > qtail then return end
+  delivering = true
+  local ok, e = pcall(deliver)
+  delivering = false
+  if not ok then error(e, 0) end
+end
+
 -- ----- for an engine -----
 
 local function same_schema(a, b)
@@ -886,7 +947,11 @@ function L.engine(version, components, events, classes, objects, ticked)
     for _, name in ipairs(names) do
       if ticked[name] then objects[name]:update(dt) end
     end
+    L.settle()
   end
+  -- Delivers events sent to Lust's own things (send Saved(…);), for an engine that runs Lust code
+  -- some other way. Components' update and handle, tick and tickTweens deliver them already.
+  api.settle = L.settle
   -- Moves every running tween on by dt (and runs the done blocks of those that end): the engine
   -- calls it once a tick, after the objects' tick and before the components' updates.
   function api.tickTweens(dt)
@@ -1054,6 +1119,7 @@ function L.class(name, parent)
 end
 function L.new(c, ...)
   local o = setmetatable({}, c)
+  if c.__listens then L.listen(o) end
   c.__fields(o)
   local n = select("#", ...)
   for i = 1, n, 2 do
@@ -1136,6 +1202,7 @@ function L.node(class, name)
   class.__node = name
   local n = {}
   shut(n, class)
+  if class.__listens then L.listen(n) end
   return n
 end
 function L.node_open(n)
@@ -1381,6 +1448,8 @@ function L.tween_step(dt)
     tweens = kept
     stepping = false
     if not ok then error(e, 0) end
+    -- Events the done blocks sent.
+    L.settle()
   end
   return live > 0
 end
@@ -1389,6 +1458,8 @@ function L.viewing(d) viewing = viewing + d end
 function L.wait(s)
   if s < 0 or s ~= s then error("can't wait " .. L.ftext(s) .. " seconds.", 2) end
   if not os or not os.clock then error("wait isn't available here. Use the host program's timers.", 2) end
+  -- Events sent before the wait are heard as it starts.
+  L.settle()
   local start = os.clock()
   -- Tweens move on during the wait, a 1/60 s step at a time, on the clock wait keeps.
   if not stepping and viewing == 0 then
@@ -2342,7 +2413,7 @@ function L.view_open(class)
       if next(made) == nil then st.items[parent] = nil end
     end
     return v
-  end, L.tween_step)
+  end, L.tween_step, L.settle)
   L.viewing(-1)
   stores[#stores] = nil
   if e then error(e, 0) end

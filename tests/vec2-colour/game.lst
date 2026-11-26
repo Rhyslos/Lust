@@ -22,11 +22,12 @@ component Sprite {
         send Flash(shadow, at) to me;
     }
 
-    on Flash(colour glow, vec2 at) {
-        log(me.text() + " flashes " + glow.text() + " at " + at.text());
+    on {
+        Flash(colour glow, vec2 at) {
+            log(me.text() + " flashes " + glow.text() + " at " + at.text());
+        }
     }
 }
-
 
 pass Sprite;
 end
