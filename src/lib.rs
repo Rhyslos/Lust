@@ -708,7 +708,8 @@ mod no_unsafe {
     }
 
     /// Runs get stacks of their own (and the one unsafe block that needs) only in a program
-    /// whose runs can pause while another goes on. A library's runs just run, with no unsafe.
+    /// whose runs can pause while another goes on. In a library for an engine, handlers and done
+    /// blocks are runs, so waiting at all is enough; one that never waits stays free of unsafe.
     #[test]
     fn runs_stacks_only_when_needed() {
         let src = |body: &str| vec![("main.lst".to_string(), format!("method later() {{\n    wait 1;\n}}\n{body}end\n"))];
@@ -726,8 +727,33 @@ mod no_unsafe {
         assert!(!plain.contains("unsafe {"));
         assert!(plain.contains("mod runs {"));
         let lib = crate::to_rust_library("main.lst", &src("start later();\n")).unwrap();
+        assert!(lib.contains("#![deny(unsafe_code)]"));
+        assert!(lib.contains("#[allow(unsafe_code)]\npub mod runs {"));
+        assert!(lib.contains("rt::engine_tick(dt)"));
+        let calm = vec![("main.lst".to_string(), "method later() {\n    print(1);\n}\nstart later();\nend\n".to_string())];
+        let lib = crate::to_rust_library("main.lst", &calm).unwrap();
         safe(&lib);
         assert!(!lib.contains("corosensei"));
+    }
+
+    /// In an engine, a component's handlers are runs that belong to it, and so is work started
+    /// in its methods, so removed() cancels them; both outputs say so the same way.
+    #[test]
+    fn components_own_their_runs() {
+        let src = vec![(
+            "main.lst".to_string(),
+            "method later() {\n    wait 1;\n}\nevent Hit();\ncomponent Gun {\n    method update(float dt) {\n        start later();\n    }\n    on {\n        Hit() {\n            wait 1;\n        }\n    }\n}\npass Gun;\nend\n"
+                .to_string(),
+        )];
+        let rust = crate::to_rust_library("main.lst", &src).unwrap();
+        assert!(rust.contains("rt::start_on(&on, \"the Hit handler\""));
+        assert!(rust.contains("rt::own(this, \"\", rt::work(\"later()\"))"));
+        assert!(rust.contains("pub fn removed(&self)"));
+        let lua = crate::to_lua("main.lst", &src).unwrap().code;
+        assert!(lua.contains("_L.runs_engine()"));
+        assert!(lua.contains("_L.spawn_on(self, \"the Hit handler\", self."));
+        assert!(lua.contains("_L.own(self, _L.work(\"later()\"), true)"));
+        assert!(lua.contains("api.removed = L.removed"));
     }
 
     /// A wait { } waits like wait seconds;: beside a start, the program gets runs' stacks, and

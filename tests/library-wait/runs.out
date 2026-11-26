@@ -1,0 +1,33 @@
+tick 0 (dt 0.125)
+  gate creaks
+  ring
+  guard walks
+tick 1 (dt 0.125)
+  ring
+  knock x3
+  guard hears it
+tick 2 (dt 0.125)
+  glow done
+  gate open
+  guard walks
+  ring
+tick 3 (dt 0.125)
+  answered 3 knocks
+  glow settled
+  ring
+tick 4 (dt 0)
+tick 5 (dt 0)
+tick 6 (dt 0.125)
+  bell is Cancelled
+tick 7 (dt 0.0625)
+  watch over, lever pulled: true
+tick 8 (dt 0.0625)
+tick 9 (dt 0.125)
+  gave up after 0.75 seconds of game time
+tick 10 (dt 0.125)
+tick 11 (dt 0.5)
+tick 12 (dt 0.5)
+tick 13 (dt 0.5)
+tick 14 (dt 0.5)
+gate opened Int(1)
+Lust said: runs.lst:120  this wait would hold up the whole game: code the engine calls (an update, an object's tick, a method it calls) can't wait. Put the waiting in a method of its own and start it: start openGate();

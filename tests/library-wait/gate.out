@@ -1,2 +1,2 @@
-Lust said: gate.lst:10  wait { } can't wait in an engine yet: nothing else runs while it waits, so its questions could never come true. Runs come to engines later. (Other)
+Lust said: gate.lst:10  this wait would hold up the whole game: code the engine calls (an update, an object's tick, a method it calls) can't wait. Put the waiting in a method of its own and start it: start openGate(); (Other)
 through: true

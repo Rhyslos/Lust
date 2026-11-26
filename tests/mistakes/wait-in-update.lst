@@ -16,7 +16,7 @@ component Door {
                 open = 0;
             }
         }
-        hook() later = new hook() {
+        hook() later = new hook {
             wait 1;
         };
         start creak();

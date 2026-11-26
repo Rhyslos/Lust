@@ -1,4 +1,5 @@
-// An engine calling Lust code that waits { }: it can't wait yet, but goes on when it needn't.
+// An engine calling Lust code that waits { } straight from the engine's call: it can't wait
+// there, but goes on when it needn't.
 fn main() {
     gate::start().unwrap();
     match gate::through() {

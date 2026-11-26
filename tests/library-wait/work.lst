@@ -1,5 +1,5 @@
--- Built as a library for an engine, runs aren't there yet: start gate = … just calls the method,
--- so its work is done by the next line, and cancelling it then does nothing.
+-- Built as a library for an engine, start gate = … runs the method straight away until it waits: one
+-- that never waits is done by the next line, and cancelling it then does nothing.
 method openGate() {
     print("gate opens");
 }

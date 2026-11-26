@@ -1,5 +1,6 @@
--- Built as a library for an engine, a check in a wait { } goes straight on, running its when, when
--- the state is already one of its options, and otherwise stops with a message, as wait { } does.
+-- Built as a library for an engine, a check in a wait { } in a method the engine calls straight into
+-- goes straight on, running its when, when the state is already one of its options, and otherwise
+-- stops with a message, as wait { } does there.
 state Mood = [Calm, Fleeing, Dead];
 
 object Boss {
