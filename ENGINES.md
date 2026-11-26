@@ -168,3 +168,11 @@ An engine moving from alpha 48 to alpha 67 or later reads everything below.
 - **Lua and Rust:** a state's option is its name in both, as before. In Rust, `rt::time_weekday` gives back `&'static str` now, and `rt::web_fail` and `rt::web_request` take one.
 - `Day`, `Request` and `Answer` are taken names now, like `Icon` and `Problem`: an engine's own class or state can't be called any of them.
 - **The engine does:** renames any class or state of its own called `Day`, `Request` or `Answer` in its Lust files, samples and templates.
+
+## alpha 84: waiting, step 1
+
+- Plain programs and windows have runs now: `wait seconds;` pauses only the piece of work that waits, and `start call;` runs a call alongside (LUST.md, section 11, Waiting; the rest is designed in WAITING.md).
+- **In an engine nothing changes yet** (runs in components come in step 6): `start openGate();` just calls the method, straight through, and `wait` pauses the whole call while tweens move, as before. Event handlers and tweens' done blocks run as they did.
+- **Rust:** a library still has no unsafe code and no new dependencies. Built programs that wait while other runs go on use the corosensei library for runs' stacks; that's the shared runtime's, not the engine's.
+- **Lua:** a chunk for an engine is the same as before. `try` now goes through the runtime (`_L.try`), which is `pcall` when nothing waits inside it.
+- `start` is a word only before a call (`start openGate();`), so names called `start`, and calls like `start();`, still work.

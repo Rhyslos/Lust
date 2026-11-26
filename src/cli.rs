@@ -256,7 +256,7 @@ Get them by running rustup-init.exe from https://rustup.rs again and saying yes 
 Then open a new terminal, and build again.";
 
 /// The libraries the shared runtime is built with, as Cargo.toml writes them.
-const RUNTIME_DEPS: &str = "rusqlite = { version = \"0.40\", features = [\"bundled\"] }\ntiny_http = \"0.12\"\nureq = \"3\"\nregex = \"1\"\nwinit = \"0.30\"\naccesskit = \"0.25\"\naccesskit_winit = \"0.34\"\nsoftbuffer = \"0.4\"\nab_glyph = \"0.2\"\nrfd = \"0.16\"\narboard = { version = \"3\", default-features = false }\npng = \"0.17\"\njpeg-decoder = { version = \"0.3\", default-features = false }\nresvg = { version = \"0.49\", default-features = false }\n";
+const RUNTIME_DEPS: &str = "rusqlite = { version = \"0.40\", features = [\"bundled\"] }\ntiny_http = \"0.12\"\nureq = \"3\"\nregex = \"1\"\nwinit = \"0.30\"\naccesskit = \"0.25\"\naccesskit_winit = \"0.34\"\nsoftbuffer = \"0.4\"\nab_glyph = \"0.2\"\nrfd = \"0.16\"\narboard = { version = \"3\", default-features = false }\npng = \"0.17\"\njpeg-decoder = { version = \"0.3\", default-features = false }\nresvg = { version = \"0.49\", default-features = false }\ncorosensei = \"0.3\"\n";
 
 /// Changes when the way the runtime is compiled or described (ready.txt) changes, so a runtime
 /// made the old way is made again.
@@ -1116,7 +1116,7 @@ pub fn build_native(path: &Path, rust: &str) -> Result<std::path::PathBuf, Strin
 /// lust build: a program next to the .lst file. `release` takes longer, so that Rust can make
 /// the program's code and the shared runtime's into one, as fast as it can be.
 pub fn build_native_with(path: &Path, rust: &str, release: bool) -> Result<std::path::PathBuf, String> {
-    if ["db", "web", "net", "pat", "ui", "dlg"]
+    if ["db", "web", "net", "pat", "ui", "dlg", "runs"]
         .iter()
         .any(|m| rust.contains(&format!("\npub mod {m} {{\n")))
     {

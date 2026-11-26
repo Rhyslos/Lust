@@ -1,0 +1,10 @@
+click Slow
+dump
+click Quick
+click Quick
+click Count
+dump
+wait 0.5
+dump
+wait 0.6
+dump

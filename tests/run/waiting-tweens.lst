@@ -1,0 +1,34 @@
+-- Tweens move on while a run waits, and a tween's done block is a run of its own.
+
+object Lamp {
+    has {
+        float glow = 0;
+        int steps = 0;
+    }
+}
+
+method fade() {
+    tween Lamp.glow to 1 over 1;
+    wait 0.5;
+    print("half way", Lamp.glow);
+    wait 0.5;
+    print("all the way", Lamp.glow);
+}
+
+start fade();
+print("started", Lamp.glow);
+wait 0.25;
+print("the top at 0.25", Lamp.glow);
+
+-- A done block that waits pauses only itself.
+tween Lamp.steps to 10 over 0.25 {
+    print("steps done", Lamp.steps);
+    wait 0.25;
+    print("a quarter after", Lamp.steps);
+}
+wait 0.25;
+print("the top goes on", Lamp.steps);
+tween Lamp.steps to 0 over 0.5;
+wait 0.125;
+print("the top at the end", Lamp.steps);
+end

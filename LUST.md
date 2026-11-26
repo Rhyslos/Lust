@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (alpha 83):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options, set with `=`), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error` (with `Problem`, the kinds of failure, as a built-in state), `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too), with built-in states for their fixed choices (`Day`, `Request` and `Answer`). Events in any program (`event`, `on { }` and `send`), sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, tables and long lists, right-click menus, rows dragged to new places, dropped files, the mouse on a canvas, scrolling, pictures (SVG too), timers, keyboard shortcuts, fonts of your own, date and colour pickers, second windows, full screen, toasts, notifications and a tray icon, all drawn by Lust itself, sharp at any screen scaling, with input methods for typing any language and a tree for screen readers. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (alpha 84):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options, set with `=`), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error` (with `Problem`, the kinds of failure, as a built-in state), `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too), with built-in states for their fixed choices (`Day`, `Request` and `Answer`). Waiting pauses only the run that waits (`wait`, and `start` to run a call alongside). Events in any program (`event`, `on { }` and `send`), sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, tables and long lists, right-click menus, rows dragged to new places, dropped files, the mouse on a canvas, scrolling, pictures (SVG too), timers, keyboard shortcuts, fonts of your own, date and colour pickers, second windows, full screen, toasts, notifications and a tray icon, all drawn by Lust itself, sharp at any screen scaling, with input methods for typing any language and a tree for screen readers. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -645,11 +645,42 @@ send Saved("notes.txt") to editor;  -- only editor hears it
 - **`on { }`** holds a thing's handlers, one for each event it hears: the event's name, what it carries in ( ) (the names can be its own), and a block. A thing has one `on` block, and each event appears in it once. Inside a handler, fields and methods are used as in a method.
 - **`send Name(…);`** reaches every thing that exists right now and handles the event. **`send Name(…) to thing;`** reaches only that one: a thing of a class, an object, a node or an assembly's piece. Sending to a thing whose class doesn't handle the event is a mistake (`Editor doesn't handle Saved. Give it on { Saved(string file) { … } }`), unless a class `like` it does: then the things of that class hear it, and the rest don't. An event no one handles does nothing.
 - **`like`:** a class hears the events the class it's like handles, and its own handler for an event replaces that class's, as methods do.
-- **Nothing runs inside `send`.** Events wait in a queue, and are heard **once the code running now is done**: after each statement at the top of the file (so a method that sends three events has them heard after it returns), after each thing a window does (a click, a key, a timer, a tween's done block), and as a `wait` starts. So `send Saved(f); print("sent");` prints `sent` before any handler runs.
+- **Nothing runs inside `send`.** Events wait in a queue, and are heard **once the code running now is done**: after each statement at the top of the file (so a method that sends three events has them heard after it returns), after each thing a window does (a click, a key, a timer, a tween's done block), after a run waiting goes on, and as a `wait` starts. Each handler that hears an event is a run of its own (below), so one that waits pauses only itself, and the rest of the queue doesn't wait for it. So `send Saved(f); print("sent");` prints `sent` before any handler runs.
 - **In order:** events are delivered in the order they were sent. An event sent while one is being delivered (Saved sends Closed) joins the end of the same queue. Each event reaches the things in the order they were made, objects first, in the order they're written, since they're made as the program starts. `lust run` and built programs do exactly the same.
 - **Things that end stop hearing.** A thing made in a state (section 8) that ended with it no longer hears events, nor does a closed node, until it opens again. A thing with an `on` block hears events from when it's made until it ends, **even when nothing holds it any more**: `send` can always reach it. So a thing made over and over that handles events should belong to a state that ends it, or be an object.
 - Sending to a thing that's `nothing`, or that has ended, stops the program, as calling its methods would.
 - Events can also go to the entities of a game engine, and components hear them there (section 21).
+
+### Waiting: wait and start
+
+`wait seconds;` lets that many seconds go by, and `start` runs a method call alongside. Only the piece of work that waits pauses, never the window or the rest of the program:
+
+```
+method openGate() {
+    print("creak");
+    wait 2;                      -- only this piece of work pauses
+    print("gate open");
+}
+
+start openGate();                -- runs alongside: the next line runs at once
+print("Gate opening");
+
+openGate();                      -- waits here until the gate is open
+print("Gate open");
+```
+
+- **A run** is a piece of work that waits on its own: the program's own code from the top, one click's, key's or timer's code in a window, one event's handler (an `on` block's), a tween's done block, or a call started with `start`.
+- **`wait seconds;` pauses its run,** and everything else carries on: the window draws and answers clicks, other runs go on, and tweens and timers move. `wait 0;` lets the other runs that are due now go first. A wait below 0 seconds stops with `Problem.OutOfRange`.
+- **`start call;`** runs the call as a run of its own. It goes straight away, until its first `wait` (or its end), and then the line after `start` runs. It gives nothing back, and what it's given is worked out as it starts. Only a call can be started: `start gate;` is a mistake. `start` is a word only before a call, so a variable can still be called `start`.
+- **A call waits for what it calls.** A method that waits makes whoever calls it wait too, as it would for a long loop. Nothing is marked: a method that waits is called like any other, and can give back a value (`int n = slowAdd(1, 2);`).
+- **In order:** runs due at the same moment go on in the order they started waiting. A tween's step due then goes before them. `lust run` and built programs run them in exactly the same order.
+- **A plain program ends** once its own code and every run it started are done.
+- **In a window,** each callback is a run, so a button whose code waits doesn't freeze the window: the other buttons still work. A wait in the code that draws the view (outside any callback) stops the program with a message saying where to put it instead.
+- **Failures:** a `try` inside a run catches that run's own failures, waits and all. A failure no `try` in its own run catches stops the program, even if the code that started the run was inside a `try`.
+- **Lust's own clock.** Runs wait on the same clock as tweens and timers. In a view's tests, `wait 2.5` in the test moves every run's clock along (section 17); `lust test` runs waits without taking the real time, so tests stay quick and give the same results every time.
+- **In an engine** (a library or components), runs aren't there yet: `start` just calls the method, and `wait` pauses everything while tweens move, as before.
+
+`start gate = openGate();` (a name, to `cancel` it), `wait { }` blocks that wait for states to change, and `or after` time limits are designed in [WAITING.md](WAITING.md) and come next.
 
 ---
 
@@ -950,7 +981,7 @@ end
 | `swatch 3` | clicks the open colour picker's third swatch |
 | `press 40 20`, `move 90 20`, `release 90 20`, `dblclick 40 20` | the mouse, at a place in the window (a canvas's `press`, `drag`, `release` and `hover` run from these; `move` with nothing held is hovering) |
 | `scroll 1 100` | scrolls the first scroll down 100 (up with a minus) |
-| `wait 2.5` | lets 2.5 seconds go by on the test's own clock, running the timers that come due |
+| `wait 2.5` | lets 2.5 seconds go by on the test's own clock, running the timers, tween steps and waiting runs that come due (in that order, when due together) |
 | `size 800 600` | resizes the window |
 | `snapshot shot.png` | draws the window into a picture |
 | `in Settings click Save`, `in "My settings" dump` | sends a command to the second window with that title (in quotes when it has spaces) instead of the main one |
@@ -1833,7 +1864,7 @@ Each family has `In`, `Out` and `InOut`: `InCubic`, `OutCubic`, `InOutCubic`. Th
 **The clock.** A tween moves when the program's clock moves, in steps:
 
 - **In a window**, each frame, on the same clock as `every` timers and `animate`, and the view redraws after each step. In a view's tests, `wait 2.5` moves tweens and timers along together, a tween 1/60 s at a time.
-- **In a plain program**, `wait seconds;` lets the clock run: tweens move on during it, in steps of 1/60 s, so `tween x to 10 over 1; wait 1;` leaves `x` at 10 with its done block run. Without a `wait`, nothing moves. When the program ends, tweens still running just stop. A `wait` inside a done block, or in a button while the window is open, only pauses.
+- **In a plain program**, a `wait` lets the clock run: tweens move on during it, in steps of 1/60 s, so `tween x to 10 over 1; wait 1;` leaves `x` at 10 with its done block run. They move while any run waits, and without a wait, nothing moves. When the program ends, tweens still running just stop. A done block is a run of its own (section 11, Waiting), so a `wait` inside it pauses only it.
 - **In a game engine**, the engine moves them once a tick (section 21).
 
 A tween takes the same steps in `lust run` and a built program, so both end with exactly the same numbers. The curves that use sines and powers (Sine, Expo, Elastic) use the computer's own maths library, as `Maths:sin` does, so they can differ in the last digit between Windows and Linux; on one computer, both ways always agree.
@@ -1980,7 +2011,7 @@ string reply = Web:post("https://example.com/scores", Json:write(score));
 | --- | --- |
 | `print(x);` | shows `x` on its own line. Any type: numbers, text, bools, lists, vectors, colours, states and `nothing` |
 | `print(a, b, c);` | shows several values on one line, with a space between each: `print("Score:", score, "lives:", lives);` |
-| `wait seconds;` | pauses, while tweens move on (section 17, Tweens) |
+| `wait seconds;` | pauses its own run while everything else goes on (section 11, Waiting) |
 | `ask(question)` | shows a question and gives back what's typed |
 
 ### Random numbers
@@ -2518,7 +2549,7 @@ print      wait       ask
 
 Neither can the built-in objects: `Maths`, `Files`, `Time`, `Json`, `Web`, `Random`, `Rotation`, `Colour` and `Ease` (which is a state of easing curves too), and the built-in states `Icon`, Lust's icons, `Problem`, the kinds of failure (section 15), `Day`, the days of the week (section 19), and `Request` and `Answer`, the kinds of request and the answers a server sends (section 18). (`Rotation` and `Colour` with a capital are the objects; `rotation` and `colour` are the types.)
 
-`tween`, `to` and `over` are words only in a tween (and `to` after `send`), so they can still be names. So are `event` and `send`, words only at the start of a line, and `on`, a word only in the body of a class, object, node, component or assembly. So is `toast`, a word only at the start of a statement, and `App`, which a program's own assembly can be called.
+`tween`, `to` and `over` are words only in a tween (and `to` after `send`), so they can still be names. So are `event` and `send`, words only at the start of a line, and `on`, a word only in the body of a class, object, node, component or assembly. So are `toast`, a word only at the start of a statement, `start`, a word only before a call, and `App`, which a program's own assembly can be called.
 
 The pieces of a view (`text`, `button`, `radio`, `switch`, `number`, `icon`, `table`, `list` and the rest) are words only at the start of a line inside a view, so they can still be names: `int number = 3;` works anywhere.
 

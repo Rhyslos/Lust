@@ -1,0 +1,43 @@
+-- A button whose code waits pauses only itself: the window keeps answering, the other button
+-- still works, and the test's clock (wait in the .in file) wakes it.
+assembly App {
+    has {
+        string log = "";
+        int clicks = 0;
+        int counted = 0;
+        float glow = 0;
+    }
+
+    method count() {
+        loop (int i = 0; i < 3; i += 1) {
+            wait 0.25;
+            counted += 1;
+        }
+        print("counted", counted);
+    }
+
+    view [title "Waits", width 320, height 220] {
+        column [gap 4, pad 8] {
+            text "Log: " + log;
+            text "Clicks: " + clicks.text() + ", counted: " + counted.text();
+            text "Glow: " + glow.text();
+            button "Slow" {
+                log = log + "slow; ";
+                wait 1;
+                log = log + "slow done; ";
+                print("slow done after", clicks, "clicks");
+            }
+            button "Quick" {
+                clicks += 1;
+            }
+            button "Count" {
+                start count();
+                tween glow to 1 over 0.5;
+            }
+        }
+    }
+}
+
+App:open();
+print("closed");
+end

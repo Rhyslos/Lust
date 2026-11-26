@@ -61,6 +61,10 @@ mod native_rt {
     }
     include!("native_rt.rs");
     include!("native_localtime.rs");
+    // lust runs LustScript's runs with Lua's coroutines, so these just run.
+    mod runs {
+        include!("native_runs_none.rs");
+    }
 }
 // Databases, for built programs that use them, and for LustScript run by lust.
 #[cfg(feature = "cli")]
@@ -701,6 +705,29 @@ mod no_unsafe {
         assert!(lua.code.contains("_L.post(false, \"on__Picked\""));
         assert!(lua.code.contains("_L.post(_L.target("));
         assert!(lua.code.contains(".__listens = true"));
+    }
+
+    /// Runs get stacks of their own (and the one unsafe block that needs) only in a program
+    /// whose runs can pause while another goes on. A library's runs just run, with no unsafe.
+    #[test]
+    fn runs_stacks_only_when_needed() {
+        let src = |body: &str| vec![("main.lst".to_string(), format!("method later() {{\n    wait 1;\n}}\n{body}end\n"))];
+        let program = |body: &str| {
+            let c = crate::front_from("main.lst", &src(body), &crate::Engine::default()).ok().unwrap();
+            crate::rust::write(&c.prog, &c.info, &c.files, false)
+        };
+        let started = program("start later();\n");
+        assert!(started.contains("#![deny(unsafe_code)]"));
+        assert!(started.contains("#[allow(unsafe_code)]\npub mod runs {"));
+        assert!(started.contains("rt::start(Box::new(move ||"));
+        // Waiting only in the program's own code: no stacks needed.
+        let plain = program("later();\n");
+        assert!(plain.contains("#![forbid(unsafe_code)]"));
+        assert!(!plain.contains("unsafe {"));
+        assert!(plain.contains("mod runs {"));
+        let lib = crate::to_rust_library("main.lst", &src("start later();\n")).unwrap();
+        safe(&lib);
+        assert!(!lib.contains("corosensei"));
     }
 
     /// The old way of writing a handler is a mistake that shows the new one.

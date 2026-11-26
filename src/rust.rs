@@ -21,6 +21,9 @@ pub const NET_RUNTIME: &str = include_str!("native_net.rs");
 pub const DLG_RUNTIME: &str = include_str!("native_dlg.rs");
 pub const LOCALTIME_RUNTIME: &str = include_str!("native_localtime.rs");
 pub const TEXT_RUNTIME: &str = include_str!("native_text.rs");
+/// Runs with stacks of their own, and without, for programs whose runs never pause.
+pub const RUNS_RUNTIME: &str = include_str!("native_runs.rs");
+pub const RUNS_NONE: &str = include_str!("native_runs_none.rs");
 /// Views: the pieces, then the radio buttons, switches, number boxes and icons, then tables, then
 /// the mouse (right-click menus, dragging rows, dropped files, canvases), then date and colour
 /// pickers, then more windows, toasts, the tray and notifications, then input methods and fonts
@@ -49,7 +52,8 @@ pub mod web {{\nuse super::*;\n{WEB_RUNTIME}\n}}\n\
 pub mod dlg {{\nuse super::*;\n{DLG_RUNTIME}\n}}\n\
 pub mod net {{\nuse super::*;\n{NET_RUNTIME}\n}}\n\
 pub mod ui {{\nuse super::*;\n{UI_RUNTIME}\n}}\n\
-pub mod pat {{\nuse super::*;\n{TEXT_RUNTIME}\n}}\n}}\n"
+pub mod pat {{\nuse super::*;\n{TEXT_RUNTIME}\n}}\n\
+#[allow(unsafe_code)]\npub mod runs {{\n{RUNS_RUNTIME}\n}}\n}}\n"
     )
 }
 
@@ -94,6 +98,13 @@ pub const UI_RUNTIME: &str = concat!(
 
 fn uses(info: &Info, funcs: &[&str]) -> bool {
     info.libs.values().any(|l| funcs.contains(&l.func.as_str()))
+}
+
+/// Whether a run can pause while another goes on, so runs need stacks of their own: the program
+/// waits, and has runs besides its own code (start, tweens' done blocks, events or a window). An
+/// engine's library has none yet.
+fn needs_runs(info: &Info, library: bool) -> bool {
+    !library && info.waits && (info.starts || info.lust_events || views(info))
 }
 
 fn serves(info: &Info) -> bool {
@@ -595,8 +606,11 @@ pub fn write(prog: &Program, info: &Info, files: &[String], library: bool) -> St
         format!("{host}\nfn program() {{\n{body}}}\n\nfn main() {{\n    rt::main(program, &[{files_list}]);\n}}\n")
     };
     let what = if library { "a Rust library" } else { "a program" };
+    let own_stacks = needs_runs(info, library);
     let forbid = if !library && (uses(info, &["time_date", "time_time"]) || info.uses_dates) {
         ""
+    } else if own_stacks {
+        "// No unsafe code but runs' stacks (mod runs): Rust checks it.\n#![deny(unsafe_code)]\n"
     } else {
         "// No unsafe code: Rust checks it.\n#![forbid(unsafe_code)]\n"
     };
@@ -631,6 +645,11 @@ pub fn write(prog: &Program, info: &Info, files: &[String], library: bool) -> St
             }
             if uses(info, &["text_matches", "text_findAll", "text_replaceAll", "text_capture"]) {
                 m.push_str(&format!("pub mod pat {{\nuse super::*;\n{TEXT_RUNTIME}\n}}\n"));
+            }
+            if own_stacks {
+                m.push_str(&format!("#[allow(unsafe_code)]\npub mod runs {{\n{RUNS_RUNTIME}\n}}\n"));
+            } else {
+                m.push_str(&format!("mod runs {{\n{RUNS_NONE}\n}}\n"));
             }
             m
         }
@@ -871,6 +890,7 @@ fn walk_stmts(stmts: &[Stmt], f: &mut dyn FnMut(&Expr)) {
                     walk_expr(e, f);
                 }
             }
+            Stmt::Start { call, .. } => walk_expr(call, f),
             Stmt::Keep { value, into, .. } => {
                 walk_expr(value, f);
                 if let Some(i) = into {
@@ -1170,9 +1190,15 @@ impl<'a> W<'a> {
                     let mut cur = Some(c);
                     while let Some(x) = cur {
                         if info.classes[x].methods.contains_key(&h) {
-                            let mut a = vec!["o".to_string()];
-                            a.extend((0..params.len()).map(|k| format!("a{k}.clone()")));
-                            class_arms.push_str(&format!("ID_{c} => m{x}_{}({}), ", ident(&h), a.join(", ")));
+                            // Each handler that hears it is a run of its own.
+                            let mut a = vec!["&o".to_string()];
+                            a.extend((0..params.len()).map(|k| format!("a{k}")));
+                            let copies: String = (0..params.len()).map(|k| format!("let a{k} = a{k}.clone(); ")).collect();
+                            class_arms.push_str(&format!(
+                                "ID_{c} => {{ let o = o.clone(); {copies}rt::start(Box::new(move || m{x}_{}({}))) }}, ",
+                                ident(&h),
+                                a.join(", ")
+                            ));
                             break;
                         }
                         cur = info.classes[x].parent;
@@ -2152,6 +2178,26 @@ impl<'a> W<'a> {
                     "{pad}{{\n{pad}    let o = {owner};\n{pad}    let from: {t} = {read};\n{pad}    let to: {t} = {to};\n{pad}    let secs: f64 = {secs};\n{pad}    let ease: &'static str = {ease};\n{pad}    let done: Option<Rc<dyn Fn()>> = {done};\n{pad}    let o2 = o.clone();\n{pad}    rt::tween(rt::tween_key(&o, {field:?}), from, to, secs, ease, Box::new(move |v: {t}| {{ {write} }}), done);\n{pad}}}\n"
                 ));
             }
+            // start openGate();: the call runs as a run of its own, with its own copies of the
+            // variables it uses (as a hook has), straight away until it waits.
+            Stmt::Start { call, .. } => {
+                let body = [Stmt::Expr(call.clone())];
+                let captured = captures(&body, &[], self.info);
+                let uses_this = self.class.is_some() && has_this(&body, self.info);
+                let c = self.expr(call);
+                out.push_str(&format!("{pad}{{\n"));
+                for v in &captured {
+                    out.push_str(&format!("{pad}    let v_{v} = v_{v}.clone();\n"));
+                }
+                let (keep, at) = if uses_this {
+                    ("let this = this.clone();", "let this = &this; ")
+                } else {
+                    ("", "")
+                };
+                out.push_str(&format!(
+                    "{pad}    {keep}\n{pad}    rt::start(Box::new(move || {{ {at}let _ = {c}; }}));\n{pad}}}\n"
+                ));
+            }
             Stmt::Keep { value, into, .. } => {
                 let v = self.expr(value);
                 out.push_str(&format!("{pad}{{\n{pad}    let k = {v};\n{pad}    rt::keep(&k);\n"));
@@ -2351,7 +2397,7 @@ impl<'a> W<'a> {
         }
         if let Some(c) = self.info.view_opens.get(&e.id) {
             return format!(
-                "{{ let o = new{c}(); let s = settings{c}(&o); let mut build = || -> Result<(rt::ui::Node, Vec<rt::ui::Action>), String> {{ let mut actions: Vec<rt::ui::Action> = Vec::new(); let mut out = None; if let Some(e) = rt::attempt(|| out = Some(view{c}(&o, &mut actions))) {{ return Err(e); }} Ok((out.unwrap(), actions)) }}; rt::viewing(1); let r = rt::ui::show(&s, &mut build, Box::new(rt::tween_view)); rt::viewing(-1); if let Err(e) = r {{ rt::fail(e); }} }}"
+                "{{ let o = new{c}(); let s = settings{c}(&o); let mut build = || -> Result<(rt::ui::Node, Vec<rt::ui::Action>), String> {{ let mut actions: Vec<rt::ui::Action> = Vec::new(); let mut out = None; if let Some(e) = rt::attempt(|| out = Some(view{c}(&o, &mut actions))) {{ return Err(e); }} Ok((out.unwrap(), actions)) }}; rt::viewing(1); rt::ui::on_runs(Rc::new(rt::runs_view)); let r = rt::ui::show(&s, &mut build, Box::new(rt::tween_view)); rt::viewing(-1); if let Err(e) = r {{ rt::fail(e); }} }}"
             );
         }
         if let Some(op) = self.info.node_ops.get(&e.id) {
@@ -3265,12 +3311,15 @@ impl<'a> W<'a> {
         if let Some((n, _)) = &param {
             own.push(n.clone());
         }
+        // Each time it runs, it's a run of its own, with its own copies of what it uses.
+        let mut again = String::new();
         for c in captures(a, &own, self.info) {
             out.push_str(&format!("{inner}    let v_{c} = v_{c}.clone();\n"));
+            again.push_str(&format!("let v_{c} = v_{c}.clone(); "));
         }
         out.push_str(&format!("{inner}    let this = this.clone();\n"));
         out.push_str(&format!(
-            "{inner}    actions.push(Box::new(move || match rt::attempt(|| {{\n{inner}        let this = &this;\n"
+            "{inner}    actions.push(Box::new(move || {{ {again}let this = this.clone(); rt::run_action(Box::new(move || {{\n{inner}        let this = &this;\n"
         ));
         if let Some(b) = given {
             let opts = match self.info.ty(b) {
@@ -3307,9 +3356,7 @@ impl<'a> W<'a> {
         let saved = self.current_ret.take();
         self.stmts(a, out, depth + 3);
         self.current_ret = saved;
-        out.push_str(&format!(
-            "{inner}    }}) {{\n{inner}        None => Ok(()),\n{inner}        Some(e) => Err(e),\n{inner}    }}));\n"
-        ));
+        out.push_str(&format!("{inner}    }})) }}));\n"));
         out.push_str(&format!("{inner}    {}\n{inner}}}\n", set.replace('#', "actions.len() - 1")));
     }
 

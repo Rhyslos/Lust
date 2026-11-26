@@ -1,0 +1,43 @@
+-- Each event's handler is a run of its own: one that waits pauses only itself, and the rest of
+-- the queue doesn't wait for it.
+
+event Ping(string who);
+event Done(string who);
+
+object Bell {
+    has {
+        int rung = 0;
+    }
+
+    on {
+        Ping(string who) {
+            print("ring " + who);
+            wait 0.5;
+            rung += 1;
+            print("rang " + who);
+            send Done(who);
+        }
+        Done(string who) {
+            print("done " + who + ", rung " + rung.text());
+        }
+    }
+}
+
+send Ping("a");
+send Ping("b");
+print("sent");
+wait 1;
+print("the top after 1");
+
+-- Events sent inside a run are heard as its wait starts, and as it ends.
+method chat() {
+    send Ping("c");
+    print("c sent");
+    wait 0.1;
+    print("chat goes on");
+    send Done("chat");
+}
+
+start chat();
+print("the top is done");
+end

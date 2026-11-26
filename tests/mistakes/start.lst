@@ -1,0 +1,12 @@
+-- start runs a call alongside, so it needs a call.
+method openGate() {
+    print("open");
+}
+
+int gate = 3;
+start gate;
+start 5;
+start openGate;
+start "go" + "now";
+start nope();
+end

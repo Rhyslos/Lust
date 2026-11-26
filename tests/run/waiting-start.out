@@ -1,0 +1,40 @@
+a 1
+b 1
+both started
+a 2
+b 2
+top after 1
+x outer before
+x inner before
+the top goes on
+top outer before
+top inner before
+a 3
+x inner after
+x outer after
+top inner after
+top outer after
+the top is done with outer
+started sum 5
+sum 3
+p first
+q first
+top before wait 0
+p second
+q second
+top after wait 0
+front opening
+back opening
+doors started
+start is 3
+the top is done
+caught OutOfRange the array is empty, so there's no item [3].
+caught OutOfRange can't wait -1.0 seconds.
+b done
+a done
+front open
+front told to close
+back open
+back told to close
+front closed
+back closed

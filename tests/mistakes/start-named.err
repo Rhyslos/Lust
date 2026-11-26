@@ -1,0 +1,3 @@
+start-named.lst:6:7  giving started work a name (start gate = openGate();) isn't built yet. For now, start a call on its own: start openGate();
+
+1 mistake. Nothing was run.

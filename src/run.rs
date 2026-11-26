@@ -54,11 +54,27 @@ fn host(lua: &Lua) -> mlua::Result<()> {
     h.set(
         "ui_open",
         lua.create_function(
-            |_, (settings, view, tweens, settle): (mlua::Table, mlua::Function, Option<mlua::Function>, Option<mlua::Function>)| {
+            |_,
+             (settings, view, tweens, settle, spawn, runs): (
+                mlua::Table,
+                mlua::Function,
+                Option<mlua::Function>,
+                Option<mlua::Function>,
+                Option<mlua::Function>,
+                Option<mlua::Function>,
+            )| {
                 let s = ui_styles(&settings)?;
                 // After each callback, the events it sent are delivered (the runtime's L.settle).
                 if let Some(f) = settle {
                     crate::native_ui::on_settle(Rc::new(move || f.call::<()>(()).map_err(|e| raw_error(&e))));
+                }
+                // Each callback is a run of its own (the runtime's L.spawn), and the window's clock
+                // moves the runs that wait (L.runs_view).
+                SPAWN.with(|s| *s.borrow_mut() = spawn);
+                if let Some(f) = runs {
+                    crate::native_ui::on_runs(Rc::new(move |dt: f64, wake: bool| {
+                        f.call::<Option<f64>>((dt, wake)).map_err(|e| raw_error(&e))
+                    }));
                 }
                 let mut build = || -> Result<(crate::native_ui::Node, Vec<crate::native_ui::Action>), String> {
                     let t: mlua::Table = view.call(()).map_err(|e| raw_error(&e))?;
@@ -247,7 +263,31 @@ fn host(lua: &Lua) -> mlua::Result<()> {
         })?,
     )?;
     h.set("clock", lua.create_function(move |_, ()| Ok(started.elapsed().as_secs_f64()))?)?;
+    // Waits take real time, but not in lust test, where the clock is Lust's own.
+    let quick = std::env::var_os("LUST_VIEW_TEST").is_some();
+    h.set(
+        "sleep",
+        lua.create_function(move |_, secs: f64| {
+            if !quick && secs > 0.0 {
+                std::thread::sleep(std::time::Duration::from_secs_f64(secs.min(24.0 * 24.0 * 3600.0)));
+            }
+            Ok(())
+        })?,
+    )?;
     lua.globals().set("LUST_HOST", h)
+}
+
+thread_local! {
+    /// The runtime's L.spawn: runs a window's callback as a run of its own.
+    static SPAWN: RefCell<Option<mlua::Function>> = const { RefCell::new(None) };
+}
+
+/// Runs a window's callback, given these values, as a run of its own.
+fn act(f: &mlua::Function, args: impl mlua::IntoLuaMulti) -> mlua::Result<()> {
+    match SPAWN.with(|s| s.borrow().clone()) {
+        Some(spawn) => spawn.call::<()>((f.clone(), args)),
+        None => f.call::<()>(args),
+    }
 }
 
 /// A Lua error's own message, like "lust:12: something went wrong", without Lua's extras.
@@ -318,11 +358,11 @@ fn ui_node(t: &mlua::Table, actions: &mut Vec<crate::native_ui::Action>) -> mlua
         // An input's action is given its new value.
         actions.push(Box::new(move || {
             let r = match crate::native_ui::incoming() {
-                crate::native_ui::SV::Text(s) => f.call::<()>(s),
-                crate::native_ui::SV::Truth(b) => f.call::<()>(b),
-                crate::native_ui::SV::Num(x) => f.call::<()>(x),
-                crate::native_ui::SV::Rgba(c) => f.call::<()>((c[0] as f64, c[1] as f64, c[2] as f64, c[3] as f64)),
-                _ => f.call::<()>(()),
+                crate::native_ui::SV::Text(s) => act(&f, s),
+                crate::native_ui::SV::Truth(b) => act(&f, b),
+                crate::native_ui::SV::Num(x) => act(&f, x),
+                crate::native_ui::SV::Rgba(c) => act(&f, (c[0] as f64, c[1] as f64, c[2] as f64, c[3] as f64)),
+                _ => act(&f, ()),
             };
             r.map_err(|e| raw_error(&e))
         }));
@@ -344,10 +384,10 @@ fn ui_node(t: &mlua::Table, actions: &mut Vec<crate::native_ui::Action>) -> mlua
         if let Some(f) = t.get::<Option<mlua::Function>>(key)? {
             actions.push(Box::new(move || {
                 let r = match crate::native_ui::incoming() {
-                    crate::native_ui::SV::Point(x, y) => f.call::<()>((x, y)),
-                    crate::native_ui::SV::List(paths) => f.call::<()>(mlua::Variadic::from_iter(paths)),
-                    crate::native_ui::SV::Truth(b) => f.call::<()>(b),
-                    _ => f.call::<()>(()),
+                    crate::native_ui::SV::Point(x, y) => act(&f, (x, y)),
+                    crate::native_ui::SV::List(paths) => act(&f, mlua::Variadic::from_iter(paths)),
+                    crate::native_ui::SV::Truth(b) => act(&f, b),
+                    _ => act(&f, ()),
                 };
                 r.map_err(|e| raw_error(&e))
             }));
@@ -377,7 +417,7 @@ fn ui_node(t: &mlua::Table, actions: &mut Vec<crate::native_ui::Action>) -> mlua
     }
     if let Some(f) = t.get::<Option<mlua::Function>>("e")? {
         // What Enter runs in an input.
-        actions.push(Box::new(move || f.call::<()>(()).map_err(|e| raw_error(&e))));
+        actions.push(Box::new(move || act(&f, ()).map_err(|e| raw_error(&e))));
         n.enter = Some(actions.len() - 1);
     }
     if let Some(c) = t.get::<Option<mlua::Table>>("c")? {
