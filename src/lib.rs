@@ -730,7 +730,10 @@ mod no_unsafe {
         assert!(lib.contains("#![deny(unsafe_code)]"));
         assert!(lib.contains("#[allow(unsafe_code)]\npub mod runs {"));
         assert!(lib.contains("rt::engine_tick(dt)"));
-        let calm = vec![("main.lst".to_string(), "method later() {\n    print(1);\n}\nstart later();\nend\n".to_string())];
+        let calm = vec![(
+            "main.lst".to_string(),
+            "method later() {\n    print(1);\n}\nstart later();\nend\n".to_string(),
+        )];
         let lib = crate::to_rust_library("main.lst", &calm).unwrap();
         safe(&lib);
         assert!(!lib.contains("corosensei"));

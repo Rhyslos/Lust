@@ -1108,11 +1108,16 @@ impl<'a> W<'a> {
                     .collect();
                 self.line(m.pos.line, &format!("if event == {} then", lua_string(crate::ast::shown(ev))));
                 self.indent += 1;
-                // Each handler is a run of its own, belonging to the component.
-                let label = lua_string(&format!("the {} handler", crate::ast::shown(ev)));
-                let mut call = vec!["self".to_string(), label, format!("self.{}", lname(&m.name)), "self".to_string()];
-                call.extend(args);
-                self.line(m.pos.line, &format!("_L.spawn_on({})", call.join(", ")));
+                // Each handler is a run of its own, belonging to the component. In a program that
+                // never waits it can't pause, so it's just called, which is quicker.
+                if self.info.waits {
+                    let label = lua_string(&format!("the {} handler", crate::ast::shown(ev)));
+                    let mut call = vec!["self".to_string(), label, format!("self.{}", lname(&m.name)), "self".to_string()];
+                    call.extend(args);
+                    self.line(m.pos.line, &format!("_L.spawn_on({})", call.join(", ")));
+                } else {
+                    self.line(m.pos.line, &format!("self:{}({})", lname(&m.name), args.join(", ")));
+                }
                 if self.info.lust_events {
                     self.line(m.pos.line, "_L.settle()");
                 }
@@ -1568,7 +1573,9 @@ impl<'a> W<'a> {
                 let on = self.start_subject(call);
                 // In a component, work also belongs to the component, so it's cancelled when the
                 // engine removes it (a stateful one's own state option already ties it there).
-                let own_self = self.class.is_some_and(|c| self.info.classes[c].is_component && !self.info.stateful(c))
+                let own_self = self
+                    .class
+                    .is_some_and(|c| self.info.classes[c].is_component && !self.info.stateful(c))
                     && on.as_deref() != Some("self");
                 if let Some(on) = on {
                     w = format!("_L.own({on}, {w}, true)");

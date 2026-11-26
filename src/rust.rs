@@ -1630,7 +1630,18 @@ impl<'a> W<'a> {
                 ));
                 args.push(format!("a{i}"));
             }
-            // Each handler is a run of its own, belonging to the component.
+            // Each handler is a run of its own, belonging to the component. In code that never
+            // waits it can't pause, so it's just called, which is quicker.
+            if !needs_runs(self.info, true) {
+                b.push_str(&format!(
+                    "                rt::catch(FILES, || d{root}_{}({}))?;\n                Ok(true)\n            }}\n",
+                    ident(&m),
+                    args.join(", ")
+                ));
+                arms.push_str(&b);
+                handles.push(format!("{es:?}"));
+                continue;
+            }
             args[0] = "&o".to_string();
             b.push_str(&format!(
                 "                let o = self.0.clone();\n                let on = o.clone();\n                rt::catch(FILES, move || rt::start_on(&on, \"the {es} handler\", Box::new(move || {{ d{root}_{}({}); }})))?;\n                Ok(true)\n            }}\n",
@@ -2243,7 +2254,9 @@ impl<'a> W<'a> {
                 let on = self.start_subject(call);
                 // In a component, work also belongs to the component, so it's cancelled when the
                 // engine removes it (a stateful one's own state option already ties it there).
-                let own_self = self.class.is_some_and(|c| self.info.classes[c].is_component && !self.info.stateful(c))
+                let own_self = self
+                    .class
+                    .is_some_and(|c| self.info.classes[c].is_component && !self.info.stateful(c))
                     && !matches!(&call.kind, ExprKind::Call(..) if on.is_some());
                 if let Some(on) = on {
                     w = on.replace("WORK", &w);
