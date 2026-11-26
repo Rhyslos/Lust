@@ -196,3 +196,12 @@ An engine moving from alpha 48 to alpha 67 or later reads everything below.
 - A `check` inside `wait { }` waits until a state is one of its `when`s' options, then runs that `when` (LUST.md, section 11).
 - **In an engine nothing waits yet** (step 6): as for `wait { }`, it goes straight on, running its `when`, when the state is already one of its options and the questions are true, and otherwise stops the call with the same message (problem `Other`).
 - **Rust and Lua:** it goes through the same runtime calls as `wait { }` (`rt::wait_for`, `_L.wait_for`); nothing is new for the engine.
+
+## alpha 88: waiting, step 5
+
+- `start gate = openGate();` names started work, `cancel gate;` stops it, and `gate.state` says how it's going, as one of the built-in state `Run`'s options (LUST.md, section 11).
+- **In an engine nothing waits yet** (step 6): `start gate = …` calls the method straight through, as `start` does, so the work is `Run.Done` by the next line and cancelling it then does nothing. Work cancelled while it's going (by a hook that holds its name) stops at once: `rt::begin` and `_L.start` catch that stop, so it never reaches the engine as a failure.
+- **`Run` is a built-in state now,** so a game's own state, class or object can't be called `Run` (an option can).
+- **Rust:** started work, event handlers and tweens' done blocks go through `rt::begin` (which catches a cancel and passes every failure on as before); `rt::wait_for` takes a third value, used by the circle check. No new dependencies and no unsafe code in a library.
+- **Lua:** event handlers and tweens' done blocks in an engine run inside a `pcall` that passes every failure on unchanged, so a cancel can stop them; a chunk is otherwise the same.
+

@@ -901,7 +901,7 @@ local function hear(o, h, v)
   local mt = getmetatable(o)
   if mt.__ended or mt.__closed then return end
   local f = mt[h]
-  if f then L.spawn(f, o, unpack(v, 1, v.n)) end
+  if f then L.spawn_on(o, "the " .. h:sub(5) .. " handler", f, o, unpack(v, 1, v.n)) end
 end
 local function deliver()
   while qhead <= qtail do
@@ -1161,10 +1161,14 @@ function L.bind(o, name)
 end
 
 -- ----- things made in a state end with it -----
--- owner -> { thing = the owner's state option when it was made }. Weak, so nothing is held on to.
+-- Started work (below, with runs) belongs to a state too: when the state ends, it's cancelled.
+local Work = { __name = "Work" }
+local cancel_work
+-- owner -> { thing = the owner's state option when it was made, or true for "until the owner
+-- ends" }. Weak, so nothing is held on to.
 local owners = setmetatable({}, { __mode = "k" })
 function L.own(owner, thing, opt)
-  if thing == nil or opt == nil then return thing end
+  if owner == nil or thing == nil or opt == nil then return thing end
   local list = owners[owner]
   if not list then
     list = setmetatable({}, { __mode = "k" })
@@ -1179,6 +1183,7 @@ function L.keep(thing)
 end
 -- The thing is gone: its fields are let go, and using it says why.
 local function finish(thing, msg)
+  if getmetatable(thing) == Work then return cancel_work(thing) end
   local name = (getmetatable(thing) or {}).__name
   for k in pairs(thing) do thing[k] = nil end
   local function gone() error(problem("Nothing", msg), 2) end
@@ -1200,12 +1205,14 @@ function L.setstate(o, new)
   if not list then return end
   local over = {}
   for thing, opt in pairs(list) do
-    if not L.sin(new, opt) then over[#over + 1] = { thing, opt } end
+    if opt ~= true and not L.sin(new, opt) then over[#over + 1] = { thing, opt } end
   end
   for _, x in ipairs(over) do
     list[x[1]] = nil
     finish(x[1], L.ended(x[2]))
   end
+  -- If that cancelled the run going now, it stops here.
+  L.stop_if_cancelled()
 end
 
 -- ----- nodes: objects that open and close -----
@@ -1242,6 +1249,7 @@ function L.node_close(n)
     for t in pairs(list) do finish(t, msg) end
   end
   shut(n, class)
+  L.stop_if_cancelled()
 end
 function L.node_isopen(n) return not getmetatable(n).__closed end
 
@@ -1485,14 +1493,11 @@ local runs_on = false
 local current = nil
 -- A run failed: no try catches it, and the program stops.
 local fatal = false
--- The runs waiting, as a heap of { due, seq, coroutine }: the soonest first, and of two due
--- together, the one that started waiting first.
+-- The runs waiting, as a heap of { due, seq, coroutine, work }: the soonest first, and of two
+-- due together, the one that started waiting first.
 local sleeping, nsleep, seq = {}, 0, 0
 local function earlier(a, b) return a[1] < b[1] or (a[1] == b[1] and a[2] < b[2]) end
-local function hpush(x)
-  nsleep = nsleep + 1
-  local i = nsleep
-  sleeping[i] = x
+local function hup(i)
   while i > 1 do
     local p = floor(i / 2)
     if not earlier(sleeping[i], sleeping[p]) then break end
@@ -1500,12 +1505,7 @@ local function hpush(x)
     i = p
   end
 end
-local function hpop()
-  local top = sleeping[1]
-  sleeping[1] = sleeping[nsleep]
-  sleeping[nsleep] = nil
-  nsleep = nsleep - 1
-  local i = 1
+local function hdown(i)
   while true do
     local l, r, m = 2 * i, 2 * i + 1, i
     if l <= nsleep and earlier(sleeping[l], sleeping[m]) then m = l end
@@ -1514,35 +1514,131 @@ local function hpop()
     sleeping[i], sleeping[m] = sleeping[m], sleeping[i]
     i = m
   end
+end
+local function hpush(x)
+  nsleep = nsleep + 1
+  sleeping[nsleep] = x
+  hup(nsleep)
+end
+local function hpop()
+  local top = sleeping[1]
+  sleeping[1] = sleeping[nsleep]
+  sleeping[nsleep] = nil
+  nsleep = nsleep - 1
+  hdown(1)
   return top
 end
+-- Takes the run at i out of the heap.
+local function hremove(i)
+  sleeping[i] = sleeping[nsleep]
+  sleeping[nsleep] = nil
+  nsleep = nsleep - 1
+  if i <= nsleep then
+    hup(i)
+    hdown(i)
+  end
+end
+
+-- ----- started work: every run has one -----
+-- { state = a Run option, label = what the circle check calls it, id }. `start gate = …` names
+-- it; `cancel gate;` stops it. A cancelled run is never woken again, so no more of its code runs;
+-- one that's going (the run going now, or one that started it) stops with CANCEL, an error no
+-- try catches, as soon as it has control again.
+local CANCEL = setmetatable({}, { __tostring = function() return "cancelled" end })
+local works = 0
+-- The work going now: nil for the program's own code.
+local current_work = nil
+function L.work(label)
+  works = works + 1
+  return setmetatable({ state = "Going", label = label, id = works }, Work)
+end
+-- Marks it cancelled, and if it's waiting, takes it out of the queue: it never goes on.
+cancel_work = function(w)
+  if w.state == "Done" or w.state == "Cancelled" then return end
+  w.state = "Cancelled"
+  if w.co then
+    w.co = nil
+    for i = 1, nsleep do
+      if sleeping[i][4] == w then
+        hremove(i)
+        break
+      end
+    end
+  end
+end
+-- The run going now stops at once if it's been cancelled.
+function L.stop_if_cancelled()
+  if current_work and current_work.state == "Cancelled" then error(CANCEL, 0) end
+end
+-- cancel gate;
+function L.cancel(w)
+  cancel_work(w)
+  L.stop_if_cancelled()
+end
+
+-- The circle check: a run in a wait { } whose questions call nothing (so only code running
+-- could change them) is "stuck" there; when every run waiting is stuck, there are no tweens, no
+-- window, and each has looked again since anything last ran, nothing can ever change.
+-- streak counts the stuck looks that failed in a row with nothing else running between them;
+-- carried is the streak when the run going on now was woken. root is how the program's own
+-- code waits: nil (running), "finish" (waiting for the runs to end), or the line it's stuck at.
+local streak, carried, root = 0, 0, nil
+
 -- Runs a run until it waits or ends. One that waits is kept until it's due.
-local function go(co, ...)
-  local before = current
-  current = co
+local function go(co, w, ...)
+  local before, bw = current, current_work
+  current, current_work = co, w
+  w.state, w.co = "Going", nil
+  carried, streak = streak, 0
   local ok, due = coroutine.resume(co, ...)
-  current = before
+  current, current_work = before, bw
   if not ok then
+    if due == CANCEL then return end
     fatal = true
     error(due, 0)
   end
   if coroutine.status(co) ~= "dead" then
+    w.state, w.co = "Waiting", co
     seq = seq + 1
-    hpush({ due, seq, co })
+    hpush({ due, seq, co, w })
+  elseif w.state ~= "Cancelled" then
+    w.state = "Done"
   end
+end
+-- Runs f(…) as work w: straight away, until it waits or ends. In an engine, it's just called.
+local function begin(w, f, ...)
+  if not runs_on then
+    local bw = current_work
+    current_work = w
+    local ok, e = pcall(f, ...)
+    current_work = bw
+    if not ok and e ~= CANCEL then error(e, 0) end
+    if w.state ~= "Cancelled" then w.state = "Done" end
+  else
+    go(coroutine.create(f), w, ...)
+  end
+  -- If what it did cancelled the run that started it, that stops here.
+  L.stop_if_cancelled()
+  return w
 end
 -- Runs f(…) as a run of its own: straight away, until it waits or ends.
 function L.spawn(f, ...)
-  if not runs_on then return f(...) end
-  go(coroutine.create(f), ...)
+  begin(L.work("a run"), f, ...)
 end
-L.start = L.spawn
+-- start openGate(); and start gate = openGate();: gives back the work.
+function L.start(w, f) return begin(w, f) end
+-- A run on a thing (an event's handler): it belongs to the thing, so it ends if the thing does.
+function L.spawn_on(o, label, f, ...)
+  local w = L.work(label)
+  L.own(o, w, true)
+  begin(w, f, ...)
+end
 -- try { … }: like pcall, but a wait inside pauses the run, as Lua 5.1 can't wait inside pcall.
--- A failure from another run goes on past it.
+-- A failure from another run goes on past it, and so does a cancel.
 function L.try(f)
   if current == nil then
     local ok, e = pcall(f)
-    if not ok and fatal then error(e, 0) end
+    if not ok and (fatal or e == CANCEL) then error(e, 0) end
     return ok, e
   end
   local co = coroutine.create(f)
@@ -1550,7 +1646,7 @@ function L.try(f)
   while ok and coroutine.status(co) ~= "dead" do
     ok, x = coroutine.resume(co, coroutine.yield(x))
   end
-  if not ok and fatal then error(x, 0) end
+  if not ok and (fatal or x == CANCEL) then error(x, 0) end
   return ok, x
 end
 
@@ -1570,9 +1666,11 @@ end
 
 -- The program's own code waits until (rdue, rseq), or, with nothing given, until every run is
 -- done. The clock moves on to each run's time in turn, and tweens step on the way, a 1/60 s
--- step at a time (a step due with a run goes first).
-local function run_until(rdue, rseq)
+-- step at a time (a step due with a run goes first). how is what root is meanwhile.
+local function run_until(rdue, rseq, how)
   local base, from = realclock(), clock_now
+  local outer = root
+  root = how
   while true do
     local top = sleeping[1]
     local target
@@ -1581,6 +1679,7 @@ local function run_until(rdue, rseq)
     elseif top then
       target = top[1]
     else
+      root = outer
       return
     end
     local last = floor((target + 1e-9) * 60)
@@ -1590,13 +1689,18 @@ local function run_until(rdue, rseq)
       sleep_until(base + (at - from))
       if at > clock_now then clock_now = at end
       L.tween_step(1 / 60)
+      streak = 0
     else
       if last > clock_ticks then clock_ticks = last end
       sleep_until(base + (target - from))
       if target > clock_now then clock_now = target end
-      if not top then return end
+      if not top then
+        root = outer
+        carried, streak = streak, 0
+        return
+      end
       hpop()
-      go(top[3])
+      go(top[3], top[4])
       L.settle()
     end
   end
@@ -1604,7 +1708,7 @@ end
 
 -- A plain program or a window: runs are on. At its end, the program waits for every run.
 function L.runs_begin() runs_on = true end
-function L.runs_finish() run_until(nil) end
+function L.runs_finish() run_until(nil, nil, "finish") end
 
 -- A window's clock moves the runs: dt seconds on, waking each that's due (when wake is true).
 -- Gives back the seconds until the next is due, or nil when none waits.
@@ -1616,7 +1720,8 @@ function L.runs_view(dt, wake)
     -- Runs that wait again now are woken on the next step, not this one.
     local upto = seq
     while sleeping[1] and sleeping[1][1] <= clock_now + 1e-9 and sleeping[1][2] <= upto do
-      go(hpop()[3])
+      local top = hpop()
+      go(top[3], top[4])
       L.settle()
     end
   end
@@ -1626,20 +1731,60 @@ function L.runs_view(dt, wake)
   return s
 end
 
+-- The run going now pauses until due (the program's own code, how being what it waits in).
+local function pause(due, how)
+  if current then
+    coroutine.yield(due)
+  else
+    seq = seq + 1
+    run_until(due, seq, how)
+  end
+end
+
+-- The circle check, from a run whose stuck look (at line) just failed: stops the program when
+-- nothing can ever change. Names every run waiting, and where.
+local function stuck_check(line)
+  -- How the program's own code waits: if it's the one looking, at line.
+  local root = current and root or line
+  if viewing > 0 or live > 0 or root == nil or root == "other" then return end
+  local n = nsleep + (current and 1 or 0) + (type(root) == "number" and 1 or 0)
+  if streak < n then return end
+  local ws = {}
+  for i = 1, nsleep do
+    local w = sleeping[i][4]
+    if not w.stuck then return end
+    ws[#ws + 1] = w
+  end
+  if current then ws[#ws + 1] = current_work end
+  table.sort(ws, function(a, b) return a.id < b.id end)
+  local parts = {}
+  if type(root) == "number" then parts[1] = "the program's own code waits at line " .. root end
+  for _, w in ipairs(ws) do
+    parts[#parts + 1] = w.label .. " waits at line " .. (w.stuck or line)
+  end
+  local msg
+  if #parts == 1 then
+    msg = parts[1] .. " for something nothing else can change, so it can never move."
+  elseif #parts == 2 then
+    msg = parts[1] .. ", and " .. parts[2] .. ", each for something only the other could change, so neither can ever move."
+  else
+    msg = table.concat(parts, ", ", 1, #parts - 1) .. " and " .. parts[#parts]
+      .. ", each for something only the others could change, so none of them can ever move."
+  end
+  fatal = true
+  error(msg, 3)
+end
+
 function L.wait(s)
   if s < 0 or s ~= s then error(problem("OutOfRange", "can't wait " .. L.ftext(s) .. " seconds."), 2) end
   if not runs_on then return L.wait_all(s) end
   -- Events sent before the wait are heard as it starts.
   L.settle()
-  if current then
-    coroutine.yield(clock_now + s)
-    return
-  end
-  if viewing > 0 then
+  L.stop_if_cancelled()
+  if not current and viewing > 0 then
     error("this wait would stop the window, so it can't go here. Put it in a button's or a timer's code, or in a method started with start.", 2)
   end
-  seq = seq + 1
-  run_until(clock_now + s, seq)
+  pause(clock_now + s, "other")
 end
 
 -- wait 2 or after 1 { … }: waits the shorter of the two. Gives back false when the time limit
@@ -1660,13 +1805,15 @@ end
 
 -- wait { … }: look() asks the questions. If they're all true, nothing waits; otherwise the run
 -- looks again each time the clock moves a 1/60 s step (each frame in a window), until they are,
--- or until limit seconds have gone by. Gives back false when time ran out first.
-function L.wait_for(look, limit)
+-- or until limit seconds have gone by. Gives back false when time ran out first. line is the
+-- wait's line when its questions call nothing (so only other code could make them true).
+function L.wait_for(look, limit, line)
   if limit and (limit < 0 or limit ~= limit) then
     error(problem("OutOfRange", "a time limit can't be " .. L.ftext(limit) .. " seconds."), 2)
   end
   -- Events sent before the wait are heard as it starts.
   L.settle()
+  L.stop_if_cancelled()
   if look() then return true end
   if not runs_on then
     error("wait { } can't wait in an engine yet: nothing else runs while it waits, so its questions could never come true. Runs come to engines later.", 2)
@@ -1675,17 +1822,20 @@ function L.wait_for(look, limit)
     error("this wait would stop the window, so it can't go here. Put it in a button's or a timer's code, or in a method started with start.", 2)
   end
   local due = limit and clock_now + limit
+  local sure = not limit and line or nil
+  local w = current and current_work
   while true do
     local at = (floor((clock_now + 1e-9) * 60) + 1) / 60
     if due and due < at then at = due end
-    if current then
-      coroutine.yield(at)
-    else
-      seq = seq + 1
-      run_until(at, seq)
-    end
+    if w then w.stuck = sure end
+    pause(at, sure or "other")
+    if w then w.stuck = nil end
     if look() then return true end
     if due and clock_now + 1e-9 >= due then return false end
+    if sure then
+      streak = carried + 1
+      stuck_check(sure)
+    end
   end
 end
 
@@ -1713,14 +1863,10 @@ local function slow(what, name, ...)
   else
     -- Events sent before it are heard as it starts, as for a wait.
     L.settle()
+    L.stop_if_cancelled()
     local at = clock_now
     while true do
-      if current then
-        coroutine.yield(at)
-      else
-        seq = seq + 1
-        run_until(at, seq)
-      end
+      pause(at, "other")
       local done
       done, r, e, kind = RUNHOST.slow_look(id)
       if done then break end

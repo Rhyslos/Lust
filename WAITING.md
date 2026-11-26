@@ -1,6 +1,6 @@
 # Waiting: the design
 
-> **Designed, and being built: steps 1 to 4 are built (alpha 87).** This records what the project lead chose on 2026-11-19 (the direction) and 2026-11-26 (the details). Runs, `wait seconds;` pausing only its run, `start call;`, `wait { }` with questions and a `check`, `or after`, and slow built-ins pausing only their run are built, and their rules are in [LUST.md](LUST.md) (section 11, Waiting). Once a part is built, it moves into LUST.md and is removed from this file.
+> **Designed, and being built: steps 1 to 5 are built (alpha 88).** This records what the project lead chose on 2026-11-19 (the direction) and 2026-11-26 (the details). Runs, `wait seconds;` pausing only its run, `start call;` and `start name = call;`, `cancel`, `Run`, `wait { }` with questions and a `check`, `or after`, slow built-ins pausing only their run, states cancelling their work, and the circle check are built, and their rules are in [LUST.md](LUST.md) (section 11, Waiting). Once a part is built, it moves into LUST.md and is removed from this file.
 
 Waiting is Lust's answer to `async` and `await`. Any method can wait, and only the piece of work that's waiting pauses, never the window, the game or the rest of the program. No method is marked as one that waits, so there are no labels to spread through the code, which is how Lua's coroutines and game engines work.
 
@@ -77,24 +77,21 @@ wait {                           -- until the boss is in one of these, then that
 Runs, `wait` pausing only its run, a call waiting for what it calls, and slow built-ins (`Web:get`, the file boxes) pausing only their run are built: see LUST.md, section 11. Still to build:
 
 - **An engine tick's update** is a run too (step 6).
-- **`Web:serve` pausing only its run** (with step 5): a server started alongside, answering while timers and other runs go on, and stopped by `cancel`.
+- **`Web:serve` pausing only its run:** a server started alongside, answering while timers and other runs go on, and stopped by `cancel`. Left out of step 5: see Decided while building.
 
 ### Words
 
 - **`wait { … }`** with questions and a `check`, and **`or after`**, are built: see LUST.md, section 11. Still to build:
   - In an engine, a `wait { }` looks again once a tick (step 6; until then it goes on only if it's already true).
-- **`start name = call;`** (plain `start call;` is built) also gives the work a name in that place, like a variable, for `cancel`.
-- **`cancel name;`:** stops that work wherever it is: a `wait` it's in never finishes, and the lines after it don't run. Work it `start`ed carries on, unless it was given a name and is cancelled too. Cancelling work that's already done does nothing.
-- **Named work has a state,** the built-in state `Run`: `Waiting` (paused in a `wait`), `Going` (running), `Done` or `Cancelled`. So it's waited for like any state: `wait { is gate.state == Run.Done? }`, or `check gate.state { when Done { … } when Cancelled { … } }`. It changes only by itself or through `cancel`, never by `gate.state = …;`. What it does is seen through states, fields or events: a thing that loads sets its own state to `Load.Done`, and `wait { is map.state == Load.Done? }` waits for it.
+- **`start name = call;`, `cancel name;` and `Run`** are built: see LUST.md, section 11.
 
 ### Safety
 
-- **Waiting in a circle** (A waits until B is done, and B waits until A is done) is noticed. When everything waiting could only be woken by other waiters, and no timer, input, answer or event could wake any of them, Lust stops with a message naming the circle: `the guard waits for the gate, and the gate waits for the guard, so neither can ever move.`
-- **States clean up.** A run started during a state (by `start`, or a wait inside something made in it) is cancelled when that state ends, like anything else made in it. `keep` keeps it.
+- **Waiting in a circle** is noticed, and **states clean up** their work: both are built, see LUST.md, section 11.
 
 ### In each place
 
-- **A plain program:** (built) the program ends when its own code and every run it started are done, or cancelled once `cancel` is built.
+- **A plain program:** (built) the program ends when its own code and every run it started are done or cancelled.
 - **A window:** (built) a `wait { }` looks again each frame.
 - **An engine:** each component update and event handler is a run, and the engine moves waits along once a tick. How runs cross into the engine's own code is settled while building, and written into ENGINES.md.
 
@@ -104,7 +101,7 @@ Runs, `wait` pausing only its run, a call waiting for what it calls, and slow bu
 2. ✅ **`wait { }` with questions,** and **`or after`**. Built in alpha 85.
 3. ✅ **Slow built-ins** (`Web:get`, `Web:post` and the file boxes) pause only their run. Built in alpha 86.
 4. ✅ **`check` inside `wait { }`.** Built in alpha 87.
-5. **`cancel`**, **states cancel runs**, and **the circle check**.
+5. ✅ **`cancel`**, **states cancel runs**, and **the circle check**. Built in alpha 88.
 6. **Engines:** runs inside components' updates and handlers.
 
 ## Decided while building
@@ -127,5 +124,14 @@ Runs, `wait` pausing only its run, a call waiting for what it calls, and slow bu
 - **The `when` runs on the option the last look saw** (step 4): each look takes the state once, asks the questions and the `when`s' options on it, and once they match, the `when`s are gone through on that same value, so a state that can only be read by calling a method is read once a look, and the `when` that runs is always one that matched.
 - **A `check` in a `wait { }` is for states only** (step 4): a bool's `when true` is a question (`wait { is door.open? }`), which the mistake shows. A check with no `when` could never end the wait, so it's a mistake too.
 
+- **A name for work lives in a variable only** (decided 2026-11-26, step 5). Fields were the other way, so one method can start work and another cancel it, but that needs a type to write in `has { }` (and in arrays, parameters and what a method gives back), which is a new word for the project lead to choose. Until then, work to stop from elsewhere is started during a state, and the state changing cancels it. The name is declared where the `start` is, and always names that work, so it can't be given anything else.
+- **Cancelling stops the work's code for good** (step 5): a cancelled run that's waiting is never woken again (Lua drops its coroutine; a built program wakes it once, to unwind its stack with a marker no `try` catches, so its Rust values are let go, but no Lust code runs). A `try` around the cancelled wait runs neither its `error` block nor anything after it, since a cancel isn't a failure. Cancelling itself stops the run at once, and work that's going but not the run going now (one that started it, or one waiting for an event's handler) stops as soon as it would go on.
+- **Which state owns work** (step 5): the one that would own something made with `new` on the `start` line, that is the option of the thing whose method has the `start` (or its node), and also the thing whose method the work runs (`start guard:patrol();`, `start patrol();` in the guard's method, and each event handler), until that thing ends. The second way is what "a wait inside something made in it" covers: no run wakes inside a thing that's ended. Work that ends its own state is cancelled there and then.
+- **There's no `Failed` option** (step 5, confirming step 1): a failure no `try` in its own run catches still stops the program, so work only ever ends `Done` or `Cancelled`.
+- **The circle check notices only what's certain** (step 5). A run is stuck when it's in a `wait { }` with no time limit whose questions and `check` call nothing (a method, hook, built-in, `Random`, save or database read could change by itself, as could a question about the time). The program stops when every waiting run is stuck, no tween is moving, no window is open, and each has looked again since anything else ran (counted, not timed, so both outputs stop at the same look). Naming the exact circle (who waits for whom) would need to know what each question reads and who writes it; the message names every stuck run and the line of its wait instead, which is the same list when they're all in the circle.
+- **`Web:serve` still holds everything up** (step 5). For a server to pause only its run, both outputs' servers (lust's host in run.rs and the built program's tiny_http loop) would look for requests on Lust's 1/60 s steps instead of waiting for them, with a route's method answering inside a run that can't pause; with `cancel` in place, stopping it is the easy half. It's left for a step of its own, so it can be tried with real requests.
+- **In an engine** (step 5, until step 6): `start gate = …` calls the method straight through, as `start` does there, so the work is `Done` by the next line and `cancel` then does nothing; work cancelled while going stops, as elsewhere.
+
 ## Still open
+- Names for work in fields, arrays and parameters, which needs a type word for it.
 - A time limit on a slow built-in call itself: `string page = Web:get(url) or after 10 { … };`.

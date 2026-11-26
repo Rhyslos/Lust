@@ -1,0 +1,19 @@
+window "Cancel" 320x200
+  column 0,0 320x146
+    text "Counted: 2, " 8,8 87x19
+    button "Start" 8,31 63x33
+    button "Stop" 8,68 62x33
+    button "Both" 8,105 62x33
+window "Cancel" 320x200
+  column 0,0 320x146
+    text "Counted: 2, " 8,8 87x19
+    button "Start" 8,31 63x33
+    button "Stop" 8,68 62x33
+    button "Both" 8,105 62x33
+window "Cancel" 320x200
+  column 0,0 320x146
+    text "Counted: 2, both done" 8,8 159x19
+    button "Start" 8,31 63x33
+    button "Stop" 8,68 62x33
+    button "Both" 8,105 62x33
+closed

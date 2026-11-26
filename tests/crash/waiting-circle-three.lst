@@ -1,0 +1,27 @@
+-- The program's own code and two runs, each waiting for what another would do: none can move.
+object Flags {
+    has {
+        bool a = false;
+        bool b = false;
+        bool c = false;
+    }
+}
+
+method first() {
+    wait { is Flags.b? }
+    Flags.a = true;
+}
+
+method second() {
+    wait {
+        is Flags.c?
+        is not Flags.a?
+    }
+    Flags.b = true;
+}
+
+start first();
+start second();
+wait { is Flags.a? }
+Flags.c = true;
+end

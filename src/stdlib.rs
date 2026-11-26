@@ -14,7 +14,7 @@ use crate::types::Ty;
 pub const OBJECTS: &[&str] = &["Maths", "Files", "Time", "Json", "Web", "Random", "Rotation", "Colour", "Ease"];
 
 /// The built-in states that aren't objects too: their names can't be used for anything else.
-pub const STATES: &[&str] = &["Icon", "Problem", "Day", "Request", "Answer"];
+pub const STATES: &[&str] = &["Icon", "Problem", "Day", "Request", "Answer", "Run"];
 
 /// `Ease` is a built-in object (`Ease:apply(Ease.OutBack, t)`) and a built-in state at the same
 /// time: its options are the easing curves, and the checker makes it the first state, so its
@@ -37,6 +37,14 @@ pub const REQUEST: usize = 4;
 
 /// `Answer`, the statuses `Web:fail` answers with, is always the sixth.
 pub const ANSWER: usize = 5;
+
+/// `Run`, how started work is going (`gate.state`), is always the seventh, and the last
+/// built-in one: the program's own states come after it.
+pub const RUN: usize = 6;
+
+/// Run's options: paused in a wait, running, finished, or stopped by `cancel`. The runtimes
+/// (runtime.lua and native_rt.rs) use the same words.
+pub const RUNS: &[&str] = &["Waiting", "Going", "Done", "Cancelled"];
 
 /// Day's options, Monday first, as `Time:weekday` names them.
 pub const DAYS: &[&str] = &["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -68,6 +76,7 @@ pub fn plain_states() -> Vec<(usize, &'static str, Vec<String>)> {
         (DAY, "Day", own(DAYS)),
         (REQUEST, "Request", own(REQUESTS)),
         (ANSWER, "Answer", ANSWERS.iter().map(|(o, _)| o.to_string()).collect()),
+        (RUN, "Run", own(RUNS)),
     ]
 }
 

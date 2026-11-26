@@ -1,0 +1,29 @@
+creak
+gate is Waiting
+gate is Cancelled
+no gate open above
+quick
+q is Done
+q is still Done
+gate is still Cancelled
+slow is Waiting
+slow tick 1
+slow tick 2
+slow tick 3
+slow is done
+done, as asked
+child tick 1
+p is Cancelled
+child tick 2
+child tick 3
+c is Cancelled
+selfish starts
+lone is Cancelled
+child goes on
+st is Cancelled
+poked
+sn is Cancelled
+loop 1 tick 1
+loop 2 tick 1
+cancel is still a name: 2
+end

@@ -1,0 +1,139 @@
+-- Work started during a state is cancelled when that state ends, like anything else made in it;
+-- keep keeps it. A node closing cancels the work its methods started.
+
+state Phase = [
+    Calm,
+    Battle [
+        Melee,
+        Ranged
+    ],
+    Over
+];
+
+method ticker(string who) {
+    loop (int i = 1; i <= 4; i += 1) {
+        wait 0.5;
+        print("{who} {i}");
+    }
+}
+
+class Hero {
+    has {
+        state = Phase.Calm;
+        string name = "hero";
+    }
+
+    method fight() {
+        state = Phase.Battle.Melee;
+        start ticker("drums");
+        start song = ticker("song");
+        keep song;
+        start patrol();
+    }
+
+    method patrol() {
+        loop (int i = 1; i <= 4; i += 1) {
+            wait 0.5;
+            print("{name} patrols {i}");
+        }
+    }
+
+    method ranged() {
+        state = Phase.Battle.Ranged;
+    }
+
+    -- Work that ends its own state is cancelled at once.
+    method charge() {
+        start finale();
+    }
+
+    method finale() {
+        print("finale starts");
+        state = Phase.Over;
+        print("never after the state ended");
+    }
+}
+
+Hero h = new Hero;
+h:fight();
+wait 0.75;
+print("to ranged");
+h:ranged();
+wait 2.5;
+h:charge();
+print("hero is {h.state}");
+
+-- A thing made in a state ends with it, and so does the work its handlers were doing.
+event Alarm();
+
+class Guard {
+    has {
+        string name = "guard";
+    }
+
+    on {
+        Alarm() {
+            loop (int i = 1; i <= 4; i += 1) {
+                wait 0.5;
+                print("{name} shouts {i}");
+            }
+        }
+    }
+}
+
+class Fort {
+    has {
+        state = Phase.Calm;
+    }
+
+    method arm() {
+        state = Phase.Battle;
+        Guard g = new Guard;
+        print("armed {g.name}");
+    }
+
+    method calm() {
+        state = Phase.Calm;
+    }
+}
+
+Fort fort = new Fort;
+fort:arm();
+send Alarm();
+wait 1.25;
+print("calm again");
+fort:calm();
+wait 2;
+
+-- Work started outside a class belongs to no state.
+start ticker("outside");
+wait 0.6;
+fort:arm();
+fort:calm();
+
+-- A node: closing it cancels the work its methods started.
+node Cave {
+    has {
+        int drips = 0;
+    }
+
+    method onOpen() {
+        start drip();
+    }
+
+    method drip() {
+        loop (int i = 1; i <= 4; i += 1) {
+            wait 0.5;
+            drips += 1;
+            print("drip {drips}");
+        }
+    }
+}
+
+Cave:open();
+wait 1.25;
+Cave:close();
+print("cave closed");
+wait 2;
+print("end");
+end

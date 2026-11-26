@@ -1,0 +1,1 @@
+waiting-circle.lst:27  gate waits at line 22, and guard waits at line 27, each for something only the other could change, so neither can ever move.

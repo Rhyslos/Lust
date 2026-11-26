@@ -1,0 +1,1 @@
+waiting-stuck.lst:15  the program's own code waits at line 15 for something nothing else can change, so it can never move.

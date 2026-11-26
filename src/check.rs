@@ -178,7 +178,7 @@ pub struct Info {
     pub uses_ease: bool,
     /// The program names `Icon`'s options as a list (loop or #), so Lua makes its table.
     pub uses_icon: bool,
-    /// The other built-in states (Problem, Day, Request, Answer) the program names as a list
+    /// The other built-in states (Problem, Day, Request, Answer, Run) the program names as a list
     /// (loop or #), so Lua makes their tables.
     pub uses_states: std::collections::BTreeSet<usize>,
     /// A view has a datePicker, which shows today by the computer's clock.
@@ -389,6 +389,37 @@ fn distance(a: &str, b: &str) -> usize {
     prev[b.len()]
 }
 
+/// What the circle check calls a run started without a name: `openGate()`, `guard:patrol()`.
+pub fn start_label(call: &Expr) -> String {
+    match &call.kind {
+        ExprKind::Call(n, _) => format!("{n}()"),
+        ExprKind::Method(t, m, _, _) => format!("{}:{m}()", describe(t)),
+        _ => "a run".into(),
+    }
+}
+
+/// Could only code running make these questions true? True when they call nothing (no method,
+/// hook, built-in, random number, save or database), so they read only what code changes.
+pub fn only_code_changes(questions: &[Expr], check: Option<&Stmt>, info: &Info) -> bool {
+    let mut sure = true;
+    let mut look = |e: &Expr| {
+        if matches!(
+            e.kind,
+            ExprKind::Call(..) | ExprKind::Method(..) | ExprKind::Random(..) | ExprKind::Saved(_) | ExprKind::NewHook(_)
+        ) || matches!(info.ty(e), Ty::Table(_) | Ty::Query(_) | Ty::TableRow(_))
+        {
+            sure = false;
+        }
+    };
+    for q in questions {
+        crate::rust::walk_expr(q, &mut look);
+    }
+    if let Some(Stmt::Match { subject, .. }) = check {
+        crate::rust::walk_expr(subject, &mut look);
+    }
+    sure
+}
+
 fn describe(e: &Expr) -> String {
     match &e.kind {
         ExprKind::Name(n) => n.clone(),
@@ -407,6 +438,14 @@ impl<'a> Checker<'a> {
     fn own_state_only(&mut self, target: &Expr, ctx: &Ctx, pos: Pos) {
         let ExprKind::Field(t, f, _) = &target.kind else { return };
         if f != "state" {
+            return;
+        }
+        if self.info.ty(t) == Ty::Work {
+            let n = describe(t);
+            self.err(
+                pos,
+                format!("{n}.state can't be set: it changes by itself as the work goes on, or when it's cancelled with cancel {n};"),
+            );
             return;
         }
         let Ty::Class(c) = self.info.ty(t) else { return };
@@ -444,9 +483,9 @@ impl<'a> Checker<'a> {
     fn old_is_msg(&self, target: &str, value: &Expr, is_state: bool) -> String {
         let shown = match &value.kind {
             // The program's own states first, then the built-in ones (Answer has Busy too).
-            ExprKind::Name(n) => self.info.states[crate::stdlib::ANSWER + 1..]
+            ExprKind::Name(n) => self.info.states[crate::stdlib::RUN + 1..]
                 .iter()
-                .chain(&self.info.states[..=crate::stdlib::ANSWER])
+                .chain(&self.info.states[..=crate::stdlib::RUN])
                 .find(|st| st.options.iter().any(|o| o == n))
                 .map(|st| format!("{}.{n}", st.name))
                 .unwrap_or_else(|| n.clone()),
@@ -3416,6 +3455,10 @@ impl<'a> Checker<'a> {
                 }
                 self.writable(target, ctx, *pos);
                 self.own_state_only(target, ctx, *pos);
+                if want == Ty::Work {
+                    self.expr(value, ctx, None);
+                    return;
+                }
                 let got = self.expr(value, ctx, Some(&want));
                 self.expect_fits(value, &got, &want, &format!("{} is {}", describe(target), self.a(&want)));
                 let to_local = matches!(&target.kind, ExprKind::Name(_)) && self.info.names.get(&target.id) == Some(&NameRes::Local);
@@ -3657,20 +3700,56 @@ impl<'a> Checker<'a> {
                     }
                 }
             }
-            Stmt::Start { call, .. } => {
+            Stmt::Start { name, call, .. } => {
                 self.info.starts = true;
                 if !matches!(&call.kind, ExprKind::Call(..) | ExprKind::Method(..)) {
                     self.expr(call, ctx, None);
+                    let shown = match name {
+                        Some((n, _)) => format!("start {n} = openGate();"),
+                        None => "start openGate();".into(),
+                    };
                     self.err(
                         call.pos,
                         format!(
-                            "start runs a method call alongside, but {} isn't a call. Write the call: start openGate();",
+                            "start runs a method call alongside, but {} isn't a call. Write the call: {shown}",
                             describe(call)
                         ),
                     );
-                    return;
+                } else {
+                    self.expr(call, ctx, None);
                 }
-                self.expr(call, ctx, None);
+                // start gate = openGate();: the name is declared here, like a variable, and
+                // always names that work.
+                if let Some((n, p)) = name {
+                    if let Some(prev) = self.lookup(ctx, n).filter(|l| l.ty == Ty::Work) {
+                        self.err(
+                            *p,
+                            format!(
+                                "{n} already names work started on line {}. Give this work a name of its own: start {n}2 = …;",
+                                prev.pos.row()
+                            ),
+                        );
+                        return;
+                    }
+                    self.declare(ctx, n, Ty::Work, *p, false);
+                    if let Some(l) = ctx.scopes.last_mut().and_then(|s| s.get_mut(n)) {
+                        l.locked = true;
+                    }
+                    ctx.made.remove(n);
+                }
+            }
+            Stmt::Cancel { work, .. } => {
+                let t = self.expr(work, ctx, None);
+                if !matches!(t, Ty::Work | Ty::Error) {
+                    self.err(
+                        work.pos,
+                        format!(
+                            "cancel stops started work that has a name, but {} is {}. Name the work as it starts, then cancel it: start gate = openGate(); … cancel gate;",
+                            describe(work),
+                            self.a(&t)
+                        ),
+                    );
+                }
             }
             Stmt::Wait {
                 seconds,
@@ -3712,6 +3791,20 @@ impl<'a> Checker<'a> {
             }
             Stmt::Keep { value, into, pos } => {
                 let t = self.expr(value, ctx, None);
+                if t == Ty::Work {
+                    // keep gate;: the work no longer belongs to the state it was started in.
+                    if let Some(into) = into {
+                        self.err(
+                            into.pos,
+                            format!(
+                                "{} names started work, which stays where it was started. Keep it on its own: keep {};",
+                                describe(value),
+                                describe(value)
+                            ),
+                        );
+                    }
+                    return;
+                }
                 if !matches!(t, Ty::Class(_) | Ty::Error) {
                     self.err(
                         value.pos,
@@ -3832,6 +3925,8 @@ impl<'a> Checker<'a> {
                     Some(NameRes::Local) => {
                         if self.lookup(ctx, n).map(|l| l.readonly).unwrap_or(false) {
                             self.err(pos, format!("{n} is the loop's current item, so it can't be changed here."));
+                        } else if self.lookup(ctx, n).is_some_and(|l| l.ty == Ty::Work) {
+                            self.err(pos, format!("{n} names the work it was started with, so it can't be given anything else. Give other work a name of its own: start other = openGate();"));
                         } else if self.lookup(ctx, n).map(|l| l.locked).unwrap_or(false) {
                             self.err(pos, format!("{n} is locked, so it keeps the value it started with. To change it, leave out lock where it's declared."));
                         }
@@ -4018,7 +4113,9 @@ impl<'a> Checker<'a> {
             ExprKind::Template(parts) => {
                 for p in parts {
                     if let TemplatePart::Value(v) = p {
-                        if self.expr(v, ctx, None) == Ty::Void {
+                        let t = self.expr(v, ctx, None);
+                        self.no_work(v, &t, "go in text");
+                        if t == Ty::Void {
                             self.err(
                                 v.pos,
                                 format!("{} doesn't give anything back, so there's nothing to put in the text.", describe(v)),
@@ -4537,7 +4634,7 @@ impl<'a> Checker<'a> {
             if s == crate::stdlib::ICON {
                 self.info.uses_icon = true;
             }
-            if (crate::stdlib::PROBLEM..=crate::stdlib::ANSWER).contains(&s) {
+            if (crate::stdlib::PROBLEM..=crate::stdlib::RUN).contains(&s) {
                 self.info.uses_states.insert(s);
             }
             self.info.names.insert(e.id, NameRes::StateList);
@@ -5122,6 +5219,21 @@ impl<'a> Checker<'a> {
             }
         }
         let t = self.expr(target, ctx, None);
+        // gate.state: how started work is going.
+        if t == Ty::Work {
+            if f == "state" {
+                self.info.uses_states.insert(crate::stdlib::RUN);
+                return Ty::State(crate::stdlib::RUN);
+            }
+            self.err(
+                fpos,
+                format!(
+                    "started work has no field called {f}. It has a state, to see how it's going: {}.state",
+                    describe(target)
+                ),
+            );
+            return Ty::Error;
+        }
         // GameState.ActiveGame.Combat: walking down a state's options.
         if let Some((s, path)) = self.info.options.get(&target.id).cloned() {
             let full = if path.is_empty() { f.to_string() } else { format!("{path}.{f}") };
@@ -5338,7 +5450,9 @@ impl<'a> Checker<'a> {
             // print(a, b, c): any values, shown with spaces between.
             self.info.calls.insert(e.id, CallRes::Builtin);
             for a in args {
-                if self.expr(a, ctx, None) == Ty::Void {
+                let t = self.expr(a, ctx, None);
+                self.no_work(a, &t, "be printed");
+                if t == Ty::Void {
                     self.err(
                         a.pos,
                         format!("{} doesn't give anything back, so there's nothing to print.", describe(a)),
@@ -5381,6 +5495,7 @@ impl<'a> Checker<'a> {
                     }
                     None => {
                         let got = self.expr(a, ctx, None);
+                        self.no_work(a, &got, "be printed");
                         if got == Ty::Void {
                             self.err(
                                 a.pos,
@@ -5732,7 +5847,35 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// Started work's name is only for cancel, keep and its state: anything else is a mistake
+    /// that says to use its state. True when it was one.
+    fn no_work(&mut self, e: &Expr, t: &Ty, what: &str) -> bool {
+        if *t != Ty::Work {
+            return false;
+        }
+        let n = describe(e);
+        self.err(
+            e.pos,
+            format!(
+                "{n} names started work, which can't {what}. Its state can: {n}.state, which is Run.Waiting, Going, Done or Cancelled."
+            ),
+        );
+        true
+    }
+
     fn list(&mut self, e: &Expr, items: &[Expr], keys: Option<&[Expr]>, ctx: &mut Ctx, expected: Option<&Ty>) -> Ty {
+        let t = self.list_inner(e, items, keys, ctx, expected);
+        if let Ty::Array(el) | Ty::Map(el) = &t {
+            if **el == Ty::Work {
+                let first = items.iter().find(|i| self.info.ty(i) == Ty::Work).unwrap_or(e);
+                self.no_work(first, &Ty::Work, "go in an array or a map");
+                return Ty::Error;
+            }
+        }
+        t
+    }
+
+    fn list_inner(&mut self, e: &Expr, items: &[Expr], keys: Option<&[Expr]>, ctx: &mut Ctx, expected: Option<&Ty>) -> Ty {
         // [1, 0, 2] where a vec3 or a rotation is wanted: three numbers.
         if let (Some(want @ (Ty::Vec3 | Ty::Rot)), None) = (expected, keys) {
             let what = if *want == Ty::Vec3 {
@@ -6073,6 +6216,9 @@ impl<'a> Checker<'a> {
             BinOp::Eq | BinOp::Ne | BinOp::Same | BinOp::NotSame => {
                 let lt = self.expr(l, ctx, None);
                 let rt = self.expr(r, ctx, Some(&lt));
+                if self.no_work(l, &lt, "be compared") || self.no_work(r, &rt, "be compared") {
+                    return Ty::Truth;
+                }
                 let ok = self.fits(&lt, &rt) || self.fits(&rt, &lt) || (lt.is_number() && rt.is_number());
                 if !ok {
                     let fix = if (lt.is_number() && rt == Ty::Str) || (rt.is_number() && lt == Ty::Str) {

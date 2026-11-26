@@ -433,7 +433,7 @@ fn value_names(p: &Program, out: &mut HashSet<String>) {
     fn stmts(list: &[Stmt], out: &mut HashSet<String>) {
         for s in list {
             match s {
-                Stmt::Var { name, .. } => {
+                Stmt::Var { name, .. } | Stmt::Start { name: Some((name, _)), .. } => {
                     out.insert(name.clone());
                 }
                 Stmt::If { branches, otherwise, .. } => {
@@ -749,6 +749,7 @@ impl<'a> Renamer<'a> {
                 }
             }
             Stmt::Start { call, .. } => self.expr(call),
+            Stmt::Cancel { work, .. } => self.expr(work),
             Stmt::Wait {
                 seconds,
                 questions,

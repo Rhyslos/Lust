@@ -1,0 +1,17 @@
+-- The program's own code waits for something only code could change, once the only other run
+-- has finished: nothing can ever change it, so Lust stops.
+object Crate {
+    has {
+        bool full = false;
+    }
+}
+
+method fill() {
+    wait 0.5;
+    print("filled something else");
+}
+
+start fill();
+wait { is Crate.full? }
+print("never");
+end

@@ -1,0 +1,58 @@
+-- In a window, a Stop button cancels the counting a Start button began: the counting was started
+-- while the window was Busy, so going back to Idle cancels it. A button can also wait for work it
+-- named to be done.
+state Mode = [Idle, Busy];
+
+assembly App {
+    has {
+        state = Mode.Idle;
+        int counted = 0;
+        string log = "";
+    }
+
+    method count() {
+        loop (int i = 0; i < 10; i += 1) {
+            wait 0.25;
+            counted += 1;
+        }
+    }
+
+    method begin() {
+        state = Mode.Busy;
+        start count();
+    }
+
+    method halt() {
+        state = Mode.Idle;
+    }
+
+    method twice() {
+        wait 0.25;
+    }
+
+    view [title "Cancel", width 320, height 200] {
+        column [gap 4, pad 8] {
+            text "Counted: " + counted.text() + ", " + log;
+            button "Start" {
+                begin();
+            }
+            button "Stop" {
+                halt();
+            }
+            button "Both" {
+                start t = twice();
+                wait {
+                    check t.state {
+                        when Done {
+                            log = log + "both done";
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+App:open();
+print("closed");
+end

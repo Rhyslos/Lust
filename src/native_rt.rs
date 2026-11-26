@@ -256,6 +256,8 @@ fn attempt_any(f: impl FnOnce()) -> Option<Failed> {
     let depth = DEPTH.with(|c| c.get());
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
         Ok(()) => None,
+        // A cancel isn't a failure: no try catches it.
+        Err(p) if p.is::<Cancelled>() => std::panic::resume_unwind(p),
         Err(p) => {
             DEPTH.with(|c| c.set(depth));
             Some(payload(&*p))
@@ -320,6 +322,7 @@ struct Owned {
     owner: usize,
     state: &'static str,
     thing: usize,
+    /// The owner and the thing are both still there.
     owner_alive: Box<dyn Fn() -> bool>,
     /// Ends the thing. False when it's already gone.
     end: Box<dyn Fn(&str) -> bool>,
@@ -348,11 +351,12 @@ pub fn own<O: 'static, T: Endable + 'static>(
     if let Some(t) = &thing {
         let wo = Rc::downgrade(owner);
         let wt = Rc::downgrade(t);
+        let wt2 = wt.clone();
         let entry = Owned {
             owner: addr(owner),
             state,
             thing: addr(t),
-            owner_alive: Box::new(move || wo.strong_count() > 0),
+            owner_alive: Box::new(move || wo.strong_count() > 0 && wt2.strong_count() > 0),
             end: Box::new(move |msg| match wt.upgrade() {
                 Some(t) => match t.try_borrow_mut() {
                     Ok(mut b) => {
@@ -397,18 +401,20 @@ fn end_owned_by(owner: usize, msg: &str) {
 /// An object's state changed: what it made in an option that's over now ends.
 pub fn set_state<O>(owner: &Rc<RefCell<O>>, new: &'static str) {
     let a = addr(owner);
-    let over = take_owned(|x| x.owner == a && !sin(new, x.state) && (x.owner_alive)());
+    let over = take_owned(|x| x.owner == a && !x.state.is_empty() && !sin(new, x.state) && (x.owner_alive)());
     for x in over {
         let msg = ended_msg(x.state);
         if (x.end)(&msg) {
             end_owned_by(x.thing, &msg);
         }
     }
+    cancelled_some();
 }
 
 /// A node closed: everything it made ends.
 pub fn end_owned<O>(owner: &Rc<RefCell<O>>, msg: &str) {
     end_owned_by(addr(owner), msg);
+    cancelled_some();
 }
 
 /// keep: it no longer belongs to the state it was made in.
@@ -1458,20 +1464,28 @@ pub fn wait(s: f64) {
     }
     // Events sent before the wait are heard as it starts.
     settle();
+    stop_if_cancelled();
     let due = TWEENS.with(|t| t.borrow().clock_now) + s;
-    if runs::in_run() {
-        runs::pause(due);
-        return;
-    }
-    if TWEENS.with(|t| t.borrow().viewing) > 0 {
+    if !runs::in_run() && TWEENS.with(|t| t.borrow().viewing) > 0 {
         fail("this wait would stop the window, so it can't go here. Put it in a button's or a timer's code, or in a method started with start.".into());
     }
-    let seq = RUNS.with(|r| {
-        let mut r = r.borrow_mut();
-        r.seq += 1;
-        r.seq
-    });
-    run_until(Some((due, seq)));
+    pause(due, Root::Other);
+}
+
+/// The run going now pauses until `due` (the program's own code, waiting in `how`). A run that's
+/// cancelled meanwhile stops as it goes on.
+fn pause(due: f64, how: Root) {
+    if runs::in_run() {
+        runs::pause(due);
+        stop_if_cancelled();
+    } else {
+        let seq = RUNS.with(|r| {
+            let mut r = r.borrow_mut();
+            r.seq += 1;
+            r.seq
+        });
+        run_until(Some((due, seq)), how);
+    }
 }
 
 /// wait 2 or after 1 { … }: waits the shorter of the two. Gives back false when the time limit
@@ -1492,12 +1506,15 @@ pub fn wait_or(s: f64, limit: f64) -> bool {
 /// wait { … }: `look` asks the questions. If they're all true, nothing waits; otherwise the run
 /// looks again each time the clock moves a 1/60 s step (each frame in a window), until they are,
 /// or until `limit` seconds have gone by. Gives back false when time ran out first.
-pub fn wait_for(look: &mut dyn FnMut() -> bool, limit: Option<f64>) -> bool {
+/// `line` is the wait's line when its questions call nothing, so only other code could make
+/// them true (the circle check).
+pub fn wait_for(look: &mut dyn FnMut() -> bool, limit: Option<f64>, line: Option<u32>) -> bool {
     if let Some(l) = limit.filter(|l| *l < 0.0 || l.is_nan()) {
         fail_as("OutOfRange", format!("a time limit can't be {} seconds.", ftext(l)));
     }
     // Events sent before the wait are heard as it starts.
     settle();
+    stop_if_cancelled();
     if look() {
         return true;
     }
@@ -1509,27 +1526,33 @@ pub fn wait_for(look: &mut dyn FnMut() -> bool, limit: Option<f64>) -> bool {
         fail("this wait would stop the window, so it can't go here. Put it in a button's or a timer's code, or in a method started with start.".into());
     }
     let due = limit.map(|l| TWEENS.with(|t| t.borrow().clock_now) + l);
+    let sure = if limit.is_none() { line } else { None };
+    let me = if in_run { CURRENT.with(|c| c.borrow().clone()) } else { None };
     loop {
         let now = TWEENS.with(|t| t.borrow().clock_now);
         let mut at = (((now + 1e-9) * 60.0).floor() + 1.0) / 60.0;
         if let Some(d) = due.filter(|d| *d < at) {
             at = d;
         }
-        if in_run {
-            runs::pause(at);
-        } else {
-            let seq = RUNS.with(|r| {
-                let mut r = r.borrow_mut();
-                r.seq += 1;
-                r.seq
-            });
-            run_until(Some((at, seq)));
+        if let Some(w) = &me {
+            w.borrow_mut().stuck = sure;
+        }
+        pause(at, sure.map_or(Root::Other, Root::Stuck));
+        if let Some(w) = &me {
+            w.borrow_mut().stuck = None;
         }
         if look() {
             return true;
         }
         if due.is_some_and(|d| TWEENS.with(|t| t.borrow().clock_now) + 1e-9 >= d) {
             return false;
+        }
+        if let Some(l) = sure {
+            RUNS.with(|r| {
+                let mut r = r.borrow_mut();
+                r.streak = r.carried + 1;
+            });
+            stuck_check(l, in_run);
         }
     }
 }
@@ -1584,6 +1607,7 @@ struct Sleeper {
     due: f64,
     seq: u64,
     run: runs::Run,
+    work: Rc<RefCell<Work>>,
     /// Its calls' depth and the line it's at, put back when it goes on.
     depth: u32,
     line: u64,
@@ -1616,6 +1640,136 @@ struct Runs {
     sleeping: std::collections::BinaryHeap<Sleeper>,
     /// lust test: waits take no real time.
     quick: bool,
+    /// The circle check: the stuck looks that failed in a row with nothing else running between
+    /// them, the count when the run going on now was woken, and how the program's own code waits.
+    streak: u32,
+    carried: u32,
+    root: Root,
+}
+
+/// How the program's own code waits, for the circle check.
+#[derive(Clone, Copy, Default, PartialEq)]
+enum Root {
+    /// It's running.
+    #[default]
+    Running,
+    /// In a wait something other than code running could end.
+    Other,
+    /// For the runs to end, at the program's end.
+    Finish,
+    /// In a wait { } only other code could end, at this line.
+    Stuck(u32),
+}
+
+// ----- started work: every run has one -----
+// `start gate = …` names it; `cancel gate;` stops it. A cancelled run that's waiting is woken
+// once more, to stop: its wait unwinds with Cancelled, which no try catches, so no more of its
+// code runs (Lua drops its coroutine instead). One that's going (the run going now, or one that
+// started it) stops as soon as it has control again.
+
+/// Started work: how it's going (a `Run` option), and what the circle check calls it.
+pub struct Work {
+    id: u64,
+    state: &'static str,
+    label: &'static str,
+    /// In the queue, waiting.
+    waiting: bool,
+    /// Waiting in a wait { } only other code could end, at this line.
+    stuck: Option<u32>,
+}
+
+/// A name for started work: always Some.
+pub type WorkRef = Option<Rc<RefCell<Work>>>;
+
+/// What a cancelled run unwinds with.
+struct Cancelled;
+
+thread_local! {
+    static WORKS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    /// The work going now: None for the program's own code.
+    static CURRENT: RefCell<WorkRef> = const { RefCell::new(None) };
+    /// Waiting work that's been cancelled, to take out of the queue.
+    static PENDING: RefCell<Vec<u64>> = const { RefCell::new(Vec::new()) };
+}
+
+pub fn work(label: &'static str) -> WorkRef {
+    let id = WORKS.with(|w| {
+        w.set(w.get() + 1);
+        w.get()
+    });
+    Some(Rc::new(RefCell::new(Work {
+        id,
+        state: "Going",
+        label,
+        waiting: false,
+        stuck: None,
+    })))
+}
+
+/// gate.state
+pub fn work_state(w: &WorkRef) -> &'static str {
+    w.as_ref().map_or("Done", |w| w.borrow().state)
+}
+
+impl Work {
+    /// Marks it cancelled; if it's waiting, it's taken out of the queue (cancel_pending).
+    fn cancel(&mut self) {
+        if self.state == "Done" || self.state == "Cancelled" {
+            return;
+        }
+        self.state = "Cancelled";
+        if self.waiting {
+            self.waiting = false;
+            PENDING.with(|p| p.borrow_mut().push(self.id));
+        }
+    }
+}
+
+impl Endable for Work {
+    /// Its state ended: it's cancelled.
+    fn end(&mut self, _: String) {
+        self.cancel();
+    }
+}
+
+/// The work going now stops at once if it's been cancelled.
+fn stop_if_cancelled() {
+    let gone = CURRENT.with(|c| c.borrow().as_ref().is_some_and(|w| w.borrow().state == "Cancelled"));
+    if gone {
+        std::panic::resume_unwind(Box::new(Cancelled));
+    }
+}
+
+/// Waiting work that was cancelled leaves the queue, and unwinds.
+fn cancel_pending() {
+    loop {
+        let Some(id) = PENDING.with(|p| p.borrow_mut().pop()) else { return };
+        let found = RUNS.with(|r| {
+            let mut r = r.borrow_mut();
+            let all = std::mem::take(&mut r.sleeping).into_vec();
+            let (mut hit, rest): (Vec<Sleeper>, Vec<Sleeper>) = all.into_iter().partition(|s| s.work.borrow().id == id);
+            r.sleeping = rest.into();
+            hit.pop()
+        });
+        if let Some(s) = found {
+            wake(s);
+        }
+    }
+}
+
+/// cancel gate;
+pub fn cancel(w: &WorkRef) {
+    if let Some(w) = w {
+        w.borrow_mut().cancel();
+    }
+    cancel_pending();
+    stop_if_cancelled();
+}
+
+/// A thing's state changed, or a node closed, and that may have cancelled work.
+fn cancelled_some() {
+    cancel_pending();
+    stop_if_cancelled();
 }
 
 thread_local! {
@@ -1633,7 +1787,7 @@ pub fn runs_begin() {
 
 /// The program's own code is done: it waits for every run.
 pub fn runs_finish() {
-    run_until(None);
+    run_until(None, Root::Finish);
 }
 
 /// How many runs are waiting.
@@ -1641,19 +1795,63 @@ pub fn runs_waiting() -> usize {
     RUNS.with(|r| r.borrow().sleeping.len())
 }
 
-/// start openGate();: runs the call as a run of its own, straight away until it waits or ends.
+/// A run of its own, straight away until it waits or ends: a window's callback, a tween's done
+/// block.
 pub fn start(f: Box<dyn FnOnce()>) {
+    begin(work("a run"), f);
+}
+
+/// start openGate(); and start gate = openGate();: runs the call as work w, straight away until
+/// it waits or ends, and gives back w. In an engine, it's just called.
+pub fn begin(w: WorkRef, f: Box<dyn FnOnce()>) -> WorkRef {
+    let Some(wr) = w.clone() else { return w };
     if !RUNS.with(|r| r.borrow().on) {
-        f();
-        return;
+        let outer = CURRENT.with(|c| c.replace(Some(wr.clone())));
+        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+        CURRENT.with(|c| *c.borrow_mut() = outer);
+        if let Err(p) = r {
+            if !p.is::<Cancelled>() {
+                std::panic::resume_unwind(p);
+            }
+        }
+        let mut b = wr.borrow_mut();
+        if b.state != "Cancelled" {
+            b.state = "Done";
+        }
+    } else {
+        let outer = (DEPTH.with(|c| c.get()), LINE.with(|c| c.get()), LIMIT.with(|c| c.get()));
+        if runs::OWN_STACKS {
+            DEPTH.with(|c| c.set(0));
+            LIMIT.with(|c| c.set(runs::DEPTH_LIMIT));
+        }
+        let before = CURRENT.with(|c| c.replace(Some(wr.clone())));
+        RUNS.with(|r| {
+            let mut r = r.borrow_mut();
+            r.carried = r.streak;
+            r.streak = 0;
+        });
+        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| runs::spawn(f)));
+        CURRENT.with(|c| *c.borrow_mut() = before);
+        ran(r, outer, wr);
     }
-    let outer = (DEPTH.with(|c| c.get()), LINE.with(|c| c.get()), LIMIT.with(|c| c.get()));
-    if runs::OWN_STACKS {
-        DEPTH.with(|c| c.set(0));
-        LIMIT.with(|c| c.set(runs::DEPTH_LIMIT));
+    // If what it did cancelled the run that started it, that stops here.
+    stop_if_cancelled();
+    w
+}
+
+/// A run on a thing (an event's handler): it belongs to the thing, so it ends if the thing does.
+pub fn start_on<O: 'static>(o: &Rc<RefCell<O>>, label: &'static str, f: Box<dyn FnOnce()>) {
+    let w = work(label);
+    let w = if runs::OWN_STACKS { own(o, "", w) } else { w };
+    begin(w, f);
+}
+
+/// start other:patrol();: the work belongs to `other` too, so it ends if other does.
+pub fn own_until<O: 'static>(o: &Option<Rc<RefCell<O>>>, w: WorkRef) -> WorkRef {
+    match o {
+        Some(o) if runs::OWN_STACKS => own(o, "", w),
+        _ => w,
     }
-    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| runs::spawn(f)));
-    ran(r, outer);
 }
 
 /// A window's callback: a run of its own. Gives back the message if it failed.
@@ -1664,24 +1862,45 @@ pub fn run_action(f: Box<dyn FnOnce()>) -> Result<(), String> {
     }
 }
 
-/// After a run went: one that waits is kept until it's due, and one that failed stops the
-/// program (keeping the line it failed at).
-fn ran(r: std::thread::Result<Option<(runs::Run, f64)>>, outer: (u32, u64, u32)) {
+/// After a run went: one that waits is kept until it's due, one that was cancelled is gone, and
+/// one that failed stops the program (keeping the line it failed at).
+fn ran(r: std::thread::Result<Option<(runs::Run, f64)>>, outer: (u32, u64, u32), w: Rc<RefCell<Work>>) {
     match r {
-        Err(p) => {
+        Err(p) if !p.is::<Cancelled>() => {
             RUNS.with(|x| x.borrow_mut().fatal = true);
             LIMIT.with(|c| c.set(outer.2));
             std::panic::resume_unwind(p);
         }
-        Ok(waiting) => {
-            if let Some((run, due)) = waiting {
-                let (depth, line) = (DEPTH.with(|c| c.get()), LINE.with(|c| c.get()));
-                RUNS.with(|x| {
-                    let mut x = x.borrow_mut();
-                    x.seq += 1;
-                    let seq = x.seq;
-                    x.sleeping.push(Sleeper { due, seq, run, depth, line });
-                });
+        r => {
+            match r {
+                Ok(Some((run, due))) => {
+                    let (depth, line) = (DEPTH.with(|c| c.get()), LINE.with(|c| c.get()));
+                    {
+                        let mut b = w.borrow_mut();
+                        b.state = "Waiting";
+                        b.waiting = true;
+                    }
+                    RUNS.with(|x| {
+                        let mut x = x.borrow_mut();
+                        x.seq += 1;
+                        let seq = x.seq;
+                        x.sleeping.push(Sleeper {
+                            due,
+                            seq,
+                            run,
+                            work: w,
+                            depth,
+                            line,
+                        });
+                    });
+                }
+                Ok(None) => {
+                    let mut b = w.borrow_mut();
+                    if b.state != "Cancelled" {
+                        b.state = "Done";
+                    }
+                }
+                Err(_) => {}
             }
             DEPTH.with(|c| c.set(outer.0));
             LINE.with(|c| c.set(outer.1));
@@ -1690,15 +1909,91 @@ fn ran(r: std::thread::Result<Option<(runs::Run, f64)>>, outer: (u32, u64, u32))
     }
 }
 
-/// A run that's due goes on, until it waits again or ends.
+/// A run that's due goes on, until it waits again or ends. A cancelled one goes on only to stop.
 fn wake(s: Sleeper) {
     let outer = (DEPTH.with(|c| c.get()), LINE.with(|c| c.get()), LIMIT.with(|c| c.get()));
     DEPTH.with(|c| c.set(s.depth));
     LINE.with(|c| c.set(s.line));
     LIMIT.with(|c| c.set(runs::DEPTH_LIMIT));
+    let w = s.work;
+    {
+        let mut b = w.borrow_mut();
+        b.waiting = false;
+        if b.state != "Cancelled" {
+            b.state = "Going";
+        }
+    }
+    let before = CURRENT.with(|c| c.replace(Some(w.clone())));
+    RUNS.with(|r| {
+        let mut r = r.borrow_mut();
+        r.carried = r.streak;
+        r.streak = 0;
+    });
     let run = s.run;
     let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| runs::resume(run)));
-    ran(r, outer);
+    CURRENT.with(|c| *c.borrow_mut() = before);
+    ran(r, outer, w);
+}
+
+/// The circle check, from a run whose stuck look (at `line`) just failed: stops the program when
+/// nothing can ever change. A run in a wait { } whose questions call nothing (so only code
+/// running could change them) is stuck there; when every run waiting is stuck, there are no
+/// tweens and no window, and each has looked again since anything last ran, nothing can.
+fn stuck_check(line: u32, in_run: bool) {
+    let busy = TWEENS.with(|t| {
+        let t = t.borrow();
+        t.viewing > 0 || t.live > 0
+    });
+    if busy {
+        return;
+    }
+    let found = RUNS.with(|r| {
+        let r = r.borrow();
+        // How the program's own code waits: if it's the one looking, at line.
+        let root = if in_run { r.root } else { Root::Stuck(line) };
+        if matches!(root, Root::Running | Root::Other) {
+            return None;
+        }
+        let n = r.sleeping.len() as u32 + u32::from(in_run) + u32::from(matches!(root, Root::Stuck(_)));
+        if r.streak < n {
+            return None;
+        }
+        let mut ws: Vec<(u64, &'static str, u32)> = Vec::new();
+        for s in r.sleeping.iter() {
+            let b = s.work.borrow();
+            ws.push((b.id, b.label, b.stuck?));
+        }
+        if in_run {
+            CURRENT.with(|c| {
+                if let Some(w) = &*c.borrow() {
+                    let b = w.borrow();
+                    ws.push((b.id, b.label, line));
+                }
+            });
+        }
+        ws.sort_by_key(|w| w.0);
+        let mut parts = Vec::new();
+        if let Root::Stuck(l) = root {
+            parts.push(format!("the program's own code waits at line {l}"));
+        }
+        parts.extend(ws.iter().map(|(_, label, l)| format!("{label} waits at line {l}")));
+        Some(parts)
+    });
+    let Some(parts) = found else { return };
+    let msg = match parts.len() {
+        1 => format!("{} for something nothing else can change, so it can never move.", parts[0]),
+        2 => format!(
+            "{}, and {}, each for something only the other could change, so neither can ever move.",
+            parts[0], parts[1]
+        ),
+        n => format!(
+            "{} and {}, each for something only the others could change, so none of them can ever move.",
+            parts[..n - 1].join(", "),
+            parts[n - 1]
+        ),
+    };
+    RUNS.with(|r| r.borrow_mut().fatal = true);
+    fail(msg);
 }
 
 /// Sleeps until `secs` after `base` in real time (not in lust test).
@@ -1716,9 +2011,22 @@ fn sleep_until(base: std::time::Instant, secs: f64) {
 /// The program's own code waits until `root` (when it's due, and its place in the queue), or,
 /// with None, until every run is done. The clock moves on to each run's time in turn, and
 /// tweens step on the way, a 1/60 s step at a time (a step due with a run goes first).
-fn run_until(root: Option<(f64, u64)>) {
+fn run_until(root: Option<(f64, u64)>, how: Root) {
     let base = std::time::Instant::now();
     let from = TWEENS.with(|t| t.borrow().clock_now);
+    let outer = RUNS.with(|r| std::mem::replace(&mut r.borrow_mut().root, how));
+    // Whatever happens, the program's own code is running again afterwards.
+    struct Back(Root);
+    impl Drop for Back {
+        fn drop(&mut self) {
+            let _ = RUNS.try_with(|r| {
+                if let Ok(mut r) = r.try_borrow_mut() {
+                    r.root = self.0;
+                }
+            });
+        }
+    }
+    let _back = Back(outer);
     loop {
         let top = RUNS.with(|r| r.borrow().sleeping.peek().map(|s| (s.due, s.seq)));
         let (target, mine) = match (root, top) {
@@ -1747,6 +2055,7 @@ fn run_until(root: Option<(f64, u64)>) {
                     t.clock_now = t.clock_now.max(at);
                 });
                 tween_step(1.0 / 60.0);
+                RUNS.with(|r| r.borrow_mut().streak = 0);
             }
             None => {
                 sleep_until(base, target - from);
@@ -1755,6 +2064,11 @@ fn run_until(root: Option<(f64, u64)>) {
                     t.clock_now = t.clock_now.max(target);
                 });
                 if mine {
+                    RUNS.with(|r| {
+                        let mut r = r.borrow_mut();
+                        r.carried = r.streak;
+                        r.streak = 0;
+                    });
                     return;
                 }
                 let Some(s) = RUNS.with(|r| r.borrow_mut().sleeping.pop()) else { return };
@@ -1888,18 +2202,10 @@ pub fn await_slow(s: Slow) -> SlowResult {
     }
     // Events sent before it are heard as it starts, as for a wait.
     settle();
+    stop_if_cancelled();
     let mut at = TWEENS.with(|t| t.borrow().clock_now);
     loop {
-        if in_run {
-            runs::pause(at);
-        } else {
-            let seq = RUNS.with(|r| {
-                let mut r = r.borrow_mut();
-                r.seq += 1;
-                r.seq
-            });
-            run_until(Some((at, seq)));
-        }
+        pause(at, Root::Other);
         if let Some(r) = s.look() {
             return r;
         }

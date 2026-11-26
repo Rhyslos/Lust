@@ -1548,9 +1548,28 @@ impl<'a> W<'a> {
                 self.line(ln, "end");
             }
             // start openGate();: the call runs as a run of its own, straight away until it waits.
-            Stmt::Start { call, .. } => {
+            // start gate = openGate();: the same, and gate names the work. Work started in a
+            // method belongs to what's made there (the object's state option, or its node), and to
+            // the thing whose method it runs, so it's cancelled when either ends.
+            Stmt::Start { name, call, .. } => {
                 let c = self.expr(call);
-                self.line(ln, &format!("_L.start(function() local _ = {c} end)"));
+                let label = match name {
+                    Some((n, _)) => n.clone(),
+                    None => crate::check::start_label(call),
+                };
+                let mut w = self.owned(format!("_L.work({})", lua_string(&label)));
+                if let Some(on) = self.start_subject(call) {
+                    w = format!("_L.own({on}, {w}, true)");
+                }
+                let code = format!("_L.start({w}, function() local _ = {c} end)");
+                match name {
+                    Some((n, _)) => self.line(ln, &format!("local {} = {code}", lname(n))),
+                    None => self.line(ln, &code),
+                }
+            }
+            Stmt::Cancel { work, .. } => {
+                let w = self.expr(work);
+                self.line(ln, &format!("_L.cancel({w})"));
             }
             // wait { is a? is b? }: _L.wait_for looks at the questions until they're all true;
             // with or after, it gives back false when time ran out first, and the block runs.
@@ -1586,7 +1605,12 @@ impl<'a> W<'a> {
                             seen = Some((m, arms, opts));
                         }
                         let l = lim.clone().unwrap_or_else(|| "nil".into());
-                        format!("_L.wait_for(function() {take}return {} end, {l})", qs.join(" and "))
+                        let sure = if crate::check::only_code_changes(questions, check.as_deref(), self.info) {
+                            format!(", {ln}")
+                        } else {
+                            String::new()
+                        };
+                        format!("_L.wait_for(function() {take}return {} end, {l}{sure})", qs.join(" and "))
                     }
                 };
                 if let Some((m, _, _)) = &seen {
@@ -1924,6 +1948,7 @@ impl<'a> W<'a> {
                     _ => lname(n),
                 }
             }
+            ExprKind::Field(t, _, _) if self.info.ty(t) == Ty::Work => format!("({}).state", self.expr(t)),
             ExprKind::Field(t, f, _) => {
                 if let Some((_, path)) = self.info.options.get(&e.id) {
                     return lua_string(path);
@@ -2264,6 +2289,26 @@ impl<'a> W<'a> {
                 )
             }
             _ => made,
+        }
+    }
+
+    /// The thing whose method a start runs, when it's one that might end: `this` for its own
+    /// method, or a variable or field holding a thing of a class (not an object, which never ends).
+    fn start_subject(&mut self, call: &Expr) -> Option<String> {
+        match &call.kind {
+            // Something with a state, or a node, owns it already, until it ends.
+            ExprKind::Call(..) if self.info.calls.get(&call.id) == Some(&CallRes::Own) => {
+                let c = self.class?;
+                let ci = &self.info.classes[c];
+                (!ci.is_object && !ci.is_node && !self.info.stateful(c)).then(|| "self".to_string())
+            }
+            ExprKind::Method(t, ..) if matches!(&t.kind, ExprKind::Name(n) if n != "this") && matches!(self.info.ty(t), Ty::Class(_)) => {
+                if self.info.names.get(&t.id) == Some(&NameRes::Object) {
+                    return None;
+                }
+                Some(self.expr(t))
+            }
+            _ => None,
         }
     }
 

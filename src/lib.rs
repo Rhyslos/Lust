@@ -719,7 +719,7 @@ mod no_unsafe {
         let started = program("start later();\n");
         assert!(started.contains("#![deny(unsafe_code)]"));
         assert!(started.contains("#[allow(unsafe_code)]\npub mod runs {"));
-        assert!(started.contains("rt::start(Box::new(move ||"));
+        assert!(started.contains("rt::begin(w, Box::new(move ||"));
         // Waiting only in the program's own code: no stacks needed.
         let plain = program("later();\n");
         assert!(plain.contains("#![forbid(unsafe_code)]"));

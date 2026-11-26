@@ -1,0 +1,152 @@
+-- start name = call; names started work, cancel stops it, and name.state says how it's going.
+
+method openGate() {
+    print("creak");
+    wait 1;
+    print("gate open");
+}
+
+method ticker(string who) {
+    loop (int i = 1; i <= 3; i += 1) {
+        wait 0.5;
+        print("{who} tick {i}");
+    }
+}
+
+-- Cancelled mid-wait: its wait never finishes, and the lines after it don't run.
+start gate = openGate();
+print("gate is {gate.state}");
+wait 0.25;
+cancel gate;
+print("gate is {gate.state}");
+wait 2;
+print("no gate open above");
+
+-- Cancelling finished work, or cancelling twice, does nothing.
+method quick() {
+    print("quick");
+}
+start q = quick();
+print("q is {q.state}");
+cancel q;
+print("q is still {q.state}");
+cancel gate;
+print("gate is still {gate.state}");
+
+-- Run's options over a run's life, seen with wait { check … }.
+start slow = ticker("slow");
+print("slow is {slow.state}");
+wait {
+    check slow.state {
+        when Done {
+            print("slow is done");
+        }
+        when Cancelled {
+            print("slow was cancelled");
+        }
+    }
+}
+wait { is slow.state == Run.Done? }
+print("done, as asked");
+
+-- Work a cancelled run started carries on, unless it has a name and is cancelled too.
+method parent() {
+    start ticker("child");
+    wait 0.75;
+    print("parent never gets here");
+}
+start p = parent();
+wait 0.6;
+cancel p;
+print("p is {p.state}");
+wait 2;
+
+-- A cancelled run's try doesn't catch the cancel, and nothing in it runs.
+method careful() {
+    try {
+        wait 1;
+        print("never");
+    } error (string m) {
+        print("never caught: " + m);
+    }
+    print("never after the try");
+}
+start c = careful();
+wait 0.1;
+cancel c;
+wait 2;
+print("c is {c.state}");
+
+-- Cancelling itself (through a hook that holds its name) stops the run at once.
+object Stopper {
+    has {
+        hook() halt = nothing;
+    }
+}
+method selfish() {
+    print("selfish starts");
+    wait 0.1;
+    Stopper:halt();
+    print("never after cancelling myself");
+}
+start lone = selfish();
+Stopper.halt = new hook {
+    cancel lone;
+};
+wait 1;
+print("lone is {lone.state}");
+
+-- Cancelled by work it started: it stops as soon as it would go on.
+method child() {
+    Stopper:halt();
+    print("child goes on");
+}
+method starter() {
+    wait 0.1;
+    start child();
+    print("starter never goes on");
+}
+start st = starter();
+Stopper.halt = new hook {
+    cancel st;
+};
+wait 0.5;
+print("st is {st.state}");
+
+-- Cancelled by an event's handler, heard as its wait starts: the wait never begins.
+event Poke();
+object Poker {
+    on {
+        Poke() {
+            Stopper:halt();
+            print("poked");
+        }
+    }
+}
+method sender() {
+    wait 0.1;
+    send Poke();
+    wait 0.1;
+    print("sender never goes on");
+}
+start sn = sender();
+Stopper.halt = new hook {
+    cancel sn;
+};
+wait 0.5;
+print("sn is {sn.state}");
+
+-- Two cancels in a row, and names in a loop each naming their own work.
+loop (int i = 1; i <= 2; i += 1) {
+    start t = ticker("loop {i}");
+    wait 0.6;
+    cancel t;
+}
+wait 2;
+
+-- cancel is a word only before a name, so it can still be a variable.
+int cancel = 1;
+cancel += 1;
+print("cancel is still a name: {cancel}");
+print("end");
+end
