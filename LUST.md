@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (alpha 85):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options, set with `=`), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error` (with `Problem`, the kinds of failure, as a built-in state), `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too), with built-in states for their fixed choices (`Day`, `Request` and `Answer`). Waiting pauses only the run that waits (`wait`, `wait { }` until questions are true, `or after` time limits, and `start` to run a call alongside). Events in any program (`event`, `on { }` and `send`), sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, tables and long lists, right-click menus, rows dragged to new places, dropped files, the mouse on a canvas, scrolling, pictures (SVG too), timers, keyboard shortcuts, fonts of your own, date and colour pickers, second windows, full screen, toasts, notifications and a tray icon, all drawn by Lust itself, sharp at any screen scaling, with input methods for typing any language and a tree for screen readers. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (alpha 86):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options, set with `=`), classes, objects, `like`, methods, hooks with `new hook`, every kind of `loop`, `try`/`error` (with `Problem`, the kinds of failure, as a built-in state), `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too), with built-in states for their fixed choices (`Day`, `Request` and `Answer`). Waiting pauses only the run that waits (`wait`, `wait { }` until questions are true, `or after` time limits, and `start` to run a call alongside), and so do asking a website and the computer's own file boxes. Events in any program (`event`, `on { }` and `send`), sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, tables and long lists, right-click menus, rows dragged to new places, dropped files, the mouse on a canvas, scrolling, pictures (SVG too), timers, keyboard shortcuts, fonts of your own, date and colour pickers, second windows, full screen, toasts, notifications and a tray icon, all drawn by Lust itself, sharp at any screen scaling, with input methods for typing any language and a tree for screen readers. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -680,6 +680,29 @@ print("Gate open");
 - **Lust's own clock.** Runs wait on the same clock as tweens and timers. In a view's tests, `wait 2.5` in the test moves every run's clock along (section 17); `lust test` runs waits without taking the real time, so tests stay quick and give the same results every time.
 - **In an engine** (a library or components), runs aren't there yet: see below.
 
+### Slow built-ins pause only their run
+
+Some built-ins take a while: asking a website (`Web:get`, `Web:post`) and the computer's own file boxes (`Files:chooseOpen`, `chooseSave`, `chooseFolder`). They're written as ordinary calls, with no `wait` in front, and while one is out only the run that called it pauses, as if it were waiting:
+
+```
+method showWeather() {
+    string page = Web:get("https://api.example.com/weather?city=Oslo");   -- only this run pauses
+    print(page);
+}
+
+start showWeather();
+print("asking…");                -- runs straight away, while the request is out
+```
+
+- **While it's out,** the window draws and answers clicks, other runs go on, and tweens and timers move. The work happens on a thread of its own, and the run goes on once the answer has come.
+- **It pauses at least as `wait 0;` does,** so the other runs due now go first, even when the answer is quick. After that, Lust looks for the answer each time the clock moves a 1/60 s step (each frame in a window), as for `wait { }`, and the run goes on there and then.
+- **What comes back is the same** as when it held everything up: the same text, and on a failure the same `Problem` (`NoAnswer`, `NotFound`, `NotAllowed`, `BadText`), caught by a `try` in that run.
+- **A method that calls one waits for it,** as for any wait, so the code that calls it waits too, and can be `start`ed to go alongside instead.
+- **In the program's own code** it pauses that code, so runs started earlier go on while the request is out.
+- **Where a run can't pause, it holds everything up,** as it always did: in the code that draws a view (outside any callback), in a route's method answering a request (`Web:request`, `Web:serve`), and in an engine (below).
+- **In tests** (`lust test`), the answer takes no time on Lust's clock: the run pauses for the runs due now, then waits for the answer before the clock moves on. So a test that asks a website prints the same every time, however long the answer takes. In a view's tests, a file box's answer (`choose` in the test) is seen once the test's clock moves: `click Open…` then `wait 0`.
+- **The rest stay as they are:** reading and writing files, databases, `ask(…)` and `Web:serve` hold everything up while they work. Files and databases are quick, and runs reading and writing the same file or table at once would see each other's half-done work; `ask` types into the console, which other runs would be printing over; and a server that pauses only its run needs a way to stop it (`cancel`, WAITING.md).
+
 ### Waiting for things to be true: wait { }
 
 `wait { … }` waits until things are true. It holds questions, each `is …?` on its own line, and every one of them has to be true. Lust waits for things to change, not for code to finish: a run that loads something sets a field or a state when it's done, and the code that needs it waits for that.
@@ -723,7 +746,7 @@ wait {
 
 ### In an engine
 
-In an engine (a library or components), runs aren't there yet: `start` just calls the method, and `wait seconds;` pauses everything while tweens move, as before. Nothing else runs while code waits there, so a `wait { }` goes straight on when its questions are already true, and otherwise stops with a message saying it can't wait in an engine yet. `or after` on `wait seconds;` works as it does elsewhere.
+In an engine (a library or components), runs aren't there yet: `start` just calls the method, and `wait seconds;` pauses everything while tweens move, as before. Asking a website or opening a file box holds the call up until the answer comes, as before. Nothing else runs while code waits there, so a `wait { }` goes straight on when its questions are already true, and otherwise stops with a message saying it can't wait in an engine yet. `or after` on `wait seconds;` works as it does elsewhere.
 
 `start gate = openGate();` (a name, to `cancel` it) and `check` inside `wait { }` are designed in [WAITING.md](WAITING.md) and come next.
 
@@ -1009,7 +1032,7 @@ end
 | `open menu File`, `open dropdown 1` | clicks a menu or the first dropdown, opening its list |
 | `click Weapons`, `click Stats` | opens or shuts a branch, or shows a tab, by its name |
 | `press 184 200`, `move 260 200`, `release 260 200` | drags the line between a split's panels, like any drag |
-| `choose cat.png`, `choose cancel` | the answer the next `Files:chooseOpen`, `chooseSave` or `chooseFolder` box gives |
+| `choose cat.png`, `choose cancel` | the answer the next `Files:chooseOpen`, `chooseSave` or `chooseFolder` box gives (the code after the box goes on once the clock moves: `wait 0`) |
 | `hover Delete` | puts the mouse on the button showing that text, and shows its tip straight away |
 | `focus input 1` | gives the first input focus (also `textarea 1`, `checkbox 2`, `switch 1`, `radio 1`, `number 1`, `slider 1`, `button 3`, `table 1`, `list 1`) |
 | `type Hello` | types into the input that has focus |
@@ -2045,6 +2068,7 @@ string reply = Web:post("https://example.com/scores", Json:write(score));
 ```
 
 - Both give back the answer's text. Turn JSON into Lust values with `Json:read`.
+- **Only the run that asks waits** while the request is out: the window, other runs, tweens and timers go on (section 11, Slow built-ins pause only their run). `start` a method that asks to keep going straight away.
 - If the site can't be reached, or answers with an error (400 and up), the program stops with what happened, like `https://example.com/x answered 404: …`. Use `try` to carry on: its `Problem` is `NotFound` for 404, `NotAllowed` for 401 and 403, and `NoAnswer` for the rest (section 15).
 - A program that asks websites is built against Lust's libraries, like ones with databases. In LustScript, it needs `lust run`.
 
@@ -2215,7 +2239,7 @@ Player back = Json:read(text);
 - A class's fields that are missing from the JSON keep their starting values. Anything extra is left out.
 - If the JSON doesn't fit, the error says where: `the JSON at bag[0] is missing item.`
 
-The `choose` boxes are the ones the computer itself has (Windows', macOS', or the desktop's on Linux), and the program waits while one is open. In a view's tests no box opens: `choose pictures/cat.png` in the test's input gives the answer the next box gives, and `choose cancel` cancels it.
+The `choose` boxes are the ones the computer itself has (Windows', macOS', or the desktop's on Linux). While one is open only the run that opened it waits, so the window keeps drawing and its other buttons still work (section 11, Slow built-ins pause only their run); on macOS, where the boxes open only on the program's main thread, the window waits too. In a view's tests no box opens: `choose pictures/cat.png` in the test's input gives the answer the next box gives, and `choose cancel` cancels it. The code after the box goes on once the test's clock moves (`wait 0`).
 
 In LustScript, `Files:list`, `Files:makeFolder`, the `choose` boxes and the precise clock need `lust run`. Inside other programs, like Garry's Mod, they say they aren't available.
 

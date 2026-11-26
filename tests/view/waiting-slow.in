@@ -1,0 +1,11 @@
+choose pictures/cat.png
+click Fetch
+click Quick
+dump
+wait 0.1
+dump
+click Open
+click Quick
+dump
+wait 0.1
+dump

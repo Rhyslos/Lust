@@ -1,6 +1,6 @@
 # Waiting: the design
 
-> **Designed, and being built: steps 1 and 2 are built (alpha 85).** This records what the project lead chose on 2026-11-19 (the direction) and 2026-11-26 (the details). Runs, `wait seconds;` pausing only its run, `start call;`, `wait { }` with questions and `or after` are built, and their rules are in [LUST.md](LUST.md) (section 11, Waiting). Once a part is built, it moves into LUST.md and is removed from this file.
+> **Designed, and being built: steps 1 to 3 are built (alpha 86).** This records what the project lead chose on 2026-11-19 (the direction) and 2026-11-26 (the details). Runs, `wait seconds;` pausing only its run, `start call;`, `wait { }` with questions, `or after`, and slow built-ins pausing only their run are built, and their rules are in [LUST.md](LUST.md) (section 11, Waiting). Once a part is built, it moves into LUST.md and is removed from this file.
 
 Waiting is Lust's answer to `async` and `await`. Any method can wait, and only the piece of work that's waiting pauses, never the window, the game or the rest of the program. No method is marked as one that waits, so there are no labels to spread through the code, which is how Lua's coroutines and game engines work.
 
@@ -74,10 +74,10 @@ wait {                           -- until the boss is in one of these, then that
 
 ### What pauses
 
-Runs, `wait` pausing only its run, and a call waiting for what it calls are built: see LUST.md, section 11. Still to build:
+Runs, `wait` pausing only its run, a call waiting for what it calls, and slow built-ins (`Web:get`, the file boxes) pausing only their run are built: see LUST.md, section 11. Still to build:
 
 - **An engine tick's update** is a run too (step 6).
-- **Slow built-ins pause only their run.** `Web:get(…)`, and later file and database work that takes time, pauses its own run while the window carries on. It's written as an ordinary call: `string page = Web:get(url);`.
+- **`Web:serve` pausing only its run** (with step 5): a server started alongside, answering while timers and other runs go on, and stopped by `cancel`.
 
 ### Words
 
@@ -103,7 +103,7 @@ Runs, `wait` pausing only its run, and a call waiting for what it calls are buil
 
 1. ✅ **Runs, `start`, and `wait seconds;` pausing only its run,** in plain programs and windows, in both outputs. Lua uses coroutines; built programs get the same order of events. Built in alpha 84.
 2. ✅ **`wait { }` with questions,** and **`or after`**. Built in alpha 85.
-3. **Slow built-ins** (`Web:get` and the rest) pause only their run.
+3. ✅ **Slow built-ins** (`Web:get`, `Web:post` and the file boxes) pause only their run. Built in alpha 86.
 4. **`check` inside `wait { }`.**
 5. **`cancel`**, **states cancel runs**, and **the circle check**.
 6. **Engines:** runs inside components' updates and handlers.
@@ -118,6 +118,12 @@ Runs, `wait` pausing only its run, and a call waiting for what it calls are buil
 - **A time limit that can't be reached is a mistake only when both are written as numbers** (step 2): `wait 2 or after 3 { … }` has a block that can never run, which is worth saying; `wait secs or after limit { … }` is fine, as which is shorter is only known as it runs.
 - **In an engine, `wait { }` doesn't wait yet** (step 2). Nothing else runs there while code waits (step 1 kept the engine's old `wait`), so questions that are false couldn't come true: it goes straight on when they're true, and otherwise stops with a message, rather than freezing the engine. Step 6 makes it wait once a tick.
 - **Programs that never need it don't carry it.** A program that waits and has runs besides its own code (`start`, done blocks, events or a window) gets the stacks; any other program runs its runs straight through, as before, and stays `forbid(unsafe_code)`. Engines' libraries have no runs until step 6, so they're unchanged.
+
+- **Slow built-ins work on a thread of their own, and the run looks for the answer on the clock's 1/60 s steps** (decided 2026-11-26, step 3). The run pauses as `wait 0;` does, so the runs due now go first even when the answer is quick, then looks once a step, like `wait { }`, with the answer handed back over a channel. Waking the run the moment the answer came was the other way: a little sooner, but it needs the clock's loop to sleep on the channel and the timers at once, in both outputs and in windows, and the order runs wake in would follow the network. On the steps, both outputs and windows share the loop steps 1 and 2 built.
+- **In `lust test`, slow work takes no time on Lust's clock** (step 3): the first look waits for the answer, so the clock never moves while one is out. Tests then print the same every time, however slow the computer or the network; the run still pauses for the runs due now first, as it does for real.
+- **Which built-ins** (step 3): asking a website and the file boxes, where the wait is long and the window freezing is the problem. Not files and databases: they're quick, and runs working on the same file or table at once would see each other's half-done work (and SQLite's connection lives on the program's thread). Not `ask(…)`: it types into the console, which other runs would print over. Not `Web:serve` yet: a server that pauses only its run never ends, so it needs `cancel` (step 5) first. On macOS the file boxes open only on the main thread, so there they still hold everything up.
+- **Where a run can't pause, slow built-ins hold everything up, as before** (step 3): in an engine, in the code that draws a view, and in a route's method answering a request (Lua can't pause inside the `pcall` that catches its failure, so neither output does, and the answers stay the same).
+- **No mistakes are new** (step 3): a slow built-in is an ordinary call, so it's checked as before; a program that asks a website from a run gets runs' stacks as a program that waits does.
 
 ## Still open
 - A time limit on a slow built-in call itself: `string page = Web:get(url) or after 10 { … };`.

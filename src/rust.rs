@@ -100,11 +100,14 @@ fn uses(info: &Info, funcs: &[&str]) -> bool {
     info.libs.values().any(|l| funcs.contains(&l.func.as_str()))
 }
 
+/// The built-ins that take a while, and pause only the run that calls them, as a wait does.
+const SLOW: &[&str] = &["web_get", "web_post", "files_chooseOpen", "files_chooseSave", "files_chooseFolder"];
+
 /// Whether a run can pause while another goes on, so runs need stacks of their own: the program
-/// waits, and has runs besides its own code (start, tweens' done blocks, events or a window). An
-/// engine's library has none yet.
+/// waits (or asks a slow built-in), and has runs besides its own code (start, tweens' done blocks,
+/// events or a window). An engine's library has none yet.
 fn needs_runs(info: &Info, library: bool) -> bool {
-    !library && info.waits && (info.starts || info.lust_events || views(info))
+    !library && (info.waits || uses(info, SLOW)) && (info.starts || info.lust_events || views(info))
 }
 
 fn serves(info: &Info) -> bool {
@@ -3459,9 +3462,21 @@ impl<'a> W<'a> {
             "app_quit" if views(self.info) => "rt::ui::quit()".to_string(),
             "app_notify" if views(self.info) => format!("rt::ui::notify({}, {})", self.expr(&args[0]), self.expr(&args[1])),
             "app_quit" | "app_notify" => "()".to_string(),
-            "files_chooseOpen" => format!("rt::dlg::choose_open({}, rt::acopy(&{}))", self.expr(&args[0]), self.expr(&args[1])),
-            "files_chooseSave" => format!("rt::dlg::choose_save({}, {})", self.expr(&args[0]), self.expr(&args[1])),
-            "files_chooseFolder" => format!("rt::dlg::choose_folder({})", self.expr(&args[0])),
+            // The boxes open on a thread of their own while only this run waits (rt::slow_box).
+            "files_chooseOpen" => format!(
+                "{{ let (t, k) = ({}, rt::acopy(&{})); rt::slow_text(rt::slow_box(move || rt::dlg::choose_open(t, k))) }}",
+                self.expr(&args[0]),
+                self.expr(&args[1])
+            ),
+            "files_chooseSave" => format!(
+                "{{ let (t, n) = ({}, {}); rt::slow_text(rt::slow_box(move || rt::dlg::choose_save(t, n))) }}",
+                self.expr(&args[0]),
+                self.expr(&args[1])
+            ),
+            "files_chooseFolder" => format!(
+                "{{ let t = {}; rt::slow_text(rt::slow_box(move || rt::dlg::choose_folder(t))) }}",
+                self.expr(&args[0])
+            ),
             "web_get" | "web_post" | "text_matches" | "text_findAll" | "text_replaceAll" | "text_capture" => {
                 let (module, name) = match lib.func.as_str() {
                     "web_get" => ("net", "get"),

@@ -1,0 +1,30 @@
+window "Slow" 320x200
+  column 0,0 320x169
+    text "Log: asking; " 8,8 91x19
+    text "Clicks: 1" 8,31 58x19
+    button "Fetch" 8,54 69x33
+    button "Open" 8,91 67x33
+    button "Quick" 8,128 70x33
+fetch done after 1 clicks
+window "Slow" 320x200
+  column 0,0 320x169
+    text "Log: asking; NoAnswer; " 8,8 174x19
+    text "Clicks: 1" 8,31 58x19
+    button "Fetch" 8,54 69x33
+    button "Open" 8,91 67x33
+    button "Quick" 8,128 70x33
+window "Slow" 320x200
+  column 0,0 320x169
+    text "Log: asking; NoAnswer; choosing; " 8,8 247x19
+    text "Clicks: 2" 8,31 61x19
+    button "Fetch" 8,54 69x33
+    button "Open" 8,91 67x33
+    button "Quick" 8,128 70x33
+window "Slow" 320x200
+  column 0,0 320x188
+    text "Log: asking; NoAnswer; choosing; chose pictures/cat.png; " 8,8 290x38
+    text "Clicks: 2" 8,50 61x19
+    button "Fetch" 8,73 69x33
+    button "Open" 8,110 67x33
+    button "Quick" 8,147 70x33
+closed

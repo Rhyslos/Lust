@@ -43,14 +43,14 @@ Lust is written in Rust, and has one language with two outputs:
 | Rust, compiled to real programs | `.lst` | apps, tools and servers on Windows, macOS and Linux |
 | LustScript, turned into Lua | `.lsc` | scripting and modding inside other programs, like Garry's Mod, Aventail and Halberd |
 
-**What works today (alpha 85):** both outputs. Every file is checked before anything runs, with mistakes explained in plain words.
+**What works today (alpha 86):** both outputs. Every file is checked before anything runs, with mistakes explained in plain words.
 
 - `.lsc` files turn into plain Lua 5.1 that Garry's Mod (LuaJIT) and Luau can run.
 - `.lst` files turn into Rust, which builds into a real program (an `.exe` on Windows) that runs without Lust.
 - Programs can be split into many files that share with `pass`, `fetch` and `get`.
 - A standard library: text and array tools (sums, averages, picking and shuffling too), plus `Maths` (with smooth noise), `Random`, `Files`, `Time` and `Json`.
 - Tweens: `tween hp to 0 over 0.5 [ease OutCubic];` glides a number, vector, colour or rotation to a new value, with the standard easing curves.
-- Waiting: `wait 2;` pauses only the piece of work that waits, so windows never freeze, `start openGate();` runs a call alongside, and `wait { is door.state == Door.Open? } or after 5 { … }` waits until things are true, with a time limit (LUST.md, section 11).
+- Waiting: `wait 2;` pauses only the piece of work that waits, so windows never freeze, `start openGate();` runs a call alongside, and `wait { is door.state == Door.Open? } or after 5 { … }` waits until things are true, with a time limit. Asking a website (`Web:get`) and the computer's file boxes pause only their run too (LUST.md, section 11).
 - Saves, and databases on SQLite whose tables work like cMaps.
 - Servers: `route` blocks answered by methods, with `schema`s for the data coming in, and `Web:get`/`Web:post` for asking other sites.
 - Windows: an assembly with a `view` opens a window drawn entirely by Lust, with text, buttons, layout, styles, pieces of your own made from other assemblies, and inputs, checkboxes, switches, radio buttons, number boxes, sliders, date pickers with a calendar and colour pickers that change fields as you use them, icons, tables and long lists that stay quick with 100,000 rows, right-click menus, rows dragged to new places, files dropped on the window, drawing with the mouse on a canvas, scrolling, pictures (SVG too) and timers. Programs can open second windows, go full screen, show toasts and the computer's own notifications, and live in the tray on Windows. Windows stay sharp at any screen scaling, take typing through input methods (Chinese, Japanese, Korean and more), and describe themselves to screen readers like Narrator and NVDA.
