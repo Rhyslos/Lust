@@ -11,6 +11,7 @@ Waiting is Lust's answer to `async` and `await`. Any method can wait, and only t
 | Labels such as `async` | **None.** Any method can wait |
 | A method calls one that waits | **It waits for it too**, as with `await` |
 | Running something alongside | **`start`:** `start openGate();` runs it alongside, and the next line runs straight away |
+| Stopping it by hand | **`cancel`:** `start gate = openGate();` gives the work a name, and `cancel gate;` stops it wherever it's waiting |
 | Waiting for something to be true | **A `wait { }` block of questions:** `wait { is door.state == Door.Open? }`. Lust waits for states to change, not for code to finish |
 | Waiting for whichever comes first | **`check` inside `wait { }`:** it waits until the state is one of its `when`s, then runs that one |
 | A time limit | **`or after`:** `wait { … } or after 5 { … }`, where the block runs if time ran out |
@@ -33,6 +34,10 @@ print("Gate opening");
 
 openGate();                      -- waits here until the gate is open
 print("Gate open");
+
+start gate = openGate();         -- a name, so it can be cancelled
+…
+cancel gate;                     -- stops openGate() wherever it's waiting
 
 wait {                           -- until the door is open
     is door.state == Door.Open?
@@ -75,7 +80,8 @@ wait {                           -- until the boss is in one of these, then that
   - Lust looks again once a frame in a window, once a tick in an engine, and each time the clock moves in a plain program. If it's all true straight away, nothing waits.
   - Anything else in the block (a `print`, a call) is a mistake that says the block only holds questions and `check`s.
 - **`… or after seconds { … }`:** a time limit on either kind of wait. If time runs out, the block runs. Either way, the code carries on after it.
-- **`start call;`:** runs a method call alongside. It gives nothing back. What it does is seen through states, fields or events: a thing that loads sets its own state to `Load.Done`, and `wait { is map.state == Load.Done? }` waits for it.
+- **`start call;`:** runs a method call alongside. It gives nothing back. **`start name = call;`** also gives the work a name in that place, like a variable, for `cancel`.
+- **`cancel name;`:** stops that work wherever it is: a `wait` it's in never finishes, and the lines after it don't run. Work it `start`ed carries on, unless it was given a name and is cancelled too. Cancelling work that's already done does nothing. Code can ask `is gate.running?`. What it does is seen through states, fields or events: a thing that loads sets its own state to `Load.Done`, and `wait { is map.state == Load.Done? }` waits for it.
 
 ### Safety
 
@@ -97,11 +103,10 @@ wait {                           -- until the boss is in one of these, then that
 2. **`wait { }` with questions,** and **`or after`**.
 3. **Slow built-ins** (`Web:get` and the rest) pause only their run.
 4. **`check` inside `wait { }`.**
-5. **States cancel runs**, and **the circle check**.
+5. **`cancel`**, **states cancel runs**, and **the circle check**.
 6. **Engines:** runs inside components' updates and handlers.
 
 ## Still open
 
 - Built programs: how a run pauses in Rust (its own small stack, a state machine Lust writes, or threads). Fast, smooth and robust is the bar, and Lua's coroutines set the behaviour both outputs must match.
-- Whether `start` can be stopped by hand (`stop`), or only by its state ending.
 - A time limit on a slow built-in call itself: `string page = Web:get(url) or after 10 { … };`.
