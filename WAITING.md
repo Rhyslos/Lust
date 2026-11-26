@@ -87,7 +87,7 @@ wait {                           -- until the boss is in one of these, then that
 ### In each place
 
 - **A plain program:** its top-level code is one run. The program ends when that run and every run it started are done (or cancelled).
-- **A window:** each click, key, timer and done block is a run, and `wait until` is checked each frame.
+- **A window:** each click, key, timer and done block is a run, and a `wait { }` looks again each frame.
 - **An engine:** each component update and event handler is a run, and the engine moves waits along once a tick. How runs cross into the engine's own code is settled while building, and written into ENGINES.md.
 - **A view's tests:** `wait 2.5` in a test moves every run's clock along, as it does for tweens and timers today.
 
