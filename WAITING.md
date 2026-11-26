@@ -12,6 +12,7 @@ Waiting is Lust's answer to `async` and `await`. Any method can wait, and only t
 | A method calls one that waits | **It waits for it too**, as with `await` |
 | Running something alongside | **`start`:** `start openGate();` runs it alongside, and the next line runs straight away |
 | Stopping it by hand | **`cancel`:** `start gate = openGate();` gives the work a name, and `cancel gate;` stops it wherever it's waiting |
+| Knowing how it went | **Named work has a state,** `Run`: `Waiting`, `Going`, `Done` or `Cancelled`, waited for and checked like any other |
 | Waiting for something to be true | **A `wait { }` block of questions:** `wait { is door.state == Door.Open? }`. Lust waits for states to change, not for code to finish |
 | Waiting for whichever comes first | **`check` inside `wait { }`:** it waits until the state is one of its `when`s, then runs that one |
 | A time limit | **`or after`:** `wait { … } or after 5 { … }`, where the block runs if time ran out |
@@ -38,6 +39,13 @@ print("Gate open");
 start gate = openGate();         -- a name, so it can be cancelled
 …
 cancel gate;                     -- stops openGate() wherever it's waiting
+
+wait {                           -- named work has a state of its own
+    check gate.state {
+        when Done { print("Open!"); }
+        when Cancelled { print("Gave up."); }
+    }
+}
 
 wait {                           -- until the door is open
     is door.state == Door.Open?
@@ -81,7 +89,8 @@ wait {                           -- until the boss is in one of these, then that
   - Anything else in the block (a `print`, a call) is a mistake that says the block only holds questions and `check`s.
 - **`… or after seconds { … }`:** a time limit on either kind of wait. If time runs out, the block runs. Either way, the code carries on after it.
 - **`start call;`:** runs a method call alongside. It gives nothing back. **`start name = call;`** also gives the work a name in that place, like a variable, for `cancel`.
-- **`cancel name;`:** stops that work wherever it is: a `wait` it's in never finishes, and the lines after it don't run. Work it `start`ed carries on, unless it was given a name and is cancelled too. Cancelling work that's already done does nothing. Code can ask `is gate.running?`. What it does is seen through states, fields or events: a thing that loads sets its own state to `Load.Done`, and `wait { is map.state == Load.Done? }` waits for it.
+- **`cancel name;`:** stops that work wherever it is: a `wait` it's in never finishes, and the lines after it don't run. Work it `start`ed carries on, unless it was given a name and is cancelled too. Cancelling work that's already done does nothing.
+- **Named work has a state,** the built-in state `Run`: `Waiting` (paused in a `wait`), `Going` (running), `Done` or `Cancelled`. So it's waited for like any state: `wait { is gate.state == Run.Done? }`, or `check gate.state { when Done { … } when Cancelled { … } }`. It changes only by itself or through `cancel`, never by `gate.state = …;`. What it does is seen through states, fields or events: a thing that loads sets its own state to `Load.Done`, and `wait { is map.state == Load.Done? }` waits for it.
 
 ### Safety
 
