@@ -766,6 +766,72 @@ mod no_unsafe {
 }
 
 #[cfg(all(test, feature = "cli"))]
+mod slow_builtins {
+    //! Slow built-ins in built programs' runtime: the answer, or the right Problem, comes back
+    //! the same as before, through a run that pauses.
+    use crate::native_rt as rt;
+
+    #[test]
+    fn web_answers_and_problems_come_back() {
+        let at = crate::run::tests::site();
+        rt::runs_begin();
+        let started = std::time::Instant::now();
+        assert_eq!(crate::native_net::get(format!("{at}/hello")), "page /hello");
+        assert_eq!(crate::native_net::post(format!("{at}/slow"), "{}".into()), "page /slow");
+        assert!(started.elapsed() >= std::time::Duration::from_millis(150));
+        let p = rt::attempt_problem(|| {
+            crate::native_net::get(format!("{at}/missing"));
+        });
+        assert_eq!(p.map(|p| p.0), Some("NotFound"));
+        let p = rt::attempt_problem(|| {
+            crate::native_net::get(format!("{at}/secret"));
+        });
+        assert_eq!(p.map(|p| p.0), Some("NotAllowed"));
+        let p = rt::attempt_problem(|| {
+            crate::native_net::get("ftp://example.com".into());
+        });
+        assert_eq!(p.map(|p| p.0), Some("BadText"));
+    }
+
+    /// Work that's already done is seen at the first look, and slow work's answer at a later one.
+    #[test]
+    fn slow_work_is_seen_when_done() {
+        let done = rt::Slow::ready(Ok("now".into()));
+        assert_eq!(done.look(), Some(Ok("now".into())));
+        let later = rt::Slow::start(|| {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            Err(("NoAnswer", "late".into()))
+        });
+        assert_eq!(later.wait(), Err(("NoAnswer", "late".to_string())));
+        // A thread that stops without answering is a problem, not a hang.
+        let lost = rt::Slow::start(|| panic!("lost"));
+        assert_eq!(lost.wait().map_err(|e| e.0), Err("Other"));
+    }
+
+    /// A program that asks websites from runs gets runs' stacks even if it never writes wait, and
+    /// the file boxes open through the slow built-ins.
+    #[test]
+    fn slow_builtins_get_runs() {
+        let src = vec![(
+            "main.lst".to_string(),
+            "method grab() {\n    print(Web:get(\"http://127.0.0.1:1/\"));\n}\nstart grab();\nprint(Files:chooseOpen(\"Open\", [\"png\"]));\nend\n"
+                .to_string(),
+        )];
+        let c = crate::front_from("main.lst", &src, &crate::Engine::default()).ok().unwrap();
+        let rust = crate::rust::write(&c.prog, &c.info, &c.files, false);
+        assert!(rust.contains("#![deny(unsafe_code)]"));
+        assert!(rust.contains("rt::slow_text(rt::slow_box(move || rt::dlg::choose_open(t, k)))"));
+        // Without other runs, the program's own code just waits: no stacks.
+        let alone = vec![(
+            "main.lst".to_string(),
+            "print(Web:get(\"http://127.0.0.1:1/\"));\nend\n".to_string(),
+        )];
+        let c = crate::front_from("main.lst", &alone, &crate::Engine::default()).ok().unwrap();
+        assert!(crate::rust::write(&c.prog, &c.info, &c.files, false).contains("#![forbid(unsafe_code)]"));
+    }
+}
+
+#[cfg(all(test, feature = "cli"))]
 mod maths_helpers {
     //! The runtime's number helpers and random tools, tried straight from Rust.
     use crate::native_rt as rt;

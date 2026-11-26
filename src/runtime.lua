@@ -1689,6 +1689,49 @@ function L.wait_for(look, limit)
   end
 end
 
+-- ----- slow built-ins: work that takes a while, on a thread of its own -----
+-- Asking a website and the computer's own file boxes take a while. lust's host does the work on a
+-- thread of its own, and only the run that asked waits for it: it pauses as wait 0 does, then
+-- looks for the answer each time the clock moves a 1/60 s step. In lust test the first look waits
+-- for it, so the clock never moves while one is out. Where a run can't pause (an engine, the code
+-- that draws a view, a route's method answering a request), everything waits for it, as it always
+-- did. native_rt.rs does the same for built programs.
+-- How deep in answering a request the program is.
+local answering = 0
+-- Starts host[name .. "_start"](…) and gives back its text, or stops with its problem.
+local function slow(what, name, ...)
+  if not RUNHOST or not RUNHOST[name .. "_start"] then
+    if not RUNHOST or not RUNHOST[name] then error(what .. " needs lust run.", 3) end
+    local r, e, kind = RUNHOST[name](...)
+    if r == nil then error(problem(kind or "Other", e), 3) end
+    return r
+  end
+  local id = RUNHOST[name .. "_start"](...)
+  local r, e, kind
+  if not runs_on or answering > 0 or (not current and viewing > 0) then
+    r, e, kind = RUNHOST.slow_wait(id)
+  else
+    -- Events sent before it are heard as it starts, as for a wait.
+    L.settle()
+    local at = clock_now
+    while true do
+      if current then
+        coroutine.yield(at)
+      else
+        seq = seq + 1
+        run_until(at, seq)
+      end
+      local done
+      done, r, e, kind = RUNHOST.slow_look(id)
+      if done then break end
+      at = (floor((clock_now + 1e-9) * 60) + 1) / 60
+    end
+  end
+  if r == nil then error(problem(kind or "Other", e), 3) end
+  return r
+end
+L.slow = slow
+
 -- wait in an engine: pauses everything, while tweens move on.
 function L.wait_all(s)
   if not os or not os.clock then error("wait isn't available here. Use the host program's timers.", 3) end
@@ -2022,19 +2065,20 @@ function L.files_list(folder)
   for i, n in ipairs(names) do out[i] = n end
   return out
 end
+-- The file boxes are slow built-ins: only the run that opens one waits for it.
 function L.files_chooseOpen(title, types)
   if not host or not host.choose_open then needs("Files:chooseOpen") end
   local list = {}
   for i = 1, (types.n or #types) do list[i] = types[i] end
-  return host.choose_open(title, list)
+  return slow("Files:chooseOpen", "choose_open", title, list)
 end
 function L.files_chooseSave(title, name)
   if not host or not host.choose_save then needs("Files:chooseSave") end
-  return host.choose_save(title, name)
+  return slow("Files:chooseSave", "choose_save", title, name)
 end
 function L.files_chooseFolder(title)
   if not host or not host.choose_folder then needs("Files:chooseFolder") end
-  return host.choose_folder(title)
+  return slow("Files:chooseFolder", "choose_folder", title)
 end
 function L.files_makeFolder(folder)
   if not host then needs("Files:makeFolder") end
@@ -2059,8 +2103,15 @@ function L.text_matches(s, p) return hostcall(":matches", "pat_matches", s, p) e
 function L.text_findAll(s, p) return strings(hostcall(":findAll", "pat_find_all", s, p)) end
 function L.text_capture(s, p) return strings(hostcall(":capture", "pat_capture", s, p)) end
 function L.text_replaceAll(s, p, w) return hostcall(":replaceAll", "pat_replace_all", s, p, w) end
-function L.web_get(url) return hostcall("Web:get", "http", url) end
-function L.web_post(url, body) return hostcall("Web:post", "http", url, body) end
+-- Asking a website is a slow built-in: only the run that asks waits for the answer.
+function L.web_get(url)
+  if not host or not host.http then needs("Web:get") end
+  return slow("Web:get", "http", url)
+end
+function L.web_post(url, body)
+  if not host or not host.http then needs("Web:post") end
+  return slow("Web:post", "http", url, body)
+end
 
 -- Dates are text like "2026-10-21". Days are counted from 1 January 1970.
 local function days_from(y, m, d)
@@ -2604,7 +2655,10 @@ function L.web_handle(method, path, body)
       end
       if fits then
         if r.method == method then
+          -- A route's method can't pause: slow built-ins in it hold up the program.
+          answering = answering + 1
           local ok, res = pcall(r.f, p, body)
+          answering = answering - 1
           if ok then
             if res == nil then return 204, "" end
             return 200, res

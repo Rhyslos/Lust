@@ -34,6 +34,74 @@ fn host(lua: &Lua) -> mlua::Result<()> {
         "mkdir",
         lua.create_function(|_, p: String| Ok(rt::fs_mkdir(&p).err().map_or((None, None), |(k, m)| (Some(m), Some(k)))))?,
     )?;
+    // Slow built-ins: the work goes on a thread of its own, and runtime.lua's run looks for its
+    // answer by number (native_rt's slow built-ins, the same code as built programs use).
+    let slows: Rc<RefCell<(u64, std::collections::HashMap<u64, rt::Slow>)>> = Rc::default();
+    let keep = |slows: &Rc<RefCell<(u64, std::collections::HashMap<u64, rt::Slow>)>>, s: rt::Slow| {
+        let mut x = slows.borrow_mut();
+        x.0 += 1;
+        let id = x.0;
+        x.1.insert(id, s);
+        id
+    };
+    type Got = (Option<String>, Option<String>, Option<&'static str>);
+    fn got(r: rt::SlowResult) -> Got {
+        match r {
+            Ok(t) => (Some(t), None, None),
+            Err((k, m)) => (None, Some(m), Some(k)),
+        }
+    }
+    let x = slows.clone();
+    h.set(
+        "http_start",
+        lua.create_function(move |_, (url, body): (String, Option<String>)| {
+            Ok(keep(&x, rt::Slow::start(move || crate::native_net::fetch(&url, body.as_deref()))))
+        })?,
+    )?;
+    let x = slows.clone();
+    h.set(
+        "choose_open_start",
+        lua.create_function(move |_, (title, types): (String, Vec<String>)| {
+            Ok(keep(&x, rt::slow_box(move || crate::native_dlg::choose_open(title, types))))
+        })?,
+    )?;
+    let x = slows.clone();
+    h.set(
+        "choose_save_start",
+        lua.create_function(move |_, (title, name): (String, String)| {
+            Ok(keep(&x, rt::slow_box(move || crate::native_dlg::choose_save(title, name))))
+        })?,
+    )?;
+    let x = slows.clone();
+    h.set(
+        "choose_folder_start",
+        lua.create_function(move |_, title: String| Ok(keep(&x, rt::slow_box(move || crate::native_dlg::choose_folder(title)))))?,
+    )?;
+    // Whether the answer's come, and if so the text, or why there's none and its Problem.
+    let x = slows.clone();
+    h.set(
+        "slow_look",
+        lua.create_function(move |_, id: u64| {
+            let r = x.borrow().1.get(&id).and_then(|s| s.look());
+            Ok(match r {
+                Some(r) => {
+                    x.borrow_mut().1.remove(&id);
+                    let (t, m, k) = got(r);
+                    (true, t, m, k)
+                }
+                None => (false, None, None, None),
+            })
+        })?,
+    )?;
+    // Waits for the answer, holding up everything: where a run can't pause.
+    let x = slows;
+    h.set(
+        "slow_wait",
+        lua.create_function(move |_, id: u64| {
+            let s = x.borrow_mut().1.remove(&id);
+            Ok(got(s.map_or(Err(("Other", "the work was already done.".to_string())), |s| s.wait())))
+        })?,
+    )?;
     h.set(
         "choose_open",
         lua.create_function(|_, (title, types): (String, Vec<String>)| Ok(crate::native_dlg::choose_open(title, types)))?,
@@ -472,7 +540,7 @@ fn locate(raw: &str, lines: &[u32]) -> (Option<u32>, String) {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     /// A table and a list of `rows` rows, opened in test mode, scrolled to the middle and the end,
     /// sorted and picked from. Gives back how long each step took.
     fn timed(rows: usize, steps: &[&str]) -> Vec<(String, std::time::Duration)> {
@@ -560,5 +628,61 @@ mod tests {
                 panic!("{why}");
             }
         }
+    }
+
+    /// A local website for the tests: /slow answers after 150 ms, /missing is 404, /secret is
+    /// 401, and anything else answers with its own path. Gives back its address.
+    pub(crate) fn site() -> String {
+        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
+        let at = format!("http://{}", server.server_addr().to_ip().unwrap());
+        std::thread::spawn(move || {
+            for req in server.incoming_requests() {
+                std::thread::spawn(move || {
+                    let path = req.url().to_string();
+                    let status = match path.as_str() {
+                        "/missing" => 404,
+                        "/secret" => 401,
+                        _ => 200,
+                    };
+                    if path == "/slow" {
+                        std::thread::sleep(std::time::Duration::from_millis(150));
+                    }
+                    let _ = req.respond(tiny_http::Response::from_string(format!("page {path}")).with_status_code(status));
+                });
+            }
+        });
+        at
+    }
+
+    /// Web:get in lust run pauses only the run that asks: the program's own code goes on while
+    /// two runs wait for their answers, which come back as they were sent, and a 404 is NotFound.
+    #[test]
+    fn web_requests_pause_only_their_run() {
+        let at = site();
+        let dir = std::env::temp_dir().join(format!("lust-web-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let log = dir.join("log.txt");
+        let logged = log.to_string_lossy().replace('\\', "/");
+        let src = format!(
+            "method grab(string name, string address) {{\n    string page = Web:get(address);\n    Files:append(\"{logged}\", name + \" \" + page + \"\\n\");\n}}\n\
+             method missing() {{\n    try {{\n        string page = Web:get(\"{at}/missing\");\n    }} error (Problem p, string m) {{\n        Files:append(\"{logged}\", p.text() + \"\\n\");\n    }}\n}}\n\
+             Files:write(\"{logged}\", \"\");\n\
+             start grab(\"a\", \"{at}/slow\");\nstart grab(\"b\", \"{at}/quick\");\nstart missing();\n\
+             Files:append(\"{logged}\", \"top\\n\");\n\
+             string mine = Web:post(\"{at}/mine\", \"{{}}\");\nFiles:append(\"{logged}\", \"top \" + mine + \"\\n\");\nend\n"
+        );
+        let path = dir.join("main.lst");
+        std::fs::write(&path, src).unwrap();
+        let c = crate::cli::compile(&path, false).expect("the web test's program checks");
+        assert_eq!(super::run(&c.out, &c.files), std::process::ExitCode::SUCCESS);
+        let text = std::fs::read_to_string(&log).unwrap();
+        let lines: Vec<&str> = text.lines().collect();
+        let _ = std::fs::remove_dir_all(&dir);
+        // The top went on before any answer came, and the program waited for every run.
+        assert_eq!(lines.first(), Some(&"top"), "{text}");
+        for want in ["a page /slow", "b page /quick", "NotFound", "top page /mine"] {
+            assert!(lines.contains(&want), "{want} is missing from:\n{text}");
+        }
+        assert_eq!(lines.len(), 5, "{text}");
     }
 }

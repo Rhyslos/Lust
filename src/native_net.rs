@@ -1,5 +1,6 @@
 // Asking other websites, with ureq. It goes into programs that use Web:get or Web:post, as
-// `rt::net`, and lust uses the same code for LustScript, so both say the same things.
+// `rt::net`, and lust uses the same code for LustScript, so both say the same things. The asking
+// happens on a thread of its own, while only the run that asked waits (native_rt.rs, slow built-ins).
 
 fn agent() -> ureq::Agent {
     ureq::Agent::config_builder()
@@ -39,16 +40,12 @@ pub fn fetch(url: &str, body: Option<&str>) -> Result<String, Failed> {
     }
 }
 
+/// Web:get: only the run that asks waits for the answer.
 pub fn get(url: String) -> String {
-    match fetch(&url, None) {
-        Ok(t) => t,
-        Err(e) => failed(e),
-    }
+    slow_text(Slow::start(move || fetch(&url, None)))
 }
 
+/// Web:post: only the run that asks waits for the answer.
 pub fn post(url: String, body: String) -> String {
-    match fetch(&url, Some(&body)) {
-        Ok(t) => t,
-        Err(e) => failed(e),
-    }
+    slow_text(Slow::start(move || fetch(&url, Some(&body))))
 }

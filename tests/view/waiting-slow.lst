@@ -1,0 +1,39 @@
+-- Slow built-ins in a button pause only that button's code: while a website is asked or a file
+-- box is open, the window keeps answering and the other button still works. The test's clock
+-- (wait in the .in file) lets the paused code go on. The address fails straight away, so the
+-- test needs no network, and in tests a file box takes its answer from the .in file.
+assembly App {
+    has {
+        string log = "";
+        int clicks = 0;
+    }
+
+    view [title "Slow", width 320, height 200] {
+        column [gap 4, pad 8] {
+            text "Log: " + log;
+            text "Clicks: " + clicks.text();
+            button "Fetch" {
+                log = log + "asking; ";
+                try {
+                    string page = Web:get("http://127.0.0.1:1/");
+                    log = log + page;
+                } error (Problem p, string m) {
+                    log = log + p.text() + "; ";
+                }
+                print("fetch done after", clicks, "clicks");
+            }
+            button "Open" {
+                log = log + "choosing; ";
+                string file = Files:chooseOpen("Open a picture", ["png"]);
+                log = log + "chose " + file + "; ";
+            }
+            button "Quick" {
+                clicks += 1;
+            }
+        }
+    }
+}
+
+App:open();
+print("closed");
+end

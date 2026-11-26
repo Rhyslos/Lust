@@ -1,0 +1,50 @@
+-- Asking a website pauses only the run that asks: the rest of the program goes on, and the run
+-- carries on once the answer's come. These ask addresses that fail straight away, so the test
+-- needs no network: a refused connection, and text that isn't a web address.
+
+method askSite(string name, string address) {
+    print(name + " asks");
+    try {
+        string page = Web:get(address);
+        print(name + " got " + page);
+    } error (Problem p, string m) {
+        print(name + " failed:", p, m);
+    }
+    print(name + " goes on");
+}
+
+-- Two requests in two runs: each pauses, and the top goes on, printing on a timer.
+start askSite("one", "http://127.0.0.1:1/");
+start askSite("two", "ftp://example.com");
+print("the top goes on");
+loop (int i = 1; i <= 3; i += 1) {
+    print("tick " + i.text());
+    wait 0.1;
+}
+
+-- A request in the program's own code lets the runs due now go first.
+method twice(string n) {
+    print(n + " first");
+    wait 0;
+    print(n + " second");
+}
+
+start twice("p");
+try {
+    string s = Web:post("http://127.0.0.1:1/scores", "{}");
+} error (Problem p, string m) {
+    print("the top's post failed:", p, m);
+}
+print("the top is done");
+
+-- A failure no try catches stops the program, with its own message.
+method careless() {
+    string s = Web:get("http://127.0.0.1:1/x");
+    print("never", s);
+}
+
+start careless();
+print("started the careless one");
+wait 1;
+print("never printed");
+end

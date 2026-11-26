@@ -1,0 +1,15 @@
+one asks
+two asks
+the top goes on
+tick 1
+one failed: NoAnswer can't reach http://127.0.0.1:1/.
+one goes on
+two failed: BadText ftp://example.com isn't a web address. Addresses start with http:// or https://.
+two goes on
+tick 2
+tick 3
+p first
+p second
+the top's post failed: NoAnswer can't reach http://127.0.0.1:1/scores.
+the top is done
+started the careless one

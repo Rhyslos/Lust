@@ -183,3 +183,10 @@ An engine moving from alpha 48 to alpha 67 or later reads everything below.
 - **In an engine nothing waits yet** (step 6): a `wait { }` whose questions are already true goes straight on, and one whose questions aren't stops the call with a message (`wait { } can't wait in an engine yet …`, problem `Other`), as nothing else runs while it would wait. `wait seconds or after limit { … }` waits the shorter of the two, as before, and runs the block when the limit was shorter.
 - **Rust and Lua:** the new calls are the shared runtime's (`rt::wait_for`, `rt::wait_or`; `_L.wait_for`, `_L.wait_or`); nothing changes for the engine's own code.
 - `after` is a word only straight after a wait's `or`, so engines' names called `after` still work.
+
+## alpha 86: waiting, step 3
+
+- Asking a website (`Web:get`, `Web:post`) and the computer's own file boxes pause only their run in plain programs and windows (LUST.md, section 11, Slow built-ins pause only their run).
+- **In an engine nothing changes** (runs come in step 6): a call that asks a website holds the call up until the answer comes, with the same text and the same `Problem` on failure, as before.
+- **Rust:** a library still has no unsafe code and no new dependencies. The request now happens on a thread of its own, which the library waits for, so the engine sees no difference.
+- **Lua:** nothing changes for a chunk in an engine. `lust run` gives the runtime new host calls (`http_start`, `choose_open_start`, `choose_save_start`, `choose_folder_start`, `slow_look`, `slow_wait`); a host without them gets the old blocking `http` and `choose_*` calls, as before.

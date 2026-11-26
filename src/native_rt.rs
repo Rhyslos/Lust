@@ -1800,6 +1800,122 @@ pub fn runs_view(dt: f64, wake_due: bool) -> Result<Option<f64>, String> {
     Ok(RUNS.with(|r| r.borrow().sleeping.peek().map(|s| (s.due - now).max(0.0))))
 }
 
+// ----- slow built-ins: work that takes a while, on a thread of its own -----
+// Asking a website (Web:get, Web:post) and the computer's own file boxes take a while. The work
+// goes to a thread of its own, and only the run that asked waits for it: it pauses as `wait 0;`
+// does, so the runs due now go first, then looks for the answer each time the clock moves a
+// 1/60 s step, as wait { } does. In lust test (LUST_VIEW_TEST) the first look waits for the
+// answer, so the clock never moves while one is out and tests print the same every time.
+// Where a run can't pause (an engine, the code that draws a view, a route's method answering a
+// request), the program waits for the answer, as it always did. runtime.lua does the same,
+// through lust's host.
+
+/// What slow work gives back: its text, or the kind of problem and why.
+pub type SlowResult = Result<String, Failed>;
+
+/// Slow work that's out: its answer comes on the channel when it's done.
+pub struct Slow(std::sync::mpsc::Receiver<SlowResult>);
+
+thread_local! {
+    /// How deep in answering a request (Web:request, Web:serve) the program is: no run pauses there.
+    static ANSWERING: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+/// lust test: slow work takes no time on Lust's clock.
+fn slow_quick() -> bool {
+    std::env::var_os("LUST_VIEW_TEST").is_some()
+}
+
+impl Slow {
+    /// Starts f on a thread of its own.
+    pub fn start(f: impl FnOnce() -> SlowResult + Send + 'static) -> Slow {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(f());
+        });
+        Slow(rx)
+    }
+
+    /// Work that's already done.
+    pub fn ready(r: SlowResult) -> Slow {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let _ = tx.send(r);
+        Slow(rx)
+    }
+
+    /// The answer, if it's come (in lust test, once it has).
+    pub fn look(&self) -> Option<SlowResult> {
+        if slow_quick() {
+            return Some(self.wait());
+        }
+        match self.0.try_recv() {
+            Ok(r) => Some(r),
+            Err(std::sync::mpsc::TryRecvError::Empty) => None,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => Some(Err(("Other", "the work stopped before it was done.".into()))),
+        }
+    }
+
+    /// Waits for the answer, holding up everything.
+    pub fn wait(&self) -> SlowResult {
+        self.0.recv().unwrap_or_else(|_| Err(("Other", "the work stopped before it was done.".into())))
+    }
+}
+
+/// The computer's own file boxes: on a thread of their own, so the window keeps going. On macOS
+/// they open only on the main thread, and in tests the answer's already known, so there the box
+/// is shown (or answered) straight away.
+pub fn slow_box(f: impl FnOnce() -> String + Send + 'static) -> Slow {
+    if cfg!(target_os = "macos") || slow_quick() {
+        Slow::ready(Ok(f()))
+    } else {
+        Slow::start(move || Ok(f()))
+    }
+}
+
+/// While a route's method answers a request, slow work holds up the program, as it always did.
+pub fn answering(d: i32) {
+    ANSWERING.with(|a| a.set((a.get() as i32 + d).max(0) as u32));
+}
+
+/// Waits for slow work's answer, pausing only the run that asked.
+pub fn await_slow(s: Slow) -> SlowResult {
+    let in_run = runs::in_run();
+    let can = RUNS.with(|r| r.borrow().on)
+        && ANSWERING.with(|a| a.get()) == 0
+        && (in_run || TWEENS.with(|t| t.borrow().viewing) == 0);
+    if !can {
+        return s.wait();
+    }
+    // Events sent before it are heard as it starts, as for a wait.
+    settle();
+    let mut at = TWEENS.with(|t| t.borrow().clock_now);
+    loop {
+        if in_run {
+            runs::pause(at);
+        } else {
+            let seq = RUNS.with(|r| {
+                let mut r = r.borrow_mut();
+                r.seq += 1;
+                r.seq
+            });
+            run_until(Some((at, seq)));
+        }
+        if let Some(r) = s.look() {
+            return r;
+        }
+        let now = TWEENS.with(|t| t.borrow().clock_now);
+        at = (((now + 1e-9) * 60.0).floor() + 1.0) / 60.0;
+    }
+}
+
+/// Slow work that gives text, or stops with its problem.
+pub fn slow_text(s: Slow) -> String {
+    match await_slow(s) {
+        Ok(t) => t,
+        Err(e) => failed(e),
+    }
+}
+
 // ----- easing and tweens -----
 // The same steps, in the same order, are in runtime.lua, so both give exactly the same numbers.
 
@@ -3356,7 +3472,10 @@ fn errjson(msg: &str) -> String {
 pub fn web_run(f: &dyn Fn() -> Option<String>) -> (u16, String) {
     STATUS.with(|s| s.set(0));
     let mut out = None;
-    match attempt(|| out = Some(f())) {
+    answering(1);
+    let r = attempt(|| out = Some(f()));
+    answering(-1);
+    match r {
         None => match out.unwrap() {
             Some(s) => (200, s),
             None => (204, String::new()),
