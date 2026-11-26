@@ -2386,9 +2386,10 @@ pub fn time_daysBetween(a: String, b: String) -> i64 {
     let x = need_day(&a);
     need_day(&b) - x
 }
-pub fn time_weekday(s: String) -> String {
+/// An option of the built-in state `Day`.
+pub fn time_weekday(s: String) -> &'static str {
     let names = ["Thursday", "Friday", "Saturday", "Sunday", "Monday", "Tuesday", "Wednesday"];
-    names[need_day(&s).rem_euclid(7) as usize].to_string()
+    names[need_day(&s).rem_euclid(7) as usize]
 }
 
 pub fn time_date() -> String {
@@ -2915,8 +2916,25 @@ pub fn web_routes(h: Handler) {
     HANDLER.with(|x| x.set(Some(h)));
 }
 
-pub fn web_fail(status: i64, msg: String) {
-    STATUS.with(|s| s.set(status.clamp(100, 999) as u16));
+/// The options of the built-in state `Answer` and the status each sends, the same as the
+/// checker's list (stdlib.rs) and runtime.lua's.
+pub const ANSWERS: &[(&str, u16)] = &[
+    ("BadRequest", 400),
+    ("NotSignedIn", 401),
+    ("NotAllowed", 403),
+    ("NotFound", 404),
+    ("Conflict", 409),
+    ("Gone", 410),
+    ("TooBig", 413),
+    ("TooMany", 429),
+    ("Broken", 500),
+    ("Busy", 503),
+];
+
+/// Stops a route's method, answering with one of `Answer`'s options.
+pub fn web_fail(answer: &str, msg: String) {
+    let status = ANSWERS.iter().find(|(o, _)| *o == answer).map_or(500, |(_, code)| *code);
+    STATUS.with(|s| s.set(status));
     fail_as("Stopped", msg)
 }
 
@@ -3036,7 +3054,9 @@ pub fn web_handle(method: &str, path: &str, body: &str) -> (u16, String) {
     }
 }
 
-pub fn web_request(method: String, path: String, body: String) -> String {
+/// `kind` is an option of the built-in state `Request`: `Get` is sent as GET.
+pub fn web_request(kind: &str, path: String, body: String) -> String {
+    let method = kind;
     let (status, text) = web_handle(&method.to_uppercase(), &path, &body);
     if text.is_empty() {
         status.to_string()

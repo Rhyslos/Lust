@@ -1,0 +1,25 @@
+builtin-states.lst:3:14  Web:fail takes one of Answer's options now, like Answer.NotFound, not a number. Write Answer.NotFound here.
+builtin-states.lst:4:14  Web:fail takes one of Answer's options now, like Answer.NotFound, not a number. Write Answer.NotAllowed here.
+builtin-states.lst:5:14  Web:fail takes one of Answer's options now, like Answer.NotFound, not a number. None of them is 418. The options are BadRequest (400), NotSignedIn (401), NotAllowed (403), NotFound (404), Conflict (409), Gone (410), TooBig (413), TooMany (429), Broken (500) and Busy (503).
+builtin-states.lst:7:14  Web:fail takes one of Answer's options now, like Answer.NotFound, not a number. Keep one in a variable of its own: Answer answer = Answer.NotFound;
+builtin-states.lst:8:14  Web:fail takes one of Answer's options now, like Answer.NotFound, not text. Write Answer.NotFound here.
+builtin-states.lst:9:21  NotFund isn't an option of Answer. Did you mean NotFound? The options are BadRequest, NotSignedIn, NotAllowed, NotFound, Conflict, Gone, TooBig, TooMany, Broken, Busy.
+builtin-states.lst:10:14  Web:fail's answer is an Answer option, but this is a Problem option.
+builtin-states.lst:18:19  Web:request takes one of Request's options now, like Request.Get, not text. Write Request.Get here.
+builtin-states.lst:19:19  Web:request takes one of Request's options now, like Request.Get, not text. Write Request.Post here.
+builtin-states.lst:20:19  Web:request takes one of Request's options now, like Request.Get, not text. Write Request.Delete here.
+builtin-states.lst:21:19  Web:request takes one of Request's options now, like Request.Get, not text. There's no kind of request called "PATCH". The options are Get, Post, Put and Delete.
+builtin-states.lst:23:19  Web:request takes one of Request's options now, like Request.Get, not text. Keep one in a variable of its own: Request kind = Request.Get;
+builtin-states.lst:24:27  Gte isn't an option of Request. The options are Get, Post, Put, Delete.
+builtin-states.lst:25:19  Web:request takes one of Request's options now, like Request.Get, not a number. Keep one in a variable of its own: Request kind = Request.Get;
+builtin-states.lst:27:14  day is a string, but this is a Day option. Use .text() to turn it into text.
+builtin-states.lst:28:34  == compares two things of the same type, but these are a Day option and a string. Write Day.Thursday instead of "Thursday".
+builtin-states.lst:29:16  != compares two things of the same type, but these are a string and a Day option. Write Day.Monday instead of "monday".
+builtin-states.lst:30:9  d is a Day option, but this is a string. Write Day.Monday here.
+builtin-states.lst:31:13  Mondy isn't an option of Day. Did you mean Monday? The options are Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday.
+builtin-states.lst:32:13  Weekend isn't an option of Day. The options are Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday.
+builtin-states.lst:34:7  Request is one of Lust's built-in states, so it can't be a name.
+builtin-states.lst:35:7  Answer is one of Lust's built-in states, so it can't be a name.
+builtin-states.lst:37:5  Day is one of Lust's built-in states, so it can't be a name.
+
+23 mistakes. Nothing was run.

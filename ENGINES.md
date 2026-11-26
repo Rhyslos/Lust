@@ -160,3 +160,11 @@ An engine moving from alpha 48 to alpha 67 or later reads everything below.
 - **Rust:** `LustError` has a new field, `problem: &'static str`, the failure's option by name (`"NotFound"`, `"Other"`), so the engine can tell kinds apart too. Code that only reads a `LustError` needs no change; code that builds one with `LustError { … }` needs the new field.
 - **Lua:** nothing changes for the engine: an error that leaves Lust is the same message as before.
 - `Problem` is a taken name now, like `Icon`: an engine's own class or state can't be called `Problem`.
+
+## alpha 83: built-ins' fixed choices are states
+
+- `Time:weekday(date)` gives back an option of the built-in state `Day` (`Day.Monday` … `Day.Sunday`), not text. Printing one, or `.text()`, still gives `"Monday"`, so only code that compares it with text, or keeps it in a `string`, needs a change: the mistake says which option to write.
+- `Web:request` takes a `Request` (`Request.Get`, `Post`, `Put`, `Delete`) and `Web:fail` an `Answer` (`Answer.NotFound` and the rest; the table is in LUST.md, section 18). Servers aren't for game code, so an engine is unlikely to meet these.
+- **Lua and Rust:** a state's option is its name in both, as before. In Rust, `rt::time_weekday` gives back `&'static str` now, and `rt::web_fail` and `rt::web_request` take one.
+- `Day`, `Request` and `Answer` are taken names now, like `Icon` and `Problem`: an engine's own class or state can't be called any of them.
+- **The engine does:** renames any class or state of its own called `Day`, `Request` or `Answer` in its Lust files, samples and templates.

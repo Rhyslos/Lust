@@ -6,7 +6,7 @@ class Item {
 }
 
 method Item getItem(int id) {
-    Web:fail(404, "there's no item " + id.text() + ".");
+    Web:fail(Answer.NotFound, "there's no item " + id.text() + ".");
     return nothing;
 }
 

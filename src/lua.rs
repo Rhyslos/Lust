@@ -732,9 +732,11 @@ impl<'a> W<'a> {
             let opts: Vec<String> = crate::stdlib::icon_options().iter().map(|o| lua_string(o)).collect();
             self.line(0, &format!("local Icon = _L.state(\"Icon\", {{{}}})", opts.join(", ")));
         }
-        if self.info.uses_problem {
-            let opts: Vec<String> = crate::stdlib::PROBLEMS.iter().map(|o| lua_string(o)).collect();
-            self.line(0, &format!("local Problem = _L.state(\"Problem\", {{{}}})", opts.join(", ")));
+        for (i, name, options) in crate::stdlib::plain_states() {
+            if self.info.uses_states.contains(&i) {
+                let opts: Vec<String> = options.iter().map(|o| lua_string(o)).collect();
+                self.line(0, &format!("local {name} = _L.state(\"{name}\", {{{}}})", opts.join(", ")));
+            }
         }
         for item in &prog.items {
             if let Item::State(s) = item {

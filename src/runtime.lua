@@ -2344,8 +2344,14 @@ end
 function L.route(method, path, f)
   routes[#routes + 1] = { method = method, parts = segments(path), f = f }
 end
-function L.web_fail(status, msg)
-  error(setmetatable({ status = status, message = msg, problem = "Stopped" }, WebFail), 2)
+-- The options of the built-in state Answer and the status each sends, the same as stdlib.rs's
+-- list and native_rt.rs's.
+local answers = {
+  BadRequest = 400, NotSignedIn = 401, NotAllowed = 403, NotFound = 404, Conflict = 409,
+  Gone = 410, TooBig = 413, TooMany = 429, Broken = 500, Busy = 503,
+}
+function L.web_fail(answer, msg)
+  error(setmetatable({ status = answers[answer] or 500, message = msg, problem = "Stopped" }, WebFail), 2)
 end
 -- The request doesn't fit the route: a path's value isn't a number (BadText), or its body isn't
 -- the JSON it takes (BadJson).
@@ -2400,8 +2406,9 @@ function L.web_handle(method, path, body)
   end
   return 404, errjson("there's nothing at " .. path .. ".")
 end
-function L.web_request(method, path, body)
-  local status, text = L.web_handle(method:upper(), path, body)
+-- kind is an option of the built-in state Request: Get is sent as GET.
+function L.web_request(kind, path, body)
+  local status, text = L.web_handle(kind:upper(), path, body)
   if text == "" then return fmt("%d", status) end
   return fmt("%d", status) .. " " .. text
 end
