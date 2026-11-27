@@ -21,7 +21,7 @@ component Gun {
         is cooldown <= 0 && ammo > 0 && target != nothing? then {
             ammo = ammo - 1;
             cooldown = reload;
-            log(me.text() + " fires at " + target.text() + ", " + ammo.text() + " left");
+            log(this.text() + " fires at " + target.text() + ", " + ammo.text() + " left");
         }
     }
 }

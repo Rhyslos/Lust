@@ -200,7 +200,7 @@ pub fn load(entry: &Path, src: String, is_script: bool, diags: &mut Diags, mem: 
             text.replace("\r\n", "\n")
         });
         let toks = crate::lexer::lex(&src, i, diags);
-        let prog = crate::parser::parse(toks, diags, is_script, next_id);
+        let prog = crate::parser::parse(toks, &src, diags, is_script, next_id);
         next_id = prog.next_id;
         for (k, imp) in prog.imports.iter().enumerate() {
             let pos = imp.path_pos;

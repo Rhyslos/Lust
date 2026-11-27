@@ -1,0 +1,53 @@
+-- me is the old name for this, so nothing can be called me.
+class Reading {
+    has {
+        int me = 1;
+        int hp = 2;
+    }
+
+    method int read(int me) {
+        return me + hp;
+    }
+
+    method int twice() {
+        return me * 2;
+    }
+}
+
+component Fighter {
+    has {
+        int hp = 3;
+    }
+
+    method update(float dt) {
+        Reading me = new Reading;
+        print(me:read(2));
+        print(this.text());
+    }
+}
+
+class Hero {
+    has {
+        int hp = 3;
+    }
+
+    method heal() {
+        print(me);
+    }
+}
+
+int array xs = [1, 2];
+loop (int me in xs) {
+    print(me);
+}
+string me = "x";
+print(me);
+try {
+    print(1);
+} error (string me) {
+    print(me);
+}
+print(me);
+event Hit(int me);
+pass Fighter;
+end

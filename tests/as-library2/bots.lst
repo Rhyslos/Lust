@@ -8,23 +8,23 @@ class Bot {
         int steps = 0;
     }
 
-    method step(Thing me, float dt) {
+    method step(Thing bot, float dt) {
         velocity = velocity + gravity() * dt;
-        me:moveTo(me:position() + velocity * dt);
+        bot:moveTo(bot:position() + velocity * dt);
         steps = steps + 1;
     }
 
-    method vec3 ahead(Thing me) {
-        return me:facing() * [1, 0, 0];
+    method vec3 ahead(Thing bot) {
+        return bot:facing() * [1, 0, 0];
     }
 
-    method int crowd(Thing me) {
-        return #me:near(5.0);
+    method int crowd(Thing bot) {
+        return #bot:near(5.0);
     }
 
-    method plan(Thing me) {
-        vec3 array path = [me:position(), me:position() + ahead(me) * 2];
-        aim(path, me:facing());
+    method plan(Thing bot) {
+        vec3 array path = [bot:position(), bot:position() + ahead(bot) * 2];
+        aim(path, bot:facing());
     }
 }
 

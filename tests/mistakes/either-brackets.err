@@ -1,0 +1,8 @@
+either-brackets.lst:3:18  either goes in brackets after +, so it's clear where its answers end: string s = "x" + (either a > 2? "big" or "small");
+either-brackets.lst:4:15  either goes in brackets after ==, so it's clear where its answers end: bool b = a == (either a > 2? 3 or 4);
+either-brackets.lst:5:18  either goes in brackets after &&, so it's clear where its answers end: bool c = true && (either a > 2? true or false);
+either-brackets.lst:6:10  either goes in brackets after -, so it's clear where its answers end: int m = -(either a > 2? 3 or 4);
+either-brackets.lst:8:5  either goes in brackets after *, so it's clear where its answers end: (either a > 2? 3 or 4);
+either-brackets.lst:9:18  either goes in brackets after +, so it's clear where its answers end: "x" + (either a > 2? "big" or "small")
+
+6 mistakes. Nothing was run.

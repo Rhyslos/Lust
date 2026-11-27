@@ -425,6 +425,8 @@ pub fn only_code_changes(questions: &[Expr], check: Option<&Stmt>, info: &Info) 
 
 fn describe(e: &Expr) -> String {
     match &e.kind {
+        // this reaches the checker as me, its old name.
+        ExprKind::Name(n) if n == "me" => "this".into(),
         ExprKind::Name(n) => n.clone(),
         ExprKind::Field(t, f, _) => format!("{}.{f}", describe(t)),
         ExprKind::Index(t, _) => format!("{}[…]", describe(t)),
@@ -884,8 +886,8 @@ impl<'a> Checker<'a> {
                 let mut filled = false;
                 if c.is_component {
                     let fits = event_kind(&ty);
+                    // A field called me is turned away by the parser; skip it so it isn't added twice.
                     if f.name == "me" {
-                        self.err(f.pos, "me is the entity the component is on, and every component has it already.");
                         continue;
                     }
                     // FarmerAnimator anim;: something the engine made for this component (an
@@ -3935,7 +3937,7 @@ impl<'a> Checker<'a> {
     fn writable(&mut self, target: &Expr, ctx: &Ctx, pos: Pos) {
         match &target.kind {
             ExprKind::Name(n) if n == "me" && self.info.names.get(&target.id) == Some(&NameRes::Field) => {
-                self.err(pos, "me is the entity this component is on, so it can't be changed.");
+                self.err(pos, "this is the entity the component is on, so it can't be changed.");
             }
             ExprKind::Name(n) => {
                 match self.info.names.get(&target.id) {
@@ -4610,9 +4612,32 @@ impl<'a> Checker<'a> {
                     );
                     return Ty::Error;
                 }
+                // this is always the entity, even after a (turned away) variable called me.
+                if let Some(c) = ctx.class {
+                    if let Some(f) = self.info.field(c, "me") {
+                        let ty = f.ty.clone();
+                        self.info.names.insert(e.id, NameRes::Field);
+                        return ty;
+                    }
+                }
+            } else if self.lookup(ctx, n).is_some() || (!component && ctx.class.and_then(|c| self.info.field(c, n)).is_some()) {
+                // A variable or field called me, already turned away where it's declared.
+                return Ty::Error;
             } else if component {
                 self.diags
                     .note(e.pos, "me is now this: write this instead. me keeps working for now.");
+            } else {
+                // Not in a component: the old this.
+                let hint = if ctx.class.is_some() {
+                    " Inside a class's method, use a field's name on its own."
+                } else {
+                    ""
+                };
+                self.err(
+                    e.pos,
+                    format!("me is the old name for this, the entity a component is on, so only a component's methods have it.{hint}"),
+                );
+                return Ty::Error;
             }
         }
         if let Some(l) = self.lookup(ctx, n) {
