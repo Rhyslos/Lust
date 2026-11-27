@@ -171,7 +171,10 @@ pub fn check_name(diags: &mut Diags, name: &str, pos: Pos, kind: NameKind, what:
     }
     // me still reads as this in a component, so a variable called me would quietly become it.
     if name == "me" {
-        diags.add(pos, "me is the old name for this, so it can't be a name. Pick another, like fighter.");
+        diags.add(
+            pos,
+            "me is the old name for this, so it can't be a name. Pick another, like fighter.",
+        );
         return;
     }
     // An option is reached through its state (Mode.Run), so it can share a built-in state's name.
@@ -3366,7 +3369,13 @@ impl<'a> Parser<'a> {
                 let chars: Vec<char> = text.chars().collect();
                 let (a, b) = (at.col as usize - 1, (end.col as usize - 1).min(chars.len()));
                 let a = a.min(b);
-                let s: String = chars[..a].iter().chain(['(' ].iter()).chain(chars[a..b].iter()).chain([')'].iter()).chain(chars[b..].iter()).collect();
+                let s: String = chars[..a]
+                    .iter()
+                    .chain(['('].iter())
+                    .chain(chars[a..b].iter())
+                    .chain([')'].iter())
+                    .chain(chars[b..].iter())
+                    .collect();
                 s.trim().to_string()
             })
             .unwrap_or_else(|| "\"x\" + (either a > 2? \"big\" or \"small\")".to_string());
