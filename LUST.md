@@ -2566,7 +2566,7 @@ match lust::to_lua("main.lst", &files) {
 
 **Notes:** `chunk.notes` lists what's worth showing but isn't a mistake (a component still writing `me`), each a `Problem` with its file, line and column; the chunk runs either way.
 
-**Views drawn by the engine:** an engine can show an assembly's `view` itself (Solis's screens). Before the chunk loads, it sets `LUST_HOST.ui_open` to a function; `Screen:open()` calls it with the view's settings and a function that draws the view, and the engine may keep that function and call it whenever it likes, after `ui_open` has given back. Each call gives back the view's tree. Pieces of the game's own inside it (`ClassCard { role = … }` in `ClassPick`'s view, and pieces inside those) keep their fields from one drawing to the next, as in a window. The view is drawn only through that function; a piece made any other way stops with a message saying so.
+**Views drawn by the engine:** an engine can show an assembly's `view` itself (Solis's screens). Before the chunk loads, it sets `LUST_HOST.ui_open` to a function; `ClassPick:open()` calls it with the view's settings and a function that draws the view, and the engine may keep that function and call it whenever it likes, after `ui_open` has given back. Each call gives back the view's tree. Pieces of the game's own inside it (`ClassCard { role = … }` in `ClassPick`'s view, and pieces inside those) keep their fields from one drawing to the next, as in a window. The view is drawn only through that function; a piece made any other way stops with a message saying so.
 
 **A failure** in the Lua comes to the engine as a Lua error. `chunk.locate(&error.to_string())` turns it into a `RunError`, with `file`, `line`, `column` and `message`, pointing at the Lust.
 
