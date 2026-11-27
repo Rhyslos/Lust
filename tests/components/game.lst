@@ -22,7 +22,6 @@ component Gun {
             ammo = ammo - 1;
             cooldown = reload;
             log(this.text() + " fires at " + target.text() + ", " + ammo.text() + " left");
-            log(me.text() + " fires at " + target.text() + ", " + ammo.text() + " left");
             entity array seen = [this, target];
             log("target is at " + seen:find(target).text() + ", nothing there: " + seen:has(nothing).text());
         }
