@@ -2869,19 +2869,24 @@ end
 -- ----- views: lust draws them, from the tables a view makes -----
 
 -- Pieces are kept between redraws: by the piece they're in, where they're written, and their
--- turn there. A piece that isn't drawn again is forgotten. Each open window has its own.
-local stores = {}
+-- turn there. A piece that isn't drawn again is forgotten. Each open window has its own store,
+-- and drawing is the one of the view being drawn now. A host may keep a view and draw it
+-- whenever it likes, after ui_open has given back (an engine's screens), so the store goes with
+-- each drawing, not with ui_open.
+local drawing = nil
 
 function L.view_open(class)
   if not host or not host.ui_open then needs("A view") end
   local o = L.new(class)
   local st = {items = {}, seen = {}, turns = {}}
-  stores[#stores + 1] = st
   -- While the window is open, its clock moves the tweens (L.tween_step), a frame at a time.
   L.viewing(1)
   local e = host.ui_open(o:__settings(), function()
     st.seen, st.turns = {}, {}
+    local outer = drawing
+    drawing = st
     local v = o:__view()
+    drawing = outer
     for parent, made in pairs(st.items) do
       for k, p in pairs(made) do
         if not st.seen[p] then made[k] = nil end
@@ -2891,7 +2896,6 @@ function L.view_open(class)
     return v
   end, L.tween_step, L.settle, L.spawn, L.runs_view)
   L.viewing(-1)
-  stores[#stores] = nil
   if e then error(e, 0) end
 end
 
@@ -2908,7 +2912,10 @@ function L.app_notify(title, body)
 end
 
 function L.piece(parent, site, class, rowkey)
-  local st = stores[#stores]
+  local st = drawing
+  if not st then
+    error(problem("Other", "a view's pieces of its own are kept between drawings by its window, so the view is drawn by calling the function LUST_HOST.ui_open is given, not by calling the view itself."), 2)
+  end
   local turns = st.turns[parent]
   if not turns then turns = {} st.turns[parent] = turns end
   local n = (turns[site] or 0) + 1

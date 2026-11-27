@@ -1,0 +1,45 @@
+-- A piece inside a piece inside a view: ClassPick's view uses ClassCard, whose own view uses
+-- Badge. Each keeps its own fields between drawings.
+state Role {
+    Knight,
+    Archer,
+}
+
+assembly Badge {
+    has {
+        string word = "";
+        int seen = 0;
+    }
+
+    view {
+        button "{word} {seen}" { seen += 1; }
+    }
+}
+
+assembly ClassCard {
+    has {
+        Role role = Role.Knight;
+        int picks = 0;
+    }
+
+    view {
+        row [gap 8] {
+            text role.text();
+            button "Pick {role.text()}" { picks += 1; }
+            text "picked {picks}";
+            Badge { word = "badge of " + role.text() };
+        }
+    }
+}
+
+assembly ClassPick {
+    view [title "Pick", width 400, height 200] {
+        column [gap 4, pad 8] {
+            ClassCard { role = Role.Knight };
+            ClassCard { role = Role.Archer };
+        }
+    }
+}
+
+ClassPick:open();
+end

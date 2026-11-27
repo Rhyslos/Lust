@@ -512,6 +512,62 @@ fn main() {
         Err(err) => writeln!(out, "Lust said: {}", rn.locate(&err.to_string())).unwrap(),
     }
 
+    // 11. Screens, as an engine shows them: a Lua of their own, whose LUST_HOST.ui_open keeps
+    // each view and gives back straight away, and the engine draws it after each tick, reading
+    // the tree. Pieces inside pieces (ClassPick uses ClassCard, which uses Badge) keep their
+    // fields between drawings, as they do in lust run (tests/view-nested).
+    let screens = Lua::new();
+    let kept: Rc<RefCell<Vec<Function>>> = Rc::default();
+    let k = kept.clone();
+    let host = screens.create_table().unwrap();
+    host.set(
+        "ui_open",
+        screens
+            .create_function(move |_, (_settings, view): (Value, Function)| {
+                k.borrow_mut().push(view);
+                Ok(())
+            })
+            .unwrap(),
+    )
+    .unwrap();
+    screens.globals().set("LUST_HOST", host).unwrap();
+    let sc = lust::to_lua("main.lst", &files("screens")).unwrap();
+    load(&screens, &sc);
+    let view = kept.borrow()[0].clone();
+    fn shown(t: &Table, depth: usize, out: &mut String) {
+        let kind: String = t.get("k").unwrap();
+        let text: Option<String> = t.get("t").unwrap();
+        writeln!(out, "{}{kind} {}", "  ".repeat(depth), text.unwrap_or_default()).unwrap();
+        if let Some(c) = t.get::<Option<Table>>("c").unwrap() {
+            for child in c.sequence_values::<Table>() {
+                shown(&child.unwrap(), depth + 1, out);
+            }
+        }
+    }
+    fn press(t: &Table, label: &str) -> bool {
+        if t.get::<Option<String>>("t").unwrap().as_deref() == Some(label) {
+            if let Some(f) = t.get::<Option<Function>>("f").unwrap() {
+                f.call::<()>(()).unwrap();
+                return true;
+            }
+        }
+        t.get::<Option<Table>>("c")
+            .unwrap()
+            .is_some_and(|c| c.sequence_values::<Table>().any(|x| press(&x.unwrap(), label)))
+    }
+    for (n, click) in ["Pick Archer", "badge of Knight 0", ""].iter().enumerate() {
+        match view.call::<Table>(()) {
+            Ok(tree) => {
+                writeln!(out, "screen drawing {n}").unwrap();
+                shown(&tree, 1, &mut out);
+                if !click.is_empty() {
+                    writeln!(out, "  pressed {click}: {}", press(&tree, click)).unwrap();
+                }
+            }
+            Err(err) => writeln!(out, "screen failed: {}", sc.locate(&err.to_string())).unwrap(),
+        }
+    }
+
     let expected_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("expected.out");
     if std::env::args().any(|a| a == "--print") {
         print!("{out}");
