@@ -1,9 +1,6 @@
 -- A piece inside a piece inside a view: ClassPick's view uses ClassCard, whose own view uses
 -- Badge. Each keeps its own fields between drawings.
-state Role {
-    Knight,
-    Archer,
-}
+state Role = [Knight, Archer];
 
 assembly Badge {
     has {
