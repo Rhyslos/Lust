@@ -207,7 +207,11 @@ pub fn object_method(obj: &str, m: &str, args: &[Ty]) -> Option<Result<Lib, Stri
         },
         // For going round a list both ways: Maths:wrap(i - 1, #items) is the last item from 0.
         ("Maths", "wrap") => match numeric(args) {
-            Some(t) => lib(&format!("maths_wrap_{}", tname(&t)), vec![("number", t.clone()), ("count", t.clone())], t),
+            Some(t) => lib(
+                &format!("maths_wrap_{}", tname(&t)),
+                vec![("number", t.clone()), ("count", t.clone())],
+                t,
+            ),
             None => Err("Maths:wrap works on numbers: Maths:wrap(i - 1, #items).".into()),
         },
         ("Maths", "sign") => match numeric(args) {
