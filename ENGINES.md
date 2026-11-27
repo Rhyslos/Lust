@@ -253,7 +253,7 @@ gun.removed()?;                   // its entity is gone: its waiting work is can
 
 - **`me` can't be a name** (a variable, field, parameter or loop name), in game code or in the engine's own files: a component still reads `me` as `this`, so a variable called `me` quietly became the entity. It's now a mistake on its own line. Rename any such name (`Thing me` → `Thing bot`). Reading `me` in a component still works, with its note.
 - **The engine does:** nothing new, unless its own files (or the Lust it writes) name something `me`.
-## alpha XX: views an engine draws later
+
 ## alpha 91: views an engine draws later
 
 - **Fixed:** an assembly used inside another's view (`ClassCard { role = … }` in `ClassPick`'s view) stopped with "attempt to index nil with 'turns'" when an engine drew the view after `LUST_HOST.ui_open` had given back, as Solis's screens do. Lust kept the pieces' store only while `ui_open` was running, which is the whole time a window is open in `lust run`, but only a moment in an engine. Each drawing now carries its own store, so pieces inside pieces (any depth) keep their fields from one drawing to the next.
