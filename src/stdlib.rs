@@ -171,7 +171,7 @@ fn numeric(args: &[Ty]) -> Option<Ty> {
 /// What the methods of each built-in object are, for messages.
 pub fn listing(obj: &str) -> &'static str {
     match obj {
-        "Maths" => "abs, min, max, clamp, round, floor, ceil, trunc, fraction, sign, sqrt, power, log, exp, sin, cos, tan, asin, acos, atan, atan2, degrees, radians, lerp, moveTowards, smoothstep, isFinite and noise, and Maths.pi and Maths.e",
+        "Maths" => "abs, min, max, clamp, wrap, round, floor, ceil, trunc, fraction, sign, sqrt, power, log, exp, sin, cos, tan, asin, acos, atan, atan2, degrees, radians, lerp, moveTowards, smoothstep, isFinite and noise, and Maths.pi and Maths.e",
         "Random" => "seed, chance and direction, and Random[1, 6] for a number",
         "Rotation" => "toward and around",
         "Colour" => "hex",
@@ -204,6 +204,15 @@ pub fn object_method(obj: &str, m: &str, args: &[Ty]) -> Option<Result<Lib, Stri
                 t,
             ),
             None => Err("Maths:clamp works on numbers: Maths:clamp(hp, 0, 100).".into()),
+        },
+        // For going round a list both ways: Maths:wrap(i - 1, #items) is the last item from 0.
+        ("Maths", "wrap") => match numeric(args) {
+            Some(t) => lib(
+                &format!("maths_wrap_{}", tname(&t)),
+                vec![("number", t.clone()), ("count", t.clone())],
+                t,
+            ),
+            None => Err("Maths:wrap works on numbers: Maths:wrap(i - 1, #items).".into()),
         },
         ("Maths", "sign") => match numeric(args) {
             Some(t) => lib(&format!("maths_sign_{}", tname(&t)), vec![("number", t.clone())], t),
@@ -286,14 +295,16 @@ pub fn value_method(t: &Ty, m: &str) -> Option<Result<Lib, String>> {
                 Err("join works on string arrays. Turn the items into text first.".into())
             }
         }
+        // Values are compared as === does: a state's very option, an entity's ID, and which
+        // thing (two things with the same fields are two things, as with ==).
         (Array(el), "has" | "find") => {
-            if matches!(**el, Int | Float | Str | Truth) {
-                let ret = if m == "has" { Truth } else { Int };
-                lib(&format!("array_{m}"), vec![("item", (**el).clone())], ret)
-            } else {
-                Err(format!(
-                    ":{m} works on arrays of numbers, text and bools. For other arrays, use a loop."
-                ))
+            let ret = if m == "has" { Truth } else { Int };
+            match **el {
+                Int | Float | Str | Truth | State(_) | Entity => lib(&format!("array_{m}"), vec![("item", (**el).clone())], ret),
+                Class(_) => lib(&format!("array_{m}_thing"), vec![("item", (**el).clone())], ret),
+                _ => Err(format!(
+                    ":{m} works on arrays of numbers, text, bools, states, entities and things. For other arrays, use a loop."
+                )),
             }
         }
         (Array(el), "sort") => {

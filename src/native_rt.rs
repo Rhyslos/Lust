@@ -2693,6 +2693,13 @@ pub fn array_has<T: PartialEq>(a: Arr<T>, x: T) -> bool {
 pub fn array_find<T: PartialEq>(a: Arr<T>, x: T) -> i64 {
     a.borrow().iter().position(|y| *y == x).map(|i| i as i64).unwrap_or(-1)
 }
+/// Things are compared by which thing they are, as == compares them.
+pub fn array_has_thing<T: ?Sized>(a: Arr<Option<Rc<T>>>, x: Option<Rc<T>>) -> bool {
+    a.borrow().iter().any(|y| same(y, &x))
+}
+pub fn array_find_thing<T: ?Sized>(a: Arr<Option<Rc<T>>>, x: Option<Rc<T>>) -> i64 {
+    a.borrow().iter().position(|y| same(y, &x)).map(|i| i as i64).unwrap_or(-1)
+}
 pub fn array_sort<T: PartialOrd>(a: Arr<T>) {
     a.borrow_mut().sort_by(|x, y| x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal));
 }
@@ -2814,6 +2821,27 @@ pub fn maths_clamp_float(x: f64, lo: f64, hi: f64) -> f64 {
     } else {
         x
     }
+}
+/// n wrapped into 0 to count - 1 (below count, for floats), counting backwards below 0.
+pub fn maths_wrap_int(n: i64, count: i64) -> i64 {
+    if count <= 0 {
+        fail_as("OutOfRange", format!("wrap needs a count above 0 to wrap into, but this is {count}."));
+    }
+    n.rem_euclid(count)
+}
+pub fn maths_wrap_float(n: f64, count: f64) -> f64 {
+    if !(count > 0.0) {
+        fail_as("OutOfRange", format!("wrap needs a count above 0 to wrap into, but this is {}.", ftext(count)));
+    }
+    let mut r = n % count;
+    if r < 0.0 {
+        r += count;
+    }
+    // A tiny r below 0 plus count can round up to count itself.
+    if r >= count {
+        r = 0.0;
+    }
+    r + 0.0
 }
 pub fn maths_round(x: f64) -> i64 {
     if x >= 0.0 {

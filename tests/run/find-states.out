@@ -1,0 +1,25 @@
+1
+2
+-1
+true
+false
+1
+false
+0
+1
+-1
+true
+false
+e
+a
+4
+0
+4
+2
+270.0
+5.5
+0.0
+0.0
+0.25
+OutOfRange: wrap needs a count above 0 to wrap into, but this is 0.
+OutOfRange: wrap needs a count above 0 to wrap into, but this is -2.0.

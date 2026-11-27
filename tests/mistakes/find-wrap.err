@@ -1,0 +1,9 @@
+find-wrap.lst:17:13  :find works on arrays of numbers, text, bools, states, entities and things. For other arrays, use a loop.
+find-wrap.lst:19:12  :has works on arrays of numbers, text, bools, states, entities and things. For other arrays, use a loop.
+find-wrap.lst:21:19  item is a Light option, but this is a string. Write Light.Off here.
+find-wrap.lst:23:17  item is a Hero, but this is a Villain.
+find-wrap.lst:24:13  Maths:wrap works on numbers: Maths:wrap(i - 1, #items).
+find-wrap.lst:25:7  Maths:wrap takes 2 values, but gets 3.
+find-wrap.lst:26:12  s is a string, but this is an int. Use .text() to turn it into text.
+
+7 mistakes. Nothing was run.

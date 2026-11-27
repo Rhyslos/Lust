@@ -917,6 +917,20 @@ mod maths_helpers {
     }
 
     #[test]
+    fn wrapping() {
+        assert_eq!(rt::maths_wrap_int(-1, 5), 4);
+        assert_eq!(rt::maths_wrap_int(5, 5), 0);
+        assert_eq!(rt::maths_wrap_int(-10, 5), 0);
+        assert_eq!(rt::maths_wrap_int(i64::MIN, 7), i64::MIN.rem_euclid(7));
+        assert_eq!(rt::maths_wrap_float(-90.0, 360.0), 270.0);
+        assert_eq!(rt::maths_wrap_float(725.5, 360.0), 5.5);
+        // Never count itself, and never -0.0.
+        assert_eq!(rt::maths_wrap_float(-1e-20, 360.0), 0.0);
+        assert!(rt::maths_wrap_float(-0.0, 360.0).is_sign_positive());
+        assert!(rt::maths_wrap_float(f64::NAN, 360.0).is_nan());
+    }
+
+    #[test]
     fn seeded_rolls_repeat() {
         rt::random_seed(42);
         let a: Vec<i64> = (0..20).map(|_| rt::random(1, 100)).collect();

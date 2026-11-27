@@ -2007,6 +2007,8 @@ function L.array_find(a, x)
   for i = 1, a.n do if a[i] == x then return i - 1 end end
   return -1
 end
+-- Things are compared by which thing they are, which Lua's == does already.
+L.array_has_thing, L.array_find_thing = L.array_has, L.array_find
 function L.array_sort(a)
   local t = {}
   for i = 1, a.n do t[i] = a[i] end
@@ -2080,6 +2082,21 @@ function L.maths_clamp_float(x, lo, hi)
   if lo > hi then error(problem("OutOfRange", "clamp's low (" .. L.ftext(lo) .. ") is bigger than its high (" .. L.ftext(hi) .. ")."), 2) end
   if x < lo then return lo elseif x > hi then return hi end
   return x
+end
+-- n wrapped into 0 to count - 1 (below count, for floats), counting backwards below 0.
+function L.maths_wrap_int(n, count)
+  if count <= 0 then error(problem("OutOfRange", "wrap needs a count above 0 to wrap into, but this is " .. tostring(count) .. "."), 2) end
+  local r = math.fmod(n, count)
+  if r < 0 then r = r + count end
+  return r
+end
+function L.maths_wrap_float(n, count)
+  if not (count > 0) then error(problem("OutOfRange", "wrap needs a count above 0 to wrap into, but this is " .. L.ftext(count) .. "."), 2) end
+  local r = math.fmod(n, count)
+  if r < 0 then r = r + count end
+  -- A tiny r below 0 plus count can round up to count itself.
+  if r >= count then r = 0.0 end
+  return r + 0.0
 end
 function L.maths_round(x)
   if x >= 0 then return L.toint(floor(x + 0.5)) end

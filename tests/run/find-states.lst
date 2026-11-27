@@ -1,0 +1,62 @@
+-- :find and :has on arrays of states, entities and things, and Maths:wrap.
+state Light = [Off, On [Dim, Bright]];
+
+class Hero {
+    has {
+        string name = "";
+    }
+}
+
+-- States: the very option, as === compares them.
+Light array lights = [Light.Off, Light.On.Dim, Light.On];
+print(lights:find(Light.On.Dim));
+print(lights:find(Light.On));
+print(lights:find(Light.On.Bright));
+print(lights:has(Light.Off));
+print(lights:has(Light.On.Bright));
+Light now = Light.On.Dim;
+print(lights:find(now));
+
+-- Entities: nothing is the only one a program can make on its own.
+entity array seen = [];
+print(seen:has(nothing));
+seen:inject(nothing);
+print(seen:find(nothing));
+
+-- Things: which thing, not what's in it.
+Hero ann = new Hero { name = "Ann" };
+Hero bo = new Hero { name = "Bo" };
+Hero twin = new Hero { name = "Ann" };
+Hero array party = [ann, bo];
+print(party:find(bo));
+print(party:find(twin));
+print(party:has(ann));
+print(party:has(twin));
+
+-- Going round a list both ways.
+string array names = ["a", "b", "c", "d", "e"];
+int at = 0;
+at = Maths:wrap(at - 1, #names);
+print(names[at]);
+at = Maths:wrap(at + 1, #names);
+print(names[at]);
+print(Maths:wrap(-1, 5));
+print(Maths:wrap(5, 5));
+print(Maths:wrap(-11, 5));
+print(Maths:wrap(12, 5));
+print(Maths:wrap(-90.0, 360.0));
+print(Maths:wrap(725.5, 360));
+print(Maths:wrap(-0.0, 360.0));
+print(Maths:wrap(-1e-20, 360.0));
+print(Maths:wrap(0.75, 0.5));
+try {
+    print(Maths:wrap(3, 0));
+} error (Problem p, string message) {
+    print(p.text() + ": " + message);
+}
+try {
+    print(Maths:wrap(3.5, -2.0));
+} error (Problem p, string message) {
+    print(p.text() + ": " + message);
+}
+end

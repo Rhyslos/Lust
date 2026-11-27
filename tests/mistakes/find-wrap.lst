@@ -1,0 +1,27 @@
+-- :find and :has work on numbers, text, bools, states, entities and things; Maths:wrap on numbers.
+state Light = [Off, On];
+
+class Hero {
+    has {
+        string name = "";
+    }
+}
+
+class Villain {
+    has {
+        string name = "";
+    }
+}
+
+vec3 array spots = [[0, 0, 0]];
+print(spots:find([0, 0, 0]));
+int array array grid = [[1]];
+print(grid:has([1]));
+Light array lights = [Light.Off];
+print(lights:find("Off"));
+Hero array party = [];
+print(party:has(new Villain));
+print(Maths:wrap("a", 3));
+print(Maths:wrap(1, 2, 3));
+string s = Maths:wrap(1, 2);
+end
