@@ -1,0 +1,32 @@
+window "Pick" 400x200
+  column 0,0 400x86
+    piece "ClassCard" 8,8 384x33
+      row 8,8 384x33
+        text "Knight" 8,15 46x19
+        button "Pick Knight" 62,8 109x33
+        text "picked 0" 179,15 62x19
+        piece "Badge" 249,8 157x33
+          button "badge of Knight 0" 249,8 157x33
+    piece "ClassCard" 8,45 384x33
+      row 8,45 384x33
+        text "Archer" 8,52 48x19
+        button "Pick Archer" 64,45 112x33
+        text "picked 0" 184,52 62x19
+        piece "Badge" 254,45 159x33
+          button "badge of Archer 0" 254,45 159x33
+window "Pick" 400x200
+  column 0,0 400x86
+    piece "ClassCard" 8,8 384x33
+      row 8,8 384x33
+        text "Knight" 8,15 46x19
+        button "Pick Knight" 62,8 109x33
+        text "picked 0" 179,15 62x19
+        piece "Badge" 249,8 153x33
+          button "badge of Knight 1" 249,8 153x33
+    piece "ClassCard" 8,45 384x33
+      row 8,45 384x33
+        text "Archer" 8,52 48x19
+        button "Pick Archer" 64,45 112x33
+        text "picked 2" 184,52 61x19
+        piece "Badge" 253,45 159x33
+          button "badge of Archer 0" 253,45 159x33
