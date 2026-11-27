@@ -1533,7 +1533,6 @@ dependencies = [
 
 [[package]]
 name = "lust"
-version = "2.0.0-alpha.91"
 version = "2.0.0-alpha.92"
 dependencies = [
  "ab_glyph",
