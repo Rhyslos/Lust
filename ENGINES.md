@@ -247,3 +247,9 @@ gun.removed()?;                   // its entity is gone: its waiting work is can
   - calls `removed` for every Lust component it stops for good (its entity destroyed, the component taken off, or stopped after a failure);
   - treats what runs inside `tickTweens` as it treats tweens' done blocks: their changes and sends happen there, and a failure there belongs to whichever component's run it was (the message points at the Lust line);
   - moves any `wait` out of its own Lust files' updates into a started method.
+
+
+## alpha 90: nothing can be called me
+
+- **`me` can't be a name** (a variable, field, parameter or loop name), in game code or in the engine's own files: a component still reads `me` as `this`, so a variable called `me` quietly became the entity. It's now a mistake on its own line. Rename any such name (`Thing me` → `Thing bot`). Reading `me` in a component still works, with its note.
+- **The engine does:** nothing new, unless its own files (or the Lust it writes) name something `me`.
