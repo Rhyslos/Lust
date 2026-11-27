@@ -9,8 +9,10 @@ Spinner:
   speed Vec3 = List([Float(0.0), Float(0.0), Float(1.0)])
   facing Rotation = List([Float(0.0), Float(0.0), Float(0.0), Float(1.0)])
 0000000000001 fires at 0000000000002, 1 left
+target is at 1, nothing there: false
 tick 19: {"ammo": Int(1), "cooldown": Float(0.1833333333333334), "label": Text("gun"), "mode": Text("Burst"), "reload": Float(0.5), "target": Entity(Some(2))}
 0000000000001 fires at 0000000000002, 0 left
+target is at 1, nothing there: false
 tick 39: {"ammo": Int(0), "cooldown": Float(0.3666666666666667), "label": Text("gun"), "mode": Text("Burst"), "reload": Float(0.5), "target": Entity(Some(2))}
 {"facing": List([Float(0.0), Float(0.0), Float(0.0), Float(1.0)]), "speed": List([Float(0.0), Float(0.0), Float(1.0)])}
 entity 2 at Vec3 { x: 5.0, y: 0.0, z: 0.6666667 }
