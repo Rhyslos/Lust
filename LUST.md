@@ -2290,7 +2290,7 @@ Patterns are regular expressions, the kind most languages use: `[0-9]` is a digi
 | | Does |
 | --- | --- |
 | `words:join(", ")` | one text from a string array, with `", "` between the items |
-| `scores:has(10)`, `scores:find(10)` | whether it's there, and where (or -1). For arrays of numbers, text and bools |
+| `scores:has(10)`, `scores:find(10)` | whether it's there, and where (or -1). For arrays of numbers, text, bools, states, entities and things. A state is found only as that very option, as `===` asks (`Light.On` doesn't find `Light.On.Dim`), an entity by which one it is, and a thing by which thing it is, as `==` compares things: another `new Hero` with the same fields isn't found |
 | `scores:sort();` | puts numbers or text in order, smallest first |
 | `scores:reverse();` | turns the array around |
 | `team:sortBy(score);` | puts an array of things in order by one of their fields. Things with the same value keep their order |
@@ -2310,6 +2310,7 @@ Lust comes with these objects. Their methods are called like any object's: `Math
 | | Gives |
 | --- | --- |
 | `Maths:abs(x)`, `Maths:min(a, b)`, `Maths:max(a, b)`, `Maths:clamp(x, low, high)` | an int for ints, a float when there's a float |
+| `Maths:wrap(n, count)` | n wrapped round into 0 to count - 1, counting backwards below 0: `Maths:wrap(-1, 5)` is `4` and `Maths:wrap(5, 5)` is `0`. For going round a list both ways: `at = Maths:wrap(at - 1, #items);`. With floats it wraps into 0 up to (not including) count, as for angles: `Maths:wrap(-90.0, 360.0)` is `270.0`. An int for ints, a float when there's a float. A count of 0 or below stops with `Problem.OutOfRange` |
 | `Maths:round(x)`, `Maths:floor(x)`, `Maths:ceil(x)` | the nearest whole number, the one below, the one above (an int) |
 | `Maths:trunc(x)` | the whole part, dropping what's after the point (towards zero): `Maths:trunc(-2.75)` is `-2`. An int |
 | `Maths:fraction(x)` | what's after the point, with x's sign: `Maths:fraction(-2.75)` is `-0.75`. A float |
