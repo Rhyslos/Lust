@@ -169,6 +169,14 @@ pub fn check_name(diags: &mut Diags, name: &str, pos: Pos, kind: NameKind, what:
         diags.add(pos, format!("{name} is one of Lust's built-in objects, so it can't be a name."));
         return;
     }
+    // me still reads as this in a component, so a variable called me would quietly become it.
+    if name == "me" {
+        diags.add(
+            pos,
+            "me is the old name for this, so it can't be a name. Pick another, like fighter.",
+        );
+        return;
+    }
     // An option is reached through its state (Mode.Run), so it can share a built-in state's name.
     if crate::stdlib::STATES.contains(&name) && what != "option" {
         diags.add(pos, format!("{name} is one of Lust's built-in states, so it can't be a name."));
@@ -241,6 +249,8 @@ pub struct Parser<'a> {
     compound: std::collections::HashMap<usize, &'static str>,
     old_is: std::collections::HashSet<usize>,
     this_ids: std::collections::HashSet<usize>,
+    /// The file's lines, to show a line put right in a mistake.
+    lines: Vec<String>,
 }
 
 /// How deeply code can nest. Deeper code would run the compiler out of room (its stack), which
@@ -249,9 +259,10 @@ pub struct Parser<'a> {
 /// (deeper_by), so whatever Lust accepts, Lua loads. Real code stays far below it.
 pub const MAX_DEPTH: usize = 150;
 
-pub fn parse(toks: Vec<Token>, diags: &mut Diags, is_script: bool, first_id: usize) -> Program {
+pub fn parse(toks: Vec<Token>, src: &str, diags: &mut Diags, is_script: bool, first_id: usize) -> Program {
     let mut p = Parser {
         toks,
+        lines: src.lines().map(str::to_string).collect(),
         p: 0,
         diags,
         next_id: first_id,
@@ -3294,7 +3305,8 @@ impl<'a> Parser<'a> {
                     // this, in a component: the entity it's on, handed over whole (send Hit(this, 6)
                     // to target;) or asked for its abilities (this:jump()). The checker turns it
                     // away anywhere else. this.field is still the hint below.
-                    "this" if !self.peek(1).is_sym(".") => {
+                    // this.text() is the entity's text, like any entity's; this.hp is the hint below.
+                    "this" if !self.peek(1).is_sym(".") || self.peek(2).is_word("text") && self.peek(3).is_sym("(") => {
                         self.next();
                         let e = self.mk(t.pos, ExprKind::Name("me".into()));
                         self.this_ids.insert(e.id);
@@ -3312,6 +3324,7 @@ impl<'a> Parser<'a> {
                         };
                         self.fail(t.pos, h)
                     }
+                    "either" => self.either_in_brackets(t.pos),
                     _ if RESERVED.contains(&w.as_str()) && w != "state" => {
                         self.fail(t.pos, format!("expected a value here, but found the word {w}."))
                     }
@@ -3334,6 +3347,43 @@ impl<'a> Parser<'a> {
                 self.fail(at, format!("expected a value here, but found {}.", t.describe()))
             }
         }
+    }
+
+    /// An either after an operator ("x" + either a > 2? "big" or "small"): it goes in brackets,
+    /// so it's clear where its answers end. The line is shown with them in, and reading goes on.
+    fn either_in_brackets(&mut self, at: Pos) -> R<Expr> {
+        let after = match self.p.checked_sub(1).map(|i| &self.toks[i].kind) {
+            Some(Tk::Sym(op)) => format!(" after {op}"),
+            _ => String::new(),
+        };
+        let known = self.diags.list.len();
+        let either = self.expr_inner();
+        // Mistakes inside it come second to this one.
+        self.diags.list.truncate(known);
+        let end = self.prev_end();
+        let line = at.line & ((1 << crate::ast::FILE_SHIFT) - 1);
+        let fixed = (either.is_ok() && end.line == at.line)
+            .then(|| self.lines.get(line as usize - 1))
+            .flatten()
+            .map(|text| {
+                let chars: Vec<char> = text.chars().collect();
+                let (a, b) = (at.col as usize - 1, (end.col as usize - 1).min(chars.len()));
+                let a = a.min(b);
+                let s: String = chars[..a]
+                    .iter()
+                    .chain(['('].iter())
+                    .chain(chars[a..b].iter())
+                    .chain([')'].iter())
+                    .chain(chars[b..].iter())
+                    .collect();
+                s.trim().to_string()
+            })
+            .unwrap_or_else(|| "\"x\" + (either a > 2? \"big\" or \"small\")".to_string());
+        self.diags.add(
+            at,
+            format!("either goes in brackets{after}, so it's clear where its answers end: {fixed}"),
+        );
+        either
     }
 
     fn list(&mut self) -> R<Expr> {

@@ -182,8 +182,9 @@ pub fn read_values_with(engine: &crate::Engine, entry: &str, files: &[(String, S
             // words about it (a call to nothing, a variable it can't see).
             Err(problems) => {
                 let mut diags = crate::diag::Diags::default();
-                let toks = crate::lexer::lex(&text.replace("\r\n", "\n"), 0, &mut diags);
-                let prog = crate::parser::parse(toks, &mut diags, false, 0);
+                let src = text.replace("\r\n", "\n");
+                let toks = crate::lexer::lex(&src, 0, &mut diags);
+                let prog = crate::parser::parse(toks, &src, &mut diags, false, 0);
                 if diags.is_empty() {
                     shape(entry, &prog, None)?;
                 }

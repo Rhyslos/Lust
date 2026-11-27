@@ -1,0 +1,10 @@
+-- either after an operator goes in brackets, and the mistake shows the line with them in.
+int a = 3;
+string s = "x" + either a > 2? "big" or "small";
+bool b = a == either a > 2? 3 or 4;
+bool c = true && either a > 2? true or false;
+int m = -either a > 2? 3 or 4;
+int k = 2 *
+    either a > 2? 3 or 4;
+string t = "y" + either a > 2 "big" or "small";
+end

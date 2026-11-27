@@ -1,0 +1,10 @@
+me-name.lst:4:13  me is the old name for this, so it can't be a name. Pick another, like fighter.
+me-name.lst:8:25  me is the old name for this, so it can't be a name. Pick another, like fighter.
+me-name.lst:23:17  me is the old name for this, so it can't be a name. Pick another, like fighter.
+me-name.lst:35:15  me is the old name for this, the entity a component is on, so only a component's methods have it. Inside a class's method, use a field's name on its own.
+me-name.lst:40:11  me is the old name for this, so it can't be a name. Pick another, like fighter.
+me-name.lst:43:8  me is the old name for this, so it can't be a name. Pick another, like fighter.
+me-name.lst:47:17  me is the old name for this, so it can't be a name. Pick another, like fighter.
+me-name.lst:51:15  me is the old name for this, so it can't be a name. Pick another, like fighter.
+
+8 mistakes. Nothing was run.

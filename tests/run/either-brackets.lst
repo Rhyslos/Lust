@@ -1,0 +1,19 @@
+-- either inside a bigger sum or question goes in brackets.
+int a = 3;
+string s = "x" + (either a > 2? "big" or "small");
+print(s);
+print("x" + (either a > 5? "big" or "small") + "!");
+int n = 1 + (either a > 2? 10 or 20) * 2;
+print(n);
+bool b = a == (either a > 2? 3 or 4);
+print(b);
+bool c = false || (either a > 2? true or false);
+print(c);
+int m = -(either a > 2? 3 or 4);
+print(m);
+float f = 0.5 * (either a < 2? 1.0 or 4.0);
+print(f);
+string nested = "<" + (either a > 2? (either a > 10? "huge" or "big") or "small") + ">";
+print(nested);
+print("{(either a > 2? "big" or "small")} and {either a > 2? 1 or 2}");
+end
