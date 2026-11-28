@@ -1148,9 +1148,36 @@ impl<'a> W<'a> {
                 let call = host_in(self.info, &ret, format!("_L.native({})", args.join(", ")));
                 self.line(m.pos.line, &format!("return {call}"));
             }
+            if !m.picks.is_empty() {
+                // Entries in options: the one for the option it's in now, from a table made once.
+                let mut call = vec!["self".to_string()];
+                call.extend(params.iter().cloned());
+                self.line(
+                    m.pos.line,
+                    &format!(
+                        "local f = {table}.__pick_{}[self.{}] if f then f({}) end",
+                        lname(&m.name),
+                        lname("state"),
+                        call.join(", ")
+                    ),
+                );
+            }
             self.stmts(&m.body);
             self.indent -= 1;
             self.line(m.pos.line, "end");
+        }
+        for m in c.methods.iter().filter(|m| !m.picks.is_empty()) {
+            let ev = m.on.as_ref().map(|e| e.0.clone()).unwrap_or_default();
+            let rows: Vec<String> = self
+                .info
+                .picks(ci, &m.picks)
+                .iter()
+                .map(|(o, k)| format!("[{}] = {table}.{}", lua_string(o), lname(&crate::ast::entry_name(&ev, *k))))
+                .collect();
+            self.line(
+                m.pos.line,
+                &format!("{table}.__pick_{} = {{ {} }}", lname(&m.name), rows.join(", ")),
+            );
         }
         // A component's handlers run through handle(event, values). Any other thing with an on
         // block hears events sent in Lust, from when it's made.

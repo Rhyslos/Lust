@@ -18,24 +18,7 @@ Built in alpha 96 (Lust's half): see [LUST.md](LUST.md), section 10, Records, an
 
 ## 4. Events that count in a state
 
-An entry in an `on` block can say which option of the thing's own state it's for.
-
-```
-on {
-    Hit(entity by, float damage) in Battle {
-        hp -= damage;
-    }
-    Hit(entity by, float damage) in Calm {
-        state = Phase.Battle;
-    }
-}
-```
-
-- **`in Option`** after an entry's values. The same event can have several entries, each for different options.
-- **Options inside options:** `in Battle` covers `Battle.Melee` and `Battle.Ranged`. The most precise entry wins.
-- **An entry without `in`** covers every option no other entry covers.
-- **An event that arrives in an option no entry covers** is ignored.
-- Two entries for the same option are a mistake. So is `in` on a thing with no state of its own.
+Built in alpha 97: see [LUST.md](LUST.md), section 11, Events in some options: in.
 
 ## 5. Methods that exist in some states
 
@@ -72,7 +55,7 @@ Not a language change. While `lust run` runs a program from Ledger, a **States**
 1. Data on states (built, alpha 94)
 2. Named values (built, alpha 95)
 3. Records (Lust's half built, alpha 96; Solis's half in ENGINES.md)
-4. Events that count in a state
+4. Events that count in a state (built, alpha 97)
 5. Methods that exist in some states
 6. Allowed moves between options
 7. Starting in a state

@@ -1,0 +1,35 @@
+-- Events in options: a component's entries for Hit, chosen by its state when the engine hands
+-- the event over. tests/events/game.lst has the same shield, built as a Rust library.
+method log(string words) native;
+
+event Hit(float damage);
+
+state Guard = [Up, Down [Cracked], Broken];
+
+component Shield {
+    has {
+        float hp = 4;
+        state = Guard.Up;
+    }
+
+    on {
+        Hit(float damage) in Up {
+            log("blocked, now down");
+            state = Guard.Down;
+        }
+        Hit(float damage) in Down {
+            hp = hp - damage;
+            log("took {damage}, {hp} left");
+            is hp <= 0? then {
+                state = Guard.Broken;
+            }
+        }
+        Hit(float damage) in Down.Cracked {
+            log("cracked, so it breaks");
+            state = Guard.Broken;
+        }
+    }
+}
+
+pass log;
+end

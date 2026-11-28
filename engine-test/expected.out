@@ -204,3 +204,7 @@ loaded spare: ammo 99
 wrong spare left: Glock 99
 swap: kept, 0 notes
 after swap: ammo 30
+hit 1: blocked, now down; handled true, now Down with hp 4
+hit 3: took 3.0, 1.0 left; handled true, now Down with hp 1
+hit 2: cracked, so it breaks; handled true, now Broken with hp 1
+hit 5: nothing ran; handled true, now Broken with hp 1

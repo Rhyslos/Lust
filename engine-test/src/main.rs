@@ -721,6 +721,34 @@ fn main() {
     let main: Table = kept.get("main").unwrap();
     writeln!(out, "after swap: ammo {}", main.get::<i64>("ammo").unwrap()).unwrap();
 
+    // 12. Events in options: handle runs the entry for the component's state when it's called,
+    // and an option no entry covers ignores the event.
+    let st = lust::to_lua("main.lst", &files("states")).unwrap();
+    let api7 = load(&lua, &st);
+    let shield: Table = api7.get::<Function>("new").unwrap().call(("Shield", "0000000000004")).unwrap();
+    for (k, damage) in [1.0, 3.0, 2.0, 5.0].iter().enumerate() {
+        if k == 2 {
+            shield.set("state", "Down.Cracked").unwrap();
+        }
+        let values = lua.create_table().unwrap();
+        values.set(1, *damage).unwrap();
+        values.set("n", 1).unwrap();
+        let heard: bool = shield
+            .get::<Function>("handle")
+            .unwrap()
+            .call((shield.clone(), "Hit", values))
+            .unwrap();
+        let said = log.borrow_mut().split_off(0).trim_end().replace('\n', "; ");
+        writeln!(
+            out,
+            "hit {damage}: {}; handled {heard}, now {} with hp {}",
+            if said.is_empty() { "nothing ran" } else { &said },
+            shield.get::<String>("state").unwrap(),
+            shield.get::<f64>("hp").unwrap()
+        )
+        .unwrap();
+    }
+
     let expected_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("expected.out");
     if std::env::args().any(|a| a == "--print") {
         print!("{out}");

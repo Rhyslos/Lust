@@ -1,0 +1,155 @@
+-- Events that count in a state: an entry in an on block can say which option it's for.
+state Phase = [
+    Calm,
+    Battle [
+        Melee,
+        Ranged
+    ],
+    Dead
+];
+
+event Hit(string by, float damage);
+event Heal(int amount);
+event Tick();
+event Hello();
+
+class Hero {
+    has {
+        string name = "";
+        float hp = 10;
+        state = Phase.Calm;
+    }
+
+    on {
+        Hit(string by, float damage) in Battle {
+            hp -= damage;
+            print("{name} takes {damage} from {by} in battle: {hp}");
+            is hp <= 0? then {
+                state = Phase.Dead;
+            }
+        }
+        Hit(string by, float damage) in Calm {
+            print("{name} is hit by {by} while calm, and fights");
+            state = Phase.Battle.Melee;
+        }
+        -- The most precise entry wins: Ranged has its own.
+        Hit(string by, float damage) in Battle.Ranged {
+            hp -= damage / 2;
+            print("{name} dodges half of {by}'s hit at range: {hp}");
+        }
+        -- Without in: every option no other entry covers (here, Dead).
+        Heal(int amount) in Calm {
+            hp += amount;
+            print("{name} rests and heals {amount}: {hp}");
+        }
+        Heal(int amount) {
+            print("{name} can't heal now ({state})");
+        }
+        -- No entry for Dead and none without in: ignored there.
+        Tick() in Calm {
+            print("{name} ticks calmly");
+        }
+        Tick() in Battle {
+            print("{name} ticks in battle");
+        }
+        Hello() {
+            print("{name} says hello in any state");
+        }
+    }
+
+    method range() {
+        state = Phase.Battle.Ranged;
+    }
+
+    method melee() {
+        state = Phase.Battle.Melee;
+    }
+
+    method calm() {
+        state = Phase.Calm;
+    }
+}
+
+-- Like Hero: its own entries for Tick replace all of Hero's; Hit and Heal are Hero's.
+class Ghost like Hero {
+    on {
+        Tick() in Dead {
+            print("{name} haunts");
+        }
+    }
+}
+
+-- An object with entries, and a handler that waits.
+object Door {
+    has {
+        state = Phase.Calm;
+        int knocks = 0;
+    }
+
+    on {
+        Hello() in Calm {
+            knocks += 1;
+            print("door: knock {knocks}, opening slowly");
+            state = Phase.Battle;
+            wait 0.1;
+            print("door: open");
+        }
+        Hello() in Battle {
+            print("door: already busy");
+        }
+    }
+}
+
+-- A node with entries: heard only while it's open, and each entry for its own option.
+node Camp {
+    has {
+        state = Phase.Calm;
+    }
+
+    on {
+        Tick() in Calm {
+            print("camp: quiet");
+            state = Phase.Battle.Melee;
+        }
+        Tick() in Battle.Melee {
+            print("camp: under attack");
+        }
+    }
+}
+
+-- Sends, then changes the hero's state: the event is heard once this is done.
+method provoke(Hero h) {
+    send Hit("rat", 1) to h;
+    h:range();
+}
+
+Hero hero = new Hero { name = "Ann" };
+Ghost ghost = new Ghost { name = "Bo", state = Phase.Dead };
+
+Camp:open();
+send Tick();
+send Hit("orc", 3) to hero;
+send Hit("orc", 3) to hero;
+send Tick();
+Camp:close();
+hero:range();
+send Hit("archer", 4) to hero;
+send Heal(5);
+hero:calm();
+send Heal(2) to hero;
+send Hello();
+send Hello();
+
+-- The entry is chosen when the event is heard, not when it's sent.
+hero:calm();
+provoke(hero);
+wait 0.3;
+
+-- Damage down to Dead: Tick is then ignored for Ann.
+hero:melee();
+send Hit("troll", 20) to hero;
+send Hit("troll", 20) to hero;
+send Tick();
+send Heal(1) to hero;
+print(hero.state);
+end

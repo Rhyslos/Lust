@@ -311,3 +311,24 @@ A record holds only bools, ints, floats, text, states' options, vec3s, vec2s, ro
   - adds `records: false` to every `lust::Engine { … }` it makes, and `Value::Record` and `FieldKind::Record` arms where it matches on them;
   - then, to keep records: shows a record field in the inspector as a group of its values, each edited by its kind (the record's name as the group's title); keeps it in scene and save files as a nested map of its values by name, read back only when every value is there; copies a record field whenever it copies a component (duplicating an entity, making one from a prefab), so two components never share one table; carries `Value::Record` / record tables in its event queue as they are; and sets `records: true`.
   - Nothing changes for games that don't use records, apart from the new field and the new arms.
+
+## alpha 97: events in some options
+
+A handler can be for some of a thing's options (LUST.md, section 11, Events in some options: in), components' too, once the component has a state of its own (`state = Guard.Up;` in its `has`):
+
+```
+component Shield {
+    has {
+        state = Guard.Up;
+    }
+
+    on {
+        Hit(entity by, float damage) in Up { … }
+        Hit(entity by, float damage) in Down { … }
+    }
+}
+```
+
+- **Lua, Luau and Rust:** nothing new to call. `handle(event, values)` runs the entry for the option the component is in when it's called, and does nothing in an option no entry covers. It still gives true (`Ok(true)` in Rust) whenever the component handles the event at all, whatever its option: the event was handled, and the component chose to do nothing. `HANDLES` lists the event once. The values are checked (count and kinds) before an entry is chosen, as before.
+- **The state** is the component's ordinary `state` field: in its schema, `to_data`, `set_data`, the inspector and saves as before. Set from outside (the editor, a loaded save), it decides which entry the next event runs.
+- **The engine does:** nothing.

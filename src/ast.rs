@@ -336,6 +336,19 @@ pub struct MethodDecl {
     /// `method vec3 entity:position() native;`: a method on the engine's `entity`, given only by
     /// the engine's own files (its host folders), and always native.
     pub on_entity: bool,
+    /// `Hit(…) in Battle { … }`: one of several entries for an event, each for some of the thing's
+    /// options. The entry is a method of its own: the event as written, and its number among the
+    /// event's entries, which name it (`entry_name`). The handler (`on`) chooses between them.
+    pub entry: Option<(String, Pos, usize)>,
+    /// The handler for an event with entries: each entry's option (`None` for the one without
+    /// `in`, which covers the rest) and number. It has no body of its own: when the event comes,
+    /// it runs the entry for the option the thing is in then, the most precise one, or none.
+    pub picks: Vec<(Option<(String, Pos)>, usize)>,
+}
+
+/// The method an event's entry becomes: `in·Hit·2`, which code can't call by name.
+pub fn entry_name(event: &str, k: usize) -> String {
+    format!("in{MARK}{event}{MARK}{k}")
 }
 
 #[derive(Clone)]

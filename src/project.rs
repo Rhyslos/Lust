@@ -683,6 +683,13 @@ impl<'a> Renamer<'a> {
             // The handler is named after the event as it's known everywhere.
             m.name = format!("on{}{e}", crate::ast::MARK);
         }
+        if let Some((e, _, k)) = &mut m.entry {
+            // Its handler already says if the event can't be seen here.
+            if let Some(inner) = self.visible.get(e.as_str()) {
+                *e = inner.clone();
+            }
+            m.name = crate::ast::entry_name(e, *k);
+        }
         if let Some(r) = &mut m.ret {
             self.ty(r);
         }

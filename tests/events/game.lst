@@ -62,6 +62,34 @@ component Armor {
     }
 }
 
+-- Entries in options: the shield blocks the first hit, then gives way; once broken, hits are ignored.
+state Guard = [Up, Down [Cracked], Broken];
+
+component Shield {
+    has {
+        float hp = 4;
+        state = Guard.Up;
+    }
+
+    on {
+        Hit(entity by, float damage, Kind kind) in Up {
+            log("Shield: blocked " + kind.text() + ", now down");
+            state = Guard.Down;
+        }
+        Hit(entity by, float damage, Kind kind) in Down {
+            hp = hp - damage;
+            log("Shield: took " + damage.text() + ", " + hp.text() + " left");
+            is hp <= 0? then {
+                state = Guard.Broken;
+            }
+        }
+        Hit(entity by, float damage, Kind kind) in Down.Cracked {
+            log("Shield: cracked, so it breaks");
+            state = Guard.Broken;
+        }
+    }
+}
+
 component Gun {
     has {
         entity target = nothing;

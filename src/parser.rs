@@ -1767,6 +1767,8 @@ impl<'a> Parser<'a> {
                 native: true,
                 on: None,
                 on_entity,
+                entry: None,
+                picks: vec![],
             });
         }
         if on_entity {
@@ -1788,6 +1790,8 @@ impl<'a> Parser<'a> {
             native: false,
             on: None,
             on_entity: false,
+            entry: None,
+            picks: vec![],
         })
     }
 
@@ -1835,18 +1839,19 @@ impl<'a> Parser<'a> {
         }
         *seen = true;
         let open = self.next(); // {
+        let mut handlers = Vec::new();
         loop {
             if self.at_sym("}") {
                 self.next();
-                return;
+                break;
             }
             if self.at_eof() {
                 self.diags.add(open.pos, "this on { is never closed.");
-                return;
+                break;
             }
             if matches!(self.cur().kind, Tk::Ident(_)) && self.peek(1).is_sym("(") {
                 match self.handler_decl() {
-                    Ok(m) => methods.push(m),
+                    Ok(h) => handlers.push(h),
                     Err(_) => self.recover(),
                 }
             } else {
@@ -1856,6 +1861,81 @@ impl<'a> Parser<'a> {
                 self.recover();
             }
         }
+        self.entries(handlers, methods);
+    }
+
+    /// An event with entries in some options (Hit(…) in Battle { … }) becomes a handler that
+    /// chooses between them, and each entry a method of its own. Events without `in` stay as
+    /// they are.
+    fn entries(&mut self, handlers: Vec<(MethodDecl, Option<(String, Pos)>)>, methods: &mut Vec<MethodDecl>) {
+        let event_of = |m: &MethodDecl| m.on.as_ref().map(|e| e.0.clone()).unwrap_or_default();
+        let mut done: Vec<String> = Vec::new();
+        for i in 0..handlers.len() {
+            let ev = event_of(&handlers[i].0);
+            if done.contains(&ev) {
+                continue;
+            }
+            let group: Vec<&(MethodDecl, Option<(String, Pos)>)> = handlers[i..].iter().filter(|(m, _)| event_of(m) == ev).collect();
+            if group.iter().all(|(_, w)| w.is_none()) {
+                // No in: as before, so two handlers for one event are still caught as such.
+                methods.extend(group.iter().map(|(m, _)| m.clone()));
+                done.push(ev);
+                continue;
+            }
+            done.push(ev.clone());
+            let first = &group[0].0;
+            let values = |m: &MethodDecl| -> Vec<String> { m.params.iter().map(|p| format!("{} {}", p.ty, p.name)).collect() };
+            let want = values(first);
+            let mut picks: Vec<(Option<(String, Pos)>, usize)> = Vec::new();
+            let mut entries = Vec::new();
+            for (k, (m, w)) in group.iter().enumerate() {
+                let k = k + 1;
+                let written = match w {
+                    Some((o, _)) => format!("{ev}(…) in {o}"),
+                    None => format!("{ev}(…) without in"),
+                };
+                if values(m) != want {
+                    self.diags.add(
+                        m.pos,
+                        format!(
+                            "every entry for {ev} takes the same values, with the same names: {ev}({}). This one is {written}.",
+                            want.join(", ")
+                        ),
+                    );
+                }
+                let again = picks.iter().any(|(x, _)| x.as_ref().map(|x| &x.0) == w.as_ref().map(|w| &w.0));
+                if again {
+                    let pos = w.as_ref().map(|w| w.1).unwrap_or(m.pos);
+                    match w {
+                        Some((o, _)) => self.diags.add(pos, format!("there's already an entry for {ev} in {o}.")),
+                        None => self.diags.add(
+                            pos,
+                            format!("there's already an entry for {ev} without in. One covers every option the others don't, so there's only one."),
+                        ),
+                    }
+                    continue;
+                }
+                picks.push((w.clone(), k));
+                let mut e = m.clone();
+                e.entry = Some((ev.clone(), m.on.as_ref().map(|x| x.1).unwrap_or(m.pos), k));
+                e.on = None;
+                e.name = crate::ast::entry_name(&ev, k);
+                entries.push(e);
+            }
+            methods.push(MethodDecl {
+                name: format!("on{}{ev}", crate::ast::MARK),
+                pos: first.pos,
+                ret: None,
+                params: first.params.clone(),
+                body: vec![],
+                native: false,
+                on: first.on.clone(),
+                on_entity: false,
+                entry: None,
+                picks,
+            });
+            methods.extend(entries);
+        }
     }
 
     /// on Hit(…) { … } on its own, the old way: a mistake that shows the new one, read anyway so
@@ -1863,7 +1943,7 @@ impl<'a> Parser<'a> {
     fn old_handler(&mut self, methods: &mut Vec<MethodDecl>) {
         let o = self.next(); // on
         match self.handler_decl() {
-            Ok(m) => {
+            Ok((m, _)) => {
                 let ps: Vec<String> = m.params.iter().map(|p| format!("{} {}", p.ty, p.name)).collect();
                 let ev = m.on.as_ref().map(|e| e.0.clone()).unwrap_or_default();
                 self.diags.add(
@@ -1876,25 +1956,52 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Hit(entity by, float damage) { … }: one handler in an on block.
-    fn handler_decl(&mut self) -> R<MethodDecl> {
+    /// Hit(entity by, float damage) { … }: one handler in an on block, and the option it's for
+    /// when it says: Hit(entity by, float damage) in Battle.Melee { … }.
+    fn handler_decl(&mut self) -> R<(MethodDecl, Option<(String, Pos)>)> {
         let (event, epos) = self.ident("the event's name")?;
         self.expect_sym(
             "(",
             &format!("a handler takes what the event carries in ( ): {event}(entity by) {{ … }}"),
         )?;
         let params = self.param_list()?;
+        let when = if self.at_word("in") {
+            self.next();
+            let t = self.cur().clone();
+            let Tk::Ident(w) = &t.kind else {
+                return self.fail(
+                    t.pos,
+                    format!("in names the option this entry is for: {event}(…) in Battle {{ … }}"),
+                );
+            };
+            self.next();
+            let mut path = w.clone();
+            while self.at_sym(".") {
+                self.next();
+                let (n, _) = self.ident("an option's name after .")?;
+                path.push('.');
+                path.push_str(&n);
+            }
+            Some((path, t.pos))
+        } else {
+            None
+        };
         let body = self.block("the handler")?;
-        Ok(MethodDecl {
-            name: format!("on{}{event}", crate::ast::MARK),
-            pos: epos,
-            ret: None,
-            params,
-            body,
-            native: false,
-            on: Some((event, epos)),
-            on_entity: false,
-        })
+        Ok((
+            MethodDecl {
+                name: format!("on{}{event}", crate::ast::MARK),
+                pos: epos,
+                ret: None,
+                params,
+                body,
+                native: false,
+                on: Some((event, epos)),
+                on_entity: false,
+                entry: None,
+                picks: vec![],
+            },
+            when,
+        ))
     }
 
     // ----- types -----
