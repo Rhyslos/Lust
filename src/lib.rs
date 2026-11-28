@@ -2268,3 +2268,169 @@ mod methods_in_state {
         assert!(fine > 100, "only {fine} programs checked");
     }
 }
+
+#[cfg(test)]
+mod allowed_moves {
+    //! Arrows between a state's options: state Door = [Locked -> Shut, Shut -> [Open, Locked]].
+
+    fn files(src: &str) -> Vec<(String, String)> {
+        vec![("main.lst".to_string(), format!("{src}\nend\n"))]
+    }
+
+    fn msgs(src: &str) -> Vec<String> {
+        match crate::check("main.lst", &files(src)) {
+            Ok(()) => vec![],
+            Err(p) => p.into_iter().map(|p| p.message).collect(),
+        }
+    }
+
+    fn lua(src: &str) -> String {
+        crate::to_lua("main.lst", &files(src)).ok().unwrap().code
+    }
+
+    /// The moves table the Lua output makes for a state.
+    fn table(src: &str, state: &str) -> String {
+        let start = format!("local _M_{state} = ");
+        lua(src)
+            .lines()
+            .find(|l| l.trim_start().starts_with(&start))
+            .unwrap()
+            .trim()
+            .to_string()
+    }
+
+    #[test]
+    fn only_written_moves_and_ends() {
+        let t = table("state Door = [Locked -> Shut, Shut -> [Open, Locked], Open -> Shut, Gone];", "Door");
+        assert_eq!(
+            t,
+            "local _M_Door = _L.moves(\"a Door\", {[\"Locked\"] = {[\"Shut\"] = true}, [\"Shut\"] = {[\"Locked\"] = true, [\"Open\"] = true}, [\"Open\"] = {[\"Shut\"] = true}, [\"Gone\"] = {}}, {[\"Locked\"] = \"Shut\", [\"Shut\"] = \"Open or Locked\", [\"Open\"] = \"Shut\"})"
+        );
+    }
+
+    #[test]
+    fn outer_arrows_cover_inner_options_both_ways() {
+        let src = "state P = [Calm -> Battle, Battle [Melee -> Battle.Ranged, Ranged] -> Dead, Dead];";
+        let t = table(src, "P");
+        // Calm can go to Battle and every option inside it.
+        assert!(
+            t.contains("[\"Calm\"] = {[\"Battle\"] = true, [\"Battle.Melee\"] = true, [\"Battle.Ranged\"] = true}"),
+            "{t}"
+        );
+        // Melee has its own arrow and Battle's, its own listed first.
+        assert!(
+            t.contains("[\"Battle.Melee\"] = {[\"Battle.Ranged\"] = true, [\"Dead\"] = true}"),
+            "{t}"
+        );
+        assert!(t.contains("[\"Battle.Melee\"] = \"Battle.Ranged or Dead\""), "{t}");
+        assert!(t.contains("[\"Battle.Ranged\"] = {[\"Dead\"] = true}"), "{t}");
+        // Dead is an end.
+        assert!(t.contains("[\"Dead\"] = {}"), "{t}");
+        let rust = crate::to_rust_library("main.lst", &files(src)).unwrap();
+        assert!(
+            rust.contains("\"Battle.Melee\" => matches!(to, \"Battle.Ranged\" | \"Dead\"),"),
+            "{rust}"
+        );
+        assert!(rust.contains("rt::bad_move(\"a P\", from, to, said);"), "{rust}");
+    }
+
+    #[test]
+    fn every_change_is_checked_and_first_values_are_free() {
+        let src = "state Door = [Locked -> Shut, Shut -> Open, Open];\nrecord Kit {\n    Door d;\n}\nclass House {\n    has {\n        state = Door.Locked;\n        Door back = Door.Open;\n    }\n    method go() {\n        state = Door.Shut;\n        back = Door.Shut;\n    }\n}\nDoor d = Door.Locked;\nd = Door.Shut;\nKit k = new Kit { d = Door.Open };\nk.d = Door.Shut;\nDoor array ds = [Door.Open];\nds[0] = Door.Shut;\nDoor map m = [\"a\" Door.Open];\nm[\"a\"] = Door.Shut;\n";
+        let l = lua(src);
+        assert!(
+            l.contains("_L.setstate(self, Door.Shut, _M_Door)") || l.contains("_L.setstate(self, \"Shut\", _M_Door)"),
+            "{l}"
+        );
+        assert_eq!(l.matches("_L.moved(_M_Door, ").count(), 3, "{l}");
+        assert!(l.contains("_L.aset_moved("), "{l}");
+        assert!(l.contains("_L.mset_moved("), "{l}");
+        let rust = crate::to_rust_library("main.lst", &files(src)).unwrap();
+        assert!(rust.contains("rt::aset_moved("), "{rust}");
+        assert!(rust.contains("rt::mset_moved("), "{rust}");
+    }
+
+    #[test]
+    fn states_without_arrows_cost_nothing() {
+        let src =
+            "state Door = [Locked, Shut];\nDoor d = Door.Locked;\nd = Door.Shut;\nDoor array ds = [Door.Shut];\nds[0] = Door.Locked;\n";
+        let l = lua(src);
+        assert!(!l.contains("_M_") && !l.contains("_L.moved(") && !l.contains("_moved(ds"), "{l}");
+        let rust = crate::to_rust_library("main.lst", &files(src)).unwrap();
+        assert!(!rust.contains("fn mv") && !rust.contains("rt::aset_moved("), "{rust}");
+    }
+
+    #[test]
+    fn mistakes() {
+        let one = |s: &str| msgs(s).join("\n");
+        assert!(one("state D = [A -> Bb, B];").contains("D has no option called Bb. Did you mean B?"));
+        assert!(one("state D = [A -> D.B, B];").contains("so write -> B"));
+        assert!(one("state D = [A -> [B, B], B];").contains("B is already listed after this arrow."));
+        assert!(one("state D = [A -> A, B];").contains("A can always stay A"));
+        assert!(one("state D = [A -> [B, B.C], B [C]];").contains("B.C is inside B"));
+        assert!(one("state D = [A [B -> C, C], D];").contains("write -> A.C"));
+        assert!(one("state D = [A -> [], B];").contains("needs at least one"));
+        assert!(one("state D = [A -> B -> C, B, C];").contains("can have only one arrow"));
+        assert!(one("state D = [A -> B { x = 1 }, B { x = 2 }];").contains("an option's arrow comes last"));
+        assert!(one("state D = [A -> B [C], B];").contains("an option's arrow comes last"));
+        assert!(one("state D = [A [B], A.B -> A];").contains("A.B can't be written here"));
+        assert!(one("state D = [A ->, B];").contains("an arrow names the options that can follow A"));
+        // Fine: values, inner options and an arrow, in that order.
+        assert!(msgs("state D = [A { x = 1 } [B { x = 2 } -> C] -> C, C { x = 3 }];").is_empty());
+    }
+
+    #[test]
+    fn arrows_fuzzed() {
+        // States made at random from a fixed seed, sometimes broken by a piece dropped or added:
+        // checking never panics, and a program that checks writes both outputs.
+        let mut seed = 4099u64;
+        let mut next = |n: usize| {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            ((seed >> 33) % n as u64) as usize
+        };
+        let names = ["A", "B", "C", "B.X", "B.Y", "D.A", "Q", "A.X"];
+        let junk = ["->", "[", "]", ",", "{", "}", ".", "=", "1", "->", "-"];
+        let mut fine = 0;
+        for _ in 0..1500 {
+            let arrow = |next: &mut dyn FnMut(usize) -> usize| -> String {
+                match next(4) {
+                    0 | 1 => String::new(),
+                    2 => format!(" -> {}", names[if next(6) == 0 { next(names.len()) } else { next(5) }]),
+                    _ => {
+                        let n = next(3) + 1;
+                        let ts: Vec<&str> = (0..n)
+                            .map(|_| names[if next(6) == 0 { next(names.len()) } else { next(5) }])
+                            .collect();
+                        format!(" -> [{}]", ts.join(", "))
+                    }
+                }
+            };
+            let mut text = format!(
+                "state D = [A {{ s = 0 }}{}, B {{ s = 1 }} [X{}, Y{}]{}, C {{ s = 2 }}{}];\nD d = D.A;\nD array ds = [D.B.X];\nloop (D o in D) {{\n    try {{\n        d = o;\n        ds[0] = o;\n    }} error (Problem p, string m) {{\n        print(p, m);\n    }}\n}}\n",
+                arrow(&mut next),
+                arrow(&mut next),
+                arrow(&mut next),
+                arrow(&mut next),
+                arrow(&mut next)
+            );
+            if next(3) == 0 {
+                let at = next(text.len());
+                if text.is_char_boundary(at) {
+                    match next(2) {
+                        0 => text.insert_str(at, junk[next(junk.len())]),
+                        _ => {
+                            text.remove(at);
+                        }
+                    }
+                }
+            }
+            let f = files(&text);
+            if crate::check("main.lst", &f).is_ok() {
+                crate::to_lua("main.lst", &f).unwrap();
+                crate::to_rust_library("main.lst", &f).unwrap();
+                fine += 1;
+            }
+        }
+        assert!(fine > 100, "only {fine} programs checked");
+    }
+}

@@ -1,0 +1,16 @@
+-- Allowed moves: mistakes in the arrows themselves.
+state Door = [
+    Locked -> Shutt,
+    Shut -> [Open, Locked, Open],
+    Open -> Open,
+    Ajar -> Door.Shut,
+];
+
+state Phase = [
+    Calm -> [Battle, Battle.Melee],
+    Battle [
+        Melee -> Ranged,
+        Ranged -> [Battle.Far, Calm],
+    ],
+];
+end

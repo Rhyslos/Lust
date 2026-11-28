@@ -577,6 +577,26 @@ pub fn write(prog: &Program, info: &Info, files: &[String], library: bool) -> St
             ));
         }
     }
+    // The moves states' arrows allow: a function for each such state, giving back the option
+    // moved to, or stopping with WrongState when no arrow allows the move.
+    for (si, st) in info.states.iter().enumerate() {
+        let Some(moves) = &st.moves else { continue };
+        let mut ok = String::new();
+        let mut said = String::new();
+        for (o, (to, shown)) in st.options.iter().zip(moves) {
+            if !to.is_empty() {
+                let ts: Vec<String> = to.iter().map(|&b| format!("{:?}", st.options[b])).collect();
+                ok.push_str(&format!("        {o:?} => matches!(to, {}),\n", ts.join(" | ")));
+            }
+            if !shown.is_empty() {
+                said.push_str(&format!("            {o:?} => {shown:?},\n"));
+            }
+        }
+        defs.push_str(&format!(
+            "#[allow(dead_code)]\nfn mv{si}(from: &'static str, to: &'static str) -> &'static str {{\n    if from == to {{\n        return to;\n    }}\n    let ok = match from {{\n{ok}        _ => false,\n    }};\n    if !ok {{\n        let said = match from {{\n{said}            _ => \"\",\n        }};\n        rt::bad_move({:?}, from, to, said);\n    }}\n    to\n}}\n",
+            st.a_name()
+        ));
+    }
 
     w.class = None;
     // Routes: one function that finds the route for a request and runs its method.
@@ -2619,6 +2639,14 @@ impl<'a> W<'a> {
         }
     }
 
+    /// The function checking moves of the state a place holds, when its state has arrows: `mv7`.
+    fn moves_of(&self, target: &Expr) -> Option<String> {
+        match self.info.ty(target) {
+            Ty::State(s) if self.info.states[s].moves.is_some() => Some(format!("mv{s}")),
+            _ => None,
+        }
+    }
+
     fn var_type(&self, s: &Stmt) -> Ty {
         // The declared type is what the checker resolved; it's the type the value had to fit.
         if let Stmt::Var { value, .. } = s {
@@ -2641,11 +2669,24 @@ impl<'a> W<'a> {
                 None => ("this.clone()".to_string(), self.class.unwrap()),
             };
             let sf = self.field_of(c, "state");
+            let check = match self.moves_of(target) {
+                Some(m) => format!("let v = {m}(o.borrow().{sf}, v); "),
+                None => String::new(),
+            };
             out.push_str(&format!(
-                "{pad}{{ let v = {v}; let o = {o}; o.borrow_mut().{sf} = v; rt::set_state(&o, v); }}\n"
+                "{pad}{{ let v = {v}; let o = {o}; {check}o.borrow_mut().{sf} = v; rt::set_state(&o, v); }}\n"
             ));
             return;
         }
+        // A state with arrows: the move is checked, from the option it holds now.
+        let moves = self.moves_of(target);
+        let v = match (&moves, &target.kind) {
+            (Some(m), k) if !matches!(k, ExprKind::Index(..)) => {
+                let old = self.expr(target);
+                format!("{{ let old = {old}; {m}(old, {v}) }}")
+            }
+            _ => v,
+        };
         match &target.kind {
             ExprKind::Name(n) => match self.info.names.get(&target.id) {
                 Some(NameRes::Field) => {
@@ -2712,9 +2753,13 @@ impl<'a> W<'a> {
             ExprKind::Index(t, i) => {
                 let tc = self.expr(t);
                 let ic = self.expr(i);
-                match self.info.ty(t) {
-                    Ty::Map(_) => out.push_str(&format!("{pad}{{ let v = {v}; rt::mset(&{tc}, {ic}, v); }}\n")),
-                    _ => out.push_str(&format!("{pad}{{ let v = {v}; rt::aset(&{tc}, {ic}, v); }}\n")),
+                let f = match self.info.ty(t) {
+                    Ty::Map(_) => "mset",
+                    _ => "aset",
+                };
+                match moves {
+                    Some(m) => out.push_str(&format!("{pad}{{ let v = {v}; rt::{f}_moved(&{tc}, {ic}, v, {m}); }}\n")),
+                    None => out.push_str(&format!("{pad}{{ let v = {v}; rt::{f}(&{tc}, {ic}, v); }}\n")),
                 }
             }
             _ => {}

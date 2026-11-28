@@ -290,6 +290,9 @@ pub struct StateOption {
     /// Inner options take their outer option's values, and may change any of them.
     pub data: Vec<(String, Pos, Expr)>,
     pub children: Vec<StateOption>,
+    /// `Shut -> [Open, Locked]`: the options that may follow this one, each by its path from the
+    /// state, with where the arrow is. None without an arrow.
+    pub moves: Option<(Pos, Vec<(String, Pos)>)>,
 }
 
 pub struct ClassDecl {

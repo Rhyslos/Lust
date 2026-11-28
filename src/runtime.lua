@@ -668,6 +668,7 @@ local function where(a, i, level)
 end
 function L.aget(a, i) where(a, i, 3); return a[i + 1] end
 function L.aset(a, i, v) where(a, i, 3); a[i + 1] = v end
+function L.aset_moved(a, i, v, m) where(a, i, 3); a[i + 1] = L.moved(m, a[i + 1], v, 3) end
 function L.ainject(a, v) a.n = a.n + 1; a[a.n] = v end
 function L.aremove(a, i)
   where(a, i, 3)
@@ -718,6 +719,12 @@ function L.mset(m, k, v)
   for _, x in ipairs(m.keys) do if x == k then found = true break end end
   if not found then insert(m.keys, k) end
   m.vals[k] = v
+end
+-- A key's first value is free; changing one is checked by the state's arrows.
+function L.mset_moved(m, k, v, moves)
+  local old = m.vals[k]
+  if old ~= nil then L.moved(moves, old, v, 3) end
+  L.mset(m, k, v)
 end
 function L.mhas(m, k)
   for _, x in ipairs(m.keys) do if x == k then return true end end
@@ -826,6 +833,17 @@ end
 -- ----- states: options are their full names, like "ActiveGame.Combat" -----
 
 function L.state(name, list) return { name = name, list = list } end
+-- A state with arrows (Locked -> Shut): for each option, the set of options that may follow it,
+-- and those written, for the message. Moving to the option it's in already is always allowed.
+function L.moves(who, sets, said) return { who = who, sets = sets, said = said } end
+function L.moved(m, from, to, level)
+  if from == to or from == nil then return to end
+  local s = m.sets[from]
+  if s and s[to] then return to end
+  local next = m.said[from]
+  local why = next and (" From " .. from .. " it can go to " .. next .. ".") or (" Nothing follows " .. from .. ".")
+  error(problem("WrongState", m.who .. " can't go from " .. from .. " to " .. to .. "." .. why), level or 2)
+end
 -- Is a the option b, or inside it?
 -- == on state options: the same option, or one inside the other, whichever side it's written on.
 local function inside(a, b) return a:sub(1, #b + 1) == b .. "." end
@@ -1259,8 +1277,9 @@ L.finish = finish
 function L.ended(state)
   return "this was made during " .. state .. ", and ended with it. To hold onto something made in a state, keep it, like keep sword in player.bag;"
 end
-function L.setstate(o, new)
+function L.setstate(o, new, moves)
   if o == nil then error(problem("Nothing", "this is nothing, so it has no fields or methods. Check first: is it !== nothing?"), 2) end
+  if moves then L.moved(moves, o.state, new, 3) end
   o.state = new
   local list = owners[o]
   if not list then return end

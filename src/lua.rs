@@ -868,6 +868,32 @@ impl<'a> W<'a> {
                 self.line(s.pos.line, &format!("local _D_{} = {{{}}}", lname(&s.name), tables.join(", ")));
             }
         }
+        // The moves states' arrows allow: for each option, the set of options that may follow it,
+        // and those written, for the message. Checked when a value of the state changes.
+        for item in &prog.items {
+            if let Item::State(s) = item {
+                let Some(&si) = self.info.state_index.get(&s.name) else { continue };
+                let st = &self.info.states[si];
+                let Some(moves) = &st.moves else { continue };
+                let mut sets = Vec::new();
+                let mut said = Vec::new();
+                for (o, (to, shown)) in st.options.iter().zip(moves) {
+                    let set: Vec<String> = to.iter().map(|&b| format!("[{}] = true", lua_string(&st.options[b]))).collect();
+                    sets.push(format!("[{}] = {{{}}}", lua_string(o), set.join(", ")));
+                    if !shown.is_empty() {
+                        said.push(format!("[{}] = {}", lua_string(o), lua_string(shown)));
+                    }
+                }
+                let line = format!(
+                    "local _M_{} = _L.moves({}, {{{}}}, {{{}}})",
+                    lname(&s.name),
+                    lua_string(&st.a_name()),
+                    sets.join(", "),
+                    said.join(", ")
+                );
+                self.line(s.pos.line, &line);
+            }
+        }
         // Databases open first, so everything can use their tables.
         for item in &prog.items {
             if let Item::Database(d) = item {
@@ -1839,9 +1865,21 @@ impl<'a> W<'a> {
                 Some(t) => self.expr(t),
                 None => "self".into(),
             };
-            self.line(ln, &format!("_L.setstate({o}, {value})"));
+            match self.moves_of(target) {
+                Some(m) => self.line(ln, &format!("_L.setstate({o}, {value}, {m})")),
+                None => self.line(ln, &format!("_L.setstate({o}, {value})")),
+            }
             return;
         }
+        // A state with arrows: the move is checked, from the option it holds now.
+        let moves = self.moves_of(target);
+        let value = match (&moves, &target.kind) {
+            (Some(m), k) if !matches!(k, ExprKind::Index(..)) => {
+                let old = self.expr(target);
+                format!("_L.moved({m}, {old}, {value})")
+            }
+            _ => value,
+        };
         if let ExprKind::Field(t, f, _) = &target.kind {
             // pos.x = 3: a vec3 isn't changed in place; it's given a new one with the new x.
             let with = match self.info.ty(t) {
@@ -1870,12 +1908,23 @@ impl<'a> W<'a> {
                     Ty::Map(_) => "mset",
                     _ => "aset",
                 };
-                self.line(ln, &format!("_L.{f}({tc}, {ic}, {value})"));
+                match moves {
+                    Some(m) => self.line(ln, &format!("_L.{f}_moved({tc}, {ic}, {value}, {m})")),
+                    None => self.line(ln, &format!("_L.{f}({tc}, {ic}, {value})")),
+                }
             }
             _ => {
                 let t = self.place(target);
                 self.line(ln, &format!("{t} = {value}"));
             }
+        }
+    }
+
+    /// The moves table of the state a place holds, when its state has arrows: `_M_Door`.
+    fn moves_of(&self, target: &Expr) -> Option<String> {
+        match self.info.ty(target) {
+            Ty::State(s) if self.info.states[s].moves.is_some() => Some(format!("_M_{}", lname(&self.info.states[s].name))),
+            _ => None,
         }
     }
 

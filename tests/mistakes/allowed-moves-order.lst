@@ -1,0 +1,11 @@
+-- Allowed moves: an arrow comes last, after an option's values and inner options.
+state Pose = [
+    Idle { speed = 0.0 },
+    Run -> Idle { speed = 6.5 },
+    Battle { speed = 4.0 } -> Idle [
+        Melee { speed = 4.0 },
+    ],
+    Jump { speed = 2.0 } -> Idle -> Run,
+    Fall { speed = 9.0 } -> [],
+];
+end

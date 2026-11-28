@@ -1,0 +1,18 @@
+-- A move a state's arrows don't allow, with no try: the program stops where it was made.
+state Door = [Locked -> Shut, Shut -> [Open, Locked], Open -> Shut];
+
+class House {
+    has {
+        state = Door.Locked;
+    }
+
+    method open() {
+        state = Door.Open;
+    }
+}
+
+House home = new House;
+print("before");
+home:open();
+print("never printed");
+end

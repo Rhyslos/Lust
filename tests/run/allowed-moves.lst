@@ -1,0 +1,167 @@
+-- Allowed moves between options: once a state has arrows, only the moves written are allowed.
+state Door = [Locked -> Shut, Shut -> [Open, Locked], Open -> Shut];
+
+-- Values, inner options and an arrow, in that order. Arrows name options by their path from the
+-- state; an arrow from Battle covers Melee and Ranged, and an arrow to Battle lets the thing go
+-- to any option inside it too. Dead has no arrow: it's an end.
+state Phase = [
+    Calm { speed = 1.0 } -> Battle,
+    Battle { speed = 4.0 } [
+        Melee { speed = 5.0 } -> Battle.Ranged,
+        Ranged -> [Battle.Melee, Calm],
+    ] -> Dead,
+    Dead { speed = 0.0 },
+];
+
+-- A state without arrows: every move is allowed, as always.
+state Mood = [Happy, Grumpy];
+
+record Kit {
+    Door hatch;
+    int keys = 1;
+}
+
+class House {
+    has {
+        string name = "";
+        state = Door.Locked;
+        Door back = Door.Shut;
+    }
+
+    method go(Door next) {
+        state = next;
+        print("{name} is {state}");
+    }
+
+    method backTo(Door next) {
+        back = next;
+        print("{name}'s back door is {back}");
+    }
+
+    method copy(House other) {
+        other.state = state;
+    }
+}
+
+object Gate {
+    has {
+        state = Phase.Calm;
+    }
+
+    method to(Phase next) {
+        state = next;
+        print("Gate is {state}, speed {state.speed}");
+    }
+}
+
+method tryHouse(House h, Door next) {
+    try {
+        h:go(next);
+    } error (Problem p, string message) {
+        print("{p}: {message}");
+    }
+}
+
+method tryGate(Phase next) {
+    try {
+        Gate:to(next);
+    } error (Problem p, string message) {
+        print("{p}: {message}");
+    }
+}
+
+-- A thing's own state.
+House home = new House { name = "home" };
+tryHouse(home, Door.Open);
+tryHouse(home, Door.Shut);
+tryHouse(home, Door.Shut);
+tryHouse(home, Door.Open);
+tryHouse(home, Door.Locked);
+tryHouse(home, Door.Shut);
+
+-- Any starting option.
+House shed = new House { name = "shed", state = Door.Open };
+tryHouse(shed, Door.Locked);
+tryHouse(shed, Door.Shut);
+tryHouse(shed, Door.Open);
+
+-- A thing changing another of its class.
+House barn = new House { name = "barn" };
+try {
+    shed:copy(barn);
+    print("barn is {barn.state}");
+} error (Problem p, string message) {
+    print("{p}: {message}");
+}
+home:copy(barn);
+print("barn is {barn.state}");
+
+-- A field that isn't the thing's own state.
+try {
+    home:backTo(Door.Open);
+    home:backTo(Door.Locked);
+} error (Problem p, string message) {
+    print("{p}: {message}");
+}
+
+-- Options inside options, and an end.
+tryGate(Phase.Battle.Ranged);
+tryGate(Phase.Battle.Melee);
+tryGate(Phase.Calm);
+tryGate(Phase.Battle.Ranged);
+tryGate(Phase.Calm);
+tryGate(Phase.Dead);
+tryGate(Phase.Battle);
+tryGate(Phase.Battle);
+tryGate(Phase.Dead);
+tryGate(Phase.Calm);
+
+-- Variables: the first value is free, every change after it is checked.
+Door d = Door.Open;
+d = Door.Shut;
+print("d is {d}");
+try {
+    d = Door.Open;
+    d = Door.Open;
+    d = Door.Locked;
+} error (Problem p, string message) {
+    print("{p}: {message}");
+}
+print("d is {d}");
+
+-- A record's value, an array's items and a map's values.
+Kit kit = new Kit { hatch = Door.Locked };
+try {
+    kit.hatch = Door.Shut;
+    kit.hatch = Door.Locked;
+    kit.hatch = Door.Open;
+} error (Problem p, string message) {
+    print("{p}: {message}");
+}
+print(kit);
+
+Door array doors = [Door.Locked, Door.Open];
+try {
+    doors[1] = Door.Shut;
+    doors[0] = Door.Open;
+} error (Problem p, string message) {
+    print("{p}: {message}");
+}
+print(doors);
+
+Door map rooms = ["hall" Door.Open];
+rooms["attic"] = Door.Locked;
+try {
+    rooms["hall"] = Door.Shut;
+    rooms["attic"] = Door.Open;
+} error (Problem p, string message) {
+    print("{p}: {message}");
+}
+print(rooms["hall"], rooms["attic"]);
+
+-- A state without arrows.
+Mood m = Mood.Happy;
+m = Mood.Grumpy;
+m = Mood.Happy;
+print("mood {m}");
+end

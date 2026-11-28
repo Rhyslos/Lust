@@ -1,0 +1,33 @@
+WrongState: a Door can't go from Locked to Open. From Locked it can go to Shut.
+home is Shut
+home is Shut
+home is Open
+WrongState: a Door can't go from Open to Locked. From Open it can go to Shut.
+home is Shut
+WrongState: a Door can't go from Open to Locked. From Open it can go to Shut.
+shed is Shut
+shed is Open
+WrongState: a Door can't go from Locked to Open. From Locked it can go to Shut.
+barn is Shut
+home's back door is Open
+WrongState: a Door can't go from Open to Locked. From Open it can go to Shut.
+Gate is Battle.Ranged, speed 4.0
+Gate is Battle.Melee, speed 5.0
+WrongState: a Phase can't go from Battle.Melee to Calm. From Battle.Melee it can go to Battle.Ranged or Dead.
+Gate is Battle.Ranged, speed 4.0
+Gate is Calm, speed 1.0
+WrongState: a Phase can't go from Calm to Dead. From Calm it can go to Battle.
+Gate is Battle, speed 4.0
+Gate is Battle, speed 4.0
+Gate is Dead, speed 0.0
+WrongState: a Phase can't go from Dead to Calm. Nothing follows Dead.
+d is Shut
+WrongState: a Door can't go from Open to Locked. From Open it can go to Shut.
+d is Open
+WrongState: a Door can't go from Locked to Open. From Locked it can go to Shut.
+Kit { hatch = Locked, keys = 1 }
+WrongState: a Door can't go from Locked to Open. From Locked it can go to Shut.
+[Locked, Shut]
+WrongState: a Door can't go from Locked to Open. From Locked it can go to Shut.
+Shut Locked
+mood Happy
