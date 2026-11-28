@@ -28,9 +28,9 @@ Built in alpha 98: see [LUST.md](LUST.md), section 11, Methods in some options: 
 
 Built in alpha 99: see [LUST.md](LUST.md), section 8, Allowed moves between options.
 
-## 7. Starting in a state
+## 7. Starting in a state (built, alpha 100)
 
-`new Hero in Phase.Battle` is the same as `new Hero { state = Phase.Battle }`, with the state up front. It goes with the other starting values: `new Hero in Phase.Battle { hp = 5 }`. Writing both `in` and `state =` is a mistake.
+Built in alpha 100: see [LUST.md](LUST.md), section 8, Starting in a state: new … in.
 
 ## 8. Ledger shows states live
 

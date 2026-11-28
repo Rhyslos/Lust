@@ -141,6 +141,10 @@ pub struct Program {
     /// The values written after the old `is` (now is Mood.Calm;, state is Mood.Calm;), by id:
     /// a state is set with = now, so each one is a mistake that shows the new way.
     pub old_is: std::collections::HashSet<usize>,
+    /// `new Hero in Phase.Battle`: the state's value, by id, with where its `in` is written. It's
+    /// the first of the `new`'s starting values, called state, so it works exactly as
+    /// `state = Phase.Battle` does; the id lets mistakes speak of `in`.
+    pub new_in: std::collections::HashMap<usize, Pos>,
     /// The files in the engine's own folders (its host folders, like solis/), by number: only
     /// they may give `entity` methods.
     pub host_files: std::collections::HashSet<usize>,

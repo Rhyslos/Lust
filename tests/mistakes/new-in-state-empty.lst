@@ -1,0 +1,12 @@
+-- Starting in a state: in needs an option after it.
+state Phase = [Calm, Battle];
+
+class Hero {
+    has {
+        int hp = 10;
+        state = Phase.Calm;
+    }
+}
+
+Hero h = new Hero in { hp = 5 };
+end

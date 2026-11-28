@@ -1,0 +1,122 @@
+-- Starting in a state: new Hero in Phase.Battle is new Hero { state = Phase.Battle }, with the
+-- state up front. Starting values are never move-checked, so a thing can start in any option.
+state Phase = [
+    Calm { next = Phase.Battle } -> Battle,
+    Battle { next = Phase.Dead } [
+        Melee -> Battle.Ranged,
+        Ranged -> Battle.Melee,
+    ] -> Dead,
+    Dead { next = Phase.Dead },
+];
+
+record Kit {
+    int grenades = 2;
+}
+
+class Item {
+    has {
+        string name = "";
+    }
+}
+
+class Hero {
+    has {
+        string name = "hero";
+        int hp = 10;
+        Kit kit = new Kit {};
+        state = Phase.Calm;
+        Hero array squad = [];
+        Item array bag = [];
+    }
+
+    method go(Phase to) {
+        state = to;
+    }
+
+    method recruit(string who) {
+        -- Made in a method of a thing with a state: kept, so it doesn't end with the state.
+        keep (new Hero in Phase.Battle.Ranged { name = who }) in squad;
+        keep new Item { name = "rope" } in bag;
+    }
+
+    method show() {
+        print("{name}: {state}, hp {hp}, grenades {kit.grenades}");
+    }
+}
+
+class Wizard like Hero {
+    has {
+        int mana = 3;
+    }
+}
+
+-- Another class's starting value, made in a state.
+class Camp {
+    has {
+        Hero guard = new Hero in Phase.Battle { name = "guard" };
+    }
+}
+
+method Phase pick(bool angry) {
+    return either angry? Phase.Battle.Melee or Phase.Calm;
+}
+
+method describe(Hero hero, string label) {
+    print("{label}: {hero.name} is {hero.state}");
+}
+
+new Hero in Phase.Battle:show();
+(new Hero in Phase.Battle { name = "ada", hp = 5 }):show();
+(new Hero { state = Phase.Battle, name = "same" }):show();
+
+-- An end is fine to start in: only changes are checked.
+Hero ghost = new Hero in Phase.Dead { name = "ghost" };
+ghost:show();
+try {
+    ghost:go(Phase.Calm);
+} error (Problem p, string m) {
+    print(p, m, ghost.state);
+}
+
+-- Any value of the state: a variable, a call, a field, an option's value, an either.
+Phase start = Phase.Battle.Melee;
+(new Hero in start { name = "var" }):show();
+(new Hero in pick(true) { name = "call" }):show();
+(new Hero in ghost.state { name = "field" }):show();
+(new Hero in Phase.Calm.next { name = "value" }):show();
+bool late = false;
+(new Hero in (either late? Phase.Dead or Phase.Calm) { name = "either" }):show();
+
+-- Its moves are checked from where it started.
+Hero melee = new Hero in Phase.Battle.Melee { name = "melee" };
+melee:go(Phase.Battle.Ranged);
+melee:show();
+try {
+    melee:go(Phase.Calm);
+} error (Problem p, string m) {
+    print(p, m, melee.state);
+}
+
+-- A class like it, and a record given too.
+Wizard w = new Wizard in Phase.Battle { name = "merlin", kit = new Kit { grenades = 0 } };
+w:show();
+print(w.mana);
+
+-- Named values, lists, loops and other classes' starting values.
+describe(label = "named", hero = new Hero in Phase.Calm { name = "bo" });
+Hero array crowd = [new Hero in Phase.Calm, new Hero in Phase.Dead { name = "x" }];
+loop (Hero h in [new Hero in Phase.Battle { name = "loop" }, crowd[1]]) {
+    h:show();
+}
+loop (new Hero in Phase.Calm == nothing) {
+    print("never");
+}
+Camp camp = new Camp;
+camp.guard:show();
+
+-- keep: after keep, in says where it's kept.
+Hero lead = new Hero in Phase.Calm { name = "lead" };
+lead:recruit("cy");
+lead.squad[0]:show();
+print(#lead.bag);
+end

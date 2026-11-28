@@ -248,6 +248,11 @@ pub struct Parser<'a> {
     /// The + of each hp += 5, and what was written.
     compound: std::collections::HashMap<usize, &'static str>,
     old_is: std::collections::HashSet<usize>,
+    /// `new Hero in Phase.Battle`: the state's value, by id, and where its `in` is.
+    new_in: std::collections::HashMap<usize, Pos>,
+    /// Reading the thing after `keep`: its `in` says where it's kept, so a `new` written right
+    /// there doesn't take one (`keep new Item in bag;`).
+    keep_new: bool,
     this_ids: std::collections::HashSet<usize>,
     /// The file's lines, to show a line put right in a mistake.
     lines: Vec<String>,
@@ -276,6 +281,8 @@ pub fn parse(toks: Vec<Token>, src: &str, diags: &mut Diags, is_script: bool, fi
         depth: 0,
         compound: Default::default(),
         old_is: Default::default(),
+        new_in: Default::default(),
+        keep_new: false,
         this_ids: Default::default(),
         last_field: None,
     };
@@ -522,6 +529,7 @@ impl<'a> Parser<'a> {
             next_id: self.next_id + 1,
             compound: std::mem::take(&mut self.compound),
             old_is: std::mem::take(&mut self.old_is),
+            new_in: std::mem::take(&mut self.new_in),
             host_files: Default::default(),
             this_ids: std::mem::take(&mut self.this_ids),
             shared: Default::default(),
@@ -2681,7 +2689,11 @@ impl<'a> Parser<'a> {
                 }
                 "keep" => {
                     self.next();
-                    let value = self.expr()?;
+                    // keep new Item in bag;: the in says where it's kept.
+                    self.keep_new = self.at_word("new");
+                    let value = self.expr();
+                    self.keep_new = false;
+                    let value = value?;
                     let into = if self.at_word("in") {
                         self.next();
                         Some(self.expr()?)
@@ -3313,7 +3325,10 @@ impl<'a> Parser<'a> {
                     }
                     depth -= 1
                 }
-                Tk::Ident(w) if w == "in" && depth == 0 => return true,
+                // new Hero in Phase.Battle is a value, not a loop's in.
+                Tk::Ident(w) if w == "in" && depth == 0 && !(n >= 2 && self.peek(n - 2).is_word("new")) => {
+                    return true;
+                }
                 Tk::Sym("{") => return false,
                 _ => {}
             }
@@ -3606,14 +3621,26 @@ impl<'a> Parser<'a> {
 
     fn postfix(&mut self) -> R<Expr> {
         let d = self.depth;
-        let r = self.postfix_chain();
+        let r = self.postfix_chain(true);
         self.depth = d;
         r
     }
 
-    fn postfix_chain(&mut self) -> R<Expr> {
+    /// A value with its fields and items, but no method called on it: the option after a new's
+    /// in, so new Hero in Phase.Battle:show() calls show on the new Hero.
+    fn postfix_no_methods(&mut self) -> R<Expr> {
+        let d = self.depth;
+        let r = self.postfix_chain(false);
+        self.depth = d;
+        r
+    }
+
+    fn postfix_chain(&mut self, methods: bool) -> R<Expr> {
         let mut e = self.primary()?;
         loop {
+            if !methods && self.at_sym(":") {
+                return Ok(e);
+            }
             if self.at_sym(".") || self.at_sym(":") || (self.at_sym("[") && !self.cur_space_before()) {
                 self.deeper()?;
             }
@@ -3904,6 +3931,7 @@ impl<'a> Parser<'a> {
 
     fn new_expr(&mut self) -> R<Expr> {
         let start = self.next().pos; // new
+        let keep_new = std::mem::take(&mut self.keep_new);
         if self.at_word("hook") {
             self.next();
             let body = self.block("the hook")?;
@@ -3911,6 +3939,22 @@ impl<'a> Parser<'a> {
         }
         let (class, class_pos) = self.ident("what to make: new Player")?;
         let mut inits = Vec::new();
+        // new Hero in Phase.Battle: its state's starting value, up front. It's the first starting
+        // value, so it's worked out first, as it's written.
+        let mut start_in = None;
+        if self.at_word("in") && !keep_new {
+            let in_pos = self.next().pos;
+            if matches!(self.cur().kind, Tk::Eof | Tk::Sym("{" | "}" | ";" | "," | ")" | "]")) {
+                let at = self.cur().pos;
+                self.diags
+                    .add(at, format!("say which option it starts in: new {class} in Phase.Calm"));
+            } else {
+                let value = self.postfix_no_methods()?;
+                self.new_in.insert(value.id, in_pos);
+                start_in = Some(in_pos);
+                inits.push(("state".to_string(), value.pos, value));
+            }
+        }
         if self.at_sym("(") {
             return self.fail(
                 self.cur().pos,
@@ -3918,7 +3962,16 @@ impl<'a> Parser<'a> {
             );
         }
         if self.at_sym("{") {
-            inits = self.new_inits(&class)?;
+            let more = self.new_inits(&class)?;
+            if start_in.is_some() {
+                if let Some((_, pos, _)) = more.iter().find(|(n, _, _)| n == "state") {
+                    self.diags.add(
+                        *pos,
+                        format!("this {class} starts in the option written after in, so leave out state = here."),
+                    );
+                }
+            }
+            inits.extend(more.into_iter().filter(|(n, _, _)| !(start_in.is_some() && n == "state")));
         }
         Ok(self.mk(start, ExprKind::New { class, class_pos, inits }))
     }
