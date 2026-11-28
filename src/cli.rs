@@ -215,7 +215,13 @@ fn command(args: Vec<String>) -> ExitCode {
             None => ExitCode::from(1),
         },
         "run" => match compile(path, false) {
-            Some(c) => run::run(&c.out, &c.files),
+            // Ledger's States panel asks for the program's states with LUST_STATES (states.rs).
+            Some(c) => {
+                let states = std::env::var_os("LUST_STATES")
+                    .filter(|p| !p.is_empty())
+                    .map(std::path::PathBuf::from);
+                run::run_watched(&c.out, &c.files, states.as_deref())
+            }
             None => ExitCode::from(1),
         },
         other => {

@@ -34,7 +34,7 @@ Built in alpha 100: see [LUST.md](LUST.md), section 8, Starting in a state: new 
 
 ## 8. Ledger shows states live
 
-Not a language change. While `lust run` runs a program from Ledger, a **States** panel lists each thing that has a state of its own (by its variable or field name where Lust knows it, and its class) and its current option. It updates as they change, with the last few changes listed and timed. `lust run` sends the changes on a side channel only when Ledger asks for them, so programs run at full speed otherwise. How exactly is settled while building.
+Built in alpha 101 (Lust's half): see [LUST.md](LUST.md), section 21, Watching states from Ledger. `lust run` writes the states to a file Ledger names in `LUST_STATES`; Ledger's States panel shows them.
 
 ## Build order
 
@@ -44,5 +44,5 @@ Not a language change. While `lust run` runs a program from Ledger, a **States**
 4. Events that count in a state (built, alpha 97)
 5. Methods that exist in some states (built, alpha 98)
 6. Allowed moves between options (built, alpha 99)
-7. Starting in a state
-8. Ledger's States panel
+7. Starting in a state (built, alpha 100)
+8. Ledger's States panel (Lust's half built, alpha 101)

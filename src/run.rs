@@ -496,13 +496,34 @@ fn ui_node(t: &mlua::Table, actions: &mut Vec<crate::native_ui::Action>) -> mlua
     Ok(n)
 }
 
-pub fn run(out: &Output, files: &[String]) -> ExitCode {
+/// Runs the program, writing its things' states to the file `states` names, if any (states.rs):
+/// what Ledger's States panel shows, asked for with LUST_STATES.
+pub fn run_watched(out: &Output, files: &[String], states: Option<&std::path::Path>) -> ExitCode {
     let lua = Lua::new();
     if let Err(e) = host(&lua) {
         eprintln!("couldn't start Lua: {e}");
         return ExitCode::from(1);
     }
+    let feed = states.and_then(|p| match crate::states::Feed::open(p) {
+        Ok(f) => Some(std::sync::Arc::new(f)),
+        Err(e) => {
+            eprintln!(
+                "lust couldn't write the states to {} ({e}), so the program runs without sending them.",
+                p.display()
+            );
+            None
+        }
+    });
+    if let Some(f) = &feed {
+        if let Err(e) = crate::states::install(&lua, f, &out.names) {
+            eprintln!("couldn't start Lua: {e}");
+            return ExitCode::from(1);
+        }
+    }
     let result = lua.load(&out.code).set_name("=lust").exec();
+    if let Some(f) = &feed {
+        f.finish();
+    }
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
@@ -561,7 +582,7 @@ pub(crate) mod tests {
         let c = crate::cli::compile(&path, false).expect("the timing test's program checks");
         std::env::set_var("LUST_VIEW_TEST", "1");
         crate::native_ui::test_commands(steps.iter().map(|s| s.to_string()).collect());
-        let code = super::run(&c.out, &c.files);
+        let code = super::run_watched(&c.out, &c.files, None);
         assert_eq!(code, std::process::ExitCode::SUCCESS);
         let _ = std::fs::remove_dir_all(&dir);
         crate::native_ui::test_times()
@@ -674,7 +695,7 @@ pub(crate) mod tests {
         let path = dir.join("main.lst");
         std::fs::write(&path, src).unwrap();
         let c = crate::cli::compile(&path, false).expect("the web test's program checks");
-        assert_eq!(super::run(&c.out, &c.files), std::process::ExitCode::SUCCESS);
+        assert_eq!(super::run_watched(&c.out, &c.files, None), std::process::ExitCode::SUCCESS);
         let text = std::fs::read_to_string(&log).unwrap();
         let lines: Vec<&str> = text.lines().collect();
         let _ = std::fs::remove_dir_all(&dir);
@@ -685,4 +706,115 @@ pub(crate) mod tests {
         }
         assert_eq!(lines.len(), 5, "{text}");
     }
+    /// With LUST_STATES, lust run writes each thing with a state of its own: made (named after its
+    /// variable, field or object), every change, and the end of what's made in a state; then stop.    /// Without it, nothing is written.
+    #[test]
+    fn the_states_feed_lists_things_and_their_changes() {
+        let dir = std::env::temp_dir().join(format!("lust-states-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("main.lst");
+        std::fs::write(&path, FEED_PROGRAM).unwrap();
+        let c = crate::cli::compile(&path, false).expect("the states test's program checks");
+        let feed = dir.join("states.jsonl");
+        assert_eq!(super::run_watched(&c.out, &c.files, Some(&feed)), std::process::ExitCode::SUCCESS);
+        let text = std::fs::read_to_string(&feed).unwrap();
+        // The times differ from run to run.
+        let lines: Vec<String> = text
+            .lines()
+            .map(|l| match l.find(",\"ms\":") {
+                Some(i) => {
+                    let rest = &l[i + 6..];
+                    format!(
+                        "{}{}",
+                        &l[..i],
+                        &rest[rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len())..]
+                    )
+                }
+                None => l.to_string(),
+            })
+            .collect();
+        let want = [
+            format!("{{\"ev\":\"start\",\"v\":1,\"lust\":\"{}\"}}", env!("CARGO_PKG_VERSION")),
+            r#"{"ev":"made","id":1,"class":"Game","name":"Game","opt":"Calm"}"#.into(),
+            r#"{"ev":"made","id":2,"class":"Hero","name":"scout","opt":"Calm"}"#.into(),
+            r#"{"ev":"made","id":3,"class":"Hero","name":"ada","opt":"Battle.Melee"}"#.into(),
+            r#"{"ev":"set","id":2,"from":"Calm","opt":"Battle.Melee"}"#.into(),
+            r#"{"ev":"made","id":4,"class":"Torch","name":"torch","opt":"Off"}"#.into(),
+            r#"{"ev":"set","id":4,"from":"Off","opt":"On"}"#.into(),
+            r#"{"ev":"made","id":5,"class":"Torch","name":"spare","opt":"Off"}"#.into(),
+            r#"{"ev":"set","id":5,"from":"Off","opt":"On"}"#.into(),
+            r#"{"ev":"set","id":2,"from":"Battle.Melee","opt":"Battle.Ranged"}"#.into(),
+            r#"{"ev":"end","id":5,"how":"state"}"#.into(),
+            r#"{"ev":"set","id":2,"from":"Battle.Ranged","opt":"Calm"}"#.into(),
+            r#"{"ev":"made","id":6,"class":"Hero","name":"in squad","opt":"Dead"}"#.into(),
+            r#"{"ev":"stop"}"#.into(),
+        ];
+        assert_eq!(lines, want, "{text}");
+        // Off: no file.
+        let _ = std::fs::remove_file(&feed);
+        assert_eq!(super::run_watched(&c.out, &c.files, None), std::process::ExitCode::SUCCESS);
+        assert!(!feed.exists());
+        // A feed that can't be written: the program still runs.
+        let nowhere = dir.join("no-such-folder").join("states.jsonl");
+        assert_eq!(
+            super::run_watched(&c.out, &c.files, Some(&nowhere)),
+            std::process::ExitCode::SUCCESS
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    const FEED_PROGRAM: &str = r#"state Phase = [
+    Calm -> Battle,
+    Battle [
+        Melee -> Battle.Ranged,
+        Ranged -> [Battle.Melee, Calm],
+    ] -> Dead,
+    Dead,
+];
+
+state Glow = [Off, On];
+
+class Torch {
+    has {
+        state = Glow.Off;
+    }
+    method light() {
+        state = Glow.On;
+    }
+}
+
+class Hero {
+    has {
+        state = Phase.Calm;
+        string name = "";
+        Torch torch = nothing;
+    }
+    method fight() {
+        state = Phase.Battle.Melee;
+        keep new Torch in torch;
+        torch:light();
+        Torch spare = new Torch;
+        spare:light();
+    }
+    method rest() {
+        state = Phase.Battle.Ranged;
+        state = Phase.Calm;
+    }
+}
+
+object Game {
+    has {
+        state = Phase.Calm;
+    }
+}
+
+Hero scout = new Hero { name = "Scout" };
+Hero ada = new Hero in Phase.Battle.Melee;
+Hero array squad = [];
+scout:fight();
+scout:rest();
+keep (new Hero in Phase.Dead) in squad;
+print("done");
+end
+"#;
 }

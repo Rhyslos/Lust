@@ -53,6 +53,10 @@ pub struct Output {
     pub lines: Vec<u32>,
     /// And the column of the statement it came from, or 0.
     pub cols: Vec<u32>,
+    /// Lines (from 1) that make a thing with a state of its own straight into a variable, field
+    /// or object, and its name there: what Ledger's States panel calls it (states.rs).
+    #[cfg_attr(not(feature = "cli"), allow(dead_code))]
+    pub names: Vec<(u32, String)>,
 }
 
 struct LoopFrame {
@@ -82,6 +86,8 @@ struct W<'a> {
     named_styles: HashMap<String, Vec<StyleItem>>,
     /// The statement being written: its Lust line and column.
     here: (u32, u32),
+    /// A name for the next line written, when it makes a thing with a state of its own.
+    name_next: Option<String>,
     /// Vectors written with numbers only, made once: _K[1], _K[2], …
     consts: Vec<String>,
 }
@@ -124,6 +130,7 @@ fn write_with(prog: &Program, info: &Info, exact: bool, engine: bool) -> Output 
             })
             .collect(),
         here: (0, 0),
+        name_next: None,
         consts: Vec::new(),
     };
     if exact {
@@ -157,7 +164,19 @@ fn write_with(prog: &Program, info: &Info, exact: bool, engine: bool) -> Output 
     let mut cols = vec![0; lines.len()];
     let mut current = 0u32;
     let mut col = 0u32;
+    let mut names = Vec::new();
     for raw in w.buf.lines() {
+        // A name for the States panel (W::name_next), taken out of the line.
+        let unnamed;
+        let raw = match raw.find('\x03') {
+            Some(i) => {
+                let j = raw[i..].find('\x04').map_or(raw.len(), |j| i + j);
+                names.push((lines.len() as u32 + 1, raw[i + 1..j].to_string()));
+                unnamed = format!("{}{}", &raw[..i], raw.get(j + 1..).unwrap_or(""));
+                unnamed.as_str()
+            }
+            None => raw,
+        };
         let mut text = String::new();
         let mut rest = raw;
         while let Some(i) = rest.find('\x01') {
@@ -175,7 +194,7 @@ fn write_with(prog: &Program, info: &Info, exact: bool, engine: bool) -> Output 
         lines.push(current);
         cols.push(col);
     }
-    Output { code, lines, cols }
+    Output { code, lines, cols, names }
 }
 
 /// Each record's values with their starting values, in order, by its place among the classes.
@@ -285,11 +304,27 @@ impl<'a> W<'a> {
     fn line(&mut self, lust_line: u32, text: &str) {
         let col = if lust_line == self.here.0 { self.here.1 } else { 0 };
         self.buf.push_str(&format!("\x01{lust_line}.{col}\x02"));
+        if let Some(n) = self.name_next.take() {
+            self.buf.push_str(&format!("\x03{n}\x04"));
+        }
         for _ in 0..self.indent {
             self.buf.push_str("  ");
         }
         self.buf.push_str(text);
         self.buf.push('\n');
+    }
+
+    /// When `value` makes a thing with a state of its own, the next line written gets `name`: what
+    /// Ledger's States panel calls the thing (Output::names). Costs the program nothing.
+    fn name_next(&mut self, name: &str, value: &Expr) {
+        self.name_next = None;
+        if let ExprKind::New { class, .. } = &value.kind {
+            if let Some(&c) = self.info.class_index.get(class) {
+                if self.info.stateful(c) && !self.info.classes[c].is_record {
+                    self.name_next = Some(crate::ast::shown(name).to_string());
+                }
+            }
+        }
     }
 
     fn fresh(&mut self, base: &str) -> String {
@@ -1079,6 +1114,9 @@ impl<'a> W<'a> {
                             &format!("{} = _L.node({t}, {})", lname(&c.name), lua_string(crate::ast::shown(&c.name))),
                         );
                     } else {
+                        if self.info.stateful(ci) {
+                            self.name_next = Some(crate::ast::shown(&c.name).to_string());
+                        }
                         self.line(c.pos.line, &format!("{} = _L.new({t})", lname(&c.name)));
                     }
                 }
@@ -1134,6 +1172,9 @@ impl<'a> W<'a> {
                 },
                 None => "nil".into(),
             };
+            if let Some(d) = &f.default {
+                self.name_next(&f.name, d);
+            }
             self.line(f.pos.line, &format!("self.{} = {value}", lname(&f.name)));
         }
         self.owner_label = None;
@@ -1344,11 +1385,17 @@ impl<'a> W<'a> {
         match s {
             Stmt::Var { ty, name, value, .. } => {
                 let v = self.made(ty, value);
+                self.name_next(name, value);
                 self.line(ln, &format!("local {} = {v}", lname(name)));
             }
             Stmt::Assign { target, value, .. } => {
                 let v = self.expr(value);
+                match &target.kind {
+                    ExprKind::Name(n) | ExprKind::Field(_, n, _) => self.name_next(n, value),
+                    _ => {}
+                }
                 self.assign(ln, target, v);
+                self.name_next = None;
             }
             Stmt::Expr(e) => {
                 let code = self.expr(e);
@@ -1828,6 +1875,16 @@ impl<'a> W<'a> {
                 let k = self.fresh("kept");
                 self.line(ln, "do");
                 self.indent += 1;
+                // Named after where it's kept: a field or variable's name, or "in bag" for an array.
+                if let Some(ExprKind::Name(n) | ExprKind::Field(_, n, _)) = into.as_ref().map(|i| &i.kind) {
+                    let place = crate::ast::shown(n);
+                    let place = if matches!(into.as_ref().map(|i| self.info.ty(i)), Some(Ty::Array(_))) {
+                        format!("in {place}")
+                    } else {
+                        place.to_string()
+                    };
+                    self.name_next(&place, value);
+                }
                 self.line(ln, &format!("local {k} = {v}"));
                 self.line(ln, &format!("_L.keep({k})"));
                 if let Some(into) = into {
