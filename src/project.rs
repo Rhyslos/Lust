@@ -383,6 +383,7 @@ pub fn load(
     let mut uses_lua = false;
     let mut compound = HashMap::new();
     let mut old_is = HashSet::new();
+    let mut new_in = HashMap::new();
     let mut this_ids = HashSet::new();
     for (f, file) in files.into_iter().enumerate() {
         let mut r = Renamer {
@@ -404,6 +405,7 @@ pub fn load(
         uses_lua |= prog.uses_lua;
         compound.extend(prog.compound.drain());
         old_is.extend(prog.old_is.drain());
+        new_in.extend(prog.new_in.drain());
         this_ids.extend(prog.this_ids.drain());
         if f == 0 {
             r.stmts(&mut prog.body);
@@ -421,6 +423,7 @@ pub fn load(
             next_id,
             compound,
             old_is,
+            new_in,
             host_files,
             this_ids,
             shared,

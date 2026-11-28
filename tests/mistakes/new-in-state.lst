@@ -1,0 +1,36 @@
+-- Starting in a state: mistakes.
+state Phase = [Calm, Battle [Melee, Ranged]];
+state Mood = [Happy, Grumpy];
+
+record Kit {
+    int grenades = 2;
+}
+
+class Dog {
+    has {
+        string name = "";
+    }
+}
+
+class Hero {
+    has {
+        state = Phase.Calm;
+        Hero array squad = [];
+    }
+
+    method recruit() {
+        keep new Hero in Phase.Battle;
+    }
+}
+
+Dog d = new Dog in Mood.Happy;
+Kit k = new Kit in Phase.Calm;
+Hero a = new Hero in Battle;
+Hero b = new Hero in Battle.Melee { };
+Hero c = new Hero { state = Calm };
+Hero e = new Hero in Mood.Happy;
+Hero f = new Hero in Phase.Calm { state = Phase.Battle };
+Hero g = new Hero in 3;
+Hero h = new Hero in Phase.Calmm;
+Hero i = new Hero in a.squad;
+end

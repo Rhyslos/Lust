@@ -365,3 +365,7 @@ state Guard = [Up -> Down, Down [Cracked] -> Broken, Broken -> Up];
 - **Lua, Luau and Rust:** nothing new to call. When game code changes a value of such a state (a component's own `state = …;`, a field, a variable), the move is checked, with one look-up in a table made once (`_M_Guard` in Lua, a function `mv7` in Rust). A move the arrows don't allow stops with `WrongState`, the kind of failure added in alpha 98: `a Guard can't go from Up to Broken. From Up it can go to Down.` In Rust its `LustError` has `problem: "WrongState"`; in Lua it's an error with that message.
 - **What the engine sets isn't checked:** a component's state set from outside (its table's `state` in Lua, `set_data`, `from_data` and loading a save in Rust, the editor's inspector) can be any option, as a thing's starting state can. Game code's next move is checked from there.
 - **The engine does:** nothing. If its inspector shows a state field, it can keep offering every option.
+
+## alpha 100: starting in a state
+
+`new Fighter in Phase.Battle { … }` is the same as `new Fighter { state = Phase.Battle, … }` (LUST.md, section 8, Starting in a state: new … in), so nothing changes for an engine: a class the engine makes is handed its fields as before, its state among them. Components aren't made with `new`, so they start in the option in their `has`, or the one the engine sets.

@@ -1,0 +1,20 @@
+hero: Battle, hp 10, grenades 2
+ada: Battle, hp 5, grenades 2
+same: Battle, hp 10, grenades 2
+ghost: Dead, hp 10, grenades 2
+WrongState a Phase can't go from Dead to Calm. Nothing follows Dead. Dead
+var: Battle.Melee, hp 10, grenades 2
+call: Battle.Melee, hp 10, grenades 2
+field: Dead, hp 10, grenades 2
+value: Battle, hp 10, grenades 2
+either: Calm, hp 10, grenades 2
+melee: Battle.Ranged, hp 10, grenades 2
+WrongState a Phase can't go from Battle.Ranged to Calm. From Battle.Ranged it can go to Battle.Melee or Dead. Battle.Ranged
+merlin: Battle, hp 10, grenades 0
+3
+named: bo is Calm
+loop: Battle, hp 10, grenades 2
+x: Dead, hp 10, grenades 2
+guard: Battle, hp 10, grenades 2
+cy: Battle.Ranged, hp 10, grenades 2
+1

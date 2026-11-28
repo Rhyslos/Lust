@@ -397,6 +397,8 @@ pub struct Checker<'a> {
     compound: HashMap<usize, &'static str>,
     /// Values written after the old `is` (now is Mood.Calm;): each is a mistake.
     old_is: std::collections::HashSet<usize>,
+    /// `new Hero in Phase.Battle`: the state's value, by id, and where its `in` is.
+    new_in: HashMap<usize, Pos>,
     compound_now: Option<&'static str>,
     /// What the engine the program is inside can do.
     engine: EngineCan,
@@ -427,6 +429,7 @@ pub fn check(prog: &Program, diags: &mut Diags, is_script: bool) -> Info {
         in_update: false,
         compound: prog.compound.clone(),
         old_is: prog.old_is.clone(),
+        new_in: prog.new_in.clone(),
         compound_now: None,
         this_ids: prog.this_ids.clone(),
     };
@@ -594,6 +597,68 @@ fn describe(e: &Expr) -> String {
 }
 
 impl<'a> Checker<'a> {
+    /// The starting state in a `new`, written `new Hero in Phase.Battle` or `state = …` in its
+    /// { }. False when it's a mistake already said, so it isn't checked any further: `in` on a
+    /// record or a class without a state of its own, and an option without its state's name.
+    fn start_state_ok(&mut self, c: usize, v: &Expr, ctx: &Ctx) -> bool {
+        let class = self.info.classes[c].name.clone();
+        let in_pos = self.new_in.get(&v.id).copied();
+        if let Some(at) = in_pos {
+            if self.info.classes[c].is_record {
+                self.err(
+                    at,
+                    format!("{class} is a record, and a record has no state of its own, so it can't start in one. Leave out in."),
+                );
+                return false;
+            }
+            if self.info.own_state(c).is_none() {
+                self.err(
+                    at,
+                    format!(
+                        "{class} has no state of its own, so it can't start in one. Give it one in its has (state = Mood.Calm;), or leave out in."
+                    ),
+                );
+                return false;
+            }
+        }
+        let Some(s) = self.info.own_state(c) else { return true };
+        // in Battle, without Phase in front: an option of the thing's own state.
+        let mut path = Vec::new();
+        let mut e = v;
+        loop {
+            match &e.kind {
+                ExprKind::Field(t, f, _) => {
+                    path.push(f.clone());
+                    e = t;
+                }
+                ExprKind::Name(n) => {
+                    path.push(n.clone());
+                    break;
+                }
+                _ => return true,
+            }
+        }
+        path.reverse();
+        let root = &path[0];
+        let known = self.info.state_index.contains_key(root)
+            || self.info.class_index.contains_key(root)
+            || self.lookup(ctx, root).is_some()
+            || self.top_vars.contains_key(root)
+            || ctx.class.is_some_and(|k| self.info.field(k, root).is_some());
+        let path = path.join(".");
+        if known || !self.info.states[s].options.contains(&path) {
+            return true;
+        }
+        let sn = self.info.states[s].name.clone();
+        let fixed = if in_pos.is_some() {
+            format!("new {class} in {sn}.{path}")
+        } else {
+            format!("new {class} {{ state = {sn}.{path} }}")
+        };
+        self.err(v.pos, format!("an option is written with its state's name in front: {fixed}"));
+        false
+    }
+
     /// A thing's own state changes only in its own class's methods (or a class `like` it), so a
     /// class's methods are the one way in and out of its states, and what they do then can't be
     /// skipped. Reading it from outside is fine, and so is a starting value in `new { }`.
@@ -4637,6 +4702,20 @@ impl<'a> Checker<'a> {
                             }
                         }
                         Ty::Error => {}
+                        // keep new Hero in Phase.Battle;: after keep, in says where it's kept.
+                        Ty::State(_) if matches!(value.kind, ExprKind::New { .. }) => {
+                            let class = match &value.kind {
+                                ExprKind::New { class, .. } => class.clone(),
+                                _ => unreachable!(),
+                            };
+                            self.err(
+                                into.pos,
+                                format!(
+                                    "after keep, in says where it's kept. To start it in an option, put the new in ( ): keep (new {class} in {});",
+                                    describe(into)
+                                ),
+                            );
+                        }
                         _ => {
                             self.writable(into, ctx, *pos);
                             if !matches!(&into.kind, ExprKind::Name(_) | ExprKind::Field(..) | ExprKind::Index(..)) {
@@ -5249,10 +5328,18 @@ impl<'a> Checker<'a> {
                         self.err(*fpos, msg);
                         continue;
                     }
+                    if f == "state" && !self.start_state_ok(c, v, ctx) {
+                        continue;
+                    }
                     match self.info.field(c, f).map(|x| x.ty.clone()) {
                         Some(ft) => {
                             let got = self.expr(v, ctx, Some(&ft));
-                            self.expect_fits(v, &got, &ft, &format!("{f} is {}", self.a(&ft)));
+                            let what = if self.new_in.contains_key(&v.id) {
+                                format!("{class}'s state is {}", self.a(&ft))
+                            } else {
+                                format!("{f} is {}", self.a(&ft))
+                            };
+                            self.expect_fits(v, &got, &ft, &what);
                         }
                         None => {
                             self.expr(v, ctx, None);

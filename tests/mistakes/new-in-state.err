@@ -1,0 +1,13 @@
+new-in-state.lst:22:26  after keep, in says where it's kept. To start it in an option, put the new in ( ): keep (new Hero in Phase.Battle);
+new-in-state.lst:26:17  Dog has no state of its own, so it can't start in one. Give it one in its has (state = Mood.Calm;), or leave out in.
+new-in-state.lst:27:17  Kit is a record, and a record has no state of its own, so it can't start in one. Leave out in.
+new-in-state.lst:28:22  an option is written with its state's name in front: new Hero in Phase.Battle
+new-in-state.lst:29:22  an option is written with its state's name in front: new Hero in Phase.Battle.Melee
+new-in-state.lst:30:29  an option is written with its state's name in front: new Hero { state = Phase.Calm }
+new-in-state.lst:31:22  Hero's state is a Phase option, but this is a Mood option.
+new-in-state.lst:32:35  this Hero starts in the option written after in, so leave out state = here.
+new-in-state.lst:33:22  Hero's state is a Phase option, but this is an int.
+new-in-state.lst:34:28  Calmm isn't an option of Phase. Did you mean Calm? The options are Calm, Battle.
+new-in-state.lst:35:22  Hero's state is a Phase option, but this is a Hero array.
+
+11 mistakes. Nothing was run.

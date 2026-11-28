@@ -2434,3 +2434,141 @@ mod allowed_moves {
         assert!(fine > 100, "only {fine} programs checked");
     }
 }
+
+#[cfg(test)]
+mod new_in_state {
+    //! Starting in a state: new Hero in Phase.Battle { hp = 5 }.
+
+    const HEAD: &str = "state Phase = [Calm -> Battle, Battle [Melee, Ranged] -> Dead, Dead];\nrecord Kit {\n    int n = 1;\n}\nclass Dog {\n    has {\n        int hp = 1;\n    }\n}\nclass Hero {\n    has {\n        int hp = 10;\n        state = Phase.Calm;\n    }\n    method show() {\n        print(hp);\n    }\n}\n";
+
+    fn files(src: &str) -> Vec<(String, String)> {
+        vec![("main.lst".to_string(), format!("{HEAD}{src}\nend\n"))]
+    }
+
+    fn msgs(src: &str) -> Vec<String> {
+        match crate::check("main.lst", &files(src)) {
+            Ok(()) => vec![],
+            Err(p) => p.into_iter().map(|p| p.message).collect(),
+        }
+    }
+
+    fn lua(src: &str) -> String {
+        crate::to_lua("main.lst", &files(src)).ok().unwrap().code
+    }
+
+    fn rust(src: &str) -> String {
+        crate::to_rust_library("main.lst", &files(src)).unwrap()
+    }
+
+    #[test]
+    fn same_as_state_equals() {
+        // Both ways of writing it give the very same program, in both outputs.
+        let a = "Hero h = new Hero in Phase.Battle.Melee { hp = 5 };";
+        let b = "Hero h = new Hero { state = Phase.Battle.Melee, hp = 5 };";
+        assert_eq!(lua(a), lua(b));
+        assert_eq!(rust(a), rust(b));
+        assert_eq!(
+            lua("Hero h = new Hero in Phase.Dead;"),
+            lua("Hero h = new Hero { state = Phase.Dead };")
+        );
+    }
+
+    #[test]
+    fn any_value_of_the_state() {
+        for v in ["p", "h.state", "pick()", "(either true? Phase.Calm or Phase.Dead)", "ps[0]"] {
+            let src = format!(
+                "method Phase pick() {{\n    return Phase.Dead;\n}}\nPhase p = Phase.Dead;\nPhase array ps = [p];\nHero h = new Hero;\nHero g = new Hero in {v} {{ hp = 2 }};\n"
+            );
+            assert!(msgs(&src).is_empty(), "{v}: {:?}", msgs(&src));
+        }
+    }
+
+    #[test]
+    fn a_method_after_it_is_the_new_things() {
+        assert!(msgs("new Hero in Phase.Battle:show();").is_empty());
+        assert!(lua("new Hero in Phase.Battle:show();").contains(":show()"));
+    }
+
+    #[test]
+    fn keep_keeps_its_in() {
+        let ok = "class Squad {\n    has {\n        state = Phase.Calm;\n        Hero array all = [];\n    }\n    method add() {\n        keep new Hero in all;\n        keep (new Hero in Phase.Battle) in all;\n        keep (new Hero in Phase.Dead);\n    }\n}\n";
+        assert!(msgs(ok).is_empty(), "{:?}", msgs(ok));
+        let bad = "class Squad {\n    has {\n        state = Phase.Calm;\n    }\n    method add() {\n        keep new Hero in Phase.Battle;\n    }\n}\n";
+        assert!(msgs(bad).join("\n").contains("keep (new Hero in Phase.Battle);"), "{:?}", msgs(bad));
+    }
+
+    #[test]
+    fn loops_tell_their_in_from_news() {
+        let src =
+            "loop (Hero h in [new Hero in Phase.Calm]) {\n    h:show();\n}\nloop (new Hero in Phase.Calm == nothing) {\n    print(1);\n}\n";
+        assert!(msgs(src).is_empty(), "{:?}", msgs(src));
+    }
+
+    #[test]
+    fn mistakes() {
+        let one = |s: &str| msgs(s).join("\n");
+        assert!(one("Dog d = new Dog in Phase.Calm;").contains("Dog has no state of its own"));
+        assert!(one("Kit k = new Kit in Phase.Calm;").contains("a record has no state of its own"));
+        assert!(one("Hero h = new Hero in Battle;").contains("new Hero in Phase.Battle"));
+        assert!(one("Hero h = new Hero in Battle.Melee;").contains("new Hero in Phase.Battle.Melee"));
+        assert!(one("Hero h = new Hero { state = Dead };").contains("new Hero { state = Phase.Dead }"));
+        assert!(one("Hero h = new Hero in Phase.Calm { state = Phase.Dead };").contains("leave out state = here"));
+        assert!(one("Hero h = new Hero in 3;").contains("Hero's state is a Phase"));
+        assert!(one("Hero h = new Hero in { hp = 1 };").contains("say which option it starts in"));
+        assert!(one("Hero h = new Hero in;").contains("say which option it starts in"));
+        // A variable called like an option isn't taken for one.
+        assert!(msgs("Phase p = Phase.Dead;\nHero h = new Hero in p;").is_empty());
+    }
+
+    #[test]
+    fn news_fuzzed() {
+        // new … in, written at random from a fixed seed and sometimes broken: checking never
+        // panics, and a program that checks writes both outputs.
+        let mut seed = 7717u64;
+        let mut next = |n: usize| {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            ((seed >> 33) % n as u64) as usize
+        };
+        let classes = ["Hero", "Dog", "Kit", "Nope"];
+        let values = [
+            "Phase.Calm",
+            "Phase.Battle.Melee",
+            "Battle",
+            "p",
+            "h.state",
+            "3",
+            "(p)",
+            "Phase.Dead",
+            "",
+        ];
+        let after = ["", " { hp = 2 }", " { state = Phase.Calm }", ":show()", " { }", " in Phase.Calm"];
+        let junk = ["in", "new", "{", "}", "(", ")", ":", ".", ";", "keep", "loop"];
+        let mut fine = 0;
+        for _ in 0..1500 {
+            let class = classes[if next(4) == 0 { next(classes.len()) } else { 0 }];
+            let mut text = format!(
+                "Phase p = Phase.Battle;\nHero h = new Hero in p;\nHero array hs = [];\nloop (Hero x in [new {class} in {}{}]) {{\n    print(x.hp);\n}}\n",
+                values[next(values.len())],
+                after[next(after.len())]
+            );
+            if next(3) == 0 {
+                let at = next(text.len());
+                if text.is_char_boundary(at) {
+                    match next(2) {
+                        0 => text.insert_str(at, junk[next(junk.len())]),
+                        _ => {
+                            text.remove(at);
+                        }
+                    }
+                }
+            }
+            let f = files(&text);
+            if crate::check("main.lst", &f).is_ok() {
+                crate::to_lua("main.lst", &f).unwrap();
+                crate::to_rust_library("main.lst", &f).unwrap();
+                fine += 1;
+            }
+        }
+        assert!(fine > 100, "only {fine} programs checked");
+    }
+}
