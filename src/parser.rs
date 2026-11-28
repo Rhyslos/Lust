@@ -3254,9 +3254,14 @@ impl<'a> Parser<'a> {
                             // The value's own tokens, read as an expression of their own.
                             let start = toks[0].pos;
                             let saved = (std::mem::replace(&mut self.toks, toks.clone()), std::mem::replace(&mut self.p, 0));
+                            let known = self.diags.list.len();
                             let e = self.expr();
                             let rest = (!self.at_eof()).then(|| self.cur().pos);
                             (self.toks, self.p) = saved;
+                            // The value ends at its }, not at the end of the file.
+                            for (_, m) in self.diags.list[known..].iter_mut() {
+                                *m = m.replace("the end of the file", "the } that ends the value");
+                            }
                             let e = e?;
                             if let Some(pos) = rest {
                                 return self.fail(pos, "a { } in text holds one value: \"hp: {hp}\". Write \\{ for a plain {.");

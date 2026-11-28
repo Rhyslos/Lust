@@ -1,0 +1,7 @@
+-- Values in text that start with a number are read as code, so their mistakes show.
+int lives = 3;
+print("{1 + either lives > 2? 1 or 2}");
+print("{lives + either lives > 2? 1 or 2}");
+print("{1 + }");
+print("{2 * lives lives}");
+end
