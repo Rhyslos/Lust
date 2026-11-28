@@ -35,6 +35,18 @@ pub fn fail_as(problem: &'static str, msg: String) -> ! {
     std::panic::panic_any(Fail(msg, problem))
 }
 
+/// A move between a state's options that its arrows don't allow: "a Door can't go from Locked
+/// to Open. From Locked it can go to Shut."
+#[cold]
+pub fn bad_move(who: &str, from: &str, to: &str, said: &str) -> ! {
+    let why = if said.is_empty() {
+        format!("Nothing follows {from}.")
+    } else {
+        format!("From {from} it can go to {said}.")
+    };
+    fail_as("WrongState", format!("{who} can't go from {from} to {to}. {why}"))
+}
+
 /// Stops with a failure handed on from elsewhere.
 pub fn failed(e: Failed) -> ! {
     fail_as(e.0, e.1)
@@ -1147,6 +1159,15 @@ pub fn ainject<T>(a: &Arr<T>, x: T) {
     a.borrow_mut().push(x);
 }
 
+/// An array's item of a state with arrows: the move from the option it holds is checked.
+pub fn aset_moved(a: &Arr<&'static str>, i: i64, x: &'static str, moved: fn(&'static str, &'static str) -> &'static str) {
+    let n = a.borrow().len();
+    where_(n, i);
+    let old = a.borrow()[i as usize];
+    let x = moved(old, x);
+    a.borrow_mut()[i as usize] = x;
+}
+
 pub fn aremove<T>(a: &Arr<T>, i: i64) {
     let n = a.borrow().len();
     where_(n, i);
@@ -1208,6 +1229,16 @@ pub fn mset<T>(m: &Map<T>, k: String, v: T) {
         b.keys.push(k.clone());
     }
     b.vals.insert(k, v);
+}
+
+/// A map's value of a state with arrows: a key's first value is free, and a change is checked.
+pub fn mset_moved(m: &Map<&'static str>, k: String, v: &'static str, moved: fn(&'static str, &'static str) -> &'static str) {
+    let old = m.borrow().vals.get(&k).copied();
+    let v = match old {
+        Some(old) => moved(old, v),
+        None => v,
+    };
+    mset(m, k, v);
 }
 
 pub fn mhas<T>(m: &Map<T>, k: &str) -> bool {

@@ -43,7 +43,7 @@ Lust is written in Rust, and has one language with two outputs:
 | Rust, compiled to real programs | `.lst` | apps, tools and servers on Windows, macOS and Linux |
 | LustScript, turned into Lua | `.lsc` | scripting and modding inside other programs, like Garry's Mod, Aventail and Halberd |
 
-**What works today (alpha 98):** both outputs. Every file is checked before anything runs, with mistakes explained in plain words.
+**What works today (alpha 99):** both outputs. Every file is checked before anything runs, with mistakes explained in plain words.
 
 - `.lsc` files turn into plain Lua 5.1 that Garry's Mod (LuaJIT) and Luau can run.
 - `.lst` files turn into Rust, which builds into a real program (an `.exe` on Windows) that runs without Lust.
@@ -53,6 +53,7 @@ Lust is written in Rust, and has one language with two outputs:
 - Records: `record Loadout { Gun primary; int grenades = 2; }` groups a few simple values that are copied wherever they go, so changing one copy never changes another, and an engine can keep them in components and events (LUST.md, section 10).
 - Events that count in a state: an `on` block's entry can be for some of a thing's options, as `Hit(entity by, float damage) in Battle { … }`, so the same event does different things in different options, and nothing at all in an option no entry covers (LUST.md, section 11).
 - Methods that exist in some states: a method can have bodies for some of a thing's options, as `method fire() in Battle { … }`, and calling it in an option no body covers stops with `Problem.WrongState` (LUST.md, section 11).
+- Allowed moves between options: `state Door = [Locked -> Shut, Shut -> [Open, Locked], Open -> Shut];` says which option may follow which, and a move the arrows don't allow stops with `Problem.WrongState` (LUST.md, section 8).
 - Tweens: `tween hp to 0 over 0.5 [ease OutCubic];` glides a number, vector, colour or rotation to a new value, with the standard easing curves.
 - Waiting: `wait 2;` pauses only the piece of work that waits, so windows never freeze, `start openGate();` runs a call alongside, `wait { is door.state == Door.Open? } or after 5 { … }` waits until things are true, with a time limit, and a `check` inside a `wait { }` waits until a state is one of its options, then runs that one's block. `start gate = openGate();` names the work, `cancel gate;` stops it, `gate.state` says how it's going (`Run.Waiting`, `Going`, `Done` or `Cancelled`), work started during a state is cancelled when the state ends, and a program whose runs could only wake each other stops with a message naming them. Asking a website (`Web:get`) and the computer's file boxes pause only their run too, and in a game, event handlers and started work wait across the engine's ticks, on the game's own time (LUST.md, section 11).
 - Saves, and databases on SQLite whose tables work like cMaps.

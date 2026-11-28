@@ -1,0 +1,9 @@
+allowed-moves.lst:3:15  Door has no option called Shutt. Did you mean Shut?
+allowed-moves.lst:4:28  Open is already listed after this arrow.
+allowed-moves.lst:5:13  Open can always stay Open, so its arrow doesn't need to name it. Take out Open here.
+allowed-moves.lst:6:13  an arrow names an option of Door on its own, so write -> Shut
+allowed-moves.lst:10:22  Battle.Melee is inside Battle, and an arrow to Battle covers the options inside it, so list only Battle.
+allowed-moves.lst:12:18  Phase has no option called Ranged. An arrow names an option by its path from the state, so write -> Battle.Ranged
+allowed-moves.lst:13:20  Phase has no option called Battle.Far.
+
+7 mistakes. Nothing was run.

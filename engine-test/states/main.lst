@@ -4,7 +4,8 @@ method log(string words) native;
 
 event Hit(float damage);
 
-state Guard = [Up, Down [Cracked], Broken];
+-- Allowed moves: a Shield goes Up to Down, Down (Cracked too) to Broken, and Broken back to Up.
+state Guard = [Up -> Down, Down [Cracked] -> Broken, Broken -> Up];
 
 component Shield {
     has {
@@ -42,6 +43,12 @@ component Shield {
         hp = 4;
         state = Guard.Up;
         log("mended");
+    }
+
+    -- Allowed moves: from Up, Broken isn't allowed, so this stops with WrongState there.
+    method smash() {
+        state = Guard.Broken;
+        log("smashed");
     }
 }
 

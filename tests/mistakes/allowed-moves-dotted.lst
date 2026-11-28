@@ -1,0 +1,7 @@
+-- Allowed moves: an inner option's arrow is written inside its outer option's [ ].
+state Phase = [
+    Calm,
+    Battle [Melee, Ranged],
+    Battle.Melee -> Battle.Ranged,
+];
+end

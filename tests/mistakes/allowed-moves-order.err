@@ -1,0 +1,6 @@
+allowed-moves-order.lst:4:17  an option's arrow comes last, after its values and inner options: Run { … } [ … ] -> …
+allowed-moves-order.lst:5:36  an option's arrow comes last, after its values and inner options: Battle { … } [ … ] -> …
+allowed-moves-order.lst:8:34  Jump can have only one arrow, so list every option that can follow it in that one: Jump -> [A, B]
+allowed-moves-order.lst:9:29  -> [ ] lists the options that can follow Fall, so it needs at least one. If nothing follows Fall, leave out its arrow.
+
+4 mistakes. Nothing was run.

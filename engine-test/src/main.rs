@@ -773,6 +773,23 @@ fn main() {
     let said = log.borrow_mut().split_off(0).trim_end().replace('\n', "; ");
     writeln!(out, "update when cracked: {said}").unwrap();
 
+    // 14. Allowed moves: game code's moves are checked, the engine's own sets aren't.
+    let smash: Function = shield.get("smash").unwrap();
+    for set in ["Up", "Down.Cracked"] {
+        shield.set("state", set).unwrap();
+        let ran = smash.call::<()>(shield.clone()).map_err(|e| e.to_string());
+        let said = log.borrow_mut().split_off(0).trim_end().replace('\n', "; ");
+        let err = ran.err().map(|e| st.locate(&e).to_string()).unwrap_or_default();
+        writeln!(
+            out,
+            "smash from {set}: {}{}; now {}",
+            if said.is_empty() { "nothing ran" } else { &said },
+            if err.is_empty() { String::new() } else { format!("; {err}") },
+            shield.get::<String>("state").unwrap()
+        )
+        .unwrap();
+    }
+
     let expected_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("expected.out");
     if std::env::args().any(|a| a == "--print") {
         print!("{out}");

@@ -26,17 +26,7 @@ Built in alpha 98: see [LUST.md](LUST.md), section 11, Methods in some options: 
 
 ## 6. Allowed moves between options
 
-A state can say which option may follow which, so a move the game's rules don't allow is caught.
-
-```
-state Door = [Locked -> Shut, Shut -> [Open, Locked], Open -> Shut];
-```
-
-- **`Option -> Next`,** or `-> [A, B]` for several. As soon as any option has an arrow, only the moves written are allowed. An option with no arrow is an end: nothing follows it.
-- With values on options (LUST.md, section 8): `Shut { sound = Sound.Click } -> Open`.
-- **Options inside options:** arrows name options by their path from the state (`Battle.Melee -> Battle.Ranged`). An arrow from an outer option covers its inner ones.
-- **Checked when the state changes:** a move that isn't allowed stops with `Problem.WrongState`: "a Door can't go from Locked to Open." A thing's starting state can be any option.
-- Waits, events and `check` don't change.
+Built in alpha 99: see [LUST.md](LUST.md), section 8, Allowed moves between options.
 
 ## 7. Starting in a state
 
@@ -53,6 +43,6 @@ Not a language change. While `lust run` runs a program from Ledger, a **States**
 3. Records (Lust's half built, alpha 96; Solis's half in ENGINES.md)
 4. Events that count in a state (built, alpha 97)
 5. Methods that exist in some states (built, alpha 98)
-6. Allowed moves between options
+6. Allowed moves between options (built, alpha 99)
 7. Starting in a state
 8. Ledger's States panel

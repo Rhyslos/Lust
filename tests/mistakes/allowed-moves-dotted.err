@@ -1,0 +1,3 @@
+allowed-moves-dotted.lst:5:5  Battle.Melee can't be written here: an option inside another goes in its outer option's [ ], with its arrow, as in Battle [Melee -> Battle.Ranged]
+
+1 mistake. Nothing was run.

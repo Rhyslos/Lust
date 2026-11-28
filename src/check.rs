@@ -19,6 +19,11 @@ pub struct StateInfo {
     /// For each option (in the order of `options`), its value for each name (in the order of
     /// `data`): its own, or the one it takes from the option it's inside.
     pub values: Vec<Vec<Expr>>,
+    /// The moves allowed between options (`Locked -> Shut`), or None when no option has an
+    /// arrow. For each option (in the order of `options`), the options it may move to (each one
+    /// inside a target too), and those targets as written, for the message when a move isn't
+    /// allowed ("Open or Locked"; empty for an end).
+    pub moves: Option<Vec<(Vec<usize>, String)>>,
 }
 
 impl StateInfo {
@@ -28,6 +33,19 @@ impl StateInfo {
             options,
             data: vec![],
             values: vec![],
+            moves: None,
+        }
+    }
+
+    /// "a Door", "an Alarm": the state's name with a or an, for the message when a move isn't
+    /// allowed.
+    pub fn a_name(&self) -> String {
+        let n = crate::ast::shown(&self.name);
+        let first = n.chars().next().unwrap_or('x').to_ascii_lowercase();
+        if "aeiou".contains(first) {
+            format!("an {n}")
+        } else {
+            format!("a {n}")
         }
     }
 }
@@ -783,6 +801,7 @@ impl<'a> Checker<'a> {
                 if let Some(&si) = self.info.state_index.get(&s.name) {
                     if done.insert(si) {
                         self.state_values(s, si);
+                        self.state_moves(s, si);
                     }
                 }
             }
@@ -1725,6 +1744,109 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// The moves a state's arrows allow: `Shut -> [Open, Locked]`. Once any option has an arrow,
+    /// only the moves written are allowed; an arrow from an outer option covers its inner ones,
+    /// and an arrow to an outer option lets the thing move to any option inside it too.
+    fn state_moves(&mut self, decl: &StateDecl, si: usize) {
+        // Each arrow: the option it's from, where it's written, its targets.
+        fn arrows<'d>(opts: &'d [StateOption], prefix: &str, out: &mut Vec<(String, &'d (Pos, Vec<(String, Pos)>))>) {
+            for o in opts {
+                let path = if prefix.is_empty() {
+                    o.name.clone()
+                } else {
+                    format!("{prefix}.{}", o.name)
+                };
+                if let Some(m) = &o.moves {
+                    out.push((path.clone(), m));
+                }
+                arrows(&o.children, &path, out);
+            }
+        }
+        let mut all = Vec::new();
+        arrows(&decl.options, "", &mut all);
+        if all.is_empty() {
+            return;
+        }
+        let options = self.info.states[si].options.clone();
+        let sn = crate::ast::shown(&decl.name).to_string();
+        let inside = |a: &str, b: &str| a == b || a.starts_with(&format!("{b}."));
+        // The targets each arrow really has, once the mistakes are left out.
+        let mut good: Vec<(String, Vec<String>)> = Vec::new();
+        for (from, (_, targets)) in &all {
+            let mut kept: Vec<String> = Vec::new();
+            for (t, pos) in targets {
+                if !options.contains(t) {
+                    let outer = from.rsplit_once('.').map(|(o, _)| o);
+                    let own = t
+                        .strip_prefix(&format!("{}.", decl.name))
+                        .filter(|r| options.iter().any(|x| x == r));
+                    let near = outer.map(|o| format!("{o}.{t}")).filter(|p| options.contains(p));
+                    if let Some(rest) = own {
+                        self.err(*pos, format!("an arrow names an option of {sn} on its own, so write -> {rest}"));
+                    } else if let Some(p) = near {
+                        self.err(
+                            *pos,
+                            format!("{sn} has no option called {t}. An arrow names an option by its path from the state, so write -> {p}"),
+                        );
+                    } else {
+                        let hint = suggest(t, options.iter().cloned());
+                        self.err(*pos, format!("{sn} has no option called {t}.{hint}"));
+                    }
+                    continue;
+                }
+                if t == from {
+                    self.err(
+                        *pos,
+                        format!("{from} can always stay {from}, so its arrow doesn't need to name it. Take out {from} here."),
+                    );
+                    continue;
+                }
+                if kept.contains(t) {
+                    self.err(*pos, format!("{t} is already listed after this arrow."));
+                    continue;
+                }
+                if let Some(outer) = kept.iter().find(|k| inside(t, k) || inside(k, t)) {
+                    let (big, small) = if inside(t, outer) {
+                        (outer.clone(), t.clone())
+                    } else {
+                        (t.clone(), outer.clone())
+                    };
+                    self.err(
+                        *pos,
+                        format!("{small} is inside {big}, and an arrow to {big} covers the options inside it, so list only {big}."),
+                    );
+                    continue;
+                }
+                kept.push(t.clone());
+            }
+            good.push((from.clone(), kept));
+        }
+        // For each option: the arrows from it or an option it's inside, its own first.
+        let mut moves = Vec::new();
+        for o in &options {
+            let mut written: Vec<String> = Vec::new();
+            let mut froms: Vec<&(String, Vec<String>)> = good.iter().filter(|(f, _)| inside(o, f)).collect();
+            froms.sort_by_key(|(f, _)| std::cmp::Reverse(f.len()));
+            for (_, ts) in froms {
+                for t in ts {
+                    if !written.contains(t) {
+                        written.push(t.clone());
+                    }
+                }
+            }
+            let to: Vec<usize> = (0..options.len())
+                .filter(|&b| options[b] != *o && written.iter().any(|t| inside(&options[b], t)))
+                .collect();
+            let shown = match written.split_last() {
+                None => String::new(),
+                Some((last, [])) => last.clone(),
+                Some((last, rest)) => format!("{} or {last}", rest.join(", ")),
+            };
+            moves.push((to, shown));
+        }
+        self.info.states[si].moves = Some(moves);
+    }
+
     /// The values a state's options carry: `Run { clip = Clip.Run, speed = 6.5 }`. Inner options
     /// take their outer option's, every option ends up with every name, and each name keeps one
     /// type. They're fixed, so each is written out: a number, text, a bool, an option, a vector
@@ -2120,6 +2242,17 @@ impl<'a> Checker<'a> {
                                 describe(a)
                             ),
                         ),
+                        // A state with arrows allows only some moves, but a dropdown offers every option.
+                        (Ty::State(s), None) if self.info.states[*s].moves.is_some() => {
+                            let name = crate::ast::shown(&self.info.states[*s].name).to_string();
+                            self.err(
+                                a.pos,
+                                format!(
+                                    "a {kind} offers every option of {name}, but {name}'s arrows allow only some moves, so a choice could be refused. Bind it to a string, with the options that can follow in a list, and change {} in its block.",
+                                    describe(a)
+                                ),
+                            );
+                        }
                         (Ty::State(s), Some(c)) => {
                             let name = self.info.states[*s].name.clone();
                             self.err(

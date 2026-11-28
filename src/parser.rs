@@ -282,6 +282,11 @@ pub fn parse(toks: Vec<Token>, src: &str, diags: &mut Diags, is_script: bool, fi
     p.program()
 }
 
+/// An arrow written before an option's values or inner options.
+fn arrow_last(name: &str) -> String {
+    format!("an option's arrow comes last, after its values and inner options: {name} {{ … }} [ … ] -> …")
+}
+
 impl<'a> Parser<'a> {
     // ----- token helpers -----
 
@@ -690,27 +695,80 @@ impl<'a> Parser<'a> {
             }
             let (name, pos) = self.ident("an option's name")?;
             check_name(self.diags, &name, pos, NameKind::Type, "option");
+            if self.at_sym(".") {
+                let whole = match &self.peek(1).kind {
+                    Tk::Ident(inner) => format!("{name}.{inner}"),
+                    _ => format!("{name}."),
+                };
+                return self.fail(
+                    pos,
+                    format!("{whole} can't be written here: an option inside another goes in its outer option's [ ], with its arrow, as in Battle [Melee -> Battle.Ranged]"),
+                );
+            }
             if out.iter().any(|o: &StateOption| o.name == name) {
                 self.diags.add(pos, format!("{name} is already an option here."));
             }
-            let mut data = if self.at_sym("{") { self.state_data(&name)? } else { Vec::new() };
+            // Written in this order: the name, its values { }, its inner options [ ], its arrow.
+            let mut data = Vec::new();
             let mut children = Vec::new();
-            if self.at_sym("[") {
-                let o = self.next();
-                children = self.state_options(o.pos)?;
-            }
-            if self.at_sym("{") {
+            let mut moves: Option<(Pos, Vec<(String, Pos)>)> = None;
+            let (mut had_data, mut had_children) = (false, false);
+            loop {
                 let at = self.cur().pos;
-                self.diags.add(
-                    at,
-                    format!("an option's values come before its inner options: {name} {{ … }} [ … ]"),
-                );
-                let late = self.state_data(&name)?;
-                if data.is_empty() {
-                    data = late;
+                if self.at_sym("{") {
+                    if moves.is_some() {
+                        self.diags.add(at, arrow_last(&name));
+                    } else if had_children {
+                        self.diags.add(
+                            at,
+                            format!("an option's values come before its inner options: {name} {{ … }} [ … ]"),
+                        );
+                    } else if had_data {
+                        self.diags
+                            .add(at, format!("{name} already has its values. Write them all in one {{ }}."));
+                    }
+                    let d = self.state_data(&name)?;
+                    if !had_data {
+                        data = d;
+                    }
+                    had_data = true;
+                } else if self.at_sym("[") {
+                    if moves.is_some() {
+                        self.diags.add(at, arrow_last(&name));
+                    } else if had_children {
+                        self.diags
+                            .add(at, format!("{name} already has its inner options. Write them all in one [ ]."));
+                    }
+                    let o = self.next();
+                    let c = self.state_options(o.pos)?;
+                    if !had_children {
+                        children = c;
+                    }
+                    had_children = true;
+                } else if self.at_sym("->") {
+                    if moves.is_some() {
+                        self.diags.add(
+                            at,
+                            format!(
+                                "{name} can have only one arrow, so list every option that can follow it in that one: {name} -> [A, B]"
+                            ),
+                        );
+                    }
+                    let m = self.state_arrow(&name)?;
+                    if moves.is_none() {
+                        moves = Some(m);
+                    }
+                } else {
+                    break;
                 }
             }
-            out.push(StateOption { name, pos, data, children });
+            out.push(StateOption {
+                name,
+                pos,
+                data,
+                children,
+                moves,
+            });
             if self.at_sym(",") {
                 self.next();
             } else if !self.at_sym("]") {
@@ -718,6 +776,59 @@ impl<'a> Parser<'a> {
                 return self.fail(pos, "expected , or ] between options.");
             }
         }
+    }
+
+    /// `-> Open` or `-> [Open, Locked]` after an option: the options that may follow it, each by
+    /// its path from the state (`Battle.Ranged`).
+    fn state_arrow(&mut self, option: &str) -> R<(Pos, Vec<(String, Pos)>)> {
+        let arrow = self.next().pos;
+        let mut out = Vec::new();
+        if self.at_sym("[") {
+            let open = self.next();
+            loop {
+                if self.at_sym("]") {
+                    self.next();
+                    break;
+                }
+                if self.at_eof() {
+                    return self.fail(open.pos, "this [ is never closed. Add a ] after the last option that can follow.");
+                }
+                out.push(self.option_path(option)?);
+                if self.at_sym(",") {
+                    self.next();
+                } else if !self.at_sym("]") {
+                    let pos = self.cur().pos;
+                    return self.fail(pos, "expected , or ] between the options that can follow.");
+                }
+            }
+            if out.is_empty() {
+                self.diags.add(
+                    open.pos,
+                    format!("-> [ ] lists the options that can follow {option}, so it needs at least one. If nothing follows {option}, leave out its arrow."),
+                );
+            }
+        } else {
+            out.push(self.option_path(option)?);
+        }
+        Ok((arrow, out))
+    }
+
+    /// An option named by its path from the state, after an arrow: `Open`, `Battle.Ranged`.
+    fn option_path(&mut self, option: &str) -> R<(String, Pos)> {
+        if !matches!(self.cur().kind, Tk::Ident(_)) {
+            let pos = self.cur().pos;
+            return self.fail(
+                pos,
+                format!("an arrow names the options that can follow {option}: {option} -> Next, or {option} -> [A, B]"),
+            );
+        }
+        let (mut path, pos) = self.ident("an option's name")?;
+        while self.at_sym(".") && matches!(self.peek(1).kind, Tk::Ident(_)) {
+            self.next();
+            let (n, _) = self.ident("an option's name")?;
+            path = format!("{path}.{n}");
+        }
+        Ok((path, pos))
     }
 
     /// `{ clip = Clip.Run, speed = 6.5 }` after an option's name: its values.

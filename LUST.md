@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (alpha 98):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options, set with `=`, and values carried by each option), classes, objects, `like`, records (plain groups of values, copied wherever they go), methods (with values given by name, as `spawn(x = 3, y = 5)`, and bodies for some of a thing's options: `method fire() in Battle { … }`), hooks with `new hook`, every kind of `loop`, `try`/`error` (with `Problem`, the kinds of failure, as a built-in state), `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too), with built-in states for their fixed choices (`Day`, `Request` and `Answer`). Waiting pauses only the run that waits (`wait`, `wait { }` until questions are true or a state is one of a `check`'s options, `or after` time limits, `start` to run a call alongside, `start gate = …` and `cancel gate;` to name and stop it, and `gate.state` to see how it's going), and so do asking a website and the computer's own file boxes; work started during a state is cancelled when the state ends, and a program whose runs could only wake each other stops with a message naming them. In a game, event handlers and started work wait across the engine's ticks, on the game's own time. Events in any program (`event`, `on { }` and `send`, with handlers for some of a thing's options: `Hit(…) in Battle { … }`), sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, tables and long lists, right-click menus, rows dragged to new places, dropped files, the mouse on a canvas, scrolling, pictures (SVG too), timers, keyboard shortcuts, fonts of your own, date and colour pickers, second windows, full screen, toasts, notifications and a tray icon, all drawn by Lust itself, sharp at any screen scaling, with input methods for typing any language and a tree for screen readers. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (alpha 99):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options, set with `=`, values carried by each option, and arrows saying which option may follow which: `Locked -> Shut`), classes, objects, `like`, records (plain groups of values, copied wherever they go), methods (with values given by name, as `spawn(x = 3, y = 5)`, and bodies for some of a thing's options: `method fire() in Battle { … }`), hooks with `new hook`, every kind of `loop`, `try`/`error` (with `Problem`, the kinds of failure, as a built-in state), `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too), with built-in states for their fixed choices (`Day`, `Request` and `Answer`). Waiting pauses only the run that waits (`wait`, `wait { }` until questions are true or a state is one of a `check`'s options, `or after` time limits, `start` to run a call alongside, `start gate = …` and `cancel gate;` to name and stop it, and `gate.state` to see how it's going), and so do asking a website and the computer's own file boxes; work started during a state is cancelled when the state ends, and a program whose runs could only wake each other stops with a message naming them. In a game, event handlers and started work wait across the engine's ticks, on the game's own time. Events in any program (`event`, `on { }` and `send`, with handlers for some of a thing's options: `Hit(…) in Battle { … }`), sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, tables and long lists, right-click menus, rows dragged to new places, dropped files, the mouse on a canvas, scrolling, pictures (SVG too), timers, keyboard shortcuts, fonts of your own, date and colour pickers, second windows, full screen, toasts, notifications and a tray icon, all drawn by Lust itself, sharp at any screen scaling, with input methods for typing any language and a tree for screen readers. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -489,6 +489,44 @@ float s = Pose.Run.speed;
 - **Names start with a small letter,** and can't be one of the words that turn a value with `( )` (`text`, `int`, `float`, `isNumber`, `lines`, `upper`, `lower` and `trim`), since `pose.text()` already means the option's name as text. Options start with a capital, so a value is never confused with an inner option.
 - **An option with values is the same option.** `==`, `===`, `check`, `:find`, `print`, `.text()`, saves, JSON and native methods all see just the option, as before.
 - **Fast:** reading `pose.speed` looks the option up in a table made once, in both outputs; `Pose.Run.speed`, written out, is just its value.
+
+### Allowed moves between options
+
+A state can say which option may follow which, with arrows, so a move the game's rules don't allow is caught:
+
+```
+state Door = [Locked -> Shut, Shut -> [Open, Locked], Open -> Shut];
+
+state Phase = [
+    Calm { speed = 1.0 } -> Battle,
+    Battle { speed = 4.0 } [
+        Melee -> Battle.Ranged,
+        Ranged -> [Battle.Melee, Calm],
+    ] -> Dead,
+    Dead { speed = 0.0 },
+];
+```
+
+- **`Option -> Next`,** or `Option -> [A, B]` for several. As soon as any option of a state has an arrow, only the moves written are allowed. An option with no arrow (and no outer option with one) is an **end**: nothing follows it, so above, a `Phase` that's `Dead` stays `Dead`. A state with no arrows works exactly as before: every move is allowed, and nothing is checked.
+- **Written last:** an option's name, then its values `{ }`, then its inner options `[ ]`, then its arrow: `Battle { … } [ … ] -> Dead`. An arrow anywhere else is a mistake that shows this order.
+- **Options inside options** have their arrows inside their outer option's `[ ]`, written after them as any option's are. **An arrow names options by their path from the state**, wherever it's written: inside `Battle`, `Melee -> Battle.Ranged`, not `-> Ranged` (which is a mistake that suggests `Battle.Ranged`).
+- **An arrow from an outer option covers its inner ones:** above, `Battle.Melee` can go to `Battle.Ranged` (its own arrow) and to `Dead` (Battle's). An inner option's arrow adds to its outer one's; it never takes moves away.
+- **An arrow to an outer option** lets the thing go to that option or any option inside it, since `Battle.Melee` is a `Battle` too: above, `Calm` can go to `Battle`, `Battle.Melee` or `Battle.Ranged`.
+- **Moving between inner options** of the same outer one is a move like any other, so it needs an arrow: `Melee -> Battle.Ranged`.
+- **Staying where it is is always allowed:** setting the option it's in already changes nothing, so it needs no arrow (and an arrow to itself is a mistake).
+- **Checked when a value changes,** wherever it's kept: a thing's own `state` (`state = Door.Open;`, or `other.state = …;`), a variable, a field, a record's value, an array's item, and a map's value for a key it already has. A move that isn't allowed stops with `Problem.WrongState` (section 15), where the change was written, and `try` catches it like any other:
+
+  ```
+  a Door can't go from Locked to Open. From Locked it can go to Shut.
+  a Phase can't go from Dead to Calm. Nothing follows Dead.
+  ```
+
+  The value is left as it was.
+- **First values are free:** a thing's starting state can be any option (in its `has`, or `new House { state = Door.Open }`), and so can a variable's when it's made, a map's value for a new key, and an item added to an array. So are values that come from outside a program's own code: a save or JSON being loaded, and a game engine setting a component's state (from its editor, say).
+- **Screens:** an input bound to a field (section 17) changes it as code does, so a dropdown or radio buttons bound to a state with arrows are a mistake: they'd offer every option, and some choices would be refused. Bind them to a string holding the options that can follow (`dropdown pick in next { … }`), and change the state in their block.
+- **Waits, events, `check` and the rest don't change:** arrows only say which moves are allowed.
+- **Mistakes:** an arrow to an option the state doesn't have (with a suggestion when there's one close), an option listed twice after one arrow, or listed with an option it's inside (`-> [Battle, Battle.Melee]`: `Battle` covers it), an arrow to itself, the state's name in front of an option (`-> Door.Shut`: write `-> Shut`), `-> [ ]` with nothing in it, two arrows on one option, an arrow before an option's values or inner options, and a dropdown or radio buttons bound to a state with arrows.
+- **Fast:** the moves each option allows are worked out once, when the program is checked. A change is one look-up in a table made once, in both outputs, and a state without arrows costs nothing at all.
 
 ### Things made in a state end with it
 
@@ -1261,7 +1299,7 @@ These are `Problem`'s options:
 | `NoAnswer` | a website couldn't be reached, or answered with an error other than 401, 403 or 404 |
 | `Database` | the database itself failed: it couldn't be opened, or SQLite couldn't do what was asked |
 | `Stopped` | `Web:fail` stopped a route's method |
-| `WrongState` | a method was called while its thing is in an option none of the method's bodies is for (Methods in some options, section 11) |
+| `WrongState` | a method was called while its thing is in an option none of the method's bodies is for (Methods in some options, section 11), or a state's value moved to an option its arrows don't allow (Allowed moves between options, section 8) |
 | `Other` | anything else, like a method calling itself forever |
 
 ---

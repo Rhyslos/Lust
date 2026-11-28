@@ -211,3 +211,5 @@ hit 5: nothing ran; handled true, now Broken with hp 1
 update and mend: mended; now Up
 update and mend: nothing ran; mend: mend is only for Broken, but this Shield is Up.; now Up
 update when cracked: down, hp 4.0
+smash from Up: nothing ran; main.lst:50  a Guard can't go from Up to Broken. From Up it can go to Down.; now Up
+smash from Down.Cracked: smashed; now Broken

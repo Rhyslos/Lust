@@ -1,0 +1,20 @@
+-- Allowed moves: a dropdown or radio buttons would offer every option, so they can't be bound
+-- to a state with arrows. A state without arrows is fine.
+state Door = [Locked -> Shut, Shut -> [Open, Locked], Open -> Shut];
+state Shelf = [Fridge, Freezer];
+
+assembly Panel {
+    has {
+        Door door = Door.Locked;
+        Shelf shelf = Shelf.Fridge;
+    }
+
+    view [title "Doors"] {
+        column {
+            dropdown door;
+            radio door;
+            dropdown shelf;
+        }
+    }
+}
+end
