@@ -1585,3 +1585,160 @@ mod state_set_with_equals {
         assert!(messages(src).is_empty(), "{:?}", messages(src));
     }
 }
+#[cfg(test)]
+mod state_data {
+    //! Values on states' options: worked out across options, read in both outputs from a table
+    //! keyed by option, and fixed.
+
+    fn files(src: &str) -> Vec<(String, String)> {
+        vec![("main.lst".to_string(), format!("{src}\nend\n"))]
+    }
+
+    fn messages(src: &str) -> Vec<String> {
+        match crate::check("main.lst", &files(src)) {
+            Ok(()) => vec![],
+            Err(p) => p.into_iter().map(|p| p.message).collect(),
+        }
+    }
+
+    const POSE: &str = "state Pose = [\n    Idle { speed = 0 },\n    Run { speed = 6.5 },\n    Battle { speed = 4.0 } [Melee, Ranged { speed = 2 }],\n];\nmethod float pace(Pose p) {\n    return p.speed;\n}\nmethod float fixed() {\n    return Pose.Battle.Melee.speed;\n}\npass pace, fixed;";
+
+    #[test]
+    fn a_read_is_one_lookup_and_a_written_option_is_its_value() {
+        assert!(messages(POSE).is_empty(), "{:?}", messages(POSE));
+        let lua = crate::to_lua("main.lst", &files(POSE)).unwrap().code;
+        assert!(lua.contains("[\"Battle.Melee\"] = 4.0"), "{lua}");
+        assert!(lua.contains("_D_Pose[1][p]"), "{lua}");
+        assert!(lua.contains("return (4.0)"), "{lua}");
+        let rust = crate::to_rust_library("main.lst", &files(POSE)).unwrap();
+        assert!(rust.contains("\"Battle.Ranged\" => ((2i64) as f64)"), "{rust}");
+        assert!(rust.contains("(v_p.clone())"), "{rust}");
+    }
+
+    #[test]
+    fn inner_options_take_their_outer_ones_values() {
+        // Melee has no speed of its own, and no mistake: it takes Battle's.
+        let src = "state Pose = [Idle { speed = 1.0 }, Battle { speed = 4.0 } [Melee, Ranged { speed = 2.0 }]];";
+        assert!(messages(src).is_empty());
+        let src = "state Pose = [Idle { speed = 1.0 }, Battle [Melee { speed = 4.0 }]];";
+        assert_eq!(
+            messages(src),
+            vec!["Pose.Battle has no speed, but other options of Pose do. Every option needs every value, so give it one: Battle { speed = … }"]
+        );
+    }
+
+    #[test]
+    fn each_name_keeps_one_type() {
+        let ok = [
+            "state A = [B { n = 1 }, C { n = 2.5 }];\nfloat x = A.B.n;",
+            "state A = [B { n = 1 }, C { n = 2 }];\nint x = A.B.n;",
+            "state A = [B { c = red }, C { c = [0, 0, 1] }, D { c = [0, 0, 1, 0.5] }];\ncolour x = A.C.c;",
+            "state A = [B { v = [1, 2, 3] }, C { v = [0, 0, 1] }];\nvec3 x = A.C.v;",
+            "state A = [B { v = [1, 2] }, C { v = [0, 1.5] }];\nvec2 x = A.C.v;",
+            "state A = [B { next = A.C, b = true }, C { next = A.B, b = false }];\nA x = A.B.next.next;",
+        ];
+        for src in ok {
+            assert!(messages(src).is_empty(), "{src}: {:?}", messages(src));
+        }
+        assert_eq!(
+            messages("state A = [B { n = 1 }, C { n = \"x\" }];"),
+            vec!["C's n is text, but B's is a number. A value has one type on every option of A."]
+        );
+        assert_eq!(
+            messages("state A = [B { v = [1, 2] }, C { v = red }];"),
+            vec!["C's v is a colour, but B's is a vec2. A value has one type on every option of A."]
+        );
+    }
+
+    #[test]
+    fn values_are_fixed() {
+        let src = "state A = [B { n = 1 }, C { n = 2 }];\nA a = A.B;";
+        for (line, want) in [
+            (
+                "a.n = 3;",
+                "n is part of A's options, so it's fixed. To change it, change what's written in state A = [ … ];",
+            ),
+            (
+                "A.C.n = 3;",
+                "n is part of A's options, so it's fixed. To change it, change what's written in state A = [ … ];",
+            ),
+            (
+                "a.n += 1;",
+                "n is part of A's options, so it's fixed. To change it, change what's written in state A = [ … ];",
+            ),
+        ] {
+            assert_eq!(messages(&format!("{src}\n{line}")), vec![want.to_string()], "{line}");
+        }
+        assert!(messages("state A = [B { n = 1 }, C { n = 2 }];\nint x = 1;\nx = A.C.n + x;").is_empty());
+    }
+
+    #[test]
+    fn a_state_without_values_is_written_as_before() {
+        let src = "state Mood = [Calm, Busy];\nMood m = Mood.Calm;\nprint(m);";
+        let lua = crate::to_lua("main.lst", &files(src)).unwrap().code;
+        assert!(!lua.contains("_D_"), "{lua}");
+    }
+
+    #[test]
+    fn written_values_fuzzed() {
+        // States with values, made at random from a fixed seed, and sometimes broken by a piece
+        // dropped or added: checking never panics, and a program that checks writes both outputs.
+        let mut seed = 2026u64;
+        let mut next = |n: usize| {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            ((seed >> 33) % n as u64) as usize
+        };
+        let names = ["n", "c", "v", "next"];
+        let values = [
+            "1",
+            "2.5",
+            "-3",
+            "\"t\"",
+            "true",
+            "red",
+            "S.A",
+            "[1, 2]",
+            "[0, 0, 1]",
+            "nothing",
+            "x",
+        ];
+        let junk = ["{", "}", "[", "]", ",", "=", "A"];
+        let mut fine = 0;
+        for _ in 0..1500 {
+            let mut parts: Vec<String> = Vec::new();
+            for (i, option) in ["A", "B", "C"].iter().enumerate().take(1 + next(3)) {
+                let mut o = option.to_string();
+                let given: Vec<String> = (0..next(3))
+                    .map(|_| format!("{} = {}", names[next(names.len())], values[next(values.len())]))
+                    .collect();
+                if !given.is_empty() {
+                    o.push_str(&format!(" {{ {} }}", given.join(", ")));
+                }
+                if i == 1 && next(2) == 0 {
+                    o.push_str(&format!(" [In{i} {{ n = {} }}, Out{i}]", values[next(3)]));
+                }
+                parts.push(o);
+            }
+            let mut text = format!("state S = [{}];", parts.join(", "));
+            if next(3) == 0 {
+                let at = next(text.len());
+                if text.is_char_boundary(at) {
+                    match next(2) {
+                        0 => text.insert_str(at, junk[next(junk.len())]),
+                        _ => {
+                            text.remove(at);
+                        }
+                    }
+                }
+            }
+            let src = format!("{text}\nS s = S.A;\nprint(s);");
+            let f = files(&src);
+            if crate::check("main.lst", &f).is_ok() {
+                crate::to_lua("main.lst", &f).unwrap();
+                crate::to_rust_library("main.lst", &f).unwrap();
+                fine += 1;
+            }
+        }
+        assert!(fine > 0, "no program checked");
+    }
+}

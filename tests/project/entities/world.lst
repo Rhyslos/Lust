@@ -1,3 +1,11 @@
+fetch "entities/player":Mood;
+
+-- Values on a state's options can name another file's state.
+state Weather = [
+    Sunny { mood = Mood.Cheerful, warmth = 25 },
+    Rainy { mood = Mood.Grumpy, warmth = 12.5 },
+];
+
 object World {
     has {
         int day = 1;
@@ -8,6 +16,6 @@ object World {
     }
 }
 
-pass World;
+pass World, Weather;
 
 end

@@ -275,6 +275,9 @@ pub struct StateDecl {
 pub struct StateOption {
     pub name: String,
     pub pos: Pos,
+    /// `Run { clip = Clip.Run, speed = 6.5 }`: the option's own values, in the order written.
+    /// Inner options take their outer option's values, and may change any of them.
+    pub data: Vec<(String, Pos, Expr)>,
     pub children: Vec<StateOption>,
 }
 

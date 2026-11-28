@@ -6,26 +6,7 @@ States were Lust's first idea: a thing is always in one of its options, and the 
 
 ## 1. Data on states
 
-Each option carries its own values, so code reads them instead of a long `check` over every option.
-
-```
-state Pose = [
-    Idle   { clip = Clip.Idle,  speed = 0.0 },
-    Run    { clip = Clip.Run,   speed = 6.5 },
-    Battle { clip = Clip.Fight, speed = 4.0 } [
-        Melee  { clip = Clip.Swing },              -- speed 4.0 comes from Battle
-        Ranged { clip = Clip.Aim, speed = 2.5 },
-    ],
-];
-
-sprite:animate(pose.clip);
-float s = Pose.Run.speed;
-```
-
-- **Written straight on each option,** in `{ }` after its name. Lust works out the shape: every option has the same names, and each name keeps one type. A whole number where another option has a `float` counts as a `float`.
-- **Options inside options inherit:** an inner option takes its outer one's values, and can change any of them. Every option ends up with every value, so a missing one is a mistake that names the option and the value.
-- **Fixed:** the values are part of the state, so `Pose.Run.speed = 7.0;` is a mistake. They can be read anywhere a state's value can (`pose.speed`, `Pose.Run.speed`) and in engines.
-- **What they hold:** anything a field can hold that never changes: numbers, text, bools, other states, vectors, colours, and records (part 3) once they exist.
+Built in alpha 94: see [LUST.md](LUST.md), section 8, Values on options.
 
 ## 2. Named values
 
@@ -107,7 +88,7 @@ state Door = [Locked -> Shut, Shut -> [Open, Locked], Open -> Shut];
 ```
 
 - **`Option -> Next`,** or `-> [A, B]` for several. As soon as any option has an arrow, only the moves written are allowed. An option with no arrow is an end: nothing follows it.
-- With data (part 1): `Shut { sound = Sound.Click } -> Open`.
+- With values on options (LUST.md, section 8): `Shut { sound = Sound.Click } -> Open`.
 - **Options inside options:** arrows name options by their path from the state (`Battle.Melee -> Battle.Ranged`). An arrow from an outer option covers its inner ones.
 - **Checked when the state changes:** a move that isn't allowed stops with `Problem.WrongState`: "a Door can't go from Locked to Open." A thing's starting state can be any option.
 - Waits, events and `check` don't change.
@@ -122,7 +103,7 @@ Not a language change. While `lust run` runs a program from Ledger, a **States**
 
 ## Build order
 
-1. Data on states
+1. Data on states (built, alpha 94)
 2. Named values
 3. Records (Lust's half, and a note for Solis)
 4. Events that count in a state

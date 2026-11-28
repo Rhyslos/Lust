@@ -1,0 +1,25 @@
+playing Idle
+6.5
+0.0 4.0 2.5
+fighting aiming
+Idle: Idle at 0.0, standing, armed false
+Run: Run at 6.5, running, armed false
+Battle: Fight at 4.0, fighting, armed true
+Battle.Melee: Swing at 4.0, fighting, armed true
+Battle.Ranged: Aim at 2.5, aiming, armed true
+0.0 0.0
+running 13.0
+Battle.Melee Swing 4.0
+aiming 5.0
+in battle
+exactly Ranged
+battle, aiming
+1 false
+Battle.Ranged Battle.Ranged Battle.Ranged
+17.0
+slow and armed
+Red #e03131 [0.0, 0.0] [1.0, 0.0, 0.0] #ff0000 0.0
+Blue #3366ff [10.5, 4.0] [0.0, 1.0, 0.0] #0000ff80 11.5
+[0.0, 2.0, 0.0] #3366ff false
+6 Hard Easy 2 Idle
+1

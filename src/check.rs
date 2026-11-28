@@ -13,6 +13,23 @@ pub struct StateInfo {
     pub name: String,
     /// Every option's full path, in the order written: "MainMenu", "ActiveGame", "ActiveGame.Combat".
     pub options: Vec<String>,
+    /// The values each option carries (`Run { speed = 6.5 }`): their names and types, in the
+    /// order first written. Empty for a state without values.
+    pub data: Vec<(String, Ty)>,
+    /// For each option (in the order of `options`), its value for each name (in the order of
+    /// `data`): its own, or the one it takes from the option it's inside.
+    pub values: Vec<Vec<Expr>>,
+}
+
+impl StateInfo {
+    fn plain(name: &str, options: Vec<String>) -> Self {
+        StateInfo {
+            name: name.into(),
+            options,
+            data: vec![],
+            values: vec![],
+        }
+    }
 }
 
 #[allow(dead_code)]
@@ -116,6 +133,9 @@ pub struct Info {
     pub calls: HashMap<usize, CallRes>,
     /// Expressions that name a state option: the state and the option's path.
     pub options: HashMap<usize, (usize, String)>,
+    /// Expressions that read a value a state's options carry (`pose.speed`, `Pose.Run.speed`):
+    /// the state and the value's place in its `data`.
+    pub state_reads: HashMap<usize, (usize, usize)>,
     /// The names a `new hook { }` gives its values.
     pub hook_params: HashMap<usize, Vec<String>>,
     /// Declared types: a variable's, keyed by its value; a called local hook's, keyed by the call.
@@ -360,6 +380,58 @@ fn and_list(items: &[String]) -> String {
     }
 }
 
+/// What a state's value is, from how it's written, before its type is settled across options.
+#[derive(Clone, PartialEq)]
+enum Shape {
+    Int,
+    Float,
+    Text,
+    Bool,
+    State(usize),
+    /// Numbers in [ ]: a vec2 (2), a vec3 or a colour (3), or a colour (4).
+    List(usize),
+    Colour,
+}
+
+impl Shape {
+    /// One type for two options' values, if they can share one: a whole number counts as a
+    /// float, and three numbers as a colour beside a colour.
+    fn join(&self, other: &Shape) -> Option<Shape> {
+        use Shape::*;
+        Some(match (self, other) {
+            (a, b) if a == b => a.clone(),
+            (Int, Float) | (Float, Int) => Float,
+            (List(3) | List(4) | Colour, List(3) | List(4) | Colour) => Colour,
+            _ => return None,
+        })
+    }
+
+    fn ty(&self) -> Ty {
+        match self {
+            Shape::Int => Ty::Int,
+            Shape::Float => Ty::Float,
+            Shape::Text => Ty::Str,
+            Shape::Bool => Ty::Truth,
+            Shape::State(s) => Ty::State(*s),
+            Shape::List(2) => Ty::Vec2,
+            Shape::List(3) => Ty::Vec3,
+            Shape::List(_) | Shape::Colour => Ty::Colour,
+        }
+    }
+
+    fn shown(&self, a: &dyn Fn(&Ty) -> String) -> String {
+        match self {
+            Shape::Int | Shape::Float => "a number".into(),
+            Shape::Text => "text".into(),
+            Shape::Bool => "a bool".into(),
+            Shape::State(s) => a(&Ty::State(*s)),
+            Shape::List(2) => "a vec2".into(),
+            Shape::List(3) => "a vec3".into(),
+            Shape::List(_) | Shape::Colour => "a colour".into(),
+        }
+    }
+}
+
 fn suggest(name: &str, candidates: impl IntoIterator<Item = String>) -> String {
     let lower = name.to_lowercase();
     let mut best: Option<(usize, String)> = None;
@@ -515,26 +587,20 @@ impl<'a> Checker<'a> {
         // 0. Ease, the built-in state of easing curves, is always the first.
         self.info.state_index.insert("Ease".into(), crate::stdlib::EASE);
         self.state_names.push("Ease".into());
-        self.info.states.push(StateInfo {
-            name: "Ease".into(),
-            options: crate::stdlib::EASES.iter().map(|e| e.to_string()).collect(),
-        });
+        self.info.states.push(StateInfo::plain(
+            "Ease",
+            crate::stdlib::EASES.iter().map(|e| e.to_string()).collect(),
+        ));
         // Icon, the built-in state of Lust's icons, is always the second.
         self.info.state_index.insert("Icon".into(), crate::stdlib::ICON);
         self.state_names.push("Icon".into());
-        self.info.states.push(StateInfo {
-            name: "Icon".into(),
-            options: crate::stdlib::icon_options(),
-        });
+        self.info.states.push(StateInfo::plain("Icon", crate::stdlib::icon_options()));
         // Then Problem (the kinds of failure), Day, Request and Answer, in that order.
         for (i, name, options) in crate::stdlib::plain_states() {
             debug_assert_eq!(i, self.info.states.len());
             self.info.state_index.insert(name.into(), i);
             self.state_names.push(name.into());
-            self.info.states.push(StateInfo {
-                name: name.into(),
-                options,
-            });
+            self.info.states.push(StateInfo::plain(name, options));
         }
         // 1. Names of states, classes and methods, so everything can refer to everything.
         for item in &prog.items {
@@ -558,10 +624,7 @@ impl<'a> Checker<'a> {
                     walk(&s.options, "", &mut options);
                     self.info.state_index.insert(s.name.clone(), self.info.states.len());
                     self.state_names.push(s.name.clone());
-                    self.info.states.push(StateInfo {
-                        name: s.name.clone(),
-                        options,
-                    });
+                    self.info.states.push(StateInfo::plain(&s.name, options));
                 }
                 Item::Class(c) => {
                     if self.name_taken(&c.name, c.pos) {
@@ -640,6 +703,17 @@ impl<'a> Checker<'a> {
                             col: m.pos.col,
                         },
                     );
+                }
+            }
+        }
+        // The values states' options carry: every name is known now, so they can name options.
+        let mut done = std::collections::HashSet::new();
+        for item in &prog.items {
+            if let Item::State(s) = item {
+                if let Some(&si) = self.info.state_index.get(&s.name) {
+                    if done.insert(si) {
+                        self.state_values(s, si);
+                    }
                 }
             }
         }
@@ -1402,6 +1476,210 @@ impl<'a> Checker<'a> {
             Ty::State(s) => format!("{}.{}", self.info.states[*s].name, self.info.states[*s].options[0]),
             _ => "nothing".into(),
         }
+    }
+
+    /// The values a state's options carry: `Run { clip = Clip.Run, speed = 6.5 }`. Inner options
+    /// take their outer option's, every option ends up with every name, and each name keeps one
+    /// type. They're fixed, so each is written out: a number, text, a bool, an option, a vector
+    /// or a colour.
+    fn state_values(&mut self, decl: &StateDecl, si: usize) {
+        // Each option's values once inner ones take their outer one's: (name, value, where it's from).
+        struct Flat<'d> {
+            path: String,
+            pos: Pos,
+            values: Vec<(String, &'d Expr)>,
+            own: &'d [(String, Pos, Expr)],
+        }
+        fn flatten<'d>(opts: &'d [StateOption], prefix: &str, outer: &[(String, &'d Expr)], out: &mut Vec<Flat<'d>>) {
+            for o in opts {
+                let path = if prefix.is_empty() {
+                    o.name.clone()
+                } else {
+                    format!("{prefix}.{}", o.name)
+                };
+                let mut values: Vec<(String, &Expr)> = outer.to_vec();
+                for (n, _, v) in &o.data {
+                    match values.iter_mut().find(|(m, _)| m == n) {
+                        Some(slot) => slot.1 = v,
+                        None => values.push((n.clone(), v)),
+                    }
+                }
+                out.push(Flat {
+                    path: path.clone(),
+                    pos: o.pos,
+                    values: values.clone(),
+                    own: &o.data,
+                });
+                flatten(&o.children, &path, &values, out);
+            }
+        }
+        let mut flat = Vec::new();
+        flatten(&decl.options, "", &[], &mut flat);
+        if flat.iter().all(|f| f.own.is_empty()) {
+            return;
+        }
+        let sn = crate::ast::shown(&decl.name).to_string();
+        // Every name, in the order first written.
+        let mut names: Vec<String> = Vec::new();
+        for f in &flat {
+            for (n, _, _) in f.own {
+                if !names.contains(n) {
+                    names.push(n.clone());
+                }
+            }
+        }
+        // Every option has every name.
+        let mut whole = true;
+        for f in &flat {
+            for n in &names {
+                if !f.values.iter().any(|(m, _)| m == n) {
+                    whole = false;
+                    let own = f.path.rsplit('.').next().unwrap_or(&f.path);
+                    self.err(
+                        f.pos,
+                        format!(
+                            "{sn}.{} has no {n}, but other options of {sn} do. Every option needs every value, so give it one: {own} {{ {n} = … }}",
+                            f.path
+                        ),
+                    );
+                }
+            }
+        }
+        // What each value is, written out, and one type for each name.
+        let mut tys: Vec<Option<(Shape, String)>> = vec![None; names.len()];
+        let mut ok = vec![true; names.len()];
+        for f in &flat {
+            for (n, _, v) in f.own {
+                let i = names.iter().position(|m| m == n).unwrap();
+                let shape = match self.shape(v) {
+                    Ok(shape) => shape,
+                    Err(why) => {
+                        ok[i] = false;
+                        self.err(v.pos, format!("{}'s {n} {why}", f.path));
+                        continue;
+                    }
+                };
+                if !ok[i] {
+                    continue;
+                }
+                match &tys[i] {
+                    None => tys[i] = Some((shape, f.path.clone())),
+                    Some((had, first)) => match had.join(&shape) {
+                        Some(both) => tys[i] = Some((both, first.clone())),
+                        None => {
+                            ok[i] = false;
+                            let a_ = |t: &Ty| self.a(t);
+                            let (a, b) = (shape.shown(&a_), had.shown(&a_));
+                            self.err(
+                                v.pos,
+                                format!(
+                                    "{}'s {n} is {a}, but {first}'s is {b}. A value has one type on every option of {sn}.",
+                                    f.path
+                                ),
+                            );
+                        }
+                    },
+                }
+            }
+        }
+        let mut data = Vec::new();
+        for (i, n) in names.iter().enumerate() {
+            let t = match &tys[i] {
+                Some((shape, _)) if ok[i] => shape.ty(),
+                _ => Ty::Error,
+            };
+            data.push((n.clone(), t));
+        }
+        // Each value checked as its type, so a 0 counts as a float and a list as a vector.
+        let mut ctx = Ctx {
+            class: None,
+            ret: None,
+            scopes: vec![HashMap::new()],
+            in_try: false,
+            in_hook: false,
+            hook_base: 0,
+            made: Default::default(),
+            in_view: false,
+            top: false,
+        };
+        for f in &flat {
+            for (n, _, v) in f.own {
+                let i = names.iter().position(|m| m == n).unwrap();
+                if data[i].1 == Ty::Error {
+                    continue;
+                }
+                let want = data[i].1.clone();
+                let got = self.expr(v, &mut ctx, Some(&want));
+                self.expect_fits(v, &got, &want, &format!("{}'s {n} is {}", f.path, self.a(&want)));
+            }
+        }
+        let values = if whole {
+            flat.iter()
+                .map(|f| {
+                    names
+                        .iter()
+                        .map(|n| (*f.values.iter().find(|(m, _)| m == n).unwrap().1).clone())
+                        .collect()
+                })
+                .collect()
+        } else {
+            vec![]
+        };
+        let st = &mut self.info.states[si];
+        st.data = data;
+        st.values = values;
+    }
+
+    /// What a state's value is, from how it's written, or why it can't be one.
+    fn shape(&self, e: &Expr) -> Result<Shape, String> {
+        fn number(e: &Expr) -> Option<Shape> {
+            match &e.kind {
+                ExprKind::Int(_) => Some(Shape::Int),
+                ExprKind::Float(_) => Some(Shape::Float),
+                ExprKind::Neg(x) => number(x),
+                _ => None,
+            }
+        }
+        fn root(e: &Expr) -> Option<&str> {
+            match &e.kind {
+                ExprKind::Name(n) => Some(n),
+                ExprKind::Field(t, _, _) => root(t),
+                _ => None,
+            }
+        }
+        const FIXED: &str = "has to be written out, since an option's values are fixed: a number, text, a bool, an option of a state, a vector or a colour.";
+        if let Some(n) = number(e) {
+            return Ok(n);
+        }
+        Ok(match &e.kind {
+            ExprKind::Str(_) => Shape::Text,
+            ExprKind::Template(_) => return Err("is fixed, so its text can't have values in { }.".into()),
+            ExprKind::Bool(_) => Shape::Bool,
+            ExprKind::Nothing => return Err("can't be nothing: every option's value is there.".into()),
+            ExprKind::Name(n) if crate::words::rgb(n).is_some() => Shape::Colour,
+            ExprKind::Field(..) => match root(e).and_then(|r| self.info.state_index.get(r)) {
+                Some(&s) => Shape::State(s),
+                None => return Err(FIXED.into()),
+            },
+            ExprKind::List { items, keys: None } => {
+                if !items.iter().all(|i| number(i).is_some()) {
+                    return Err(
+                        "is a list, which can change. A list here holds 2 or 3 numbers for a vector, or 3 or 4 for a colour.".into(),
+                    );
+                }
+                match items.len() {
+                    2..=4 => Shape::List(items.len()),
+                    n => return Err(format!("has {n} numbers in [ ]. A vector has 2 or 3, and a colour 3 or 4.")),
+                }
+            }
+            ExprKind::Method(t, m, args, _) if m == "hex" && matches!(&t.kind, ExprKind::Name(o) if o == "Colour") && args.len() == 1 => {
+                if !matches!(args[0].kind, ExprKind::Str(_)) {
+                    return Err("is fixed, so Colour:hex takes its text written right there: Colour:hex(\"#3a8f2a\").".into());
+                }
+                Shape::Colour
+            }
+            _ => return Err(FIXED.into()),
+        })
     }
 
     /// A view's body: checked like a method of its assembly, where pieces of the screen may go.
@@ -4008,6 +4286,16 @@ impl<'a> Checker<'a> {
                 if self.info.options.contains_key(&target.id) {
                     self.err(pos, "a state's option can't be changed.");
                 }
+                // pose.speed = 7.0, or pose.offset.x = 1: an option's values are part of the state.
+                let read = [target.id, t.id].into_iter().find_map(|id| self.info.state_reads.get(&id).copied());
+                if let Some((s, i)) = read {
+                    let sn = crate::ast::shown(&self.info.states[s].name).to_string();
+                    let n = self.info.states[s].data[i].0.clone();
+                    self.err(
+                        pos,
+                        format!("{n} is part of {sn}'s options, so it's fixed. To change it, change what's written in state {sn} = [ … ];"),
+                    );
+                }
             }
             ExprKind::Index(t, _) => {
                 if matches!(self.info.ty(t), Ty::CMap(_) | Ty::Table(_)) {
@@ -5284,6 +5572,19 @@ impl<'a> Checker<'a> {
                 self.info.options.insert(e.id, (s, full));
                 return Ty::State(s);
             }
+            // Pose.Run.speed: a value the option carries.
+            if let Some(i) = st.data.iter().position(|(n, _)| n == f) {
+                if path.is_empty() {
+                    let (sn, first) = (crate::ast::shown(&st.name).to_string(), st.options[0].clone());
+                    self.err(
+                        fpos,
+                        format!("each option of {sn} has its own {f}, so say which one: {sn}.{first}.{f}"),
+                    );
+                    return Ty::Error;
+                }
+                self.info.state_reads.insert(e.id, (s, i));
+                return st.data[i].1.clone();
+            }
             let sn = st.name.clone();
             let here: Vec<String> = st
                 .options
@@ -5368,6 +5669,23 @@ impl<'a> Checker<'a> {
                     Ty::Error
                 }
             },
+            // pose.speed: a value the option it holds carries.
+            Ty::State(s) if !self.info.states[s].data.is_empty() => {
+                let st = &self.info.states[s];
+                match st.data.iter().position(|(n, _)| n == f) {
+                    Some(i) => {
+                        self.info.state_reads.insert(e.id, (s, i));
+                        st.data[i].1.clone()
+                    }
+                    None => {
+                        let names: Vec<String> = st.data.iter().map(|(n, _)| n.clone()).collect();
+                        let sn = crate::ast::shown(&st.name).to_string();
+                        let sg = suggest(f, names.clone());
+                        self.err(fpos, format!("{sn}'s options have {}, but not {f}.{sg}", and_list(&names)));
+                        Ty::Error
+                    }
+                }
+            }
             Ty::TableRow(tt) => match tt.cols.iter().find(|(n, _)| n == f) {
                 Some((_, t)) => t.clone(),
                 None => {

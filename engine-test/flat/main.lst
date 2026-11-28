@@ -6,6 +6,12 @@ method log(string words) native;
 
 event Glow(colour tint, vec2 at);
 
+-- Values on a state's options, vectors and colours too, read in Luau.
+state Beam = [
+    Low  { power = 1, reach = [0, 0, 2], hue = blue5 },
+    High { power = 2.5, reach = [0, 0, 8], hue = [1, 1, 1] },
+];
+
 component Lamp {
     has {
         vec2 drift = [0.5, -0.25];
@@ -17,6 +23,8 @@ component Lamp {
         colour seen = tintOf(this);
         log("lamp at " + at.text() + ", turned " + at:rotated(90).text() + ", " + at:rotated(30).text());
         log("engine tint " + seen.text() + ", mixed " + seen:lerp(light, 0.25).text());
+        Beam beam = Beam.High;
+        log("beam " + beam.power.text() + " " + beam.reach.text() + " " + beam.hue.text() + " " + Beam.Low.hue.text() + " " + (beam.reach + Beam.Low.reach).text());
         send Glow(light:fade(0.5), at) to this;
     }
 }
