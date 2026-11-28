@@ -1,0 +1,211 @@
+-- Methods that exist in some states: a method can have bodies for some of a thing's options.
+state Phase = [
+    Calm,
+    Battle [
+        Melee,
+        Ranged
+    ],
+    Dead
+];
+
+class Hero {
+    has {
+        string name = "";
+        int ammo = 3;
+        state = Phase.Calm;
+    }
+
+    method fire() in Battle {
+        ammo -= 1;
+        print("{name} fires: {ammo} left");
+    }
+
+    -- The most precise body wins: Ranged has its own, written after Battle's.
+    method fire() in Battle.Ranged {
+        print("{name} aims, then fires from afar");
+    }
+
+    -- Without in: every option no other body covers.
+    method int power(int base) in Calm {
+        return base;
+    }
+
+    method int power(int base) {
+        return base * 2;
+    }
+
+    -- Bodies that give back a value, with every option covered by one.
+    method string mood() in Calm {
+        return "calm";
+    }
+
+    method string mood() in Battle {
+        return "fierce ({state})";
+    }
+
+    method string mood() in Dead {
+        return "gone";
+    }
+
+    -- A body that waits.
+    method charge(int steps) in Battle.Melee {
+        int i = 0;
+        loop steps {
+            i += 1;
+            print("{name} charges, step {i}");
+            wait 0.05;
+        }
+    }
+
+    method fight() {
+        state = Phase.Battle.Melee;
+    }
+
+    method range() {
+        state = Phase.Battle.Ranged;
+    }
+
+    method calm() {
+        state = Phase.Calm;
+    }
+
+    method fall() {
+        state = Phase.Dead;
+    }
+}
+
+-- Like Hero: its own bodies for fire replace all of Hero's; power and mood are Hero's.
+class Ghost like Hero {
+    method fire() in Dead {
+        print("{name} fires a ghostly shot");
+    }
+}
+
+-- Like Hero, with a plain fire: it replaces Hero's bodies, in every option.
+class Ranger like Hero {
+    method fire() {
+        print("{name} fires in any state ({state})");
+    }
+}
+
+-- A plain method replaced by bodies in options.
+class Walker {
+    has {
+        state = Phase.Calm;
+    }
+
+    method step() {
+        print("walker steps");
+    }
+}
+
+class Runner like Walker {
+    method step() in Battle {
+        print("runner sprints");
+    }
+}
+
+-- An object, whose bodies call each other.
+object Gate {
+    has {
+        state = Phase.Calm;
+    }
+
+    method unlock() in Calm {
+        print("gate: creak");
+        state = Phase.Battle;
+        unlock();
+    }
+
+    method unlock() in Battle {
+        print("gate: already open");
+    }
+}
+
+-- A node: a method in some options, used while it's open.
+node Camp {
+    has {
+        state = Phase.Calm;
+    }
+
+    method alarm() in Battle {
+        print("camp: alarm!");
+    }
+
+    method raid() {
+        state = Phase.Battle.Melee;
+    }
+}
+
+method tryTo(hook() what) {
+    try {
+        what();
+    } error (Problem p, string message) {
+        is p == Problem.WrongState? then {
+            print("wrong state: {message}");
+        } or {
+            print("other: {message}");
+        }
+    }
+}
+
+Hero ann = new Hero { name = "Ann" };
+Ghost bo = new Ghost { name = "Bo", state = Phase.Dead };
+
+-- Calm: fire has no body here.
+tryTo(new hook { ann:fire(); });
+print(ann:power(5), ann:mood());
+ann:fight();
+ann:fire();
+print(ann:power(base = 5), ann:mood());
+ann:range();
+ann:fire();
+print(ann.ammo, ann:mood());
+
+-- The error's message without try: kept in a variable.
+string said = "";
+ann:fall();
+try {
+    ann:fire();
+} error (string message) {
+    said = message;
+}
+print(said, ann:mood());
+
+-- Ghost: its own fire, only in Dead; Hero's fire for Battle is gone.
+bo:fire();
+print(bo:mood(), bo:power(1));
+bo:fight();
+tryTo(new hook { bo:fire(); });
+
+-- A Ghost kept as a Hero still runs Ghost's bodies.
+Hero kept = new Ghost { name = "Cy", state = Phase.Dead };
+kept:fire();
+
+Ranger dee = new Ranger { name = "Dee" };
+dee:fire();
+Walker w = new Runner { state = Phase.Battle.Ranged };
+w:step();
+tryTo(new hook { new Runner:step(); });
+new Walker:step();
+
+-- An object and a node.
+Gate:unlock();
+Gate:unlock();
+Camp:open();
+tryTo(new hook { Camp:alarm(); });
+Camp:raid();
+Camp:alarm();
+Camp:close();
+
+-- Started bodies wait, and only their own run waits.
+ann:fight();
+start ann:charge(2);
+print("started");
+ann:charge(1);
+wait 0.2;
+
+-- Problem.WrongState is an option like any other.
+Problem last = Problem.WrongState;
+print(last);
+end

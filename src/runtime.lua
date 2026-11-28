@@ -15,6 +15,11 @@ local function problem(kind, msg)
   lastkind, lastmsg = kind, msg
   return msg
 end
+-- A method with bodies in some options (method fire() in Battle { … }), called in an option none
+-- covers: the failure is where it was called.
+function L.wrongstate(method, only, who, now)
+  error(problem("WrongState", method .. " is only for " .. only .. ", but " .. who .. " is " .. tostring(now) .. "."), 3)
+end
 -- A file Lua couldn't open: why, from Lua's own message.
 local function iokind(e)
   e = tostring(e)

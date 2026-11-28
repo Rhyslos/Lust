@@ -1117,6 +1117,12 @@ impl<'a> Checker<'a> {
                             "update runs once a tick with how many seconds a tick is: method update(float dt) { … }",
                         );
                     }
+                    if !m.picks.is_empty() && m.picks.iter().all(|(o, _)| o.is_some()) {
+                        self.err(
+                            m.pos,
+                            "update runs every tick, whatever option the component is in, so give it a body without in too, for the options the others don't cover: method update(float dt) { }",
+                        );
+                    }
                 }
             }
             // Handlers: each takes what its event carries. A component's events reach the
@@ -1154,13 +1160,17 @@ impl<'a> Checker<'a> {
                 }
                 self.entries_in(ci, &c.name, m);
             }
+            // Methods with bodies in options name options of the thing's own state too.
+            for m in c.methods.iter().filter(|m| m.on.is_none() && !m.picks.is_empty()) {
+                self.entries_in(ci, &c.name, m);
+            }
         }
         // Methods that replace a parent's must fit the same way.
         for c in &order {
             let Some(&ci) = self.info.class_index.get(&c.name) else { continue };
             let Some(parent) = self.info.classes[ci].parent else { continue };
             for m in &c.methods {
-                if m.on.is_some() || m.entry.is_some() {
+                if m.on.is_some() || m.entry.is_some() || m.body_of.is_some() {
                     continue;
                 }
                 if let Some(pm) = self.info.method(parent, &m.name).cloned() {
@@ -3395,15 +3405,22 @@ impl<'a> Checker<'a> {
                 },
             );
         }
-        self.in_update = class.is_some_and(|c| self.info.classes[c].is_component) && m.name == "update" && m.on.is_none();
+        // A body in some options (method fire() in Battle { … }) is checked as the method it's of.
+        let name = m.body_of.as_ref().map(|b| b.0.clone()).unwrap_or_else(|| m.name.clone());
+        self.in_update = class.is_some_and(|c| self.info.classes[c].is_component) && name == "update" && m.on.is_none();
         self.block_in(&m.body, &mut ctx, false);
         self.in_update = false;
-        if sig.ret != Ty::Void && sig.ret != Ty::Error && !returns(&m.body) {
+        // A method with bodies in options has none of its own: it chooses one of them.
+        let chooses = m.on.is_none() && !m.picks.is_empty();
+        if sig.ret != Ty::Void && sig.ret != Ty::Error && !chooses && !returns(&m.body) {
+            let shown = match &m.body_of {
+                Some(_) => format!("{name}'s body"),
+                None => name.clone(),
+            };
             self.err(
                 m.pos,
                 format!(
-                    "{} must return {} on every path, but it can reach its end without one.",
-                    m.name,
+                    "{shown} must return {} on every path, but it can reach its end without one.",
                     self.a(&sig.ret)
                 ),
             );
@@ -3618,15 +3635,20 @@ impl<'a> Checker<'a> {
         self.info.field(c, "state").is_some()
     }
 
-    /// A handler's entries (Hit(…) in Battle { … }) name options of the thing's own state.
+    /// A handler's entries (Hit(…) in Battle { … }), or a method's bodies (method fire() in
+    /// Battle { … }), name options of the thing's own state.
     fn entries_in(&mut self, ci: usize, class: &str, m: &MethodDecl) {
         let written: Vec<(String, crate::ast::Pos)> = m.picks.iter().filter_map(|(o, _)| o.clone()).collect();
         let Some((first, fpos)) = written.first().cloned() else { return };
         let cls = crate::ast::shown(class).to_string();
+        let (what, piece) = match m.on {
+            Some(_) => ("an entry".to_string(), "an entry"),
+            None => (m.name.clone(), "a body"),
+        };
         let Some(s) = self.info.own_state(ci) else {
             self.err(
                 fpos,
-                format!("{cls} has no state of its own, so an entry can't be in {first}. Give it one in its has block (state = …;), or take out in {first}."),
+                format!("{cls} has no state of its own, so {what} can't be in {first}. Give it one in its has block (state = …;), or take out in {first}."),
             );
             return;
         };
@@ -3640,7 +3662,7 @@ impl<'a> Checker<'a> {
             if let Some(rest) = o.strip_prefix(&state_prefix).filter(|r| opts.iter().any(|x| x == r)) {
                 self.err(
                     p,
-                    format!("an entry is for an option of {cls}'s own {whole}, so write the option on its own: in {rest}"),
+                    format!("{piece} is for an option of {cls}'s own {whole}, so write the option on its own: in {rest}"),
                 );
             } else {
                 let hint = suggest(&o, opts.iter().cloned());

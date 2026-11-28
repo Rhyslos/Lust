@@ -2062,3 +2062,209 @@ mod events_in_state {
         assert!(fine > 100, "only {fine} programs checked");
     }
 }
+
+#[cfg(test)]
+mod methods_in_state {
+    //! Bodies of a method for some of a thing's options: method fire() in Battle { … }.
+
+    fn files(src: &str) -> Vec<(String, String)> {
+        vec![("main.lst".to_string(), format!("{src}\nend\n"))]
+    }
+
+    fn msgs(src: &str) -> Vec<String> {
+        match crate::check("main.lst", &files(src)) {
+            Ok(()) => vec![],
+            Err(p) => p.into_iter().map(|p| p.message).collect(),
+        }
+    }
+
+    const HEAD: &str = "state P = [Calm, Battle [Melee, Ranged], Dead];\n";
+
+    fn hero(methods: &str) -> String {
+        format!("{HEAD}class Hero {{\n    has {{\n        state = P.Calm;\n    }}\n{methods}}}\n")
+    }
+
+    fn lua(src: &str) -> String {
+        crate::to_lua("main.lst", &files(src)).ok().unwrap().code
+    }
+
+    /// The table the Lua output chooses from.
+    fn table(src: &str, method: &str) -> String {
+        let start = format!("Hero.__pick_{method} = ");
+        lua(src).lines().find(|l| l.starts_with(&start)).unwrap().to_string()
+    }
+
+    #[test]
+    fn the_most_precise_body_wins_whatever_the_order() {
+        let t = table(
+            &hero("    method fire() in Battle.Ranged { }\n    method fire() in Battle { }\n    method fire() { }\n"),
+            "fire",
+        );
+        assert!(t.contains("[\"Battle.Ranged\"] = Hero.at__fire__1"), "{t}");
+        assert!(t.contains("[\"Battle\"] = Hero.at__fire__2"), "{t}");
+        assert!(t.contains("[\"Battle.Melee\"] = Hero.at__fire__2"), "{t}");
+        assert!(t.contains("[\"Calm\"] = Hero.at__fire__3"), "{t}");
+        assert!(t.contains("[\"Dead\"] = Hero.at__fire__3"), "{t}");
+    }
+
+    #[test]
+    fn options_no_body_covers_stop_with_wrong_state() {
+        let src = hero("    method int fire(int n) in Calm {\n        return n;\n    }\n");
+        assert_eq!(table(&src, "fire"), "Hero.__pick_fire = { [\"Calm\"] = Hero.at__fire__1 }");
+        let l = lua(&src);
+        assert!(
+            l.contains("_L.wrongstate(\"fire\", \"Calm\", \"this \" .. getmetatable(self).__name, self.state)"),
+            "{l}"
+        );
+        let rust = crate::to_rust_library("main.lst", &files(&src)).unwrap();
+        assert!(rust.contains("\"Calm\" => m0_at__fire__1(this, v_n),"), "{rust}");
+        assert!(rust.contains("rt::fail_as(\"WrongState\""), "{rust}");
+        // An object is named by its own name.
+        let obj = format!("{HEAD}object Gate {{\n    has {{\n        state = P.Calm;\n    }}\n    method go() in Dead {{ }}\n}}\n");
+        assert!(lua(&obj).contains("_L.wrongstate(\"go\", \"Dead\", \"Gate\", self.state)"));
+    }
+
+    #[test]
+    fn only_for_names_the_outer_options() {
+        let p = crate::ast::Pos { line: 1, col: 1 };
+        let picks = |os: &[&str]| -> Vec<(Option<(String, crate::ast::Pos)>, usize)> {
+            os.iter().enumerate().map(|(k, o)| (Some((o.to_string(), p)), k + 1)).collect()
+        };
+        assert_eq!(crate::ast::only_for(&picks(&["Battle"])), "Battle");
+        assert_eq!(crate::ast::only_for(&picks(&["Battle", "Battle.Ranged", "Dead"])), "Battle or Dead");
+        assert_eq!(
+            crate::ast::only_for(&picks(&["Calm", "Battle.Melee", "Dead"])),
+            "Calm, Battle.Melee or Dead"
+        );
+    }
+
+    #[test]
+    fn methods_without_in_are_as_before() {
+        let src = hero("    method fire() { }\n");
+        assert!(!lua(&src).contains("__pick"));
+        assert!(msgs(&hero("    method fire() { }\n    method fire() { }\n"))[0].contains("Hero already has a method called fire"));
+    }
+
+    #[test]
+    fn mistakes() {
+        let one = |methods: &str| msgs(&hero(methods)).join("\n");
+        assert!(one("    method fire() in Calm { }\n    method fire() in Calm { }\n").contains("already a body of fire in Calm"));
+        assert!(one("    method fire() in Calm { }\n    method fire() { }\n    method fire() { }\n")
+            .contains("already a body of fire without in"));
+        assert!(one("    method fire(int n) in Calm { }\n    method fire(int m) in Dead { }\n")
+            .contains("same values, with the same names, and gives back the same: method fire(int n)"));
+        assert!(
+            one("    method fire() in Calm { }\n    method int fire() in Dead {\n        return 1;\n    }\n")
+                .contains("This one is int fire() in Dead.")
+        );
+        assert!(one("    method fire() in Calmm { }\n").contains("P has no option called Calmm. Did you mean Calm?"));
+        assert!(one("    method fire() in P.Calm { }\n").contains("write the option on its own: in Calm"));
+        assert!(one("    method fire() in { }\n").contains("in names the option this body is for"));
+        assert!(one("    method fire() in Calm native;\n").contains("a native method's body is outside Lust"));
+        assert!(one("    method int fire() in Calm { }\n").contains("fire's body must return an int"));
+        let plain = msgs(&format!("{HEAD}object Door {{\n    method fire() in Calm {{ }}\n}}\n"));
+        assert!(
+            plain[0].contains("Door has no state of its own, so fire can't be in Calm"),
+            "{plain:?}"
+        );
+        let update = msgs(&format!(
+            "{HEAD}component Gun {{\n    has {{\n        state = P.Calm;\n    }}\n    method update(float dt) in Calm {{ }}\n}}\n"
+        ));
+        assert!(update.iter().any(|m| m.contains("give it a body without in too")), "{update:?}");
+        let alone = msgs(&format!("{HEAD}method fire() in Calm {{ }}\n"));
+        assert!(alone[0].contains("fire isn't in a class or an object"), "{alone:?}");
+    }
+
+    #[test]
+    fn like_replaces_all_of_a_methods_bodies() {
+        let src = format!(
+            "{}class Ghost like Hero {{\n    method fire() in Dead {{ }}\n}}\n",
+            hero("    method fire() in Calm { }\n    method fire() in Battle { }\n")
+        );
+        assert!(lua(&src).contains("Ghost.__pick_fire = { [\"Dead\"] = Ghost.at__fire__1 }"));
+        crate::to_rust_library("main.lst", &files(&src)).unwrap();
+        // A plain method replaces the bodies too, and bodies replace a plain method.
+        let plain = format!(
+            "{}class Ghost like Hero {{\n    method fire() {{ }}\n}}\n",
+            hero("    method fire() in Calm { }\n")
+        );
+        assert!(msgs(&plain).is_empty());
+        crate::to_rust_library("main.lst", &files(&plain)).unwrap();
+        let bodies = format!(
+            "{}class Ghost like Hero {{\n    method fire() in Dead {{ }}\n}}\n",
+            hero("    method fire() { }\n")
+        );
+        assert!(msgs(&bodies).is_empty());
+        crate::to_rust_library("main.lst", &files(&bodies)).unwrap();
+    }
+
+    #[test]
+    fn bodies_fuzzed() {
+        // Methods made at random from a fixed seed, sometimes broken by a piece dropped or added:
+        // checking never panics, and a program that checks writes both outputs.
+        let mut seed = 2029u64;
+        let mut next = |n: usize| {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            ((seed >> 33) % n as u64) as usize
+        };
+        let options = [
+            "Calm",
+            "Battle",
+            "Battle.Melee",
+            "Battle.Ranged",
+            "Dead",
+            "Calmm",
+            "P.Calm",
+            "Battle.Far",
+        ];
+        let shapes = [
+            "int fire(int n)",
+            "int fire(int n)",
+            "int fire(int n)",
+            "int fire(int m)",
+            "fire(int n)",
+            "int fire()",
+        ];
+        let junk = ["in", "{", "}", ".", "(", ")", ";", "method", "native", "return"];
+        let mut fine = 0;
+        for _ in 0..1500 {
+            let mut methods = String::new();
+            for _ in 0..1 + next(4) {
+                let s = shapes[if next(5) == 0 { next(shapes.len()) } else { 0 }];
+                let opt = match next(6) {
+                    0 => String::new(),
+                    _ => format!(" in {}", options[if next(4) == 0 { next(options.len()) } else { next(5) }]),
+                };
+                let body = if next(4) == 0 {
+                    "state = P.Dead; wait 0.1; return n;"
+                } else {
+                    "return n + 1;"
+                };
+                methods.push_str(&format!("    method {s}{opt} {{ {body} }}\n"));
+            }
+            let mut text = hero(&methods);
+            if next(4) == 0 {
+                text = text.replace("        state = P.Calm;\n", "");
+            }
+            text.push_str("Hero h = new Hero;\ntry { print(h:fire(1)); } error (Problem p, string m) { print(p, m); }\n");
+            if next(3) == 0 {
+                let at = next(text.len());
+                if text.is_char_boundary(at) {
+                    match next(2) {
+                        0 => text.insert_str(at, junk[next(junk.len())]),
+                        _ => {
+                            text.remove(at);
+                        }
+                    }
+                }
+            }
+            let f = files(&text);
+            if crate::check("main.lst", &f).is_ok() {
+                crate::to_lua("main.lst", &f).unwrap();
+                crate::to_rust_library("main.lst", &f).unwrap();
+                fine += 1;
+            }
+        }
+        assert!(fine > 100, "only {fine} programs checked");
+    }
+}

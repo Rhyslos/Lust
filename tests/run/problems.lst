@@ -92,7 +92,7 @@ try {
     check p {
         when NotFound { print("starting a new game"); }
         when BadJson { print("the save is damaged: {message}"); }
-        when NotAllowed, AlreadyThere, BadText, BadSave, OutOfRange, DividedByZero, Nothing, NoAnswer, Database, Stopped, Other {
+        when NotAllowed, AlreadyThere, BadText, BadSave, OutOfRange, DividedByZero, Nothing, NoAnswer, Database, Stopped, WrongState, Other {
             print(message);
         }
     }

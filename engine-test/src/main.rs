@@ -749,6 +749,30 @@ fn main() {
         .unwrap();
     }
 
+    // 13. Methods in options: update runs the body for the component's state each tick, and
+    // mend, only for Broken, stops with WrongState in any other option.
+    let update: Function = shield.get("update").unwrap();
+    let mend: Function = shield.get("mend").unwrap();
+    for _ in 0..2 {
+        update.call::<()>((shield.clone(), 1.0 / 60.0)).unwrap();
+        let ran = mend.call::<()>(shield.clone()).map_err(|e| e.to_string());
+        let said = log.borrow_mut().split_off(0).trim_end().replace('\n', "; ");
+        let err = ran.err().unwrap_or_default();
+        let err = err.lines().next().unwrap_or("").trim_start_matches("runtime error: ").to_string();
+        writeln!(
+            out,
+            "update and mend: {}{}; now {}",
+            if said.is_empty() { "nothing ran" } else { &said },
+            if err.is_empty() { String::new() } else { format!("; mend: {err}") },
+            shield.get::<String>("state").unwrap()
+        )
+        .unwrap();
+    }
+    shield.set("state", "Down.Cracked").unwrap();
+    update.call::<()>((shield.clone(), 1.0 / 60.0)).unwrap();
+    let said = log.borrow_mut().split_off(0).trim_end().replace('\n', "; ");
+    writeln!(out, "update when cracked: {said}").unwrap();
+
     let expected_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("expected.out");
     if std::env::args().any(|a| a == "--print") {
         print!("{out}");

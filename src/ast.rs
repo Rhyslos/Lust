@@ -343,12 +343,42 @@ pub struct MethodDecl {
     /// The handler for an event with entries: each entry's option (`None` for the one without
     /// `in`, which covers the rest) and number. It has no body of its own: when the event comes,
     /// it runs the entry for the option the thing is in then, the most precise one, or none.
+    /// The same for a method with bodies in options (`method fire() in Battle { … }`): the method
+    /// itself chooses, and when no body covers the option the thing is in, stops with
+    /// Problem.WrongState.
     pub picks: Vec<(Option<(String, Pos)>, usize)>,
+    /// `method fire() in Battle { … }`: one of several bodies of a method, each for some of the
+    /// thing's options. The body is a method of its own: the method's name and its number among
+    /// the bodies, which name it (`body_name`). The method (`picks`) chooses between them.
+    pub body_of: Option<(String, usize)>,
 }
 
 /// The method an event's entry becomes: `in·Hit·2`, which code can't call by name.
 pub fn entry_name(event: &str, k: usize) -> String {
     format!("in{MARK}{event}{MARK}{k}")
+}
+
+/// The options a method's bodies are written for, for its Problem.WrongState message:
+/// "Battle", "Battle or Dead", "Calm, Battle or Dead". Options inside one that's there are left
+/// out.
+pub fn only_for(picks: &[(Option<(String, Pos)>, usize)]) -> String {
+    let all: Vec<&str> = picks.iter().filter_map(|(o, _)| o.as_ref().map(|o| o.0.as_str())).collect();
+    // Battle.Ranged goes without saying when Battle is there.
+    let os: Vec<&str> = all
+        .iter()
+        .copied()
+        .filter(|o| !all.iter().any(|x| o.starts_with(&format!("{x}."))))
+        .collect();
+    match os.split_last() {
+        None => String::new(),
+        Some((last, [])) => last.to_string(),
+        Some((last, rest)) => format!("{} or {last}", rest.join(", ")),
+    }
+}
+
+/// The method a method's body in some options becomes: `at·fire·2`, which code can't call by name.
+pub fn body_name(method: &str, k: usize) -> String {
+    format!("at{MARK}{method}{MARK}{k}")
 }
 
 #[derive(Clone)]

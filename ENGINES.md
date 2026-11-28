@@ -332,3 +332,24 @@ component Shield {
 - **Lua, Luau and Rust:** nothing new to call. `handle(event, values)` runs the entry for the option the component is in when it's called, and does nothing in an option no entry covers. It still gives true (`Ok(true)` in Rust) whenever the component handles the event at all, whatever its option: the event was handled, and the component chose to do nothing. `HANDLES` lists the event once. The values are checked (count and kinds) before an entry is chosen, as before.
 - **The state** is the component's ordinary `state` field: in its schema, `to_data`, `set_data`, the inspector and saves as before. Set from outside (the editor, a loaded save), it decides which entry the next event runs.
 - **The engine does:** nothing.
+
+## alpha 98: methods in some options
+
+A method can have bodies for some of a thing's options (LUST.md, section 11, Methods in some options: in), a component's too, once it has a state of its own:
+
+```
+component Shield {
+    has {
+        state = Guard.Up;
+    }
+
+    method update(float dt) in Down { … }
+    method update(float dt) { }
+
+    method mend() in Broken { … }
+}
+```
+
+- **Lua, Luau and Rust:** nothing new to call. A method with bodies (`update`, or any method the engine calls straight into) chooses the body for the option the component is in when it's called. `update` with bodies only for some options is a mistake, since it runs every tick: it always has a body without `in` for the rest.
+- **A new kind of failure, `WrongState`:** a method called while no body covers the component's option stops with `mend is only for Broken, but this Shield is Up.` In Rust its `LustError` has `problem: "WrongState"`; in Lua it's an error with that message, as other failures are. An engine that matches on `problem` by name may meet it now; one that doesn't needs no change. `WrongState` is one of `Problem`'s options now (between `Stopped` and `Other`), so game code can catch it with `try … error (Problem p, string message)`.
+- **The engine does:** nothing.

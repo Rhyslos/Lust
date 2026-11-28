@@ -95,6 +95,7 @@ pub const PROBLEMS: &[&str] = &[
     "NoAnswer",
     "Database",
     "Stopped",
+    "WrongState",
     "Other",
 ];
 
