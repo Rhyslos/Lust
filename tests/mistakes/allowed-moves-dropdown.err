@@ -1,0 +1,4 @@
+allowed-moves-dropdown.lst:14:22  a dropdown offers every option of Door, but Door's arrows allow only some moves, so a choice could be refused. Bind it to a string, with the options that can follow in a list, and change door in its block.
+allowed-moves-dropdown.lst:15:19  a radio offers every option of Door, but Door's arrows allow only some moves, so a choice could be refused. Bind it to a string, with the options that can follow in a list, and change door in its block.
+
+2 mistakes. Nothing was run.
