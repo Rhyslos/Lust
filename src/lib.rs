@@ -118,6 +118,8 @@ mod native_ui {
 #[cfg(feature = "cli")]
 mod run;
 #[cfg(feature = "cli")]
+mod states;
+#[cfg(feature = "cli")]
 mod tests;
 
 #[cfg(feature = "cli")]

@@ -1242,6 +1242,9 @@ end
 -- ----- things made in a state end with it -----
 -- Started work (below, with runs) belongs to a state too: when the state ends, it's cancelled.
 local Work = { __name = "Work" }
+-- The states feed (below): nil unless lust run was asked for it, so a state change costs one
+-- check more.
+local FEED
 local cancel_work
 -- owner -> { thing = the owner's state option when it was made, or true for "until the owner
 -- ends" }. Weak, so nothing is held on to.
@@ -1263,6 +1266,7 @@ end
 -- The thing is gone: its fields are let go, and using it says why.
 local function finish(thing, msg)
   if getmetatable(thing) == Work then return cancel_work(thing) end
+  if FEED then FEED.ended(thing) end
   local name = (getmetatable(thing) or {}).__name
   for k in pairs(thing) do thing[k] = nil end
   local function gone() error(problem("Nothing", msg), 2) end
@@ -1281,6 +1285,7 @@ function L.setstate(o, new, moves)
   if o == nil then error(problem("Nothing", "this is nothing, so it has no fields or methods. Check first: is it !== nothing?"), 2) end
   if moves then L.moved(moves, o.state, new, 3) end
   o.state = new
+  if FEED then FEED.set(o, new) end
   local list = owners[o]
   if not list then return end
   local over = {}
@@ -1293,6 +1298,37 @@ function L.setstate(o, new, moves)
   end
   -- If that cancelled the run going now, it stops here.
   L.stop_if_cancelled()
+end
+
+-- ----- the states feed -----
+-- While Ledger watches a program's states, lust run is given LUST_STATES, and its host has
+-- states.made, set and ended (run.rs, states.rs), which write each thing with a state of its own
+-- to a file of their own. Otherwise none of this is here, and new is as it was.
+do
+  local host = rawget(_G, "LUST_HOST")
+  local feed = host and host.states
+  if feed then
+    -- Each thing's token, which tells lust when Lua lets the thing go. Weak, so nothing is held.
+    local tokens = setmetatable({}, { __mode = "k" })
+    local made, set, ended = feed.made, feed.set, feed.ended
+    local new = L.new
+    L.new = function(c, ...)
+      local o = new(c, ...)
+      local s = rawget(o, "state")
+      if type(s) == "string" then tokens[o] = made(c.__name, s) end
+      return o
+    end
+    FEED = {
+      set = function(o, s)
+        local t = tokens[o]
+        if t then set(t, s) end
+      end,
+      ended = function(o)
+        local t = tokens[o]
+        if t then ended(t) end
+      end,
+    }
+  end
 end
 
 -- ----- nodes: objects that open and close -----
