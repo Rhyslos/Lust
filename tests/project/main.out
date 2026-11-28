@@ -7,3 +7,5 @@ main says 1
 Player
 3
 true 12.5 Cheerful
+Gear { name = "boots", wornIn = Cheerful, weight = 3 } 4
+Gear { name = "map", wornIn = Grumpy, weight = 3 } 5

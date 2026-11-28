@@ -1,0 +1,45 @@
+Loadout { role = Scout, primary = M4a1, secondary = Glock, grenades = 2 }
+text: Loadout { role = Scout, primary = M4a1, secondary = Glock, grenades = 2 }
+in text: Loadout { role = Scout, primary = M4a1, secondary = Glock, grenades = 2 }
+Spot { at = [1.0, 2.0, 3.0], flat = [4.0, 5.0], turn = [0.0, 0.0, 90.0], tint = #339af0, ok = true, size = 1.5, label = "camp "one"" }
+Empty {}
+Odd { until = 3, local = "here", who = nothing }
+4 there
+2 3
+false true
+true false
+2 7
+3
+1 50
+Shotgun M4a1
+Squad { name = "red", lead = Loadout { role = Scout, primary = Shotgun, secondary = Glock, grenades = 2 }, spot = Spot { at = [9.0, 2.0, 3.0], flat = [4.0, 5.0], turn = [0.0, 0.0, 90.0], tint = #ff922b, ok = true, size = 1.5, label = "camp "one"" } }
+M4a1 Shotgun
+true
+false 2.0 1.5
+[Loadout { role = Scout, primary = M4a1, secondary = Glock, grenades = 9 }, Loadout { role = Scout, primary = M4a1, secondary = Glock, grenades = 2 }, Loadout { role = Scout, primary = M4a1, secondary = Glock, grenades = 2 }]
+9
+2
+2
+9 1
+ada 4
+bo 7
+6 40
+40 0
+5 5 99
+Loadout { role = Scout, primary = Glock, secondary = Glock, grenades = 2 }
+Calm Glock
+Battle Shotgun
+quartermaster heard Loadout { role = Scout, primary = M4a1, secondary = Glock, grenades = 40 }
+hero heard Loadout { role = Scout, primary = M4a1, secondary = Glock, grenades = 41 }
+hero heard Loadout { role = Scout, primary = M4a1, secondary = Glock, grenades = 42 }
+40 40
+{"name":"red","lead":{"role":"Scout","primary":"Shotgun","secondary":"Glock","grenades":2},"spot":{"at":[9.0,2.0,3.0],"flat":[4.0,5.0],"turn":[0.0,0.0,0.70710677,0.70710677],"tint":"#ff922b","ok":true,"size":1.5,"label":"camp \"one\""}}
+true
+Loadout { role = Heavy, primary = Glock, secondary = Glock, grenades = 2 }
+BadJson the JSON is missing primary.
+BadJson the JSON should be an object, but it's nothing (null).
+1 11
+2 12
+7 11
+9 2 2
+7 Glock

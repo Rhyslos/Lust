@@ -3706,6 +3706,14 @@ pub fn jr_required(v: &Json, at: &str, required: &[&str]) {
     }
 }
 
+/// A record: always an object (never null), with every value that has no starting value.
+pub fn jr_record(v: &Json, at: &str, required: &[&str]) {
+    if !matches!(v, Json::Obj(_)) {
+        misfit(at, "an object", v);
+    }
+    jr_required(v, at, required);
+}
+
 pub fn jr_object(v: &Json, at: &str) -> bool {
     match v {
         Json::Null => false,

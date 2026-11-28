@@ -1,0 +1,102 @@
+-- Records hold only simple values, are copied wherever they go, and are never nothing.
+state Gun = [M4a1, Glock];
+state Mood = [Calm, Angry];
+
+class Hero {
+    has {
+        int hp = 3;
+        Loadout kit;
+    }
+}
+
+record Loadout {
+    Gun primary;
+    int grenades = 2;
+    lock int pins = 1;
+}
+
+record Bad {
+    Hero hero;
+    int array list;
+    hook int() onFire;
+    uint8 small = 1;
+    state = Mood.Calm;
+    int twice = 1;
+    int twice = 2;
+}
+
+record Again {
+    Again again;
+}
+
+record Ping {
+    Pong pong;
+}
+
+record Pong {
+    Ping ping;
+}
+
+record Rolled {
+    int roll = Random[1, 6];
+}
+
+record Hero {
+    int x = 1;
+}
+
+state Pose = [
+    Calm { kit = new Loadout { primary = Gun.Glock }, rolled = new Rolled },
+    Battle { kit = new Loadout { primary = Gun.M4a1, grenades = Random[1, 3] }, rolled = new Rolled { roll = 2 } },
+];
+
+event Equipped(Loadout kit);
+
+component Fighter {
+    has {
+        Loadout kit = new Loadout { primary = Gun.Glock };
+    }
+
+    method update(float dt) {
+        send Equipped(kit) to this;
+    }
+}
+
+method Loadout give() native;
+
+method Loadout make() {
+    return new Loadout { primary = Gun.Glock };
+}
+
+Loadout kit = new Loadout { grenades = 3 };
+Loadout other = new Loadout { primary = Gun.Glock, ammo = 3 };
+Loadout none = nothing;
+print(kit === other);
+print(kit !== other);
+make().grenades = 3;
+lock Loadout locked = new Loadout { primary = Gun.Glock };
+locked.grenades = 1;
+kit.pins = 3;
+Loadout array kits = [kit];
+loop (Loadout k in kits) {
+    k.grenades = 1;
+}
+hook() change = new hook {
+    kit.grenades = 5;
+};
+Pose.Calm.kit.grenades = 1;
+Pose p = Pose.Calm;
+p.kit.grenades = 1;
+tween kit.grenades to 5 over 1;
+is kit like Loadout? then {
+    print("a loadout");
+}
+keep kit;
+kit:fire();
+print(kit.ammo);
+kit.grenades = "lots";
+print(kit == new Rolled);
+print(kits:has(kit));
+kits:sortBy(grenades);
+new Loadout { primary = Gun.Glock };
+end

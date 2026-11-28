@@ -936,17 +936,47 @@ end
 
 -- ----- for an engine -----
 
-local function same_schema(a, b)
+-- A record the engine handed over: a table with every value (an entity may be nothing).
+function L.hrecord(r, name, needed)
+  if type(r) ~= "table" then error("the " .. name .. " from the engine should be a table of its values, but it's " .. type(r) .. ".", 3) end
+  for _, k in ipairs(needed) do
+    if r[k] == nil then error("the " .. name .. " from the engine has no " .. k .. ".", 3) end
+  end
+end
+
+local same_schema
+same_schema = function(a, b)
   a, b = a or {}, b or {}
   if #a ~= #b then return false end
   for i = 1, #a do
     local x, y = a[i], b[i]
     if x[1] ~= y[1] or x[3] ~= y[3] then return false end
-    local ox, oy = x[4] or {}, y[4] or {}
-    if #ox ~= #oy then return false end
-    for j = 1, #ox do if ox[j] ~= oy[j] then return false end end
+    if x[3] == "record" then
+      -- A record's entry: its values' entries, then its name.
+      if x[5] ~= y[5] or not same_schema(x[4], y[4]) then return false end
+    else
+      local ox, oy = x[4] or {}, y[4] or {}
+      if #ox ~= #oy then return false end
+      for j = 1, #ox do if ox[j] ~= oy[j] then return false end end
+    end
   end
   return true
+end
+
+-- A record handed to an engine, or taken from one: a table of its values by name, copied all the
+-- way down, so the engine and Lust never share one. `own` makes each value Lust's own on the way in.
+local function rec_copy(entries, v, own)
+  local out = {}
+  for _, f in ipairs(entries) do
+    local x = v[f[1]]
+    if f[3] == "record" then
+      x = rec_copy(f[4], x, own)
+    elseif own and own[f[3]] then
+      x = own[f[3]](x)
+    end
+    out[f[1]] = x
+  end
+  return out
 end
 
 -- What an engine's chunk gives back: its components, the events, and how to make, run and swap
@@ -994,8 +1024,17 @@ function L.engine(version, components, events, classes, objects, ticked)
     end
     return true
   end
-  local function fits(f, v)
+  local fits
+  fits = function(f, v)
     local kind, t = f[3], type(v)
+    if kind == "record" then
+      if t ~= "table" then return false end
+      for _, x in ipairs(f[4]) do
+        local ok, y = pcall(function() return v[x[1]] end)
+        if not ok or y == nil or not fits(x, y) then return false end
+      end
+      return true
+    end
     if kind == "bool" then return t == "boolean" end
     if kind == "int" then return t == "number" and v == math.floor(v) end
     if kind == "float" then return t == "number" end
@@ -1020,7 +1059,11 @@ function L.engine(version, components, events, classes, objects, ticked)
     local o = object(name)
     local out = {}
     for _, f in ipairs(getmetatable(o).__schema or {}) do
-      if f[3] ~= "other" and f[3] ~= "object" then out[f[2]] = o[f[1]] end
+      if f[3] == "record" then
+        out[f[2]] = rec_copy(f[4], o[f[1]])
+      elseif f[3] ~= "other" and f[3] ~= "object" then
+        out[f[2]] = o[f[1]]
+      end
     end
     return out
   end
@@ -1032,6 +1075,7 @@ function L.engine(version, components, events, classes, objects, ticked)
       local v = values[f[2]]
       if v ~= nil and fits(f, v) then
         if own[f[3]] then v = own[f[3]](v) end
+        if f[3] == "record" then v = rec_copy(f[4], v, own) end
         o[f[1]] = v
       end
     end
@@ -1085,8 +1129,14 @@ function L.engine(version, components, events, classes, objects, ticked)
   return api
 end
 
-local function shown_value(v, kind)
+local function shown_value(v, kind, f)
   if v == nil then return "nothing" end
+  if kind == "record" then
+    local parts = {}
+    for i, x in ipairs(f[4]) do parts[i] = x[2] .. " = " .. shown_value(v[x[1]], x[3], x) end
+    if #parts == 0 then return f[5] .. " {}" end
+    return f[5] .. " { " .. table.concat(parts, ", ") .. " }"
+  end
   if kind == "vec3" then return L.vtext(v) end
   if kind == "rotation" then return L.rtext(v) end
   if kind == "vec2" then return L.v2text(v) end
@@ -1114,7 +1164,9 @@ function L.swap(o, c)
     if was then
       local v = saved[key]
       if was[3] ~= kind then
-        notes[#notes + 1] = c.__name .. "'s " .. name .. " is " .. kind .. " now, not " .. was[3] .. ", so it starts at " .. shown_value(o[key], kind) .. "."
+        notes[#notes + 1] = c.__name .. "'s " .. name .. " is " .. kind .. " now, not " .. was[3] .. ", so it starts at " .. shown_value(o[key], kind, f) .. "."
+      elseif kind == "record" and not (was[5] == f[5] and same_schema(was[4], f[4])) then
+        notes[#notes + 1] = c.__name .. "'s " .. name .. " holds different values now, so it starts at " .. shown_value(o[key], kind, f) .. "."
       elseif kind == "state" and v ~= nil then
         local found = false
         for _, opt in ipairs(f[4]) do if opt == v then found = true end end
@@ -2656,6 +2708,18 @@ function L.jr_fields(v, at, class, names, fs, required)
   end
   return o
 end
+-- A record: always an object (never null), with every value that has no starting value. Gives
+-- back its values by name.
+function L.jr_record(v, at, required)
+  if type(v) ~= "table" or not v.__obj then misfit(at, "an object", v) end
+  for _, r in ipairs(required) do
+    if v.vals[r] == nil then
+      error(problem("BadJson", (at == "" and "the JSON" or ("the JSON at " .. at)) .. " is missing " .. r .. "."), 0)
+    end
+  end
+  return v.vals
+end
+L.jchild = child
 -- Errors from deep inside are passed on as if from the Lust line that called Json.
 function L.json_read(text, f)
   local ok, r = pcall(function() return f(parse(text), "") end)

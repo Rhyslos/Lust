@@ -1,0 +1,22 @@
+-- A record's values go straight inside its { }: no has block, methods, on block or view.
+record Loadout {
+    has {
+        int grenades = 2;
+    }
+    method throw() {
+        grenades -= 1;
+    }
+    on {
+        Hit() {
+            print("hit");
+        }
+    }
+    int ammo = 30;
+}
+
+-- record is still a name anywhere else.
+int record = 3;
+print(record);
+Loadout kit = new Loadout;
+print(kit);
+end

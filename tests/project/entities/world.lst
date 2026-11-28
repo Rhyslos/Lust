@@ -1,14 +1,16 @@
 fetch "entities/player":Mood;
+fetch "entities/gear":Gear;
 
 -- Values on a state's options can name another file's state.
 state Weather = [
-    Sunny { mood = Mood.Cheerful, warmth = 25 },
-    Rainy { mood = Mood.Grumpy, warmth = 12.5 },
+    Sunny { mood = Mood.Cheerful, warmth = 25, gear = new Gear { name = "hat" } },
+    Rainy { mood = Mood.Grumpy, warmth = 12.5, gear = new Gear { name = "coat", weight = 5 } },
 ];
 
 object World {
     has {
         int day = 1;
+        Gear kit = new Gear { name = "map", wornIn = Mood.Grumpy };
     }
 
     method tick() {

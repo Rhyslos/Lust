@@ -3,11 +3,11 @@ state-data.lst:7:5  Pose.Run has no speed, but other options of Pose do. Every o
 state-data.lst:8:5  Pose.Battle has no reach, but other options of Pose do. Every option needs every value, so give it one: Battle { reach = … }
 state-data.lst:8:41  Battle's speed is text, but Idle's is a number. A value has one type on every option of Pose.
 state-data.lst:9:9  Pose.Battle.Melee has no reach, but other options of Pose do. Every option needs every value, so give it one: Melee { reach = … }
-state-data.lst:17:22  Pistol's range has to be written out, since an option's values are fixed: a number, text, a bool, an option of a state, a vector or a colour.
+state-data.lst:17:22  Pistol's range has to be written out, since an option's values are fixed: a number, text, a bool, an option of a state, a vector, a colour or a record.
 state-data.lst:17:35  Pistol's sound is fixed, so its text can't have values in { }.
 state-data.lst:17:56  Pistol's ammo has 5 numbers in [ ]. A vector has 2 or 3, and a colour 3 or 4.
 state-data.lst:17:81  Pistol's owner can't be nothing: every option's value is there.
-state-data.lst:18:22  Rifle's range has to be written out, since an option's values are fixed: a number, text, a bool, an option of a state, a vector or a colour.
+state-data.lst:18:22  Rifle's range has to be written out, since an option's values are fixed: a number, text, a bool, an option of a state, a vector, a colour or a record.
 state-data.lst:18:55  Rifle's ammo is a list, which can change. A list here holds 2 or 3 numbers for a vector, or 3 or 4 for a colour.
 state-data.lst:18:73  Rifle's owner can't be nothing: every option's value is there.
 state-data.lst:23:12  text can't name a value on a state, since .text() already does something to every option. Pick another name.

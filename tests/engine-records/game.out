@@ -1,0 +1,16 @@
+Fighter's loadout Record("Loadout", [("name", Text), ("main", Record("Kit", [("gun", Choice(["M4a1", "Glock"])), ("ammo", Int), ("aim", Vec2), ("tint", Colour)])), ("buddy", Entity)])
+  starts Record({"buddy": Entity(None), "main": Record({"aim": List([Float(0.0), Float(1.0)]), "ammo": Int(30), "gun": Text("M4a1"), "tint": List([Float(1.0), Float(0.41960784792900085), Float(0.41960784792900085), Float(1.0)])}), "name": Text("rifleman")})
+Fighter's shots Int
+  starts Int(0)
+event Equip [("loadout", Record("Loadout", [("name", Text), ("main", Record("Kit", [("gun", Choice(["M4a1", "Glock"])), ("ammo", Int), ("aim", Vec2), ("tint", Colour)])), ("buddy", Entity)])), ("round", Int)]
+queued Equip to Some(1): [Record({"buddy": Entity(None), "main": Record({"aim": List([Float(0.0), Float(1.0)]), "ammo": Int(29), "gun": Text("M4a1"), "tint": List([Float(1.0), Float(0.41960784792900085), Float(0.41960784792900085), Float(1.0)])}), "name": Text("rifleman")}), Int(0)]
+kept Loadout { name = "rifleman", main = Kit { gun = M4a1, ammo = 30, aim = [0.0, 1.0], tint = #ff6b6b }, buddy = nothing }
+heard Loadout { name = "changed", main = Kit { gun = M4a1, ammo = 29, aim = [0.0, 1.0], tint = #ff6b6b }, buddy = nothing } false
+heard Loadout { name = "changed", main = Kit { gun = M4a1, ammo = 29, aim = [0.0, 1.0], tint = #ff6b6b }, buddy = nothing } false
+{"loadout": Record({"buddy": Entity(None), "main": Record({"aim": List([Float(0.0), Float(1.0)]), "ammo": Int(30), "gun": Text("M4a1"), "tint": List([Float(1.0), Float(0.41960784792900085), Float(0.41960784792900085), Float(1.0)])}), "name": Text("rifleman")}), "shots": Int(2)}
+heard Loadout { name = "changed", main = Kit { gun = Glock, ammo = 3, aim = [1.0, 0.0], tint = #ff8000 }, buddy = 0000000000009 } false
+Err("Equip's got should be a Loadout.")
+{"loadout": Record({"buddy": Entity(Some(9)), "main": Record({"aim": List([Float(1.0), Float(0.0)]), "ammo": Int(3), "gun": Text("Glock"), "tint": List([Float(1.0), Float(0.5), Float(0.0), Float(1.0)])}), "name": Text("medic")}), "shots": Int(3)}
+Record({"buddy": Entity(Some(9)), "main": Record({"aim": List([Float(1.0), Float(0.0)]), "ammo": Int(3), "gun": Text("Glock"), "tint": List([Float(1.0), Float(0.5), Float(0.0), Float(1.0)])}), "name": Text("medic")})
+{"spare": Record({"aim": List([Float(0.0), Float(1.0)]), "ammo": Int(4), "gun": Text("Glock"), "tint": List([Float(1.0), Float(0.41960784792900085), Float(0.41960784792900085), Float(1.0)])})}
+{"spare": Record({"aim": List([Float(1.0), Float(0.0)]), "ammo": Int(11), "gun": Text("Glock"), "tint": List([Float(1.0), Float(0.5), Float(0.0), Float(1.0)])})}

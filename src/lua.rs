@@ -62,6 +62,8 @@ struct LoopFrame {
 }
 
 struct W<'a> {
+    /// Each record's values and their starting values, in order: what a new one is made from.
+    records_decl: HashMap<usize, Vec<(String, Option<Expr>)>>,
     info: &'a Info,
     /// Check that whole numbers stay ones Lua holds exactly (.lst programs).
     exact: bool,
@@ -101,6 +103,7 @@ pub fn write_for_engine(prog: &Program, info: &Info, exact: bool) -> Output {
 
 fn write_with(prog: &Program, info: &Info, exact: bool, engine: bool) -> Output {
     let mut w = W {
+        records_decl: records_decl(prog, info),
         info,
         exact,
         buf: String::new(),
@@ -173,6 +176,20 @@ fn write_with(prog: &Program, info: &Info, exact: bool, engine: bool) -> Output 
         cols.push(col);
     }
     Output { code, lines, cols }
+}
+
+/// Each record's values with their starting values, in order, by its place among the classes.
+pub fn records_decl(prog: &Program, info: &Info) -> HashMap<usize, Vec<(String, Option<Expr>)>> {
+    let mut out = HashMap::new();
+    for item in &prog.items {
+        let Item::Class(c) = item else { continue };
+        if !c.is_record {
+            continue;
+        }
+        let Some(&ci) = info.class_index.get(&c.name) else { continue };
+        out.insert(ci, c.fields.iter().map(|f| (f.name.clone(), f.default.clone())).collect());
+    }
+    out
 }
 
 /// A number written as one: 3, 0.5 or -2.
@@ -326,6 +343,8 @@ impl<'a> W<'a> {
             Ty::Entity => "entity",
             // A thing of one of the engine's classes, which it fills in: its class's name follows.
             Ty::Class(_) => "object",
+            // A record, when the engine keeps them: its values' entries follow, then its name.
+            Ty::Record(_) if self.info.engine_records => "record",
             _ => "other",
         };
         let opts = match t {
@@ -334,6 +353,18 @@ impl<'a> W<'a> {
                 format!(", {{ {} }}", o.join(", "))
             }
             Ty::Class(c) => format!(", {}", lua_string(crate::ast::shown(&self.info.classes[*c].name))),
+            Ty::Record(c) if self.info.engine_records => {
+                let inner: Vec<String> = self.info.classes[*c]
+                    .fields
+                    .iter()
+                    .map(|f| self.field_entry(&f.name, &f.ty))
+                    .collect();
+                format!(
+                    ", {{ {} }}, {}",
+                    inner.join(", "),
+                    lua_string(crate::ast::shown(&self.info.classes[*c].name))
+                )
+            }
             _ => String::new(),
         };
         format!(
@@ -407,8 +438,10 @@ impl<'a> W<'a> {
         } else {
             vec![crate::parser::VALUE.to_string()]
         };
-        let copies: Vec<String> = crate::rust::captures(body, &params, self.info).iter().map(|c| lname(c)).collect();
+        let caps = crate::rust::captures(body, &params, self.info);
+        let copies: Vec<String> = caps.iter().map(|c| lname(c)).collect();
         let c = copies.join(", ");
+        let given = self.kept(body, &caps).join(", ");
         if copies.is_empty() {
             self.line(ln, &format!("{slot} = function({param})"));
         } else {
@@ -422,15 +455,17 @@ impl<'a> W<'a> {
         if copies.is_empty() {
             self.line(ln, "end");
         } else {
-            self.line(ln, &format!("end end)({c})"));
+            self.line(ln, &format!("end end)({given})"));
         }
     }
 
     /// Like `action`, for a block given a value from the window: `params` are the Lua function's
     /// own, `prologue` turns them into the block's variable, and `own` are its Lust names.
     fn action_given(&mut self, ln: u32, slot: &str, params: &str, prologue: Option<String>, own: &[String], body: &[Stmt]) {
-        let copies: Vec<String> = crate::rust::captures(body, own, self.info).iter().map(|c| lname(c)).collect();
+        let caps = crate::rust::captures(body, own, self.info);
+        let copies: Vec<String> = caps.iter().map(|c| lname(c)).collect();
         let c = copies.join(", ");
+        let given = self.kept(body, &caps).join(", ");
         if copies.is_empty() {
             self.line(ln, &format!("{slot} = function({params})"));
         } else {
@@ -447,7 +482,7 @@ impl<'a> W<'a> {
         if copies.is_empty() {
             self.line(ln, "end");
         } else {
-            self.line(ln, &format!("end end)({c})"));
+            self.line(ln, &format!("end end)({given})"));
         }
     }
 
@@ -809,6 +844,8 @@ impl<'a> W<'a> {
                 }
             }
         }
+        // Records: each one's copy, comparison and text.
+        self.records();
         // The values states' options carry: a table for each name, from option to value, so
         // pose.speed is _D_Pose[2][pose].
         for item in &prog.items {
@@ -874,6 +911,8 @@ impl<'a> W<'a> {
                     self.object_names.insert(c.name.clone());
                     forward.push(lname(&c.name));
                 }
+                // A record is a plain table, made where it's written.
+                Item::Class(c) if c.is_record => {}
                 // Classes are named up front too, so one can use another written after it.
                 Item::Class(c) => forward.push(lname(&c.name)),
                 _ => {}
@@ -888,7 +927,7 @@ impl<'a> W<'a> {
             .items
             .iter()
             .filter_map(|i| match i {
-                Item::Class(c) => Some(c),
+                Item::Class(c) if !c.is_record => Some(c),
                 _ => None,
             })
             .collect();
@@ -1079,6 +1118,18 @@ impl<'a> W<'a> {
             let params: Vec<String> = m.params.iter().map(|p| lname(&p.name)).collect();
             self.line(m.pos.line, &format!("function {table}:{}({})", lname(&m.name), params.join(", ")));
             self.indent += 1;
+            // An event reaches every thing that hears it with the same values: each handler gets
+            // its own copy of a record.
+            if m.on.is_some() && !c.is_component {
+                if let Some(sig) = self.info.classes[ci].methods.get(&m.name) {
+                    for (p, (_, t)) in m.params.iter().zip(&sig.params) {
+                        if let Ty::Record(r) = t {
+                            let n = lname(&p.name);
+                            self.line(m.pos.line, &format!("{n} = _RC{r}({n})"));
+                        }
+                    }
+                }
+            }
             if m.native {
                 // The host's own Lua function, Class_method, does the work, given the thing first.
                 let cn = crate::ast::shown(&c.name);
@@ -1764,7 +1815,7 @@ impl<'a> W<'a> {
                 self.line(ln, &format!("_L.{f}({tc}, {ic}, {value})"));
             }
             _ => {
-                let t = self.expr(target);
+                let t = self.place(target);
                 self.line(ln, &format!("{t} = {value}"));
             }
         }
@@ -1812,7 +1863,14 @@ impl<'a> W<'a> {
                         self.line(ln, &format!("local {c} = _L.acopy({src})"));
                         self.line(ln, &format!("for {i} = 1, {c}.n do"));
                         self.indent += 1;
-                        self.line(ln, &format!("local {} = {c}[{i}]", names[0]));
+                        let item = match self.info.ty(source) {
+                            Ty::Array(el) => match *el {
+                                Ty::Record(r) => format!("_RC{r}({c}[{i}])"),
+                                _ => format!("{c}[{i}]"),
+                            },
+                            _ => format!("{c}[{i}]"),
+                        };
+                        self.line(ln, &format!("local {} = {item}", names[0]));
                         self.indent -= 1;
                         close = vec!["end".into(), "end".into()];
                         self.indent += 1;
@@ -1829,9 +1887,16 @@ impl<'a> W<'a> {
                         self.line(
                             ln,
                             &format!(
-                                "local {}, {} = {k}, {m}.vals[{k}]",
+                                "local {}, {} = {k}, {}",
                                 names[0],
-                                names.get(1).cloned().unwrap_or_else(|| "_".into())
+                                names.get(1).cloned().unwrap_or_else(|| "_".into()),
+                                match self.info.ty(source) {
+                                    Ty::Map(v) => match *v {
+                                        Ty::Record(r) => format!("_RC{r}({m}.vals[{k}])"),
+                                        _ => format!("{m}.vals[{k}]"),
+                                    },
+                                    _ => format!("{m}.vals[{k}]"),
+                                }
                             ),
                         );
                         self.indent -= 1;
@@ -1841,7 +1906,14 @@ impl<'a> W<'a> {
                         let r = self.fresh("row");
                         self.line(ln, &format!("for _, {r} in ipairs(_L.rows({src})) do"));
                         self.indent += 1;
-                        let fields: Vec<String> = cols.iter().map(|(n, _)| format!("{r}.{}", lname(n))).collect();
+                        let fields: Vec<String> = cols
+                            .iter()
+                            .map(|(n, t)| match t {
+                                // A record in a row is copied, as an array's item is.
+                                Ty::Record(x) => format!("_RC{x}({r}.{})", lname(n)),
+                                _ => format!("{r}.{}", lname(n)),
+                            })
+                            .collect();
                         self.line(
                             ln,
                             &format!(
@@ -1895,6 +1967,12 @@ impl<'a> W<'a> {
     /// An expression as a value. A table or a query used as a value is a copy of its rows, as a cMap.
     fn expr(&mut self, e: &Expr) -> String {
         let mut c = self.raw(e);
+        // A record read from where it's kept is copied, so changing one copy never changes another.
+        if let Ty::Record(r) = self.info.ty(e) {
+            if !self.fresh_record(e) {
+                c = format!("_RC{r}({c})");
+            }
+        }
         // An int going into a sized place (int8 hp): checked to fit.
         if let Some(w) = self.info.narrowing.get(&e.id) {
             let (lo, hi) = w.range();
@@ -1903,6 +1981,165 @@ impl<'a> W<'a> {
         match self.info.ty(e) {
             Ty::Table(_) | Ty::Query(_) => format!("_L.q_cmap({c})"),
             _ => c,
+        }
+    }
+
+    /// A new record: a plain table. The starting values of those not given come first, then
+    /// the given ones in the order written, as the built program does.
+    fn new_record(&mut self, c: usize, inits: &[(String, Pos, Expr)]) -> String {
+        let decl = self.records_decl.get(&c).cloned().unwrap_or_default();
+        let mut parts = Vec::new();
+        for (n, d) in &decl {
+            if !inits.iter().any(|(f, _, _)| f == n) {
+                if let Some(d) = d {
+                    let v = self.expr(d);
+                    parts.push(format!("{} = {v}", lname(n)));
+                }
+            }
+        }
+        for (f, _, v) in inits {
+            let v = self.expr(v);
+            parts.push(format!("{} = {v}", lname(f)));
+        }
+        // In brackets, so a value can be read straight from it: ({ … }).grenades
+        format!("({{{}}})", parts.join(", "))
+    }
+
+    /// A record as the place it's kept, not a copy: to read one of its values, or change one.
+    fn place(&mut self, e: &Expr) -> String {
+        match self.info.ty(e) {
+            Ty::Record(_) => self.raw(e),
+            _ => self.expr(e),
+        }
+    }
+
+    /// Is this record made right here, so it needn't be copied: a new one, or what a method of
+    /// the program's own gives back (its return copied it already).
+    fn fresh_record(&self, e: &Expr) -> bool {
+        match &e.kind {
+            ExprKind::New { .. } => true,
+            ExprKind::Call(..) | ExprKind::Method(..) if self.info.libs.contains_key(&e.id) => false,
+            ExprKind::Call(..) => matches!(
+                self.info.calls.get(&e.id),
+                Some(CallRes::Top | CallRes::Own | CallRes::LocalHook | CallRes::FieldHook)
+            ),
+            ExprKind::Method(..) => matches!(self.info.calls.get(&e.id), None | Some(CallRes::FieldHook)),
+            _ => false,
+        }
+    }
+
+    /// The names a function keeps as they were (a hook's, a piece's action's), as the values it's
+    /// given: a record among them is copied, so changing the variable later doesn't change it.
+    fn kept(&self, body: &[Stmt], names: &[String]) -> Vec<String> {
+        let mut types: HashMap<String, Ty> = HashMap::new();
+        crate::rust::walk_stmts(body, &mut |x| {
+            if let ExprKind::Name(n) = &x.kind {
+                if names.contains(n) {
+                    types.entry(n.clone()).or_insert_with(|| self.info.ty(x));
+                }
+            }
+        });
+        names
+            .iter()
+            .map(|n| match types.get(n) {
+                Some(Ty::Record(r)) => format!("_RC{r}({})", lname(n)),
+                _ => lname(n),
+            })
+            .collect()
+    }
+
+    /// Every record's functions: _RC copies one (and the records inside it), _RE compares two
+    /// value by value, _RT gives its text, and _RH makes one from what an engine hands over.
+    fn records(&mut self) {
+        let recs: Vec<usize> = (0..self.info.classes.len()).filter(|&c| self.info.classes[c].is_record).collect();
+        if recs.is_empty() {
+            return;
+        }
+        let names: Vec<String> = recs
+            .iter()
+            .flat_map(|r| {
+                [
+                    format!("_RC{r}"),
+                    format!("_RE{r}"),
+                    format!("_RT{r}"),
+                    format!("_RH{r}"),
+                    format!("_RW{r}"),
+                    format!("_RJ{r}"),
+                ]
+            })
+            .collect();
+        self.line(0, &format!("local {}", names.join(", ")));
+        for r in recs {
+            let fields: Vec<(String, Ty)> = self.info.classes[r].fields.iter().map(|f| (f.name.clone(), f.ty.clone())).collect();
+            let shown = crate::ast::shown(&self.info.classes[r].name).to_string();
+            let copy: Vec<String> = fields
+                .iter()
+                .map(|(n, t)| {
+                    let k = lname(n);
+                    match t {
+                        Ty::Record(x) => format!("{k} = _RC{x}(r.{k})"),
+                        _ => format!("{k} = r.{k}"),
+                    }
+                })
+                .collect();
+            self.line(0, &format!("_RC{r} = function(r) return {{{}}} end", copy.join(", ")));
+            let eq: Vec<String> = fields
+                .iter()
+                .map(|(n, t)| {
+                    let k = lname(n);
+                    let (a, b) = (format!("a.{k}"), format!("b.{k}"));
+                    match t {
+                        Ty::Vec3 => format!("_L.veq({a}, {b})"),
+                        Ty::Vec2 => format!("_L.v2eq({a}, {b})"),
+                        Ty::Colour => format!("_L.coleq({a}, {b})"),
+                        Ty::Rot => format!("_L.qeq({a}, {b})"),
+                        Ty::Record(x) => format!("_RE{x}({a}, {b})"),
+                        _ => format!("{a} == {b}"),
+                    }
+                })
+                .collect();
+            let eq = if eq.is_empty() { "true".to_string() } else { eq.join(" and ") };
+            self.line(0, &format!("_RE{r} = function(a, b) return {eq} end"));
+            let text = if fields.is_empty() {
+                lua_string(&format!("{shown} {{}}"))
+            } else {
+                let mut parts = Vec::new();
+                for (i, (n, t)) in fields.iter().enumerate() {
+                    let sep = if i == 0 { format!("{shown} {{ ") } else { ", ".to_string() };
+                    parts.push(lua_string(&format!("{sep}{n} = ")));
+                    parts.push(format!("{}(r.{})", self.fmt(t), lname(n)));
+                }
+                parts.push(lua_string(" }"));
+                parts.join(" .. ")
+            };
+            self.line(0, &format!("_RT{r} = function(r) return {text} end"));
+            // From an engine: each value made Lust's own, as a native's answer is.
+            let made: Vec<String> = fields
+                .iter()
+                .map(|(n, t)| {
+                    let k = lname(n);
+                    let v = match t {
+                        Ty::Record(x) => format!("_RH{x}(r.{k})"),
+                        _ => host_in(self.info, t, format!("r.{k}")),
+                    };
+                    format!("{k} = {v}")
+                })
+                .collect();
+            // Every value has to be there (an entity may be nothing).
+            let needed: Vec<String> = fields
+                .iter()
+                .filter(|(_, t)| *t != Ty::Entity)
+                .map(|(n, _)| lua_string(&lname(n)))
+                .collect();
+            self.line(
+                0,
+                &format!(
+                    "_RH{r} = function(r) _L.hrecord(r, {}, {{{}}}) return {{{}}} end",
+                    lua_string(&shown),
+                    needed.join(", "),
+                    made.join(", ")
+                ),
+            );
         }
     }
 
@@ -2016,7 +2253,7 @@ impl<'a> W<'a> {
                     let r = self.expr(t);
                     return format!("_L.r_get({r}, {})", lua_string(f));
                 }
-                let tc = self.expr(t);
+                let tc = self.place(t);
                 if f == "xy" && self.info.ty(t) == Ty::Vec3 {
                     return format!("_L.vxy({tc})");
                 }
@@ -2177,6 +2414,9 @@ impl<'a> W<'a> {
                 let Some(&c) = self.info.class_index.get(class) else {
                     return "nil".into();
                 };
+                if self.info.classes[c].is_record {
+                    return self.new_record(c, inits);
+                }
                 let table = self.class_table(c);
                 let mut parts = vec![table];
                 for (f, _, v) in inits {
@@ -2216,14 +2456,16 @@ impl<'a> W<'a> {
                 self.loops = saved_loops;
                 let pad = "  ".repeat(self.indent);
                 let names = self.info.hook_params.get(&e.id).cloned().unwrap_or_default();
-                let copies: Vec<String> = crate::rust::captures(body, &names, self.info).iter().map(|c| lname(c)).collect();
+                let caps = crate::rust::captures(body, &names, self.info);
+                let copies: Vec<String> = caps.iter().map(|c| lname(c)).collect();
                 let f = format!("function({})\n{inner}{pad}end", params.join(", "));
                 if copies.is_empty() {
                     f
                 } else {
                     // The hook keeps the values as they were when it was made.
                     let c = copies.join(", ");
-                    format!("(function({c}) return {f} end)({c})")
+                    let given = self.kept(body, &caps).join(", ");
+                    format!("(function({c}) return {f} end)({given})")
                 }
             }
             ExprKind::Like(inner, class, _) => {
@@ -2411,6 +2653,7 @@ impl<'a> W<'a> {
             Ty::Vec2 => "_L.jw.vec2".into(),
             Ty::Rot => "_L.jw.rotation".into(),
             Ty::Colour => "_L.jw.colour".into(),
+            Ty::Record(r) => format!("_RW{r}"),
             Ty::Array(el) => format!("_L.jw_array({})", self.jenc(el)),
             Ty::Map(v) => format!("_L.jw_map({})", self.jenc(v)),
             Ty::CMap(cols) => {
@@ -2453,6 +2696,7 @@ impl<'a> W<'a> {
                 )
             }
             Ty::Class(c) => format!("function(v, at) return {}.__jr(v, at) end", self.class_table(*c)),
+            Ty::Record(r) => format!("_RJ{r}"),
             _ => "nil".into(),
         }
     }
@@ -2460,6 +2704,13 @@ impl<'a> W<'a> {
     /// Every class learns to write itself as JSON and read itself back.
     fn class_json(&mut self) {
         for c in 0..self.info.classes.len() {
+            if self.info.classes[c].is_record {
+                // Only a record that can be JSON (one holding an entity can't).
+                if crate::stdlib::json_problem(&Ty::Record(c), &|_| String::new(), self.info).is_none() {
+                    self.record_json(c);
+                }
+                continue;
+            }
             let t = self.class_table(c);
             let fields = crate::stdlib::json_fields(self.info, c);
             let names: Vec<String> = fields.iter().map(|(_, n, _)| lua_string(&lname(n))).collect();
@@ -2487,6 +2738,50 @@ impl<'a> W<'a> {
                 ),
             );
         }
+    }
+
+    /// A record's JSON both ways: an object of its values. Reading one, a value with a starting
+    /// value may be missing; the others must be there.
+    fn record_json(&mut self, c: usize) {
+        let fields: Vec<(String, Ty)> = self.info.classes[c].fields.iter().map(|f| (f.name.clone(), f.ty.clone())).collect();
+        // In JSON, each value goes by its own name, as in the built program.
+        let names: Vec<String> = fields.iter().map(|(n, _)| lua_string(n)).collect();
+        let by_name: Vec<String> = fields
+            .iter()
+            .map(|(n, _)| format!("[{}] = o.{}", lua_string(n), lname(n)))
+            .collect();
+        let enc: Vec<String> = fields.iter().map(|(_, t)| self.jenc(t)).collect();
+        self.line(
+            0,
+            &format!(
+                "_RW{c} = function(o, d) return _L.jw_fields({{{}}}, d, {{{}}}, {{{}}}) end",
+                by_name.join(", "),
+                names.join(", "),
+                enc.join(", ")
+            ),
+        );
+        let required: Vec<String> = self.info.classes[c].required.iter().map(|r| lua_string(r)).collect();
+        self.line(0, &format!("_RJ{c} = function(v, at)"));
+        self.indent += 1;
+        self.line(0, &format!("local x = _L.jr_record(v, at, {{{}}})", required.join(", ")));
+        self.line(0, "local r = {}");
+        let decl = self.records_decl.get(&c).cloned().unwrap_or_default();
+        for (n, t) in &fields {
+            let k = lname(n);
+            let dec = self.jdec(t);
+            let key = lua_string(n);
+            let missing = match decl.iter().find(|(x, _)| x == n).and_then(|(_, d)| d.clone()) {
+                Some(d) => self.expr(&d),
+                None => "nil".into(),
+            };
+            self.line(
+                0,
+                &format!("if x[{key}] ~= nil then r.{k} = ({dec})(x[{key}], _L.jchild(at, {key})) else r.{k} = {missing} end"),
+            );
+        }
+        self.line(0, "return r");
+        self.indent -= 1;
+        self.line(0, "end");
     }
 
     /// A variable's or field's value. A cMap made with a key-maker in its type gets the
@@ -2539,6 +2834,7 @@ impl<'a> W<'a> {
     fn text(&self, code: &str, t: &Ty) -> String {
         match t {
             Ty::Str => code.to_string(),
+            Ty::Record(r) => format!("_RT{r}({code})"),
             Ty::State(_) => code.to_string(),
             _ => format!("{}({code})", self.fmt(t)),
         }
@@ -2557,6 +2853,7 @@ impl<'a> W<'a> {
             Ty::Truth => "_L.btext".into(),
             Ty::Str => "_L.qtext".into(),
             Ty::State(_) => "_L.stext".into(),
+            Ty::Record(r) => format!("_RT{r}"),
             Ty::Array(el) => format!("_L.ashow({})", self.fmt(el)),
             Ty::Map(v) => format!("_L.mshow({})", self.fmt(v)),
             Ty::CMap(cols) => {
@@ -2607,6 +2904,16 @@ impl<'a> W<'a> {
 
     fn binary(&mut self, op: BinOp, l: &Expr, r: &Expr) -> String {
         let lt = self.info.ty(l);
+        // Records: value by value, read where they're kept.
+        if let Ty::Record(rec) = lt {
+            let (lc, rc) = (self.place(l), self.place(r));
+            let s = format!("_RE{rec}({lc}, {rc})");
+            return if matches!(op, BinOp::Ne | BinOp::NotSame) {
+                format!("(not {s})")
+            } else {
+                s
+            };
+        }
         let vecs = lt.is_vector() || self.info.ty(r).is_vector();
         let lc = if vecs { self.operand(l) } else { self.expr(l) };
         let rc = if vecs { self.operand(r) } else { self.expr(r) };
@@ -2746,6 +3053,7 @@ fn host_in(info: &Info, t: &Ty, call: String) -> String {
                 ))
             }
             Ty::Array(e) => Some(format!("_L.harr({})", conv(info, e, depth + 1).unwrap_or_else(|| "nil".into()))),
+            Ty::Record(r) => Some(format!("_RH{r}")),
             _ => None,
         }
     }

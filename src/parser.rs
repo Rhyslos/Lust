@@ -520,6 +520,7 @@ impl<'a> Parser<'a> {
             host_files: Default::default(),
             this_ids: std::mem::take(&mut self.this_ids),
             shared: Default::default(),
+            engine: Default::default(),
         }
     }
 
@@ -572,6 +573,13 @@ impl<'a> Parser<'a> {
             "class" | "object" | "component" => {
                 *seen_other = true;
                 let c = self.class_decl()?;
+                items.push(Item::Class(c));
+                return Ok(());
+            }
+            // record Loadout { … }: a word only here, so a variable can still be called record.
+            "record" if matches!(self.peek(1).kind, Tk::Ident(_)) && self.peek(2).is_sym("{") => {
+                *seen_other = true;
+                let c = self.record_decl()?;
                 items.push(Item::Class(c));
                 return Ok(());
             }
@@ -817,10 +825,68 @@ impl<'a> Parser<'a> {
             is_node,
             is_schema,
             is_component,
+            is_record: false,
             view: None,
             parent,
             fields,
             methods,
+        })
+    }
+
+    /// record Loadout { Gun primary; int grenades = 2; }: a plain group of values, written like a
+    /// has block's fields, straight inside its { }.
+    fn record_decl(&mut self) -> R<ClassDecl> {
+        self.next(); // record
+        let (name, pos) = self.ident("the record's name")?;
+        check_name(self.diags, &name, pos, NameKind::Type, "record");
+        let open = self.expect_sym("{", "expected { to start the record's values.")?;
+        let mut fields = Vec::new();
+        loop {
+            if self.at_sym("}") {
+                self.next();
+                break;
+            }
+            if self.at_eof() {
+                return self.fail(open.pos, format!("this {{ is never closed. Add a }} where {name} ends."));
+            }
+            let here = self.cur().pos;
+            if self.at_word("has") && self.peek(1).is_sym("{") {
+                self.diags.add(
+                    here,
+                    "a record's values go straight inside its { }, without has: record Loadout { int grenades = 2; }",
+                );
+                self.next();
+                if self.has_block(&mut fields).is_err() {
+                    self.recover();
+                }
+                continue;
+            }
+            if self.at_word("method") || self.at_word("on") || self.at_word("view") {
+                self.diags.add(
+                    here,
+                    format!("a record only holds values, so it has no methods, on block or view. Make {name} a class to give it those."),
+                );
+                self.recover();
+                continue;
+            }
+            if self.field().is_err() {
+                self.recover();
+                continue;
+            }
+            fields.push(self.last_field.take().unwrap());
+        }
+        Ok(ClassDecl {
+            name,
+            pos,
+            is_object: false,
+            is_node: false,
+            is_schema: false,
+            is_component: false,
+            is_record: true,
+            view: None,
+            parent: None,
+            fields,
+            methods: vec![],
         })
     }
 
@@ -1068,6 +1134,7 @@ impl<'a> Parser<'a> {
             is_node: false,
             is_schema: false,
             is_component: false,
+            is_record: false,
             view,
             parent: None,
             fields,

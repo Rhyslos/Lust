@@ -182,7 +182,7 @@ pub(crate) fn front(path: &Path) -> Result<Checked, Vec<Problem>> {
         Ok(s) => s.replace("\r\n", "\n"),
         Err(_) => return Err(whole(&display, format!("there's no file called {}.", path.display()))),
     };
-    checked(path, src, is_script, None, &[])
+    checked(path, src, is_script, None, &Engine::default())
 }
 
 /// The same, with every file's text handed over by its path: Lust doesn't open any files.
@@ -196,7 +196,7 @@ fn front_from(entry: &str, files: &[(String, String)], engine: &Engine) -> Resul
     let Some(src) = mem.get(&path).cloned() else {
         return Err(whole(entry, format!("there's no file called {entry} among the files handed over.")));
     };
-    checked(&path, src.replace("\r\n", "\n"), is_script, Some(&mem), &engine.folders)
+    checked(&path, src.replace("\r\n", "\n"), is_script, Some(&mem), engine)
 }
 
 fn whole(file: &str, message: String) -> Vec<Problem> {
@@ -230,9 +230,9 @@ fn kind_of(path: &Path, display: &str) -> Result<bool, Vec<Problem>> {
     Ok(ext == "lsc")
 }
 
-fn checked(path: &Path, src: String, is_script: bool, mem: Option<&project::Memory>, host: &[String]) -> Result<Checked, Vec<Problem>> {
+fn checked(path: &Path, src: String, is_script: bool, mem: Option<&project::Memory>, engine: &Engine) -> Result<Checked, Vec<Problem>> {
     let mut diags = diag::Diags::default();
-    let project = project::load(path, src, is_script, &mut diags, mem, host);
+    let project = project::load(path, src, is_script, &mut diags, mem, &engine.folders, engine.records);
     let mut prog = project.program;
     let files = project.files;
     let info = check::check(&prog, &mut diags, is_script);
@@ -302,6 +302,9 @@ pub struct Engine {
     /// files are part of every program, and only they may give `entity` methods
     /// (`method vec3 entity:position() native;`).
     pub folders: Vec<String>,
+    /// The engine keeps records in components' fields and carries them in events (ENGINES.md,
+    /// alpha 96). Until it says so, a record there is a mistake naming the engine.
+    pub records: bool,
 }
 
 /// Checks a program: `entry` is its first file's path, and `files` every file's path and text,
@@ -535,6 +538,7 @@ mod deep_code {
         ];
         let engine = crate::Engine {
             folders: vec!["solis".into()],
+            records: false,
         };
         crate::check_with(&engine, "main.lst", &files).unwrap();
         let chunk = crate::to_lua_with(&engine, "main.lst", &files).unwrap();
@@ -566,6 +570,7 @@ mod deep_code {
         ];
         let engine = crate::Engine {
             folders: vec!["solis".into()],
+            records: false,
         };
         // Not fetched: the game's own Walker is the only one, with no clash.
         crate::check_with(&engine, "main.lst", &files).unwrap();
@@ -1742,5 +1747,162 @@ mod state_data {
             }
         }
         assert!(fine > 0, "no program checked");
+    }
+}
+
+/// Records: plain groups of values, copied whenever they're given.
+#[cfg(test)]
+mod records {
+    fn files(src: &str) -> Vec<(String, String)> {
+        vec![("main.lst".to_string(), format!("{src}\nend\n"))]
+    }
+
+    const GAME: &str = "record Kit {\n    int ammo = 3;\n    vec3 aim = [0, 1, 0];\n}\n\
+        event Equip(Kit kit);\n\
+        component Fighter {\n    has { Kit kit = new Kit; }\n    method update(float dt) { send Equip(kit) to this; }\n}\n";
+
+    #[test]
+    fn an_engine_keeps_records_only_once_it_says_so() {
+        let mut files = files(GAME);
+        files.push((
+            "solis/entity.lst".to_string(),
+            "method vec3 entity:position() native;\nend\n".to_string(),
+        ));
+        let mut engine = crate::Engine {
+            folders: vec!["solis".into()],
+            records: false,
+        };
+        let problems = crate::check_with(&engine, "main.lst", &files).unwrap_err();
+        assert_eq!(problems.len(), 2, "{problems:?}");
+        assert!(
+            problems[0]
+                .message
+                .starts_with("Solis doesn't keep records in a component's fields yet"),
+            "{}",
+            problems[0]
+        );
+        assert!(
+            problems[1].message.starts_with("Solis doesn't carry records in events yet"),
+            "{}",
+            problems[1]
+        );
+        engine.records = true;
+        let chunk = crate::to_lua_with(&engine, "main.lst", &files).unwrap();
+        assert!(
+            chunk
+                .code
+                .contains("\"record\", { { \"ammo\", \"ammo\", \"int\" }, { \"aim\", \"aim\", \"vec3\" } }, \"Kit\""),
+            "{}",
+            chunk.code
+        );
+        let rust = crate::to_rust_library_with(&engine, "main.lst", &files).unwrap();
+        assert!(rust.contains(
+            "FieldKind::Record(\"Kit\".to_string(), vec![(\"ammo\".to_string(), FieldKind::Int), (\"aim\".to_string(), FieldKind::Vec3)])"
+        ));
+        assert!(rust.contains("fn as_rec0(v: &Value) -> Option<Rec0>"));
+    }
+
+    #[test]
+    fn records_outside_an_engine_need_nothing_from_one() {
+        let src = "record Kit {\n    int ammo = 3;\n}\nKit a = new Kit;\nKit b = a;\nb.ammo = 4;\nprint(a == b, a, b);";
+        crate::check("main.lst", &files(src)).unwrap();
+        let lua = crate::to_lua("main.lst", &files(src)).unwrap().code;
+        // A copy as it's read from where it's kept; none for one just made.
+        assert!(lua.contains("local b = _RC0(a)"), "{lua}");
+        assert!(lua.contains("local a = ({ammo = 3})"), "{lua}");
+        let rust = crate::to_rust_library("main.lst", &files(src)).unwrap();
+        assert!(rust.contains("struct Rec0 {\n    f_ammo: i64,\n}"), "{rust}");
+        // Nothing for an engine: a program without components or events has no Value at all.
+        assert!(!rust.contains("Value::Record"));
+    }
+
+    #[test]
+    fn a_record_has_no_identity_and_is_never_nothing() {
+        let msgs = |src: &str| match crate::check("main.lst", &files(src)) {
+            Ok(()) => vec![],
+            Err(p) => p.into_iter().map(|p| p.message).collect::<Vec<_>>(),
+        };
+        let base = "record Kit {\n    int ammo = 3;\n}\nKit a = new Kit;\n";
+        assert!(msgs(&format!("{base}print(a === a);"))[0].contains("Compare its values with =="));
+        assert!(msgs(&format!("{base}Kit b = nothing;"))[0].contains("Only things made from classes"));
+        assert!(msgs(&format!("{base}keep a;"))[0].contains("copied wherever it goes"));
+        assert!(msgs("record Kit {\n    Kit inner;\n}")[0].contains("Kit holds itself, through inner"));
+        assert!(msgs("record Kit {\n    int ammo;\n}\nKit k = new Kit;")[0].contains("new Kit { ammo = … }"));
+    }
+
+    #[test]
+    fn records_fuzzed() {
+        // Records made at random from a fixed seed, and sometimes broken by a piece dropped or
+        // added: checking never panics, and a program that checks writes both outputs.
+        let mut seed = 2027u64;
+        let mut next = |n: usize| {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            ((seed >> 33) % n as u64) as usize
+        };
+        // Each type with a starting value that fits it; a quarter of the time, any other.
+        let types = [
+            ("int", " = 1"),
+            ("float", " = 2.5"),
+            ("string", " = \"t\""),
+            ("bool", " = true"),
+            ("vec3", " = [1, 2, 3]"),
+            ("vec2", " = [1, 2]"),
+            ("colour", " = red"),
+            ("rotation", " = [0, 0, 90]"),
+            ("entity", " = nothing"),
+            ("S", " = S.A"),
+            ("Q", " = new Q"),
+            ("R", " = new R"),
+            ("int array", " = []"),
+            ("Hero", " = new Hero"),
+        ];
+        let uses = [
+            "R r = new R;",
+            "R r = new R { a = 1 };",
+            "R r = new R;\nR s = r;\nprint(r == s, r);",
+            "Q q = new Q;\nQ w = q;\nw.a = 2;\nprint(q == w, q, w.text());",
+            "Q array qs = [new Q];\nqs[0].a = 3;",
+            "state P = [X { q = new Q }, Y { q = new Q { a = 2 } }];\nprint(P.X.q);",
+            "string j = Json:write(new Q);",
+        ];
+        let junk = ["{", "}", ";", "=", "record", "R", "has"];
+        let mut fine = 0;
+        for _ in 0..1200 {
+            let mut text = String::from("state S = [A, B];\nclass Hero {\n    has { int hp = 1; }\n}\n");
+            for (name, n) in [("Q", 1 + next(3)), ("R", next(3))] {
+                text.push_str(&format!("record {name} {{\n"));
+                for i in 0..n {
+                    // Mostly simple values, so that many programs check.
+                    let (t, fits) = types[if next(4) == 0 { next(types.len()) } else { next(10) }];
+                    let start = match next(8) {
+                        0 => types[next(types.len())].1,
+                        1 | 2 => "",
+                        _ => fits,
+                    };
+                    let field = if i == 0 { "a".to_string() } else { format!("f{i}") };
+                    text.push_str(&format!("    {t} {field}{start};\n"));
+                }
+                text.push_str("}\n");
+            }
+            text.push_str(uses[next(uses.len())]);
+            if next(3) == 0 {
+                let at = next(text.len());
+                if text.is_char_boundary(at) {
+                    match next(2) {
+                        0 => text.insert_str(at, junk[next(junk.len())]),
+                        _ => {
+                            text.remove(at);
+                        }
+                    }
+                }
+            }
+            let f = files(&text);
+            if crate::check("main.lst", &f).is_ok() {
+                crate::to_lua("main.lst", &f).unwrap();
+                crate::to_rust_library("main.lst", &f).unwrap();
+                fine += 1;
+            }
+        }
+        assert!(fine > 50, "only {fine} programs checked");
     }
 }

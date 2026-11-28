@@ -142,7 +142,15 @@ fn host_paths(root: &Path, host: &[String], ext: &str, mem: Option<&Memory>) -> 
     out
 }
 
-pub fn load(entry: &Path, src: String, is_script: bool, diags: &mut Diags, mem: Option<&Memory>, host: &[String]) -> Project {
+pub fn load(
+    entry: &Path,
+    src: String,
+    is_script: bool,
+    diags: &mut Diags,
+    mem: Option<&Memory>,
+    host: &[String],
+    records: bool,
+) -> Project {
     let ext = if is_script { "lsc" } else { "lst" };
     // The search for the project's folder starts from the file's full path, so a short one like
     // entities/player.lst still finds main.lst in the folder above.
@@ -152,18 +160,31 @@ pub fn load(entry: &Path, src: String, is_script: bool, diags: &mut Diags, mem: 
     };
     let entry = full.as_path();
     let root = root_of(entry, ext, mem);
-    // On the disk, a project names its engine's folders in lust.host, one to a line.
+    // On the disk, a project names its engine's folders in lust.host, one to a line, and what
+    // the engine can do beyond the rest: `supports records`.
     let mut host = host.to_vec();
+    let mut records = records;
     if mem.is_none() {
         if let Ok(text) = std::fs::read_to_string(root.join("lust.host")) {
-            host.extend(
-                text.lines()
-                    .map(str::trim)
-                    .filter(|l| !l.is_empty() && !l.starts_with("--"))
-                    .map(String::from),
-            );
+            for l in text.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with("--")) {
+                match l.strip_prefix("supports ") {
+                    Some(what) if what.trim() == "records" => records = true,
+                    _ => host.push(l.to_string()),
+                }
+            }
         }
     }
+    let engine = crate::ast::EngineCan {
+        records,
+        name: host.first().map(|f| {
+            let f = f.trim_end_matches('/');
+            let f = f.rsplit('/').next().unwrap_or(f);
+            let mut c = f.chars();
+            c.next()
+                .map(|x| x.to_uppercase().collect::<String>() + c.as_str())
+                .unwrap_or_default()
+        }),
+    };
     let host = host.as_slice();
     let canon = |p: &Path| match mem {
         Some(_) => tidy(p),
@@ -403,6 +424,7 @@ pub fn load(entry: &Path, src: String, is_script: bool, diags: &mut Diags, mem: 
             host_files,
             this_ids,
             shared,
+            engine,
         },
         files: shown,
     }

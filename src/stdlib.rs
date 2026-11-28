@@ -356,12 +356,17 @@ pub fn uses_json(info: &crate::check::Info) -> bool {
 }
 
 /// Can this be turned into JSON and back? Hooks can't, and neither can `nothing` on its own.
-pub fn json_problem(t: &Ty, show: &dyn Fn(&Ty) -> String) -> Option<String> {
+pub fn json_problem(t: &Ty, show: &dyn Fn(&Ty) -> String, info: &crate::check::Info) -> Option<String> {
     match t {
         Ty::Int | Ty::Float | Ty::Str | Ty::Truth | Ty::State(_) | Ty::Class(_) | Ty::Error => None,
         Ty::Vec3 | Ty::Vec2 | Ty::Rot | Ty::Colour => None,
-        Ty::Array(e) | Ty::Map(e) => json_problem(e, show),
-        Ty::CMap(cols) => cols.iter().find_map(|(_, t)| json_problem(t, show)),
+        Ty::Array(e) | Ty::Map(e) => json_problem(e, show, info),
+        Ty::CMap(cols) => cols.iter().find_map(|(_, t)| json_problem(t, show, info)),
+        // A record is JSON when every value in it is.
+        Ty::Record(c) => info.classes[*c]
+            .fields
+            .iter()
+            .find_map(|f| json_problem(&f.ty, show, info).map(|p| format!("{} holds {}, and {p}", show(t), f.name))),
         other => Some(format!("{} can't be JSON.", show(other))),
     }
 }

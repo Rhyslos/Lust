@@ -125,6 +125,8 @@ fn serves(info: &Info) -> bool {
 }
 
 struct W<'a> {
+    /// Each record's values and their starting values, in order: what a new one is made from.
+    records_decl: std::collections::HashMap<usize, Vec<(String, Option<Expr>)>>,
     info: &'a Info,
     /// Writing a library for another Rust program, not a program of its own.
     library: bool,
@@ -151,6 +153,7 @@ pub fn write(prog: &Program, info: &Info, files: &[String], library: bool) -> St
     // What native methods ask of the program using the library: one function each.
     let mut host_fns: Vec<String> = Vec::new();
     let mut w = W {
+        records_decl: crate::lua::records_decl(prog, info),
         info,
         library,
         rows: vec![],
@@ -177,8 +180,10 @@ pub fn write(prog: &Program, info: &Info, files: &[String], library: bool) -> St
     for c in 0..n {
         defs.push_str(&format!("const ID_{c}: u32 = {};\n", c + 1));
     }
+    // Records: plain structs, copied with clone.
+    defs.push_str(&w.records());
     for root in 0..n {
-        if info.classes[root].parent.is_some() {
+        if info.classes[root].parent.is_some() || info.classes[root].is_record {
             continue;
         }
         let family: Vec<usize> = (0..n).filter(|&c| w.root(c) == root).collect();
@@ -209,7 +214,7 @@ pub fn write(prog: &Program, info: &Info, files: &[String], library: bool) -> St
         .items
         .iter()
         .filter_map(|i| match i {
-            Item::Class(c) => Some(c),
+            Item::Class(c) if !c.is_record => Some(c),
             _ => None,
         })
         .collect();
@@ -324,7 +329,7 @@ pub fn write(prog: &Program, info: &Info, files: &[String], library: bool) -> St
     }
     // Dispatchers: one per family and method name, choosing each class's own version.
     for root in 0..n {
-        if info.classes[root].parent.is_some() {
+        if info.classes[root].parent.is_some() || info.classes[root].is_record {
             continue;
         }
         let family: Vec<usize> = (0..n).filter(|&c| w.root(c) == root).collect();
@@ -703,6 +708,8 @@ pub enum Value {
     List(Vec<Value>),
     /// An entity's 64-bit ID, or none.
     Entity(Option<u64>),
+    /// A record's values, by name: every one of them.
+    Record(Data),
 }
 
 /// What kind of value a field holds.
@@ -721,6 +728,8 @@ pub enum FieldKind {
     /// Red, green, blue and see-through, each from 0 to 1.
     Colour,
     Entity,
+    /// A record: its name, and its values' names and kinds, in the order they're written.
+    Record(String, Vec<(String, FieldKind)>),
 }
 
 /// One field of a component.
@@ -860,7 +869,7 @@ fn has_this(stmts: &[Stmt], info: &Info) -> bool {
 }
 
 /// Calls `f` on every expression in these statements, hooks inside them included.
-fn walk_stmts(stmts: &[Stmt], f: &mut dyn FnMut(&Expr)) {
+pub fn walk_stmts(stmts: &[Stmt], f: &mut dyn FnMut(&Expr)) {
     for s in stmts {
         match s {
             Stmt::Var { value, .. } => walk_expr(value, f),
@@ -1183,6 +1192,7 @@ impl<'a> W<'a> {
             Ty::Entity => "u64".into(),
             Ty::State(_) | Ty::StateList(_) => "&'static str".into(),
             Ty::Class(c) => format!("Option<Rc<RefCell<O{}>>>", self.root(*c)),
+            Ty::Record(c) => format!("Rec{c}"),
             Ty::Array(e) => format!("rt::Arr<{}>", self.ty(e)),
             Ty::Map(e) => format!("rt::Map<{}>", self.ty(e)),
             Ty::CMap(cols) => format!("rt::CMap<Row{}>", self.row_index(cols)),
@@ -1303,6 +1313,10 @@ impl<'a> W<'a> {
         // Vectors, rotations and colours are the runtime's own types, handed out as they are.
         let mut out = format!("\npub use rt::{{Colour, LustError, Rotation, Vec2, Vec3}};\n\n/// The version of Lust that wrote this library.\npub const LUST_VERSION: &str = {:?};\n", env!("CARGO_PKG_VERSION"));
         for (ci, c) in info.classes.iter().enumerate() {
+            // A record reaches the program as a Value::Record, in components and events.
+            if c.is_record {
+                continue;
+            }
             let root = self.root(ci);
             let w = ident(&c.name);
             let shown = crate::ast::shown(&c.name).to_string();
@@ -1412,6 +1426,7 @@ impl<'a> W<'a> {
         objs.sort();
         if !comps.is_empty() || !objs.is_empty() || !info.events.is_empty() || !info.sends.is_empty() {
             out.push_str(COMPONENT_API);
+            out.push_str(&self.record_values());
             if !objs.is_empty() {
                 let ticks: String = objs
                     .iter()
@@ -1550,8 +1565,51 @@ impl<'a> W<'a> {
             Ty::Rot => ("FieldKind::Rotation".into(), "as_rotation(v)".into()),
             Ty::Colour => ("FieldKind::Colour".into(), "as_colour(v)".into()),
             Ty::Entity => ("FieldKind::Entity".into(), "as_entity(v)".into()),
+            // A record, once the engine says it keeps them.
+            Ty::Record(c) if self.info.engine_records => {
+                let mut kinds = Vec::new();
+                for f in &self.info.classes[*c].fields {
+                    let (k, _) = self.value_kind(&f.ty)?;
+                    kinds.push(format!("({:?}.to_string(), {k})", f.name));
+                }
+                (
+                    format!(
+                        "FieldKind::Record({:?}.to_string(), vec![{}])",
+                        crate::ast::shown(&self.info.classes[*c].name),
+                        kinds.join(", ")
+                    ),
+                    format!("as_rec{c}(v)"),
+                )
+            }
             _ => return None,
         })
+    }
+
+    /// Each record's way to and from the engine's Value, once the engine keeps them.
+    fn record_values(&self) -> String {
+        let mut out = String::new();
+        if !self.info.engine_records {
+            return out;
+        }
+        for (c, rec) in self.info.classes.iter().enumerate() {
+            if !rec.is_record {
+                continue;
+            }
+            let mut reads = Vec::new();
+            let mut writes = Vec::new();
+            for f in &rec.fields {
+                let Some((_, from)) = self.value_kind(&f.ty) else { continue };
+                reads.push(format!("f_{}: d.get({:?}).and_then(|v| {from})?", f.name, f.name));
+                let to = self.value_of(&format!("r.f_{}", f.name), &f.ty);
+                writes.push(format!("d.insert({:?}.into(), {to});", f.name));
+            }
+            out.push_str(&format!(
+                "#[allow(dead_code)]\nfn as_rec{c}(v: &Value) -> Option<Rec{c}> {{\n    match v {{\n        Value::Record(d) => Some(Rec{c} {{ {} }}),\n        _ => None,\n    }}\n}}\n#[allow(dead_code)]\nfn rval{c}(r: &Rec{c}) -> Value {{\n    let mut d = Data::new();\n    {}\n    Value::Record(d)\n}}\n",
+                reads.join(", "),
+                writes.join(" ")
+            ));
+        }
+        out
     }
 
     /// A Lust value as the engine's Value.
@@ -1567,6 +1625,7 @@ impl<'a> W<'a> {
             Ty::Vec2 => format!("{{ let v = {code}; Value::List(vec![Value::Float(v.x as f64), Value::Float(v.y as f64)]) }}"),
             Ty::Colour => format!("{{ let v = {code}; Value::List(vec![Value::Float(v.r as f64), Value::Float(v.g as f64), Value::Float(v.b as f64), Value::Float(v.a as f64)]) }}"),
             Ty::Entity => format!("Value::Entity(Some({code}).filter(|e| *e != 0))"),
+            Ty::Record(c) => format!("rval{c}(&{code})"),
             _ => "Value::Bool(false)".into(),
         }
     }
@@ -1644,6 +1703,7 @@ impl<'a> W<'a> {
                                 _ => o.join(""),
                             }
                         }
+                        Ty::Record(c) => format!("a {}", crate::ast::shown(&self.info.classes[*c].name)),
                         _ => a_kind(t).to_string(),
                     }
                 ));
@@ -1756,6 +1816,92 @@ impl<'a> W<'a> {
     fn fresh(&mut self) -> usize {
         self.tmp += 1;
         self.tmp
+    }
+
+    /// Every record's struct, its comparison (value by value) and its text.
+    fn records(&mut self) -> String {
+        let info = self.info;
+        let mut out = String::new();
+        for r in 0..info.classes.len() {
+            if !info.classes[r].is_record {
+                continue;
+            }
+            let shown = crate::ast::shown(&info.classes[r].name).to_string();
+            let fields: Vec<(String, Ty)> = info.classes[r].fields.iter().map(|f| (f.name.clone(), f.ty.clone())).collect();
+            let mut decl = String::new();
+            let mut eq = Vec::new();
+            let mut text = Vec::new();
+            for (n, t) in &fields {
+                decl.push_str(&format!("    f_{n}: {},\n", self.ty(t)));
+                eq.push(match t {
+                    Ty::Record(x) => format!("req{x}(&a.f_{n}, &b.f_{n})"),
+                    _ => format!("a.f_{n} == b.f_{n}"),
+                });
+                let f = self.fmt(t, true);
+                text.push(format!("format!(\"{n} = {{}}\", ({f})(&r.f_{n}))"));
+            }
+            let eq = if eq.is_empty() { "true".to_string() } else { eq.join(" && ") };
+            let show = if text.is_empty() {
+                format!("{:?}.to_string()", format!("{shown} {{}}"))
+            } else {
+                format!("format!(\"{} {{{{ {{}} }}}}\", vec![{}].join(\", \"))", shown, text.join(", "))
+            };
+            out.push_str(&format!(
+                "#[derive(Clone, Default)]\nstruct Rec{r} {{\n{decl}}}\n#[allow(unused_variables)]\nfn req{r}(a: &Rec{r}, b: &Rec{r}) -> bool {{ {eq} }}\nimpl PartialEq for Rec{r} {{ fn eq(&self, o: &Self) -> bool {{ req{r}(self, o) }} }}\n#[allow(unused_variables)]\nfn rshow{r}(r: &Rec{r}) -> String {{ {show} }}\n"
+            ));
+        }
+        out
+    }
+
+    /// A new record. The starting values of those not given come first, then the given ones
+    /// in the order written, as Lua does.
+    fn new_record(&mut self, c: usize, inits: &[(String, Pos, Expr)]) -> String {
+        let decl = self.records_decl.get(&c).cloned().unwrap_or_default();
+        let mut parts = Vec::new();
+        for (n, d) in &decl {
+            if !inits.iter().any(|(f, _, _)| f == n) {
+                let want = self.info.field(c, n).map(|x| x.ty.clone()).unwrap_or(Ty::Error);
+                let v = match d {
+                    Some(d) => self.coerced(d, &want),
+                    None => "rt::unreachable()".to_string(),
+                };
+                parts.push(format!("f_{n}: {v}"));
+            }
+        }
+        for (f, _, v) in inits {
+            let want = self.info.field(c, f).map(|x| x.ty.clone()).unwrap_or(Ty::Error);
+            let v = self.coerced(v, &want);
+            parts.push(format!("f_{f}: {v}"));
+        }
+        format!("Rec{c} {{ {} }}", parts.join(", "))
+    }
+
+    /// A record's JSON both ways: an object of its values. Reading one, a value with a starting
+    /// value may be missing; the others must be there.
+    fn record_json(&mut self, c: usize) -> String {
+        let fields: Vec<(String, Ty)> = self.info.classes[c].fields.iter().map(|f| (f.name.clone(), f.ty.clone())).collect();
+        let decl = self.records_decl.get(&c).cloned().unwrap_or_default();
+        let mut parts = Vec::new();
+        let mut reads = Vec::new();
+        for (n, t) in &fields {
+            let enc = self.jenc(t);
+            parts.push(format!("({n:?}, ({enc})(&v.f_{n}, rt::deeper(d)))"));
+            let dec = self.jdec(t);
+            let missing = match decl.iter().find(|(x, _)| x == n).and_then(|(_, d)| d.clone()) {
+                Some(d) => self.coerced(&d, t),
+                None => "rt::unreachable()".to_string(),
+            };
+            reads.push(format!(
+                "f_{n}: match rt::jget(v, {n:?}) {{ Some(x) => ({dec})(x, &rt::child(at, {n:?})), None => {missing} }}"
+            ));
+        }
+        let required: Vec<String> = self.info.classes[c].required.iter().map(|r| format!("{r:?}")).collect();
+        format!(
+            "#[allow(unused_variables)]\nfn rjw{c}(v: &Rec{c}, d: Option<usize>) -> String {{ rt::jw_fields(vec![{}], d) }}\n#[allow(unused_variables)]\nfn rjr{c}(v: &rt::Json, at: &str) -> Rec{c} {{ rt::jr_record(v, at, &[{}]); Rec{c} {{ {} }} }}\n",
+            parts.join(", "),
+            required.join(", "),
+            reads.join(", ")
+        )
     }
 
     /// A check's state's options, and the ones inside each (none for a bool).
@@ -2461,6 +2607,22 @@ impl<'a> W<'a> {
                 let t = t.clone();
                 self.assign(&t, format!("rt::{with}({tc}, {i}, {v})"), out, pad);
             }
+            // kit.grenades = 3: a record is a value, so it's read, changed and put back.
+            ExprKind::Field(t, f, _) if matches!(self.info.ty(t), Ty::Record(_)) => {
+                let tc = self.expr(t);
+                let r = format!("r{}", self.fresh());
+                let mut inner = String::new();
+                let t = t.clone();
+                self.assign(&t, r.clone(), &mut inner, &format!("{pad}    "));
+                out.push_str(&format!(
+                    "{pad}{{
+{pad}    let v = {v};
+{pad}    let mut {r} = {tc};
+{pad}    {r}.f_{f} = v;
+{inner}{pad}}}
+"
+                ));
+            }
             ExprKind::Field(t, f, _) => {
                 let tc = self.expr(t);
                 match self.info.ty(t) {
@@ -2694,6 +2856,7 @@ impl<'a> W<'a> {
                 }
                 let tc = self.expr(t);
                 match self.info.ty(t) {
+                    Ty::Record(_) => format!("({tc}).f_{f}"),
                     Ty::Row(_) => {
                         let field = format!("f_{f}");
                         format!("{{ let o = {tc}; let v = o.borrow().{field}.clone(); v }}")
@@ -2913,6 +3076,9 @@ impl<'a> W<'a> {
                 let Some(&ci) = self.info.class_index.get(class) else {
                     return "None".into();
                 };
+                if self.info.classes[ci].is_record {
+                    return self.new_record(ci, inits);
+                }
                 let mut s = format!("{{ let o = new{ci}(); ");
                 for (f, _, v) in inits {
                     let want = self.info.field(ci, f).map(|x| x.ty.clone()).unwrap_or(Ty::Error);
@@ -3685,6 +3851,7 @@ impl<'a> W<'a> {
             Ty::Rot => "rt::jw_rotation".into(),
             Ty::Colour => "rt::jw_colour".into(),
             Ty::Class(c) => format!("jw{}", self.root(*c)),
+            Ty::Record(c) => format!("rjw{c}"),
             Ty::Array(el) => {
                 let inner = self.jenc(el);
                 format!("(|v: &{tt}, d: Option<usize>| -> String {{ rt::jw_array(v, d, &{inner}) }})")
@@ -3737,6 +3904,7 @@ impl<'a> W<'a> {
                 )
             }
             Ty::Class(c) => format!("jr{c}"),
+            Ty::Record(c) => format!("rjr{c}"),
             Ty::Array(el) => {
                 let inner = self.jdec(el);
                 format!("(|v: &rt::Json, at: &str| -> {tt} {{ rt::jr_array(v, at, &{inner}) }})")
@@ -3773,7 +3941,7 @@ impl<'a> W<'a> {
         let n = info.classes.len();
         let mut out = String::new();
         for root in 0..n {
-            if info.classes[root].parent.is_some() {
+            if info.classes[root].parent.is_some() || info.classes[root].is_record {
                 continue;
             }
             let mut arms = String::new();
@@ -3794,6 +3962,13 @@ impl<'a> W<'a> {
             ));
         }
         for c in 0..n {
+            if info.classes[c].is_record {
+                // Only a record that can be JSON (one holding an entity can't).
+                if crate::stdlib::json_problem(&Ty::Record(c), &|_| String::new(), info).is_none() {
+                    out.push_str(&self.record_json(c));
+                }
+                continue;
+            }
             let root = self.root(c);
             let mut sets = String::new();
             for (decl, name, ty) in crate::stdlib::json_fields(info, c) {
@@ -3834,6 +4009,7 @@ impl<'a> W<'a> {
             Ty::Str => format!("|v: &{tt}| v.clone()"),
             Ty::State(_) => format!("|v: &{tt}| v.to_string()"),
             Ty::Class(c) => format!("|v: &{tt}| show{}(v)", self.root(*c)),
+            Ty::Record(c) => format!("|v: &{tt}| rshow{c}(v)"),
             Ty::Hook(_) => format!("|v: &{tt}| rt::hshow(v)"),
             Ty::Array(el) => {
                 let inner = self.fmt(el, true);
@@ -3874,6 +4050,16 @@ impl<'a> W<'a> {
     fn binary(&mut self, _e: &Expr, op: BinOp, l: &Expr, r: &Expr) -> String {
         let lt = self.info.ty(l);
         let rt = self.info.ty(r);
+        // Records: value by value.
+        if let Ty::Record(rec) = lt {
+            let (lc, rc) = (self.expr(l), self.expr(r));
+            let s = format!("req{rec}(&{lc}, &{rc})");
+            return if matches!(op, BinOp::Ne | BinOp::NotSame) {
+                format!("(!{s})")
+            } else {
+                s
+            };
+        }
         // Vectors and rotations, with any number as a float.
         if lt.is_vector() || rt.is_vector() {
             let side = |w: &mut Self, x: &Expr| {
@@ -3967,6 +4153,7 @@ fn text(code: &str, t: &Ty) -> String {
         Ty::Entity => format!("rt::etext({code})"),
         Ty::Truth => format!("rt::btext({code})"),
         Ty::State(_) => format!("{code}.to_string()"),
+        Ty::Record(c) => format!("rshow{c}(&{code})"),
         _ => code.to_string(),
     }
 }

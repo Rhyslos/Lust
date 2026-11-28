@@ -84,6 +84,8 @@ pub struct ClassInfo {
     pub is_schema: bool,
     /// Game logic on an entity: its fields are what an engine stores and shows.
     pub is_component: bool,
+    /// A record: a plain group of simple values, copied whenever it's given.
+    pub is_record: bool,
     pub has_view: bool,
     /// A schema's fields with no starting value: they must always be filled in.
     pub required: Vec<String>,
@@ -229,6 +231,8 @@ pub struct Info {
     pub waits: bool,
     /// The program starts runs of its own: a start, or a tween's done block.
     pub starts: bool,
+    /// The engine keeps records in components and events: their fields and values go to it.
+    pub engine_records: bool,
 }
 
 impl Info {
@@ -346,14 +350,21 @@ pub struct Checker<'a> {
     /// Values written after the old `is` (now is Mood.Calm;): each is a mistake.
     old_is: std::collections::HashSet<usize>,
     compound_now: Option<&'static str>,
+    /// What the engine the program is inside can do.
+    engine: EngineCan,
+    /// Each record's values with their starting values, in order.
+    record_defaults: HashMap<usize, Vec<(String, Option<Expr>)>>,
 }
 
 pub fn check(prog: &Program, diags: &mut Diags, is_script: bool) -> Info {
     let mut c = Checker {
         info: Info {
             shared: prog.shared.clone(),
+            engine_records: prog.engine.records,
             ..Info::default()
         },
+        engine: prog.engine.clone(),
+        record_defaults: HashMap::new(),
         diags,
         top_vars: HashMap::new(),
         class_names: vec![],
@@ -413,6 +424,8 @@ enum Shape {
     /// Numbers in [ ]: a vec2 (2), a vec3 or a colour (3), or a colour (4).
     List(usize),
     Colour,
+    /// new Loadout { … } of fixed values.
+    Record(usize),
 }
 
 impl Shape {
@@ -438,6 +451,7 @@ impl Shape {
             Shape::List(2) => Ty::Vec2,
             Shape::List(3) => Ty::Vec3,
             Shape::List(_) | Shape::Colour => Ty::Colour,
+            Shape::Record(c) => Ty::Record(*c),
         }
     }
 
@@ -450,6 +464,7 @@ impl Shape {
             Shape::List(2) => "a vec2".into(),
             Shape::List(3) => "a vec3".into(),
             Shape::List(_) | Shape::Colour => "a colour".into(),
+            Shape::Record(c) => a(&Ty::Record(*c)),
         }
     }
 }
@@ -660,6 +675,7 @@ impl<'a> Checker<'a> {
                         is_node: c.is_node,
                         is_schema: c.is_schema,
                         is_component: c.is_component,
+                        is_record: c.is_record,
                         has_view: c.view.is_some(),
                         required: vec![],
                         parent: None,
@@ -728,6 +744,8 @@ impl<'a> Checker<'a> {
                 }
             }
         }
+        // Records' values: they can be values on states' options, so they're known first.
+        self.record_fields(prog);
         // The values states' options carry: every name is known now, so they can name options.
         let mut done = std::collections::HashSet::new();
         for item in &prog.items {
@@ -916,6 +934,11 @@ impl<'a> Checker<'a> {
         let order = self.class_order(prog);
         for c in &order {
             let Some(&ci) = self.info.class_index.get(&c.name) else { continue };
+            // A record's values are known already (and a class sharing a record's name is a
+            // mistake said already).
+            if c.is_record || self.info.classes[ci].is_record {
+                continue;
+            }
             for f in &c.fields {
                 let ty = match &f.ty {
                     Some(t) => {
@@ -1006,6 +1029,13 @@ impl<'a> Checker<'a> {
                         } else {
                             filled = true;
                         }
+                    } else if let (Ty::Record(_), false) = (&ty, self.engine.records) {
+                        let msg = self.no_records(&format!(
+                            "keep records in a component's fields yet, so {} can't be {}. Keep its values in fields of their own for now.",
+                            f.name,
+                            self.a(&ty)
+                        ));
+                        self.err(f.pos, msg);
                     } else if !fits {
                         self.err(
                             f.pos,
@@ -1212,6 +1242,8 @@ impl<'a> Checker<'a> {
                         }
                     }
                     None if c.is_schema => self.info.classes[ci].required.push(f.name.clone()),
+                    // A record's value with no starting value is given in every new.
+                    None if c.is_record => {}
                     None => {
                         if !want.can_be_nothing() && want != Ty::Error {
                             let example = self.example(&want);
@@ -1250,7 +1282,7 @@ impl<'a> Checker<'a> {
                         }
                     } else {
                         body += 1;
-                        if let Some(p) = crate::stdlib::json_problem(pt, &|t| self.a(t)) {
+                        if let Some(p) = crate::stdlib::json_problem(pt, &|t| self.a(t), &self.info) {
                             self.err(
                                 *pos,
                                 format!("{handler}'s {pn} isn't in the path, so it comes from the request's body as JSON, but {p}"),
@@ -1271,7 +1303,7 @@ impl<'a> Checker<'a> {
                     }
                 }
                 if sig.ret != Ty::Void {
-                    if let Some(p) = crate::stdlib::json_problem(&sig.ret, &|t| self.a(t)) {
+                    if let Some(p) = crate::stdlib::json_problem(&sig.ret, &|t| self.a(t), &self.info) {
                         self.err(*pos, format!("{handler}'s answer goes back as JSON, but {p}"));
                     }
                 }
@@ -1332,6 +1364,144 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// "Solis doesn't …": a record can't go to an engine that hasn't said it can carry them.
+    fn no_records(&self, rest: &str) -> String {
+        match &self.engine.name {
+            Some(n) => format!("{n} doesn't {rest}"),
+            None => format!("the engine doesn't {rest}"),
+        }
+    }
+
+    /// Records' values: their types, which are only simple ones, and which have no starting
+    /// value (those are given in every new). A record can't hold itself, even through others.
+    fn record_fields(&mut self, prog: &Program) {
+        let mut records = Vec::new();
+        for item in &prog.items {
+            let Item::Class(c) = item else { continue };
+            if !c.is_record {
+                continue;
+            }
+            let Some(&ci) = self.info.class_index.get(&c.name) else { continue };
+            // A second record of the same name, or one named like a class, is a mistake said already.
+            if !self.info.classes[ci].is_record || records.iter().any(|(x, _)| *x == ci) {
+                continue;
+            }
+            records.push((ci, c.pos));
+            self.record_defaults
+                .insert(ci, c.fields.iter().map(|f| (f.name.clone(), f.default.clone())).collect());
+            for f in &c.fields {
+                let Some(t) = &f.ty else {
+                    self.err(
+                        f.pos,
+                        "a record has no state of its own, since it has no methods to change it. Hold an option as a value: Mood mood = Mood.Calm;",
+                    );
+                    continue;
+                };
+                let ty = self.resolve(t);
+                if self.info.classes[ci].fields.iter().any(|x| x.name == f.name) {
+                    self.err(
+                        f.pos,
+                        format!("{} already has a value called {}.", crate::ast::shown(&c.name), f.name),
+                    );
+                    continue;
+                }
+                let ty = match ty {
+                    Ty::Int
+                    | Ty::Float
+                    | Ty::Str
+                    | Ty::Truth
+                    | Ty::State(_)
+                    | Ty::Vec3
+                    | Ty::Vec2
+                    | Ty::Rot
+                    | Ty::Colour
+                    | Ty::Entity
+                    | Ty::Record(_)
+                    | Ty::Error => ty,
+                    Ty::Sized(w) => {
+                        self.err(
+                            f.pos,
+                            format!(
+                                "a record's whole numbers are ints, so write int {}, not {} {}.",
+                                f.name,
+                                w.name(),
+                                f.name
+                            ),
+                        );
+                        Ty::Error
+                    }
+                    other => {
+                        let why = match other {
+                            Ty::Class(_) => " A thing of a class is shared, not copied, so it can't be part of one.",
+                            Ty::Array(_) | Ty::Map(_) | Ty::CMap(_) => " Keep a list in a class instead.",
+                            Ty::Hook(_) => " A hook is a method, and a record has none.",
+                            _ => "",
+                        };
+                        self.err(
+                            f.pos,
+                            format!(
+                                "a record holds only simple values: numbers, text, bools, states' options, vectors, rotations, colours, entities and other records. {} is {}.{why}",
+                                f.name,
+                                self.a(&other)
+                            ),
+                        );
+                        Ty::Error
+                    }
+                };
+                if f.default.is_none() {
+                    self.info.classes[ci].required.push(f.name.clone());
+                }
+                self.info.classes[ci].fields.push(FieldInfo {
+                    name: f.name.clone(),
+                    ty,
+                    locked: f.locked,
+                    filled: false,
+                });
+            }
+        }
+        // A record that holds itself would never end: Loadout holds Kit, which holds Loadout.
+        for &(ci, pos) in &records {
+            fn path_back(info: &Info, from: usize, to: usize, seen: &mut Vec<usize>, path: &mut Vec<String>) -> bool {
+                for f in &info.classes[from].fields {
+                    let Ty::Record(k) = f.ty else { continue };
+                    path.push(f.name.clone());
+                    if k == to {
+                        return true;
+                    }
+                    if !seen.contains(&k) {
+                        seen.push(k);
+                        if path_back(info, k, to, seen, path) {
+                            return true;
+                        }
+                    }
+                    path.pop();
+                }
+                false
+            }
+            // Said once; then every circle through it is cut where it starts, so nothing goes
+            // round one.
+            let mut said = false;
+            loop {
+                let mut path = Vec::new();
+                if !path_back(&self.info, ci, ci, &mut vec![ci], &mut path) {
+                    break;
+                }
+                if !said {
+                    said = true;
+                    let name = crate::ast::shown(&self.info.classes[ci].name).to_string();
+                    let through = path.join(".");
+                    self.err(
+                        pos,
+                        format!("{name} holds itself, through {through}, so it would never end. A record can't hold itself, even through other records."),
+                    );
+                }
+                if let Some(f) = self.info.classes[ci].fields.iter_mut().find(|f| f.name == path[0]) {
+                    f.ty = Ty::Error;
+                }
+            }
+        }
+    }
+
     fn class_order<'p>(&self, prog: &'p Program) -> Vec<&'p ClassDecl> {
         let classes: Vec<&ClassDecl> = prog
             .items
@@ -1342,11 +1512,13 @@ impl<'a> Checker<'a> {
             })
             .collect();
         let mut out: Vec<&ClassDecl> = Vec::new();
+        // By place, not name: two classes can share a name by mistake, and each is placed once.
+        let mut done = vec![false; classes.len()];
         let mut placed = std::collections::HashSet::new();
         while out.len() < classes.len() {
             let before = out.len();
-            for c in &classes {
-                if placed.contains(&c.name) {
+            for (i, c) in classes.iter().enumerate() {
+                if done[i] {
                     continue;
                 }
                 let ready = match &c.parent {
@@ -1354,13 +1526,15 @@ impl<'a> Checker<'a> {
                     None => true,
                 };
                 if ready {
+                    done[i] = true;
                     placed.insert(c.name.clone());
                     out.push(c);
                 }
             }
             if out.len() == before {
-                for c in &classes {
-                    if !placed.contains(&c.name) {
+                for (i, c) in classes.iter().enumerate() {
+                    if !done[i] {
+                        done[i] = true;
                         placed.insert(c.name.clone());
                         out.push(c);
                     }
@@ -1374,7 +1548,13 @@ impl<'a> Checker<'a> {
     fn name_taken(&mut self, name: &str, pos: Pos) -> bool {
         let what = if self.info.class_index.contains_key(name) {
             let c = &self.info.classes[self.info.class_index[name]];
-            Some(if c.is_object { "an object" } else { "a class" })
+            Some(if c.is_object {
+                "an object"
+            } else if c.is_record {
+                "a record"
+            } else {
+                "a class"
+            })
         } else if self.info.state_index.contains_key(name) {
             Some("a state")
         } else if self.info.methods.contains_key(name) {
@@ -1422,6 +1602,9 @@ impl<'a> Checker<'a> {
                 "entity" => Ty::Entity,
                 _ => {
                     if let Some(&c) = self.info.class_index.get(n) {
+                        if self.info.classes[c].is_record {
+                            return Ty::Record(c);
+                        }
                         return Ty::Class(c);
                     }
                     if let Some(&s) = self.info.state_index.get(n) {
@@ -1496,6 +1679,7 @@ impl<'a> Checker<'a> {
             Ty::Truth => "true".into(),
             Ty::Array(_) | Ty::Map(_) | Ty::CMap(_) => "[]".into(),
             Ty::State(s) => format!("{}.{}", self.info.states[*s].name, self.info.states[*s].options[0]),
+            Ty::Record(c) => format!("new {} {{ … }}", crate::ast::shown(&self.info.classes[*c].name)),
             _ => "nothing".into(),
         }
     }
@@ -1654,6 +1838,12 @@ impl<'a> Checker<'a> {
 
     /// What a state's value is, from how it's written, or why it can't be one.
     fn shape(&self, e: &Expr) -> Result<Shape, String> {
+        self.shape_in(e, 0)
+    }
+
+    /// `depth`: how many records' starting values down, so a record whose starting value makes
+    /// another of itself (a mistake said elsewhere) can't go round for ever.
+    fn shape_in(&self, e: &Expr, depth: usize) -> Result<Shape, String> {
         fn number(e: &Expr) -> Option<Shape> {
             match &e.kind {
                 ExprKind::Int(_) => Some(Shape::Int),
@@ -1669,7 +1859,7 @@ impl<'a> Checker<'a> {
                 _ => None,
             }
         }
-        const FIXED: &str = "has to be written out, since an option's values are fixed: a number, text, a bool, an option of a state, a vector or a colour.";
+        const FIXED: &str = "has to be written out, since an option's values are fixed: a number, text, a bool, an option of a state, a vector, a colour or a record.";
         if let Some(n) = number(e) {
             return Ok(n);
         }
@@ -1693,6 +1883,33 @@ impl<'a> Checker<'a> {
                     2..=4 => Shape::List(items.len()),
                     n => return Err(format!("has {n} numbers in [ ]. A vector has 2 or 3, and a colour 3 or 4.")),
                 }
+            }
+            // new Loadout { … }: a record whose every value is written out.
+            ExprKind::New { class, inits, .. } if self.info.class_index.get(class).is_some_and(|&c| self.info.classes[c].is_record) => {
+                let c = self.info.class_index[class];
+                if depth > 32 {
+                    return Err(format!("is {}, which goes too deep.", self.a(&Ty::Record(c))));
+                }
+                for (f, _, v) in inits {
+                    if let Err(why) = self.shape_in(v, depth + 1) {
+                        return Err(format!("is {}, whose {f} {why}", self.a(&Ty::Record(c))));
+                    }
+                }
+                // Its starting values are worked out each time one is made, so they're fixed too.
+                for (f, d) in self.record_defaults.get(&c).into_iter().flatten() {
+                    if inits.iter().any(|(g, _, _)| g == f) {
+                        continue;
+                    }
+                    if let Some(d) = d {
+                        if self.shape_in(d, depth + 1).is_err() {
+                            return Err(format!(
+                                "is {}, whose {f} starts as a value that's worked out, not written out. Give {f} here too.",
+                                self.a(&Ty::Record(c))
+                            ));
+                        }
+                    }
+                }
+                Shape::Record(c)
             }
             ExprKind::Method(t, m, args, _) if m == "hex" && matches!(&t.kind, ExprKind::Name(o) if o == "Colour") && args.len() == 1 => {
                 if !matches!(args[0].kind, ExprKind::Str(_)) {
@@ -3374,11 +3591,12 @@ impl<'a> Checker<'a> {
     fn makes_owned(&self, e: &Expr, ctx: &Ctx) -> bool {
         let in_state = ctx.class.map(|c| self.stateful(c)).unwrap_or(false);
         let made_by_engine = match &e.kind {
+            // A record is a value, copied wherever it goes, so it never ends with a state.
             ExprKind::New { class, .. } => self
                 .info
                 .class_index
                 .get(class)
-                .is_some_and(|&c| self.info.classes[c].made.is_some()),
+                .is_some_and(|&c| self.info.classes[c].made.is_some() || self.info.classes[c].is_record),
             _ => false,
         };
         in_state && !made_by_engine && (matches!(e.kind, ExprKind::New { .. }) || self.info.creates.contains_key(&e.id))
@@ -3456,6 +3674,13 @@ impl<'a> Checker<'a> {
             }
             ExprKind::Field(t, f, _) => match self.info.ty(t) {
                 Ty::Class(_) | Ty::Error => {}
+                Ty::Record(_) => {
+                    self.err(
+                        place.pos,
+                        format!("{} is a record, which is copied wherever it goes, so a tween can't move {f} inside it. Keep {f} in a field of its own to tween it.", describe(t)),
+                    );
+                    place_ok = false;
+                }
                 Ty::Vec3 | Ty::Vec2 | Ty::Colour | Ty::Rot => {
                     let whole = describe(t);
                     self.err(
@@ -3587,6 +3812,17 @@ impl<'a> Checker<'a> {
         let Some(params) = self.info.events.get(event).cloned() else {
             return;
         };
+        if !self.engine.records {
+            if let Some((n, t)) = params.iter().find(|(_, t)| matches!(t, Ty::Record(_))) {
+                let msg = self.no_records(&format!(
+                    "carry records in events yet, so {} can't carry {n}, {}. Send its values one by one for now.",
+                    crate::ast::shown(event),
+                    self.a(t)
+                ));
+                self.err(at, msg);
+                return;
+            }
+        }
         let bad: Vec<String> = params
             .iter()
             .filter(|(_, t)| !event_kind(t))
@@ -3786,7 +4022,16 @@ impl<'a> Checker<'a> {
                     want = Ty::Sized(*w);
                 }
                 if ctx.in_hook {
-                    if let ExprKind::Name(n) = &target.kind {
+                    // kit.grenades = 3 changes kit: a record is a value, so changing one of its
+                    // values changes the variable that holds it.
+                    let mut root = target;
+                    while let ExprKind::Field(t, _, _) = &root.kind {
+                        if !matches!(self.info.ty(t), Ty::Record(_)) {
+                            break;
+                        }
+                        root = t;
+                    }
+                    if let ExprKind::Name(n) = &root.kind {
                         let outer = ctx
                             .scopes
                             .iter()
@@ -4012,11 +4257,11 @@ impl<'a> Checker<'a> {
                     }
                     match self.lookup(ctx, n).map(|l| l.ty.clone()) {
                         Some(t) => {
-                            if let Some(p2) = crate::stdlib::json_problem(&t, &|t| self.a(t)) {
+                            if let Some(p2) = crate::stdlib::json_problem(&t, &|t| self.a(t), &self.info) {
                                 self.err(
                                     *p,
                                     format!(
-                                        "{p2} Saves hold numbers, text, bools, states, vectors, rotations, colours, arrays, maps, cMaps and things made from classes."
+                                        "{p2} Saves hold numbers, text, bools, states, vectors, rotations, colours, arrays, maps, cMaps, records and things made from classes."
                                     ),
                                 );
                             } else {
@@ -4303,7 +4548,20 @@ impl<'a> Checker<'a> {
                         ),
                     );
                 }
-                if let Ty::Class(c) = self.info.ty(t) {
+                if let Ty::Record(_) = self.info.ty(t) {
+                    // A record is a value: changing one of its values changes the place holding it.
+                    match &t.kind {
+                        ExprKind::Name(_) | ExprKind::Field(..) | ExprKind::Index(..) => self.writable(t, ctx, pos),
+                        _ => self.err(
+                            *fp,
+                            format!(
+                                "{} gives a copy of a record, so changing its {f} would change nothing. Keep it in a variable first, and change that.",
+                                describe(t)
+                            ),
+                        ),
+                    }
+                }
+                if let Ty::Class(c) | Ty::Record(c) = self.info.ty(t) {
                     if self.info.field(c, f).is_some_and(|x| x.locked) {
                         self.err(
                             *fp,
@@ -4747,7 +5005,17 @@ impl<'a> Checker<'a> {
                     .filter(|r| !inits.iter().any(|(f, _, _)| f == *r))
                     .cloned()
                     .collect();
-                if !missing.is_empty() {
+                if !missing.is_empty() && self.info.classes[c].is_record {
+                    let ex: Vec<String> = missing.iter().map(|m| format!("{m} = …")).collect();
+                    self.err(
+                        *class_pos,
+                        format!(
+                            "{class} has no starting value for {}, so it's given in every new: new {class} {{ {} }}",
+                            and_list(&missing),
+                            ex.join(", ")
+                        ),
+                    );
+                } else if !missing.is_empty() {
                     let ex: Vec<String> = missing.iter().map(|m| format!("{m} = …")).collect();
                     self.err(
                         *class_pos,
@@ -4780,6 +5048,7 @@ impl<'a> Checker<'a> {
                 // The engine makes it: new gives back what its made() does.
                 match &self.info.classes[c].made {
                     Some(made) => made.clone(),
+                    None if self.info.classes[c].is_record => Ty::Record(c),
                     None => Ty::Class(c),
                 }
             }
@@ -4876,11 +5145,12 @@ impl<'a> Checker<'a> {
                                 | Ty::Rot
                                 | Ty::Colour
                                 | Ty::Entity
+                                | Ty::Record(_)
                         ) {
                             self.err(
                                 *cpos,
                                 format!(
-                                    ".text() works on numbers, bools, text, state options, vectors, rotations, colours and entities, but this is {}.",
+                                    ".text() works on numbers, bools, text, state options, vectors, rotations, colours, entities and records, but this is {}.",
                                     self.a(&t)
                                 ),
                             );
@@ -5414,10 +5684,10 @@ impl<'a> Checker<'a> {
             match m {
                 "write" | "pretty" => {
                     let Some(t) = one(self, ctx) else { return Ty::Str };
-                    if let Some(p) = crate::stdlib::json_problem(&t, &|t| self.a(t)) {
+                    if let Some(p) = crate::stdlib::json_problem(&t, &|t| self.a(t), &self.info) {
                         self.err(
                             args[0].pos,
-                            format!("{p} JSON holds numbers, text, bools, states, vectors, rotations, colours, arrays, maps, cMaps and things made from classes."),
+                            format!("{p} JSON holds numbers, text, bools, states, vectors, rotations, colours, arrays, maps, cMaps, records and things made from classes."),
                         );
                     } else if t == Ty::Void || t == Ty::Nothing {
                         self.err(args[0].pos, "there's nothing here to turn into JSON.");
@@ -5447,10 +5717,10 @@ impl<'a> Checker<'a> {
                         );
                         return Ty::Error;
                     };
-                    if let Some(p) = crate::stdlib::json_problem(&want, &|t| self.a(t)) {
+                    if let Some(p) = crate::stdlib::json_problem(&want, &|t| self.a(t), &self.info) {
                         self.err(
                             mpos,
-                            format!("{p} JSON holds numbers, text, bools, states, vectors, rotations, colours, arrays, maps, cMaps and things made from classes."),
+                            format!("{p} JSON holds numbers, text, bools, states, vectors, rotations, colours, arrays, maps, cMaps, records and things made from classes."),
                         );
                         return Ty::Error;
                     }
@@ -5708,7 +5978,7 @@ impl<'a> Checker<'a> {
                 );
                 Ty::Error
             }
-            Ty::Class(c) => match self.info.field(c, f) {
+            Ty::Class(c) | Ty::Record(c) => match self.info.field(c, f) {
                 Some(fi) => fi.ty.clone(),
                 None => {
                     let cn = self.info.classes[c].name.clone();
@@ -6840,6 +7110,16 @@ impl<'a> Checker<'a> {
                 if let (Ty::StateList(_), _) | (_, Ty::StateList(_)) = (&lt, &rt) {
                     self.err(opos, "compare with one of the state's options, like is mood == Mood.Happy?");
                 }
+                if ok && matches!(op, BinOp::Same | BinOp::NotSame) && matches!(lt, Ty::Record(_)) {
+                    let w = if op == BinOp::Same { "==" } else { "!=" };
+                    self.err(
+                        opos,
+                        format!(
+                            "{} asks whether two things are the very same one, but a record is only its values, copied wherever it goes. Compare its values with {w}.",
+                            op.symbol()
+                        ),
+                    );
+                }
                 Ty::Truth
             }
             BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => {
@@ -6991,9 +7271,22 @@ fn written_number(e: &Expr) -> Option<f64> {
 /// What a component's fields hold and an event that reaches the engine carries: what the engine
 /// can keep and show.
 pub fn event_kind(t: &Ty) -> bool {
+    // A record holds only these kinds, and other records, so the engine can carry one too
+    // (once it says it can: EngineCan's records).
     matches!(
         t,
-        Ty::Truth | Ty::Int | Ty::Float | Ty::Str | Ty::State(_) | Ty::Vec3 | Ty::Vec2 | Ty::Rot | Ty::Colour | Ty::Entity | Ty::Error
+        Ty::Truth
+            | Ty::Int
+            | Ty::Float
+            | Ty::Str
+            | Ty::State(_)
+            | Ty::Vec3
+            | Ty::Vec2
+            | Ty::Rot
+            | Ty::Colour
+            | Ty::Entity
+            | Ty::Record(_)
+            | Ty::Error
     )
 }
 
