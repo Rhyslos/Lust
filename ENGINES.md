@@ -259,3 +259,10 @@ gun.removed()?;                   // its entity is gone: its waiting work is can
 - **Fixed:** an assembly used inside another's view (`ClassCard { role = … }` in `ClassPick`'s view) stopped with "attempt to index nil with 'turns'" when an engine drew the view after `LUST_HOST.ui_open` had given back, as Solis's screens do. Lust kept the pieces' store only while `ui_open` was running, which is the whole time a window is open in `lust run`, but only a moment in an engine. Each drawing now carries its own store, so pieces inside pieces (any depth) keep their fields from one drawing to the next.
 - **The host contract, now written down** (LUST.md, section 21, The compiler inside an engine): `LUST_HOST.ui_open(settings, view, tweens, settle, spawn, runs)` may keep `view` and call it whenever it likes; each call gives back the tree. Draw only through that function. Drawing a piece any other way now stops with a plain message instead of a Lua error.
 - **The engine does:** nothing. Solis's screens already keep the view and call it, which is the documented way.
+
+## alpha 94: values on states' options
+
+- A state's options can carry values: `state Pose = [Idle { speed = 0.0 }, Run { speed = 6.5 }];`, read as `pose.speed` or `Pose.Run.speed` (LUST.md, section 8, Values on options). Inner options take their outer one's values.
+- **Lua and Luau:** a state's option is still its name, as before. Each state with values gets one table, `_D_Pose`, made once as the code loads, holding a table per value from option name to value; a read is `_D_Pose[2][pose]`. Vectors and colours in it are made with the runtime's own helpers, so in Luau a `vec3` value is a Luau vector like any other. Game code reads them inside an engine exactly as in `lust run`.
+- **Rust:** a function per value (`sd3_1(o: &str) -> f64`), matching the option's name. Nothing crosses to the engine: native methods, component fields, events and saves still see only the option's full name.
+- **The engine does:** nothing. If its editor shows a state's options (a component field holding one, say), it can keep showing just their names.

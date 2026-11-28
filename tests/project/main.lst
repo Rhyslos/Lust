@@ -1,6 +1,6 @@
 -- A program in several files.
 fetch "entities/player":[Player, Mood];
-fetch "entities/world":World;
+fetch "entities/world":[World, Weather];
 get "helpers/maths":[clamp, twice];
 
 -- This file's own describe; helpers/maths has a private one with the same name.
@@ -19,5 +19,7 @@ print(ada);
 World:tick();
 World:tick();
 print(World.day);
+Weather today = Weather.Rainy;
+print(today.mood == ada.mood, today.warmth, Weather.Sunny.mood);
 
 end

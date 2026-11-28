@@ -1,0 +1,115 @@
+-- Data on states: each option carries its own values, and inner options take their outer one's.
+state Clip = [Idle, Run, Fight, Swing, Aim];
+
+state Pose = [
+    Idle   { clip = Clip.Idle,  speed = 0,   label = "standing", armed = false },
+    Run    { clip = Clip.Run,   speed = 6.5, label = "running",  armed = false },
+    Battle { clip = Clip.Fight, speed = 4.0, label = "fighting", armed = true } [
+        Melee  { clip = Clip.Swing },              -- speed 4.0 comes from Battle
+        Ranged { clip = Clip.Aim, speed = 2.5, label = "aiming" },
+    ],
+];
+
+-- Vectors and colours, worked out across the options.
+state Team = [
+    Red  { tint = red,  home = [0, 0],  offset = [1, 0, 0], shade = [1, 0, 0] },
+    Blue { tint = Colour:hex("#3366ff"), home = [10.5, 4], offset = [0, 1, 0], shade = [0, 0, 1, 0.5] },
+];
+
+-- A whole number on every option stays an int, and an option can point to another state's.
+state Level = [
+    Easy { lives = 5, next = Level.Hard, music = Clip.Idle },
+    Hard { lives = 2, next = Level.Easy, music = Clip.Fight },
+];
+
+class Hero {
+    has {
+        state = Pose.Idle;
+        string name = "Ada";
+    }
+
+    method run() {
+        state = Pose.Run;
+    }
+
+    method fight(bool close) {
+        state = either close? Pose.Battle.Melee or Pose.Battle.Ranged;
+    }
+
+    method float pace() {
+        return state.speed * 2;
+    }
+}
+
+method animate(Clip clip) {
+    print("playing {clip}");
+}
+
+Pose pose = Pose.Idle;
+animate(pose.clip);
+float s = Pose.Run.speed;
+print(s);
+print(Pose.Idle.speed, Pose.Battle.Melee.speed, Pose.Battle.Ranged.speed);
+print(Pose.Battle.Melee.label, Pose.Battle.Ranged.label);
+
+-- Every option, in order.
+loop (Pose p in Pose) {
+    print("{p}: {p.clip} at {p.speed}, {p.label}, armed {p.armed}");
+}
+
+-- Read through a thing's own state.
+Hero hero = new Hero {};
+print(hero.state.speed, hero:pace());
+hero:run();
+print(hero.state.label, hero:pace());
+hero:fight(true);
+print(hero.state, hero.state.clip, hero.state.speed);
+hero:fight(false);
+print(hero.state.label, hero:pace());
+
+-- Options with values still compare, check, find and print as before.
+pose = Pose.Battle.Ranged;
+is pose == Pose.Battle? then {
+    print("in battle");
+}
+is pose === Pose.Battle? then {
+    print("not this");
+} or {
+    print("exactly Ranged");
+}
+check pose {
+    when Idle, Run {
+        print("calm");
+    }
+    when Battle {
+        print("battle, {pose.label}");
+    }
+}
+Pose array seen = [Pose.Idle, Pose.Battle.Melee, Pose.Run];
+print(seen:find(Pose.Battle.Melee), seen:has(Pose.Battle));
+print(pose, pose.text(), "{pose}");
+
+-- In sums and questions.
+float total = 0.0;
+loop (Pose p in Pose) {
+    total += p.speed;
+}
+print(total);
+is pose.armed && pose.speed < 3? then {
+    print("slow and armed");
+}
+
+-- Vectors and colours.
+loop (Team t in Team) {
+    print(t, t.tint, t.home, t.offset, t.shade, t.home.x + t.offset.y);
+}
+Team team = Team.Blue;
+vec3 moved = team.offset * 2;
+print(moved, team.tint:hex(), Team.Red.shade == red);
+
+-- Ints and states.
+Level level = Level.Easy;
+print(level.lives + 1, level.next, level.next.next, level.next.lives, level.music);
+int lives = Level.Hard.lives;
+print(lives / 2);
+end

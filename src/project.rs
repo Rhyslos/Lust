@@ -571,7 +571,18 @@ impl<'a> Renamer<'a> {
 
     fn item(&mut self, item: &mut Item) {
         match item {
-            Item::State(s) => self.name(&mut s.name, s.pos, false),
+            Item::State(s) => {
+                self.name(&mut s.name, s.pos, false);
+                fn data(r: &mut Renamer, opts: &mut [StateOption]) {
+                    for o in opts {
+                        for (_, _, v) in &mut o.data {
+                            r.expr(v);
+                        }
+                        data(r, &mut o.children);
+                    }
+                }
+                data(self, &mut s.options);
+            }
             Item::Class(c) => {
                 self.name(&mut c.name, c.pos, false);
                 if let Some((p, pos)) = &mut c.parent {

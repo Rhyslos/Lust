@@ -1,0 +1,57 @@
+-- Mistakes with the values states' options carry.
+state Clip = [Idle, Run, Fight];
+
+-- A value missing on some options, and one with two types.
+state Pose = [
+    Idle   { clip = Clip.Idle, speed = 0.0 },
+    Run    { clip = Clip.Run },
+    Battle { clip = Clip.Fight, speed = "fast" } [
+        Melee,
+        Ranged { speed = 2.5, reach = 3 },
+    ],
+];
+
+-- Values that aren't written out, or aren't values a state can hold.
+int far = 10;
+state Gun = [
+    Pistol { range = far, sound = "bang {far}", ammo = [1, 2, 3, 4, 5], owner = nothing },
+    Rifle  { range = far + 1, sound = "crack", ammo = [far, 2], owner = nothing },
+];
+
+-- Names that already mean something, given twice, or in capitals.
+state Door = [
+    Open { text = "open", speed = 1, speed = 2, Wide = true },
+    Shut { text = "shut", speed = 1, Wide = false },
+];
+
+-- Shapes that don't mix.
+state Mark = [
+    Here { at = [1, 2], tint = red, next = Clip.Idle },
+    There { at = [1, 2, 3], tint = [0, 0, 1, 0.5], next = Pose.Idle },
+];
+
+-- A colour's parts go from 0 to 1, and its hex text has to be right.
+state Glow = [Dim { tint = [0, 0, 2] }, Lit { tint = Colour:hex("#zz0000") }];
+
+state Mode = [Walk { pace = 1.0 }, Sprint { pace = 2.0 }];
+
+class Hero {
+    has {
+        state = Mode.Walk;
+    }
+
+    method faster() {
+        state.pace = 3.0;
+    }
+}
+
+Mode mode = Mode.Walk;
+mode.pace = 2.0;
+Mode.Sprint.pace = 4.0;
+float p = Mode.pace;
+float q = mode.speed;
+float r = mode.paec;
+string s = mode.pace;
+Clip c = Clip.Idle;
+float t = c.speed;
+end

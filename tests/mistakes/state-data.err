@@ -1,0 +1,31 @@
+state-data.lst:6:5  Pose.Idle has no reach, but other options of Pose do. Every option needs every value, so give it one: Idle { reach = … }
+state-data.lst:7:5  Pose.Run has no speed, but other options of Pose do. Every option needs every value, so give it one: Run { speed = … }
+state-data.lst:8:5  Pose.Battle has no reach, but other options of Pose do. Every option needs every value, so give it one: Battle { reach = … }
+state-data.lst:8:41  Battle's speed is text, but Idle's is a number. A value has one type on every option of Pose.
+state-data.lst:9:9  Pose.Battle.Melee has no reach, but other options of Pose do. Every option needs every value, so give it one: Melee { reach = … }
+state-data.lst:17:22  Pistol's range has to be written out, since an option's values are fixed: a number, text, a bool, an option of a state, a vector or a colour.
+state-data.lst:17:35  Pistol's sound is fixed, so its text can't have values in { }.
+state-data.lst:17:56  Pistol's ammo has 5 numbers in [ ]. A vector has 2 or 3, and a colour 3 or 4.
+state-data.lst:17:81  Pistol's owner can't be nothing: every option's value is there.
+state-data.lst:18:22  Rifle's range has to be written out, since an option's values are fixed: a number, text, a bool, an option of a state, a vector or a colour.
+state-data.lst:18:55  Rifle's ammo is a list, which can change. A list here holds 2 or 3 numbers for a vector, or 3 or 4 for a colour.
+state-data.lst:18:73  Rifle's owner can't be nothing: every option's value is there.
+state-data.lst:23:12  text can't name a value on a state, since .text() already does something to every option. Pick another name.
+state-data.lst:23:38  speed is already given to Open here.
+state-data.lst:23:49  value names start with a small letter: wide
+state-data.lst:24:12  text can't name a value on a state, since .text() already does something to every option. Pick another name.
+state-data.lst:24:38  value names start with a small letter: wide
+state-data.lst:30:18  There's at is a vec3, but Here's is a vec2. A value has one type on every option of Mark.
+state-data.lst:30:59  There's next is a Pose option, but Here's is a Clip option. A value has one type on every option of Mark.
+state-data.lst:34:35  a colour's parts go from 0 to 1, but its blue here is 2. For a part from 0 to 255, divide it by 255: 2 / 255.0
+state-data.lst:34:65  hex needs a colour written as "#rrggbb" or "#rrggbbaa", like "#3a8f2a", but this is "#zz0000".
+state-data.lst:44:9  pace is part of Mode's options, so it's fixed. To change it, change what's written in state Mode = [ … ];
+state-data.lst:49:1  pace is part of Mode's options, so it's fixed. To change it, change what's written in state Mode = [ … ];
+state-data.lst:50:1  pace is part of Mode's options, so it's fixed. To change it, change what's written in state Mode = [ … ];
+state-data.lst:51:16  each option of Mode has its own pace, so say which one: Mode.Walk.pace
+state-data.lst:52:16  Mode's options have pace, but not speed.
+state-data.lst:53:16  Mode's options have pace, but not paec. Did you mean pace?
+state-data.lst:54:12  s is a string, but this is a float. Use .text() to turn it into text.
+state-data.lst:56:13  c is a Clip option, which has no fields.
+
+29 mistakes. Nothing was run.

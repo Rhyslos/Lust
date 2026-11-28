@@ -487,7 +487,25 @@ pub fn write(prog: &Program, info: &Info, files: &[String], library: bool) -> St
             "    {{ let o = {make}; {listen}OBJ{ci}.with(|x| *x.borrow_mut() = Some(o)); }}\n"
         ));
     }
-    // States aren't types in Rust: options are &'static str.
+    // States aren't types in Rust: options are &'static str. The values their options carry
+    // are a function for each name, from option to value: pose.speed is sd3_1(pose).
+    w.class = None;
+    for (si, st) in info.states.iter().enumerate() {
+        if st.values.is_empty() {
+            continue;
+        }
+        for (i, (_, t)) in st.data.iter().enumerate() {
+            let rt = w.ty(t);
+            let mut arms = String::new();
+            for (o, vs) in st.options.iter().zip(&st.values) {
+                let v = w.coerced(&vs[i], t);
+                arms.push_str(&format!("        {o:?} => {v},\n"));
+            }
+            defs.push_str(&format!(
+                "#[allow(dead_code)]\nfn sd{si}_{i}(o: &str) -> {rt} {{\n    match o {{\n{arms}        _ => rt::unreachable(),\n    }}\n}}\n"
+            ));
+        }
+    }
 
     w.class = None;
     // Routes: one function that finds the route for a request and runs its method.
@@ -2647,6 +2665,16 @@ impl<'a> W<'a> {
             ExprKind::Field(t, f, _) => {
                 if let Some((_, path)) = self.info.options.get(&e.id) {
                     return format!("{path:?}");
+                }
+                if let Some(&(s, i)) = self.info.state_reads.get(&e.id) {
+                    let st = &self.info.states[s];
+                    // Pose.Run.speed is written right there.
+                    if let Some((_, path)) = self.info.options.get(&t.id) {
+                        if let Some(o) = st.options.iter().position(|x| x == path) {
+                            return self.coerced(&st.values[o][i], &st.data[i].1);
+                        }
+                    }
+                    return format!("sd{s}_{i}({})", self.expr(t));
                 }
                 if let (Ty::Table(tt), ExprKind::Name(_)) = (self.info.ty(e), &t.kind) {
                     let cols: Vec<String> = tt.cols.iter().map(|(c, _)| format!("{c:?}")).collect();

@@ -676,17 +676,70 @@ impl<'a> Parser<'a> {
             if out.iter().any(|o: &StateOption| o.name == name) {
                 self.diags.add(pos, format!("{name} is already an option here."));
             }
+            let mut data = if self.at_sym("{") { self.state_data(&name)? } else { Vec::new() };
             let mut children = Vec::new();
             if self.at_sym("[") {
                 let o = self.next();
                 children = self.state_options(o.pos)?;
             }
-            out.push(StateOption { name, pos, children });
+            if self.at_sym("{") {
+                let at = self.cur().pos;
+                self.diags.add(
+                    at,
+                    format!("an option's values come before its inner options: {name} {{ … }} [ … ]"),
+                );
+                let late = self.state_data(&name)?;
+                if data.is_empty() {
+                    data = late;
+                }
+            }
+            out.push(StateOption { name, pos, data, children });
             if self.at_sym(",") {
                 self.next();
             } else if !self.at_sym("]") {
                 let pos = self.cur().pos;
                 return self.fail(pos, "expected , or ] between options.");
+            }
+        }
+    }
+
+    /// `{ clip = Clip.Run, speed = 6.5 }` after an option's name: its values.
+    fn state_data(&mut self, option: &str) -> R<Vec<(String, Pos, Expr)>> {
+        let open = self.next();
+        let mut out: Vec<(String, Pos, Expr)> = Vec::new();
+        loop {
+            if self.at_sym("}") {
+                self.next();
+                return Ok(out);
+            }
+            if self.at_eof() {
+                return self.fail(open.pos, "this { is never closed. Add a } after the option's last value.");
+            }
+            let (name, pos) = self.ident("a value's name")?;
+            check_name(self.diags, &name, pos, NameKind::Value, "value");
+            if let Some((word, _)) = CONVERSIONS.iter().find(|(w, _)| *w == name) {
+                self.diags.add(
+                    pos,
+                    format!(
+                        "{word} can't name a value on a state, since .{word}() already does something to every option. Pick another name."
+                    ),
+                );
+            }
+            if out.iter().any(|(n, _, _)| *n == name) {
+                self.diags.add(pos, format!("{name} is already given to {option} here."));
+            }
+            if !self.at_sym("=") {
+                let at = self.cur().pos;
+                return self.fail(at, format!("expected = after {name}: {option} {{ {name} = … }}"));
+            }
+            self.next();
+            let value = self.expr()?;
+            out.push((name, pos, value));
+            if self.at_sym(",") {
+                self.next();
+            } else if !self.at_sym("}") {
+                let pos = self.cur().pos;
+                return self.fail(pos, "expected , or } between an option's values.");
             }
         }
     }

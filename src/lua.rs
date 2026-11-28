@@ -809,6 +809,28 @@ impl<'a> W<'a> {
                 }
             }
         }
+        // The values states' options carry: a table for each name, from option to value, so
+        // pose.speed is _D_Pose[2][pose].
+        for item in &prog.items {
+            if let Item::State(s) = item {
+                let Some(&si) = self.info.state_index.get(&s.name) else { continue };
+                let st = &self.info.states[si];
+                if st.values.is_empty() {
+                    continue;
+                }
+                let (options, values) = (st.options.clone(), st.values.clone());
+                let mut tables = Vec::new();
+                for i in 0..st.data.len() {
+                    let mut pairs = Vec::new();
+                    for (o, vs) in options.iter().zip(&values) {
+                        let v = self.operand(&vs[i]);
+                        pairs.push(format!("[{}] = {v}", lua_string(o)));
+                    }
+                    tables.push(format!("{{{}}}", pairs.join(", ")));
+                }
+                self.line(s.pos.line, &format!("local _D_{} = {{{}}}", lname(&s.name), tables.join(", ")));
+            }
+        }
         // Databases open first, so everything can use their tables.
         for item in &prog.items {
             if let Item::Database(d) = item {
@@ -1974,6 +1996,18 @@ impl<'a> W<'a> {
             ExprKind::Field(t, f, _) => {
                 if let Some((_, path)) = self.info.options.get(&e.id) {
                     return lua_string(path);
+                }
+                if let Some(&(s, i)) = self.info.state_reads.get(&e.id) {
+                    // Pose.Run.speed is written right there.
+                    if let Some((_, path)) = self.info.options.get(&t.id) {
+                        let st = &self.info.states[s];
+                        if let Some(o) = st.options.iter().position(|x| x == path) {
+                            let v = st.values[o][i].clone();
+                            return self.operand(&v);
+                        }
+                    }
+                    let tc = self.expr(t);
+                    return format!("_D_{}[{}][{tc}]", lname(&self.info.states[s].name), i + 1);
                 }
                 if let (Ty::Table(_), ExprKind::Name(db)) = (self.info.ty(e), &t.kind) {
                     return format!("{}.{}", lname(db), lname(f));
