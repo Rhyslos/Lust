@@ -1,5 +1,5 @@
 -- Inside a component, the entity's own abilities are called bare, and this is the entity: built
--- as a Rust library.
+-- as a Rust library. Their values can be named, by the names in the engine's files.
 component Hopper {
     has {
         float speed = 1;
@@ -7,9 +7,9 @@ component Hopper {
     }
 
     method update(float dt) {
-        moveTo(position() + [speed * dt, 0, 0]);
+        moveTo(place = position() + [speed * dt, 0, 0]);
         float velocity = velocity();
-        log("velocity " + velocity.text());
+        log(words = "velocity " + velocity.text());
         jump();
         this:jump();
         seen = me;

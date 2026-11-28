@@ -628,4 +628,18 @@ pub enum ExprKind {
     Saved(String),
     /// Random[1, 6] or Random[0.0, 1.0]: a random number between the two.
     Random(Box<Expr>, Box<Expr>),
+    /// `x = 3` inside a call's or a send's ( ): a value given by its name. Only ever one of a
+    /// call's values. Once checked, the names are gone: each value is put in its place
+    /// (named.rs), so the writers never see one.
+    Named(String, Pos, Box<Expr>),
+}
+
+impl Expr {
+    /// The value itself, without its name if it has one.
+    pub fn unnamed(&self) -> &Expr {
+        match &self.kind {
+            ExprKind::Named(_, _, v) => v,
+            _ => self,
+        }
+    }
 }

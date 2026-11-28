@@ -1,0 +1,91 @@
+-- Named values: a call or a send names each value, in any order.
+event Wants(bool jump, bool crouch, bool fire);
+event Hit(string by, float damage);
+
+
+method spawn(int x, int y) {
+    print("spawn at", x, y);
+}
+
+method float area(float width, float height) {
+    return width * height;
+}
+
+object Counter {
+    has {
+        int calls = 0;
+    }
+
+    method int next(string label) {
+        calls += 1;
+        print("working out", label);
+        return calls;
+    }
+}
+
+class Body {
+    has {
+        string name = "";
+        hook(int amount, string why) onHurt = nothing;
+    }
+
+    on {
+        Wants(bool jump, bool crouch, bool fire) {
+            print(name, "wants", jump, crouch, fire);
+        }
+        Hit(string by, float damage) {
+            print(name, "hit by", by, "for", damage);
+        }
+    }
+
+    method move(float x, float y, float speed) {
+        print(name, "moves to", x, y, "at", speed);
+    }
+
+    method run() {
+        move(speed = 2.0, y = 1.0, x = 0.5);
+        move(x = 3.0, y = 4.0, speed = 1.5);
+    }
+}
+
+spawn(x = 3, y = 5);
+spawn(y = 5, x = 3);
+spawn(3, 5);
+print(area(height = 2.0, width = 4.5));
+
+Body body = new Body { name = "body" };
+Body other = new Body { name = "other" };
+send Wants(jump = true, crouch = false, fire = true) to body;
+send Wants(fire = false, jump = true, crouch = true) to other;
+send Hit(damage = 2.5, by = "trap");
+body:move(speed = 9.0, x = 1.0, y = 2.0);
+body:run();
+
+-- Values that do work, written in the method's own order, are worked out in that order.
+spawn(x = Counter:next("x"), y = Counter:next("y"));
+
+-- A value that does work can go anywhere among values that can't change.
+method place() {
+    int seven = 7;
+    spawn(y = seven, x = Counter:next("x again"));
+    spawn(y = seven * 2, x = Counter:next("x once more"));
+}
+place();
+
+-- Hooks whose type names their values.
+body.onHurt = new hook {
+    print("hurt", amount, "because", why);
+};
+body:onHurt(why = "fell", amount = 3);
+hook int(int a, int b) minus = new hook {
+    return a - b;
+};
+print(minus(b = 1, a = 10));
+
+-- Names look like the method's, but the values are any expressions.
+int x = 1;
+int y = 2;
+spawn(x = y, y = x);
+spawn(y = x + 10, x = -y);
+
+end

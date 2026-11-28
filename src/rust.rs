@@ -1042,6 +1042,7 @@ pub fn walk_expr(e: &Expr, f: &mut dyn FnMut(&Expr)) {
             }
         }
         ExprKind::NewHook(body) => walk_stmts(body, f),
+        ExprKind::Named(_, _, v) => walk_expr(v, f),
         _ => {}
     }
 }
@@ -2928,6 +2929,8 @@ impl<'a> W<'a> {
                 self.owned(s)
             }
             ExprKind::Saved(_) => "false".into(),
+            // Named values are put in their places once checked (named.rs), so none reach here.
+            ExprKind::Named(_, _, v) => self.expr(v),
             ExprKind::Random(lo, hi) => {
                 if self.info.ty(e) == Ty::Float {
                     format!("rt::frandom({}, {})", self.coerced(lo, &Ty::Float), self.coerced(hi, &Ty::Float))
