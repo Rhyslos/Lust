@@ -150,6 +150,17 @@ pub struct Program {
     /// Everything a file passes, from every file, by its name inside Lust: what's shared. An
     /// engine ticks and saves only the objects that are.
     pub shared: std::collections::HashSet<String>,
+    /// What the engine the program is inside can carry: records in components and events.
+    pub engine: EngineCan,
+}
+
+/// What an engine says it can do, beyond what every engine does.
+#[derive(Clone, Default, Debug)]
+pub struct EngineCan {
+    /// The engine keeps records in components' fields and carries them in events.
+    pub records: bool,
+    /// What the engine is called in messages: its first host folder, with a capital (Solis).
+    pub name: Option<String>,
 }
 
 pub enum Item {
@@ -291,6 +302,8 @@ pub struct ClassDecl {
     pub is_schema: bool,
     /// A component: game logic that sits on an entity in an engine (Solis), with `me` and `update`.
     pub is_component: bool,
+    /// A record: a plain group of simple values, copied whenever it's given. Only fields.
+    pub is_record: bool,
     /// An assembly with fields, methods or a view: a piece of screen, or a factory with memory.
     pub view: Option<ViewDecl>,
     pub parent: Option<(String, Pos)>,

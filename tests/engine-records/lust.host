@@ -1,0 +1,2 @@
+-- This stand-in engine keeps records in components' fields and carries them in events.
+supports records

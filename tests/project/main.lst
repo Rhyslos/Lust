@@ -2,6 +2,8 @@
 fetch "entities/player":[Player, Mood];
 fetch "entities/world":[World, Weather];
 get "helpers/maths":[clamp, twice];
+fetch "entities/gear":Gear;
+get "entities/gear":heavier;
 
 -- This file's own describe; helpers/maths has a private one with the same name.
 method string describe(int n) {
@@ -21,5 +23,10 @@ World:tick();
 print(World.day);
 Weather today = Weather.Rainy;
 print(today.mood == ada.mood, today.warmth, Weather.Sunny.mood);
+-- A record from another file, copied as it's handed over.
+Gear boots = new Gear { name = "boots" };
+Gear more = heavier(boots);
+print(boots, more.weight);
+print(World.kit, Weather.Rainy.gear.weight);
 
 end

@@ -1,0 +1,17 @@
+fetch "entities/player":Mood;
+
+-- A record in a file of its own, holding another file's state, passed for others to use.
+record Gear {
+    string name;
+    Mood wornIn = Mood.Cheerful;
+    int weight = 3;
+}
+
+method Gear heavier(Gear g) {
+    g.weight += 1;
+    return g;
+}
+
+pass Gear, heavier;
+
+end

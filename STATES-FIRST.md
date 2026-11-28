@@ -14,30 +14,7 @@ Built in alpha 95: see [LUST.md](LUST.md), section 11, Named values.
 
 ## 3. Records
 
-A plain group of values that can go anywhere, games included. An engine can carry it in a component's fields and in events, because it's made only of simple values.
-
-```
-record Loadout {
-    FighterClass role;
-    Gun primary;
-    Gun secondary;
-    int grenades = 2;
-}
-
-component Fighter {
-    has {
-        Loadout loadout;
-    }
-}
-
-Loadout kit = new Loadout { role = FighterClass.Scout, primary = Gun.M4a1, secondary = Gun.Glock };
-send MatchStarted(kit) to player;
-```
-
-- **Holds only simple values:** numbers, text, bools, states, vectors, rotations, colours, entities and other records. No methods, no classes and no arrays.
-- **Copied when given:** setting a variable or field, passing it, or sending it copies the record. Changing one copy never changes another. `==` compares every value.
-- **Starting values** work as in `has`. A value with no starting value must be given in `new`.
-- **Solis builds its half:** storing records in component fields, copying them, and carrying them in events. Lust's half is the language, both outputs and the engine API (ENGINES.md says exactly what an engine must do). Until an engine supports records, using one in a component is a plain mistake naming the engine.
+Built in alpha 96 (Lust's half): see [LUST.md](LUST.md), section 10, Records, and [ENGINES.md](ENGINES.md), alpha 96, for what Solis builds.
 
 ## 4. Events that count in a state
 
@@ -94,7 +71,7 @@ Not a language change. While `lust run` runs a program from Ledger, a **States**
 
 1. Data on states (built, alpha 94)
 2. Named values (built, alpha 95)
-3. Records (Lust's half, and a note for Solis)
+3. Records (Lust's half built, alpha 96; Solis's half in ENGINES.md)
 4. Events that count in a state
 5. Methods that exist in some states
 6. Allowed moves between options

@@ -272,3 +272,42 @@ gun.removed()?;                   // its entity is gone: its waiting work is can
 - A call or a `send` can name its values: `send Wants(jump = true, crouch = false, fire = true) to body;`, `this:moveTo(place = gate, speed = 4.0);` (LUST.md, section 11, Named values). This works for the engine's `entity` methods too, by the names in their `native` declarations.
 - **Lua, Luau and Rust:** the values are put in the method's or event's order before the code is written, so what an engine receives is exactly what the same call written in order gives: the same native calls, the same events through `LUST_HOST`, in the same order.
 - **The engine does:** nothing. The names in its own files' `native` declarations become names game code can write, so it's worth keeping them clear and stable.
+
+## alpha 96: records
+
+Game code can group simple values in a **record** (LUST.md, section 10), copied wherever it's given:
+
+```
+record Loadout {
+    FighterClass role;
+    Gun primary;
+    int grenades = 2;
+}
+
+component Fighter {
+    has {
+        Loadout loadout = new Loadout { role = FighterClass.Scout, primary = Gun.M4a1 };
+    }
+}
+
+-- in a method of Fighter:
+send MatchStarted(loadout) to player;
+```
+
+A record holds only bools, ints, floats, text, states' options, vec3s, vec2s, rotations, colours, entities and other records, so everything in it is a kind the engine already carries. Records that stay inside Lust (variables, classes, Lust's own events, JSON, saves) need nothing from the engine. Records in a **component's fields**, a **passed object's** kept fields, and **events the engine carries** need the engine to say it keeps them.
+
+- **Saying so:** `lust::Engine` has a new field, `records: bool`. With `false` (and in the calls without `_with`), a record in a component's field, or in an event a component handles or that's sent to an entity, is a mistake naming the engine by its first host folder: `Solis doesn't keep records in a component's fields yet, so loadout can't be a Loadout. Keep its values in fields of their own for now.` A passed object's record field is simply not kept (not in its schema or its saves). On the disk, a `lust.host` line `supports records` does the same for `lust check` and tests.
+- **Every `lust::Engine { … }` needs the field now** (or `..Default::default()`): write `records: false` until the engine does what's below, then `records: true`.
+- **Rust (`lust build --library`):** `Value` gains `Record(Data)`: a record's values by name, every one of them. `FieldKind` gains `Record(String, Vec<(String, FieldKind)>)`: the record's name (`"Loadout"`), and its values' names and kinds, in the order written (a record inside one is another `Record`). They're in every library, so a `match` on `Value` or `FieldKind` that lists every variant needs an arm for each, whatever `records` says.
+  - `schema()` gives the kind and the starting value (a `Value::Record`); `to_data()` gives each record field as a `Value::Record` of all its values; `events()` lists records in what an event carries.
+  - Coming in (`set_data`, `from_data`, `handle`), a `Value::Record` must have **every** value, each of its own kind (as for any field: an `Int` for an int, `Text` naming an option for a state, a `List` for a vector, colours kept between 0 and 1). If one is missing or of the wrong kind, the whole record is the wrong kind: `set_data` leaves the field as it was, and `handle` gives an error (`Equip's loadout should be a Loadout.`). Extra names are ignored.
+  - `send_event` gets a record as a `Value::Record`, made fresh for that send.
+- **Lua and Luau (`to_lua_with`):**
+  - **Schema:** a record's entry in a component's `__schema`, an object's, and an event's list is `{ key, name, "record", entries, recordName }`: its values' own entries (the same `{ key, name, kind, … }` shape, records inside it included) fourth, and its name fifth: `{ "loadout", "loadout", "record", { { "role", "role", "state", { "Scout", "Heavy" } }, { "primary", "primary", "state", { … } }, { "grenades", "grenades", "int" } }, "Loadout" }`.
+  - **A record's value** is a plain table of its values by key (the entry's first item, which is the name unless the name is one of Lua's own words, like `local`, which gets an `_`): `{ role = "Scout", primary = "M4a1", grenades = 2 }`. Each value is what it would be on its own in that place: a state's option as its full name, a vec3 as a Luau vector, a vec2 and a colour as tables, a rotation as `{ x, y, z, w }`, an entity as the engine's own value (nil for nothing), and a record inside as another such table.
+  - **Copies, never shared:** Lust hands the engine a fresh table every time (each `send_event`, each `save`), so the engine may keep or change it freely. What the engine hands Lust is copied as it arrives: `handle(event, values)` makes each record Lust's own (rounding numbers to f32 and checking states' names, as a native's answer is; a value missing, other than an entity, stops the call: `the Loadout from the engine has no role.`), and `load(name, values)` takes a record only when every value fits its kind, deep-copied, and otherwise leaves the field as it is. A component's field read straight from its table (`fighter.loadout`) is Lust's own table: the engine reads it, but never changes it in place. To set one straight, give a new table with every value, already in Lust's shapes above, and don't change that table afterwards (Lust doesn't check a table set this way).
+  - **New code (`swap`):** a record field is kept when the record has the same name and the same values, kinds and order (records inside too), as `changes` also compares them; otherwise it starts at its starting value, with a note: `Fighter's loadout holds different values now, so it starts at Loadout { role = Scout, … }.`
+- **The engine does:**
+  - adds `records: false` to every `lust::Engine { … }` it makes, and `Value::Record` and `FieldKind::Record` arms where it matches on them;
+  - then, to keep records: shows a record field in the inspector as a group of its values, each edited by its kind (the record's name as the group's title); keeps it in scene and save files as a nested map of its values by name, read back only when every value is there; copies a record field whenever it copies a component (duplicating an entity, making one from a prefab), so two components never share one table; carries `Value::Record` / record tables in its event queue as they are; and sets `records: true`.
+  - Nothing changes for games that don't use records, apart from the new field and the new arms.

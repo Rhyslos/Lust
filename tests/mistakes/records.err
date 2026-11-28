@@ -1,0 +1,40 @@
+records.lst:8:17  give kit a starting value: Loadout kit = new Loadout { … };
+records.lst:19:10  a record holds only simple values: numbers, text, bools, states' options, vectors, rotations, colours, entities and other records. hero is a Hero. A thing of a class is shared, not copied, so it can't be part of one.
+records.lst:20:15  a record holds only simple values: numbers, text, bools, states' options, vectors, rotations, colours, entities and other records. list is an int array. Keep a list in a class instead.
+records.lst:21:16  a record holds only simple values: numbers, text, bools, states' options, vectors, rotations, colours, entities and other records. onFire is a hook int. A hook is a method, and a record has none.
+records.lst:22:11  a record's whole numbers are ints, so write int small, not uint8 small.
+records.lst:23:5  a record has no state of its own, since it has no methods to change it. Hold an option as a value: Mood mood = Mood.Calm;
+records.lst:25:9  Bad already has a value called twice.
+records.lst:28:8  Again holds itself, through again, so it would never end. A record can't hold itself, even through other records.
+records.lst:32:8  Ping holds itself, through pong.ping, so it would never end. A record can't hold itself, even through other records.
+records.lst:44:8  there's already a class called Hero. Two things can't share a name.
+records.lst:49:64  Calm's rolled is a Rolled, whose roll starts as a value that's worked out, not written out. Give roll here too.
+records.lst:50:20  Battle's kit is a Loadout, whose grenades has to be written out, since an option's values are fixed: a number, text, a bool, an option of a state, a vector, a colour or a record.
+records.lst:57:17  the engine doesn't keep records in a component's fields yet, so kit can't be a Loadout. Keep its values in fields of their own for now.
+records.lst:61:14  the engine doesn't carry records in events yet, so Equipped can't carry kit, a Loadout. Send its values one by one for now.
+records.lst:65:16  a native method gives back an int, a float, text, a bool, a vec3, a vec2, a rotation, a colour, a state's option, a thing made from a class, or an array of those, but give gives back a Loadout.
+records.lst:71:19  Loadout has no starting value for primary, so it's given in every new: new Loadout { primary = … }
+records.lst:72:52  Loadout has no field called ammo.
+records.lst:73:16  none is a Loadout, but this is nothing. Only things made from classes, and hooks, can be nothing.
+records.lst:74:11  === asks whether two things are the very same one, but a record is only its values, copied wherever it goes. Compare its values with ==.
+records.lst:75:11  !== asks whether two things are the very same one, but a record is only its values, copied wherever it goes. Compare its values with !=.
+records.lst:76:8  make(…) gives a copy of a record, so changing its grenades would change nothing. Keep it in a variable first, and change that.
+records.lst:78:1  locked is locked, so it keeps the value it started with. To change it, leave out lock where it's declared.
+records.lst:79:5  pins is a locked field, so it keeps the value it started with. To change it, leave out lock in has { }.
+records.lst:82:5  k is the loop's current item, so it can't be changed here.
+records.lst:85:5  a hook can read the variables around it, but not change them. To change kit from a hook, keep it in an object's field.
+records.lst:87:1  kit is part of Pose's options, so it's fixed. To change it, change what's written in state Pose = [ … ];
+records.lst:89:1  kit is part of Pose's options, so it's fixed. To change it, change what's written in state Pose = [ … ];
+records.lst:90:7  kit is a record, which is copied wherever it goes, so a tween can't move grenades inside it. Keep grenades in a field of its own to tween it.
+records.lst:91:8  like asks what kind of thing something is, but this is a Loadout.
+records.lst:94:6  only things made from classes are kept. This is a Loadout, which is copied wherever it goes.
+records.lst:95:5  kit is a Loadout, which has no method called fire.
+records.lst:96:11  Loadout has no field called ammo.
+records.lst:97:16  kit.grenades is an int, but this is a string. Use .int() to turn text into a number.
+records.lst:98:11  == compares two things of the same type, but these are a Loadout and a Rolled.
+records.lst:99:12  :has works on arrays of numbers, text, bools, states, entities and things. For other arrays, use a loop.
+records.lst:100:6  kits is a Loadout array, which has no method called sortBy. Arrays have inject, remove, has, find, join, sort, reverse, shuffle, pick, sum, average, smallest and largest.
+records.lst:100:13  there's nothing called grenades here. Declare it first, like int grenades = 0;
+records.lst:101:1  this line doesn't do anything: it makes a Loadout and nothing keeps it. Put it in a variable: Loadout thing = new Loadout { … };
+
+38 mistakes. Nothing was run.

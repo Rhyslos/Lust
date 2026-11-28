@@ -169,3 +169,38 @@ screen drawing 2
           text picked 1
           piece Badge
             button badge of Archer 0
+without records: the engine doesn't keep records in a component's fields yet, so loadout can't be a Loadout. Keep its values in fields of their own for now.
+loadout is record
+  (a Loadout)
+  name is string
+  main is record
+    (a Kit)
+    gun is state
+    ammo is int
+    aim is vec3
+  buddy is entity
+shots is int
+loadout is record
+  (a Loadout)
+  name is string
+  main is record
+    (a Kit)
+    gun is state
+    ammo is int
+    aim is vec3
+  buddy is entity
+round is int
+kept Loadout { name = "rifleman", main = Kit { gun = M4a1, ammo = 30, aim = [0.0, 1.0, 0.0] }, buddy = nothing }
+calm Kit { gun = Glock, ammo = 5, aim = [0.0, 1.0, 0.0] }
+Equip carries rifleman with ammo 29
+after handling, the engine's copy is still rifleman
+heard Loadout { name = "changed", main = Kit { gun = M4a1, ammo = 29, aim = [0.0, 1.0, 0.0] }, buddy = nothing } false
+heard Loadout { name = "changed", main = Kit { gun = M4a1, ammo = 29, aim = [0.0, 1.0, 0.0] }, buddy = nothing } false
+heard Loadout { name = "changed", main = Kit { gun = Glock, ammo = 3, aim = [1.0, 0.0, 0.0] }, buddy = 0000000000009 } false
+loadout kept: rifleman, the engine's still medic
+short record: the Loadout from the engine has no main.
+saved spare: Glock 99, armory still 4
+loaded spare: ammo 99
+wrong spare left: Glock 99
+swap: kept, 0 notes
+after swap: ammo 30

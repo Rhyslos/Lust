@@ -1,0 +1,54 @@
+-- Records in Luau: in a component's fields (kept, saved, loaded and swapped by the engine), in
+-- events both ways, and as values on a state's options. The engine says it keeps records.
+method log(string words) native;
+
+state Gun = [M4a1, Glock];
+state Pose = [Calm { kit = new Kit { gun = Gun.Glock, ammo = 5 } }, Ready { kit = new Kit { gun = Gun.M4a1 } }];
+
+record Kit {
+    Gun gun;
+    int ammo = 30;
+    vec3 aim = [0, 1, 0];
+}
+
+record Loadout {
+    string name = "rifleman";
+    Kit main;
+    entity buddy = nothing;
+}
+
+event Equip(Loadout loadout, int round);
+
+component Fighter {
+    has {
+        Loadout loadout = new Loadout { main = new Kit { gun = Gun.M4a1 } };
+        int shots = 0;
+    }
+
+    method update(float dt) {
+        Loadout sent = loadout;
+        sent.main.ammo -= 1;
+        send Equip(sent, shots) to this;
+        log("kept " + loadout.text());
+        Pose p = Pose.Calm;
+        log("calm " + p.kit.text());
+    }
+
+    on {
+        Equip(Loadout got, int round) {
+            got.name = "changed";
+            loadout.main.ammo += round;
+            shots += 1;
+            log("heard " + got.text() + " " + (got == loadout).text());
+        }
+    }
+}
+
+object Armory {
+    has {
+        Kit spare = new Kit { gun = Gun.Glock, ammo = 4 };
+    }
+}
+
+pass Armory;
+end

@@ -1,0 +1,5 @@
+records-shape.lst:3:5  a record's values go straight inside its { }, without has: record Loadout { int grenades = 2; }
+records-shape.lst:6:5  a record only holds values, so it has no methods, on block or view. Make Loadout a class to give it those.
+records-shape.lst:9:5  a record only holds values, so it has no methods, on block or view. Make Loadout a class to give it those.
+
+3 mistakes. Nothing was run.

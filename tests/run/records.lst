@@ -1,0 +1,219 @@
+-- Records: plain groups of values, copied whenever they're given.
+state FighterClass = [Scout, Heavy];
+state Gun = [M4a1, Glock, Shotgun];
+
+record Loadout {
+    FighterClass role;
+    Gun primary;
+    Gun secondary;
+    int grenades = 2;
+}
+
+record Spot {
+    vec3 at = [1, 2, 3];
+    vec2 flat = [4, 5];
+    rotation turn = [0, 0, 90];
+    colour tint = blue5;
+    bool ok = true;
+    float size = 1.5;
+    string label = "camp \"one\"";
+}
+
+record Squad {
+    string name;
+    Loadout lead;
+    Spot spot = new Spot;
+}
+
+-- No values at all, and a value named like a word of Lua's.
+record Empty {
+}
+
+record Odd {
+    int until = 3;
+    string local = "here";
+    entity who = nothing;
+}
+
+-- A record on each option of a state.
+state Pose = [
+    Calm { kit = new Loadout { role = FighterClass.Scout, primary = Gun.Glock, secondary = Gun.Glock } },
+    Battle { kit = new Loadout { role = FighterClass.Heavy, primary = Gun.Shotgun, secondary = Gun.M4a1, grenades = 5 } },
+];
+
+event Equipped(Loadout kit, int round);
+
+class Hero {
+    has {
+        Loadout kit = new Loadout { role = FighterClass.Heavy, primary = Gun.Shotgun, secondary = Gun.Glock };
+        Pose pose = Pose.Calm;
+    }
+
+    method Loadout gear() {
+        return kit;
+    }
+
+    on {
+        Equipped(Loadout got, int round) {
+            got.grenades += round;
+            print("hero heard " + got.text());
+        }
+    }
+}
+
+object Quartermaster {
+    has {
+        Loadout last = new Loadout { role = FighterClass.Scout, primary = Gun.M4a1, secondary = Gun.M4a1 };
+    }
+
+    on {
+        Equipped(Loadout got, int round) {
+            last = got;
+            print("quartermaster heard " + got.text());
+        }
+    }
+}
+
+method Loadout better(Loadout l) {
+    l.grenades += 5;
+    return l;
+}
+
+method int count(Loadout kit, int extra) {
+    return kit.grenades + extra;
+}
+
+-- Making one, with its starting values.
+Loadout kit = new Loadout { role = FighterClass.Scout, primary = Gun.M4a1, secondary = Gun.Glock };
+print(kit);
+print("text: " + kit.text());
+print("in text: {kit}");
+print(new Spot);
+print(new Empty);
+print(new Odd);
+Odd odd = new Odd { until = 4 };
+odd.local = "there";
+print(odd.until, odd.local);
+
+-- Copied when given to a variable: changing one copy never changes another.
+Loadout other = kit;
+other.grenades = 3;
+print(kit.grenades, other.grenades);
+print(kit == other, kit != other);
+other.grenades = 2;
+print(kit == other, kit != other);
+
+-- Copied when passed, and when given back.
+Loadout b = better(kit);
+print(kit.grenades, b.grenades);
+print(count(extra = 1, kit = kit));
+
+-- In a class's field, changed through the path.
+Hero hero = new Hero;
+hero.kit.grenades -= 1;
+Loadout held = hero.kit;
+held.grenades = 50;
+print(hero.kit.grenades, held.grenades);
+Loadout given = hero:gear();
+given.primary = Gun.M4a1;
+print(hero.kit.primary, given.primary);
+
+-- Nested records.
+Squad squad = new Squad { name = "red", lead = kit };
+squad.lead.primary = Gun.Shotgun;
+squad.spot.at.x = 9;
+squad.spot.tint = orange5;
+print(squad);
+print(kit.primary, squad.lead.primary);
+Squad twin = squad;
+print(twin == squad);
+twin.spot.size = 2;
+print(twin == squad, twin.spot.size, squad.spot.size);
+
+-- In arrays and maps: storing, reading and looping each copy.
+Loadout array kits = [kit, kit];
+kits:inject(kit);
+kits[0].grenades = 9;
+kit.grenades = 7;
+print(kits);
+loop (Loadout k in kits) {
+    print(k.grenades);
+}
+Loadout first = kits[0];
+first.grenades = 1;
+print(kits[0].grenades, first.grenades);
+Loadout map byName = ["ada" kit];
+byName["bo"] = kit;
+byName["ada"].grenades = 4;
+kit.grenades = 6;
+loop (string name, Loadout k in byName) {
+    print(name, k.grenades);
+}
+
+-- A hook keeps the value as it was when it was made.
+hook int() seen = new hook {
+    return kit.grenades;
+};
+kit.grenades = 40;
+print(seen(), kit.grenades);
+
+-- either, and records on states' options.
+Loadout picked = either kit.grenades > 10? kit or b;
+picked.grenades = 0;
+print(kit.grenades, picked.grenades);
+Pose p = Pose.Battle;
+Loadout fromState = p.kit;
+fromState.grenades = 99;
+print(p.kit.grenades, Pose.Battle.kit.grenades, fromState.grenades);
+print(Pose.Calm.kit);
+loop (Pose q in Pose) {
+    print(q, q.kit.primary);
+}
+
+-- Events: each thing that hears one gets its own copy.
+send Equipped(kit, 1);
+send Equipped(round = 2, kit = kit) to hero;
+print(kit.grenades, Quartermaster.last.grenades);
+
+-- JSON, both ways.
+string j = Json:write(squad);
+print(j);
+Squad back = Json:read(j);
+print(back == squad);
+Loadout short = Json:read("{\"role\": \"Heavy\", \"primary\": \"Glock\", \"secondary\": \"Glock\"}");
+print(short);
+try {
+    Loadout missing = Json:read("{\"role\": \"Heavy\"}");
+    print(missing);
+} error (Problem problem, string message) {
+    print(problem, message);
+}
+try {
+    Loadout none = Json:read("null");
+    print(none);
+} error (Problem problem, string message) {
+    print(problem, message);
+}
+
+-- In a cMap's rows, and through an array's pick: copies too.
+cMap(int id, Loadout gear) bag = [[1, kit]];
+bag:inject([b]);
+bag[1].gear.grenades = 11;
+Loadout fromRow = bag[2].gear;
+loop (int id, Loadout g in bag) {
+    bag[2].gear.grenades = 12;
+    print(id, g.grenades);
+}
+print(fromRow.grenades, bag[1].gear.grenades);
+Loadout pickedOne = kits:pick();
+pickedOne.grenades = 100;
+print(kits[0].grenades, kits[1].grenades, kits[2].grenades);
+
+-- Saved and loaded.
+save recordsSave = [fromRow, kits];
+save recordsSave;
+fromRow.grenades = 0;
+kits[0].secondary = Gun.Shotgun;
+load recordsSave;
+print(fromRow.grenades, kits[0].secondary);
+end

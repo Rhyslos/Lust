@@ -43,13 +43,14 @@ Lust is written in Rust, and has one language with two outputs:
 | Rust, compiled to real programs | `.lst` | apps, tools and servers on Windows, macOS and Linux |
 | LustScript, turned into Lua | `.lsc` | scripting and modding inside other programs, like Garry's Mod, Aventail and Halberd |
 
-**What works today (alpha 95):** both outputs. Every file is checked before anything runs, with mistakes explained in plain words.
+**What works today (alpha 96):** both outputs. Every file is checked before anything runs, with mistakes explained in plain words.
 
 - `.lsc` files turn into plain Lua 5.1 that Garry's Mod (LuaJIT) and Luau can run.
 - `.lst` files turn into Rust, which builds into a real program (an `.exe` on Windows) that runs without Lust.
 - Programs can be split into many files that share with `pass`, `fetch` and `get`.
 - A standard library: text and array tools (sums, averages, picking and shuffling too), plus `Maths` (with smooth noise), `Random`, `Files`, `Time` and `Json`.
 - States whose options carry values: `state Pose = [Idle { speed = 0.0 }, Run { speed = 6.5 }];`, then `pose.speed` or `Pose.Run.speed`, with options inside options taking their outer option's values (LUST.md, section 8).
+- Records: `record Loadout { Gun primary; int grenades = 2; }` groups a few simple values that are copied wherever they go, so changing one copy never changes another, and an engine can keep them in components and events (LUST.md, section 10).
 - Tweens: `tween hp to 0 over 0.5 [ease OutCubic];` glides a number, vector, colour or rotation to a new value, with the standard easing curves.
 - Waiting: `wait 2;` pauses only the piece of work that waits, so windows never freeze, `start openGate();` runs a call alongside, `wait { is door.state == Door.Open? } or after 5 { … }` waits until things are true, with a time limit, and a `check` inside a `wait { }` waits until a state is one of its options, then runs that one's block. `start gate = openGate();` names the work, `cancel gate;` stops it, `gate.state` says how it's going (`Run.Waiting`, `Going`, `Done` or `Cancelled`), work started during a state is cancelled when the state ends, and a program whose runs could only wake each other stops with a message naming them. Asking a website (`Web:get`) and the computer's file boxes pause only their run too, and in a game, event handlers and started work wait across the engine's ticks, on the game's own time (LUST.md, section 11).
 - Saves, and databases on SQLite whose tables work like cMaps.

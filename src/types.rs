@@ -83,6 +83,9 @@ pub enum Ty {
     /// Something already reported as a mistake: stay quiet about it.
     Error,
     Class(usize),
+    /// A record (by its place among the classes): a plain group of simple values, copied
+    /// whenever it's given, and never nothing.
+    Record(usize),
     /// One option of a state.
     State(usize),
     /// The state itself, as a list of options: `GameState` in `loop (GameState s in GameState)`.
@@ -155,7 +158,7 @@ impl<'a> Names<'a> {
             Ty::Nothing => "nothing".into(),
             Ty::Void => "nothing at all".into(),
             Ty::Error => "?".into(),
-            Ty::Class(c) => self.classes[*c].clone(),
+            Ty::Class(c) | Ty::Record(c) => self.classes[*c].clone(),
             Ty::State(s) => format!("{} option", self.states[*s]),
             Ty::StateList(s) => format!("the state {}", self.states[*s]),
             Ty::Array(e) => format!("{} array", self.show(e)),

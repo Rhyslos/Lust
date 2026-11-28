@@ -1,0 +1,52 @@
+-- Records in an engine that keeps them: a component's field, an object's saved field, and
+-- events both ways, each a copy.
+method log(string words) native;
+
+state Gun = [M4a1, Glock];
+
+record Kit {
+    Gun gun;
+    int ammo = 30;
+    vec2 aim = [0, 1];
+    colour tint = red5;
+}
+
+record Loadout {
+    string name = "rifleman";
+    Kit main;
+    entity buddy = nothing;
+}
+
+event Equip(Loadout loadout, int round);
+
+object Armory {
+    has {
+        Kit spare = new Kit { gun = Gun.Glock, ammo = 4 };
+    }
+}
+
+component Fighter {
+    has {
+        Loadout loadout = new Loadout { main = new Kit { gun = Gun.M4a1 } };
+        int shots = 0;
+    }
+
+    method update(float dt) {
+        Loadout sent = loadout;
+        sent.main.ammo -= 1;
+        send Equip(sent, shots) to this;
+        log("kept " + loadout.text());
+    }
+
+    on {
+        Equip(Loadout got, int round) {
+            got.name = "changed";
+            loadout.main.ammo += round;
+            shots += 1;
+            log("heard " + got.text() + " " + (got == loadout).text());
+        }
+    }
+}
+
+pass Armory;
+end

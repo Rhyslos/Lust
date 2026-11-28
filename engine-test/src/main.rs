@@ -163,6 +163,7 @@ fn main() {
     // 4. The engine's own folder gives entity abilities, called bare inside components.
     let engine = lust::Engine {
         folders: vec!["solis".into()],
+        records: false,
     };
     let hop = lust::to_lua_with(&engine, "main.lst", &files("abilities")).unwrap();
     for n in &hop.notes {
@@ -475,7 +476,9 @@ fn main() {
     let tick: Function = api6.get("tick").unwrap();
     let tick_tweens: Function = api6.get("tickTweens").unwrap();
     let removed: Function = api6.get("removed").unwrap();
-    let dts = [0.125, 0.125, 0.125, 0.125, 0.0, 0.0, 0.125, 0.0625, 0.0625, 0.125, 0.125, 0.5, 0.5, 0.5, 0.5];
+    let dts = [
+        0.125, 0.125, 0.125, 0.125, 0.0, 0.0, 0.125, 0.0625, 0.0625, 0.125, 0.125, 0.5, 0.5, 0.5, 0.5,
+    ];
     let mut guarding = true;
     let call_update = |c: &Table, dt: f64| c.get::<Function>("update").unwrap().call::<()>((c.clone(), dt)).unwrap();
     for (k, dt) in dts.iter().enumerate() {
@@ -491,7 +494,10 @@ fn main() {
                 let values = lua.create_table().unwrap();
                 values.set(1, 3).unwrap();
                 values.set("n", 1).unwrap();
-                c.get::<Function>("handle").unwrap().call::<bool>((c.clone(), "Knock", values)).unwrap();
+                c.get::<Function>("handle")
+                    .unwrap()
+                    .call::<bool>((c.clone(), "Knock", values))
+                    .unwrap();
             }
         }
         if k == 3 {
@@ -503,7 +509,13 @@ fn main() {
             let lever: Table = api6.get::<Table>("objects").unwrap().get("Lever").unwrap();
             lever.set("pulled", true).unwrap();
         }
-        out.push_str(&log.borrow_mut().split_off(0).lines().map(|l| format!("  {l}\n")).collect::<String>());
+        out.push_str(
+            &log.borrow_mut()
+                .split_off(0)
+                .lines()
+                .map(|l| format!("  {l}\n"))
+                .collect::<String>(),
+        );
     }
     writeln!(out, "gate opened Int({})", gate.get::<i64>("opened").unwrap()).unwrap();
     let sleepy: Table = new.call(("Sleepy", "0000000000003")).unwrap();
@@ -567,6 +579,147 @@ fn main() {
             Err(err) => writeln!(out, "screen failed: {}", sc.locate(&err.to_string())).unwrap(),
         }
     }
+
+    // 11. Records, in an engine that keeps them: a component's record field in its schema, saved
+    // and loaded back (a copy each way), carried in events both ways, and kept by a swap.
+    let without = lust::to_lua("main.lst", &files("records")).unwrap_err();
+    writeln!(out, "without records: {}", without[0].message).unwrap();
+    let keeps = lust::Engine {
+        folders: vec![],
+        records: true,
+    };
+    let rec = lust::to_lua_with(&keeps, "main.lst", &files("records")).unwrap();
+    let api5 = load(&lua, &rec);
+    let fighter_class: Table = api5.get::<Table>("components").unwrap().get("Fighter").unwrap();
+    fn entry(f: &Table, depth: usize, out: &mut String) {
+        let kind: String = f.get(3).unwrap();
+        writeln!(out, "{}{} is {kind}", "  ".repeat(depth), f.get::<String>(2).unwrap()).unwrap();
+        if kind == "record" {
+            writeln!(out, "{}  (a {})", "  ".repeat(depth), f.get::<String>(5).unwrap()).unwrap();
+            for x in f.get::<Table>(4).unwrap().sequence_values::<Table>() {
+                entry(&x.unwrap(), depth + 1, out);
+            }
+        }
+    }
+    for f in fighter_class.get::<Table>("__schema").unwrap().sequence_values::<Table>() {
+        entry(&f.unwrap(), 0, &mut out);
+    }
+    let equip: Table = api5.get::<Table>("events").unwrap().get("Equip").unwrap();
+    for f in equip.sequence_values::<Table>() {
+        entry(&f.unwrap(), 0, &mut out);
+    }
+    let fighter: Table = api5.get::<Function>("new").unwrap().call(("Fighter", "0000000000007")).unwrap();
+    let update: Function = fighter.get("update").unwrap();
+    update.call::<()>((fighter.clone(), 0.5)).unwrap();
+    out.push_str(&log.borrow_mut().split_off(0));
+    // The engine delivers what was sent: the same table, which Lust copies as it arrives.
+    let handle: Function = fighter.get("handle").unwrap();
+    let mut i = 1;
+    while let Ok(Value::Table(e)) = queue.get::<Value>(i) {
+        let values: Table = e.get("values").unwrap();
+        let sent: Table = values.get(1).unwrap();
+        let main: Table = sent.get("main").unwrap();
+        writeln!(
+            out,
+            "{} carries {} with ammo {}",
+            e.get::<String>("name").unwrap(),
+            sent.get::<String>("name").unwrap(),
+            main.get::<i64>("ammo").unwrap()
+        )
+        .unwrap();
+        handle
+            .call::<bool>((fighter.clone(), e.get::<String>("name").unwrap(), values.clone()))
+            .unwrap();
+        handle
+            .call::<bool>((fighter.clone(), e.get::<String>("name").unwrap(), values))
+            .unwrap();
+        writeln!(
+            out,
+            "after handling, the engine's copy is still {}",
+            sent.get::<String>("name").unwrap()
+        )
+        .unwrap();
+        queue.set(i, Value::Nil).unwrap();
+        i += 1;
+    }
+    out.push_str(&log.borrow_mut().split_off(0));
+    // An event from the engine: a table it made, made Lust's own as it arrives.
+    let loadout: Table = fighter.get("loadout").unwrap();
+    let given: Table = lua
+        .load("return { name = \"medic\", main = { gun = \"Glock\", ammo = 3, aim = vector.create(1, 0, 0) }, buddy = \"0000000000009\" }")
+        .eval()
+        .unwrap();
+    let event_values = lua.create_table().unwrap();
+    event_values.set(1, given.clone()).unwrap();
+    event_values.set(2, 0).unwrap();
+    event_values.set("n", 2).unwrap();
+    handle.call::<bool>((fighter.clone(), "Equip", event_values)).unwrap();
+    out.push_str(&log.borrow_mut().split_off(0));
+    writeln!(
+        out,
+        "loadout kept: {}, the engine's still {}",
+        loadout.get::<String>("name").unwrap(),
+        given.get::<String>("name").unwrap()
+    )
+    .unwrap();
+    // One with a value missing is refused, as Rust's handle refuses it.
+    given.set("main", Value::Nil).unwrap();
+    let short = lua.create_table().unwrap();
+    short.set(1, given).unwrap();
+    short.set(2, 0).unwrap();
+    short.set("n", 2).unwrap();
+    match handle.call::<bool>((fighter.clone(), "Equip", short)) {
+        Ok(_) => writeln!(out, "short record taken?").unwrap(),
+        Err(e) => writeln!(out, "short record: {}", rec.locate(&e.to_string()).message).unwrap(),
+    }
+    // An object's record, saved by the engine: a copy, so changing the save changes nothing.
+    // Loading gives a copy back, and one of the wrong shape is left as it is.
+    let save5: Function = api5.get("save").unwrap();
+    let load5: Function = api5.get("load").unwrap();
+    let armory: Table = api5.get::<Table>("objects").unwrap().get("Armory").unwrap();
+    let saved: Table = save5.call("Armory").unwrap();
+    let spare: Table = saved.get("spare").unwrap();
+    spare.set("ammo", 99).unwrap();
+    let own: Table = armory.get("spare").unwrap();
+    writeln!(
+        out,
+        "saved spare: {} {}, armory still {}",
+        spare.get::<String>("gun").unwrap(),
+        spare.get::<i64>("ammo").unwrap(),
+        own.get::<i64>("ammo").unwrap()
+    )
+    .unwrap();
+    load5.call::<()>(("Armory", saved.clone())).unwrap();
+    spare.set("ammo", 12).unwrap();
+    let own: Table = armory.get("spare").unwrap();
+    writeln!(out, "loaded spare: ammo {}", own.get::<i64>("ammo").unwrap()).unwrap();
+    let wrong: Table = lua
+        .load("return { spare = { gun = \"Bazooka\", ammo = 1, aim = vector.create(0, 0, 0) } }")
+        .eval()
+        .unwrap();
+    load5.call::<()>(("Armory", wrong)).unwrap();
+    let own: Table = armory.get("spare").unwrap();
+    writeln!(
+        out,
+        "wrong spare left: {} {}",
+        own.get::<String>("gun").unwrap(),
+        own.get::<i64>("ammo").unwrap()
+    )
+    .unwrap();
+    // Swapped to the same code, the record is kept.
+    let rec2 = lust::to_lua_with(&keeps, "main.lst", &files("records")).unwrap();
+    let api6 = load(&lua, &rec2);
+    let (now, notes): (Value, Table) = api6.get::<Function>("swap").unwrap().call(fighter.clone()).unwrap();
+    writeln!(
+        out,
+        "swap: {}, {} notes",
+        if now.is_nil() { "gone" } else { "kept" },
+        notes.raw_len()
+    )
+    .unwrap();
+    let kept: Table = fighter.get("loadout").unwrap();
+    let main: Table = kept.get("main").unwrap();
+    writeln!(out, "after swap: ammo {}", main.get::<i64>("ammo").unwrap()).unwrap();
 
     let expected_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("expected.out");
     if std::env::args().any(|a| a == "--print") {
