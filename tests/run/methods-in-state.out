@@ -1,0 +1,25 @@
+wrong state: fire is only for Battle, but this Hero is Calm.
+5 calm
+Ann fires: 2 left
+10 fierce (Battle.Melee)
+Ann aims, then fires from afar
+2 fierce (Battle.Ranged)
+fire is only for Battle, but this Hero is Dead. gone
+Bo fires a ghostly shot
+gone 2
+wrong state: fire is only for Dead, but this Ghost is Battle.Melee.
+Cy fires a ghostly shot
+Dee fires in any state (Calm)
+runner sprints
+wrong state: step is only for Battle, but this Runner is Calm.
+walker steps
+gate: creak
+gate: already open
+gate: already open
+wrong state: alarm is only for Battle, but Camp is Calm.
+camp: alarm!
+Ann charges, step 1
+started
+Ann charges, step 1
+Ann charges, step 2
+WrongState

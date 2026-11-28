@@ -22,11 +22,7 @@ Built in alpha 97: see [LUST.md](LUST.md), section 11, Events in some options: i
 
 ## 5. Methods that exist in some states
 
-The same idea for methods: `method fire() in Battle { … }`.
-
-- **A method can have several bodies,** each `in` different options, all with the same values and result. A body without `in` covers the rest.
-- **Calling a method while no body covers the thing's current option** is an error with a new kind of problem, `Problem.WrongState`: "fire is only for Battle, but hero is Calm."
-- Only for things with a state of their own.
+Built in alpha 98: see [LUST.md](LUST.md), section 11, Methods in some options: in.
 
 ## 6. Allowed moves between options
 
@@ -56,7 +52,7 @@ Not a language change. While `lust run` runs a program from Ledger, a **States**
 2. Named values (built, alpha 95)
 3. Records (Lust's half built, alpha 96; Solis's half in ENGINES.md)
 4. Events that count in a state (built, alpha 97)
-5. Methods that exist in some states
+5. Methods that exist in some states (built, alpha 98)
 6. Allowed moves between options
 7. Starting in a state
 8. Ledger's States panel

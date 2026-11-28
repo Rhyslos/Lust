@@ -1,0 +1,14 @@
+methods-in-state.lst:12:27  there's already a body of fire in Battle.
+methods-in-state.lst:15:12  every body of fire takes the same values, with the same names, and gives back the same: method fire(int n). This one is fire(int shots) in Calm.
+methods-in-state.lst:18:16  every body of fire takes the same values, with the same names, and gives back the same: method fire(int n). This one is int fire(int n) in Battle.Melee.
+methods-in-state.lst:25:22  Phase has no option called Batle. Did you mean Battle?
+methods-in-state.lst:28:12  there's already a body of tick without in. One covers every option the others don't, so there's only one.
+methods-in-state.lst:31:16  count's body must return an int on every path, but it can reach its end without one.
+methods-in-state.lst:40:22  Plain has no state of its own, so fire can't be in Calm. Give it one in its has block (state = …;), or take out in Calm.
+methods-in-state.lst:49:22  a body is for an option of Watcher's own Phase, so write the option on its own: in Battle
+methods-in-state.lst:52:22  Phase has no option called Battle.Far.
+methods-in-state.lst:61:22  in names the option this body is for: method look() in Battle { … }
+methods-in-state.lst:65:19  alone isn't in a class or an object, so there's no state for it to be in Calm. Only a thing's own methods can be in its options: take out in Calm.
+methods-in-state.lst:69:12  fire replaces Hero's fire, so it must take the same types and give back the same type.
+
+12 mistakes. Nothing was run.

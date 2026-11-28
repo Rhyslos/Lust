@@ -591,7 +591,16 @@ impl<'a> Parser<'a> {
             }
             "method" => {
                 *seen_other = true;
-                let m = self.method_decl()?;
+                let (m, when) = self.method_decl()?;
+                if let Some((o, p)) = when {
+                    self.diags.add(
+                        p,
+                        format!(
+                            "{} isn't in a class or an object, so there's no state for it to be in {o}. Only a thing's own methods can be in its options: take out in {o}.",
+                            m.name
+                        ),
+                    );
+                }
                 items.push(Item::Method(m));
                 return Ok(());
             }
@@ -779,6 +788,7 @@ impl<'a> Parser<'a> {
         let open = self.expect_sym("{", &format!("expected {{ to start the {what}'s body."))?;
         let mut fields = Vec::new();
         let mut methods = Vec::new();
+        let mut written = Vec::new();
         let mut seen_has = false;
         let mut seen_on = false;
         loop {
@@ -793,7 +803,7 @@ impl<'a> Parser<'a> {
                 let h = self.next();
                 if seen_has {
                     self.diags.add(h.pos, "a class has one has block. Put all its fields in it.");
-                } else if !methods.is_empty() {
+                } else if !methods.is_empty() || !written.is_empty() {
                     self.diags.add(h.pos, "the has block goes first, above the methods.");
                 }
                 seen_has = true;
@@ -802,7 +812,7 @@ impl<'a> Parser<'a> {
                 }
             } else if self.at_word("method") {
                 match self.method_decl() {
-                    Ok(m) => methods.push(m),
+                    Ok(m) => written.push(m),
                     Err(_) => self.recover(),
                 }
             } else if self.at_word("on") && self.peek(1).is_sym("{") {
@@ -818,6 +828,7 @@ impl<'a> Parser<'a> {
                 self.recover();
             }
         }
+        self.bodies(written, &mut methods);
         Ok(ClassDecl {
             name,
             pos,
@@ -1011,6 +1022,7 @@ impl<'a> Parser<'a> {
         let mut recipes = Vec::new();
         let mut fields = Vec::new();
         let mut methods = Vec::new();
+        let mut written = Vec::new();
         let mut view: Option<ViewDecl> = None;
         let mut seen_on = false;
         loop {
@@ -1030,7 +1042,7 @@ impl<'a> Parser<'a> {
             }
             if self.at_word("method") {
                 match self.method_decl() {
-                    Ok(m) => methods.push(m),
+                    Ok(m) => written.push(m),
                     Err(_) => self.recover(),
                 }
                 continue;
@@ -1118,6 +1130,7 @@ impl<'a> Parser<'a> {
             );
             recipes.push((class, cpos, made));
         }
+        self.bodies(written, &mut methods);
         if fields.is_empty() && methods.is_empty() && view.is_none() {
             return Ok(Item::Assembly(AssemblyDecl { name, pos, recipes }));
         }
@@ -1706,7 +1719,8 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    fn method_decl(&mut self) -> R<MethodDecl> {
+    /// method fire() { … }, and the option it's for when it says: method fire() in Battle { … }.
+    fn method_decl(&mut self) -> R<(MethodDecl, Option<(String, Pos)>)> {
         self.next(); // method
         let mut ret = None;
         // method entity:position() native; gives back nothing.
@@ -1755,21 +1769,33 @@ impl<'a> Parser<'a> {
             }
         }
         self.next();
+        let when = self.in_option(&format!("in names the option this body is for: method {name}() in Battle {{ … }}"))?;
+        if let (Some((o, _)), true) = (&when, self.at_word("native")) {
+            let p = self.cur().pos;
+            return self.fail(
+                p,
+                format!("a native method's body is outside Lust, so it can't be in {o}. Take out in {o}."),
+            );
+        }
         if self.at_word("native") {
             self.next();
             self.semi()?;
-            return Ok(MethodDecl {
-                name,
-                pos,
-                ret,
-                params,
-                body: vec![],
-                native: true,
-                on: None,
-                on_entity,
-                entry: None,
-                picks: vec![],
-            });
+            return Ok((
+                MethodDecl {
+                    name,
+                    pos,
+                    ret,
+                    params,
+                    body: vec![],
+                    native: true,
+                    on: None,
+                    on_entity,
+                    entry: None,
+                    picks: vec![],
+                    body_of: None,
+                },
+                None,
+            ));
         }
         if on_entity {
             let p = self.cur().pos;
@@ -1781,18 +1807,104 @@ impl<'a> Parser<'a> {
             );
         }
         let body = self.block("the method")?;
-        Ok(MethodDecl {
-            name,
-            pos,
-            ret,
-            params,
-            body,
-            native: false,
-            on: None,
-            on_entity: false,
-            entry: None,
-            picks: vec![],
-        })
+        Ok((
+            MethodDecl {
+                name,
+                pos,
+                ret,
+                params,
+                body,
+                native: false,
+                on: None,
+                on_entity: false,
+                entry: None,
+                picks: vec![],
+                body_of: None,
+            },
+            when,
+        ))
+    }
+
+    /// A method with bodies in some options (method fire() in Battle { … }) becomes a method that
+    /// chooses between them, and each body a method of its own. Methods without `in` stay as
+    /// they are, so two of one name are still caught as such.
+    fn bodies(&mut self, written: Vec<(MethodDecl, Option<(String, Pos)>)>, methods: &mut Vec<MethodDecl>) {
+        let mut done: Vec<String> = Vec::new();
+        for i in 0..written.len() {
+            let name = written[i].0.name.clone();
+            if done.contains(&name) {
+                continue;
+            }
+            done.push(name.clone());
+            let group: Vec<&(MethodDecl, Option<(String, Pos)>)> = written[i..].iter().filter(|(m, _)| m.name == name).collect();
+            if group.iter().all(|(_, w)| w.is_none()) {
+                methods.extend(group.iter().map(|(m, _)| m.clone()));
+                continue;
+            }
+            let first = &group[0].0;
+            let shape = |m: &MethodDecl| -> String {
+                let ps: Vec<String> = m.params.iter().map(|p| format!("{} {}", p.ty, p.name)).collect();
+                match &m.ret {
+                    Some(r) => format!("{r} {name}({})", ps.join(", ")),
+                    None => format!("{name}({})", ps.join(", ")),
+                }
+            };
+            let want = shape(first);
+            let mut picks: Vec<(Option<(String, Pos)>, usize)> = Vec::new();
+            let mut bodies = Vec::new();
+            for (k, (m, w)) in group.iter().enumerate() {
+                let k = k + 1;
+                let written = match w {
+                    Some((o, _)) => format!("{} in {o}", shape(m)),
+                    None => format!("{} without in", shape(m)),
+                };
+                if shape(m) != want {
+                    self.diags.add(
+                        m.pos,
+                        format!(
+                            "every body of {name} takes the same values, with the same names, and gives back the same: method {want}. This one is {written}."
+                        ),
+                    );
+                }
+                if m.native {
+                    self.diags.add(
+                        m.pos,
+                        format!("{name} has bodies in options, so it can't be native too. Give it bodies in Lust, or take out every in."),
+                    );
+                }
+                let again = picks.iter().any(|(x, _)| x.as_ref().map(|x| &x.0) == w.as_ref().map(|w| &w.0));
+                if again {
+                    let pos = w.as_ref().map(|w| w.1).unwrap_or(m.pos);
+                    match w {
+                        Some((o, _)) => self.diags.add(pos, format!("there's already a body of {name} in {o}.")),
+                        None => self.diags.add(
+                            pos,
+                            format!("there's already a body of {name} without in. One covers every option the others don't, so there's only one."),
+                        ),
+                    }
+                    continue;
+                }
+                picks.push((w.clone(), k));
+                let mut b = m.clone();
+                b.body_of = Some((name.clone(), k));
+                b.name = crate::ast::body_name(&name, k);
+                bodies.push(b);
+            }
+            methods.push(MethodDecl {
+                name: name.clone(),
+                pos: first.pos,
+                ret: first.ret.clone(),
+                params: first.params.clone(),
+                body: vec![],
+                native: false,
+                on: None,
+                on_entity: false,
+                entry: None,
+                picks,
+                body_of: None,
+            });
+            methods.extend(bodies);
+        }
     }
 
     /// The ( type name, … ) of a method, a handler or an event.
@@ -1933,6 +2045,7 @@ impl<'a> Parser<'a> {
                 on_entity: false,
                 entry: None,
                 picks,
+                body_of: None,
             });
             methods.extend(entries);
         }
@@ -1956,6 +2069,27 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// `in Battle.Melee` after a handler's or a method's values: the option it's for, if it says.
+    fn in_option(&mut self, missing: &str) -> R<Option<(String, Pos)>> {
+        if !self.at_word("in") {
+            return Ok(None);
+        }
+        self.next();
+        let t = self.cur().clone();
+        let Tk::Ident(w) = &t.kind else {
+            return self.fail(t.pos, missing.to_string());
+        };
+        self.next();
+        let mut path = w.clone();
+        while self.at_sym(".") {
+            self.next();
+            let (n, _) = self.ident("an option's name after .")?;
+            path.push('.');
+            path.push_str(&n);
+        }
+        Ok(Some((path, t.pos)))
+    }
+
     /// Hit(entity by, float damage) { … }: one handler in an on block, and the option it's for
     /// when it says: Hit(entity by, float damage) in Battle.Melee { … }.
     fn handler_decl(&mut self) -> R<(MethodDecl, Option<(String, Pos)>)> {
@@ -1965,27 +2099,7 @@ impl<'a> Parser<'a> {
             &format!("a handler takes what the event carries in ( ): {event}(entity by) {{ … }}"),
         )?;
         let params = self.param_list()?;
-        let when = if self.at_word("in") {
-            self.next();
-            let t = self.cur().clone();
-            let Tk::Ident(w) = &t.kind else {
-                return self.fail(
-                    t.pos,
-                    format!("in names the option this entry is for: {event}(…) in Battle {{ … }}"),
-                );
-            };
-            self.next();
-            let mut path = w.clone();
-            while self.at_sym(".") {
-                self.next();
-                let (n, _) = self.ident("an option's name after .")?;
-                path.push('.');
-                path.push_str(&n);
-            }
-            Some((path, t.pos))
-        } else {
-            None
-        };
+        let when = self.in_option(&format!("in names the option this entry is for: {event}(…) in Battle {{ … }}"))?;
         let body = self.block("the handler")?;
         Ok((
             MethodDecl {
@@ -1999,6 +2113,7 @@ impl<'a> Parser<'a> {
                 on_entity: false,
                 entry: None,
                 picks: vec![],
+                body_of: None,
             },
             when,
         ))

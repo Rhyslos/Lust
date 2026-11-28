@@ -1,5 +1,5 @@
 -- Events in options: a component's entries for Hit, chosen by its state when the engine hands
--- the event over. tests/events/game.lst has the same shield, built as a Rust library.
+-- the event over. Methods in options: update and mend, chosen by its state when called. tests/events/game.lst has the same shield, built as a Rust library.
 method log(string words) native;
 
 event Hit(float damage);
@@ -28,6 +28,20 @@ component Shield {
             log("cracked, so it breaks");
             state = Guard.Broken;
         }
+    }
+
+    -- Methods in options: update has a body for Down and one for the rest; mend only for Broken.
+    method update(float dt) in Down {
+        log("down, hp {hp}");
+    }
+
+    method update(float dt) {
+    }
+
+    method mend() in Broken {
+        hp = 4;
+        state = Guard.Up;
+        log("mended");
     }
 }
 

@@ -298,7 +298,40 @@ pub fn write(prog: &Program, info: &Info, files: &[String], library: bool) -> St
                 let shown = format!("{}:{}", crate::ast::shown(&c.name), m.name);
                 b.push_str(&w.native_body(&name, &shown, &args, &sig.ret));
             }
-            if !m.picks.is_empty() {
+            let chooses = m.on.is_none() && !m.picks.is_empty();
+            if chooses {
+                // Bodies in options: the one for the option it's in now, chosen by one match, or
+                // Problem.WrongState when none covers it.
+                let mut by_body: Vec<(usize, Vec<String>)> = Vec::new();
+                for (o, k) in info.picks(ci, &m.picks) {
+                    match by_body.iter_mut().find(|(x, _)| *x == k) {
+                        Some((_, os)) => os.push(format!("{o:?}")),
+                        None => by_body.push((k, vec![format!("{o:?}")])),
+                    }
+                }
+                let mut args = vec!["this".to_string()];
+                args.extend(m.params.iter().map(|p| format!("v_{}", p.name)));
+                let sf = w.field_of(ci, "state");
+                b.push_str(&format!("    let s = this.borrow().{sf};\n    match s {{\n"));
+                for (k, os) in by_body {
+                    b.push_str(&format!(
+                        "        {} => m{ci}_{}({}),\n",
+                        os.join(" | "),
+                        ident(&crate::ast::body_name(&m.name, k)),
+                        args.join(", ")
+                    ));
+                }
+                let who = if c.is_object {
+                    format!("{:?}.to_string()", crate::ast::shown(&c.name))
+                } else {
+                    format!("format!(\"this {{}}\", show{root}(&Some(this.clone())))")
+                };
+                let says = format!("{} is only for {}, but {{}} is {{}}.", m.name, crate::ast::only_for(&m.picks));
+                b.push_str(&format!(
+                    "        _ => rt::fail_as(\"WrongState\", format!({says:?}, {who}, s)),\n    }}\n"
+                ));
+            }
+            if !m.picks.is_empty() && !chooses {
                 // Entries in options: the one for the option it's in now, chosen by one match.
                 let ev = m.on.as_ref().map(|e| e.0.clone()).unwrap_or_default();
                 let mut by_entry: Vec<(usize, Vec<String>)> = Vec::new();
@@ -332,7 +365,7 @@ pub fn write(prog: &Program, info: &Info, files: &[String], library: bool) -> St
                 );
             }
             w.stmts(&m.body, &mut b, 1);
-            if sig.ret != Ty::Void && !m.native {
+            if sig.ret != Ty::Void && !m.native && !chooses {
                 b.push_str("    rt::unreachable()\n");
             }
             let mut all = vec![format!("this: &Rc<RefCell<O{root}>>")];

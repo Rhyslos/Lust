@@ -88,6 +88,14 @@ component Shield {
             state = Guard.Broken;
         }
     }
+
+    -- Methods in options: update chooses a body by the shield's state each tick.
+    method update(float dt) in Broken {
+        log("Shield: broken, can't block");
+    }
+
+    method update(float dt) {
+    }
 }
 
 component Gun {

@@ -29,15 +29,17 @@ score 10
 shield is Text("Broken")
 0000000000001 Gun: pushed [1.0, 2.0, 0.5] turned [3.422854e-08, 0.9999999, 0.0]
 Ok(true)
-Err(LustError { file: "game.lst", line: Some(113), column: Some(9), message: "Pushed carries 2 values, but 1 came.", problem: "Other" })
-Err(LustError { file: "game.lst", line: Some(113), column: Some(9), message: "Pushed's push should be three numbers.", problem: "Other" })
+Err(LustError { file: "game.lst", line: Some(121), column: Some(9), message: "Pushed carries 2 values, but 1 came.", problem: "Other" })
+Err(LustError { file: "game.lst", line: Some(121), column: Some(9), message: "Pushed's push should be three numbers.", problem: "Other" })
 Ok(false)
 Err(LustError { file: "game.lst", line: Some(32), column: Some(9), message: "Hit's kind should be Fire or Ice.", problem: "Other" })
 {"hp": Float(-2.0)}
 Ok(true) {"hp": Float(-2.0), "state": Text("Broken")}
+Shield: broken, can't block
+Ok(())
 Shield: cracked, so it breaks
 Ok(true) {"hp": Float(-2.0), "state": Text("Broken")}
 Ok(3)
-game.lst:108  dividing a whole number by zero doesn't work.
-"game.lst" Some(108) Some(13)
+game.lst:116  dividing a whole number by zero doesn't work.
+"game.lst" Some(116) Some(13)
 Lust 2.0.0

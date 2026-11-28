@@ -1148,7 +1148,7 @@ impl<'a> W<'a> {
                 let call = host_in(self.info, &ret, format!("_L.native({})", args.join(", ")));
                 self.line(m.pos.line, &format!("return {call}"));
             }
-            if !m.picks.is_empty() {
+            if !m.picks.is_empty() && m.on.is_some() {
                 // Entries in options: the one for the option it's in now, from a table made once.
                 let mut call = vec!["self".to_string()];
                 call.extend(params.iter().cloned());
@@ -1161,18 +1161,49 @@ impl<'a> W<'a> {
                         call.join(", ")
                     ),
                 );
+            } else if !m.picks.is_empty() {
+                // Bodies in options: the one for the option it's in now, from a table made once,
+                // or Problem.WrongState when none covers it.
+                let mut call = vec!["self".to_string()];
+                call.extend(params.iter().cloned());
+                let who = if c.is_object {
+                    lua_string(crate::ast::shown(&c.name))
+                } else {
+                    "\"this \" .. getmetatable(self).__name".to_string()
+                };
+                self.line(
+                    m.pos.line,
+                    &format!(
+                        "local f = {table}.__pick_{}[self.{}] if f then return f({}) end",
+                        lname(&m.name),
+                        lname("state"),
+                        call.join(", ")
+                    ),
+                );
+                self.line(
+                    m.pos.line,
+                    &format!(
+                        "_L.wrongstate({}, {}, {who}, self.{})",
+                        lua_string(&m.name),
+                        lua_string(&crate::ast::only_for(&m.picks)),
+                        lname("state")
+                    ),
+                );
             }
             self.stmts(&m.body);
             self.indent -= 1;
             self.line(m.pos.line, "end");
         }
         for m in c.methods.iter().filter(|m| !m.picks.is_empty()) {
-            let ev = m.on.as_ref().map(|e| e.0.clone()).unwrap_or_default();
+            let piece = |k: usize| match &m.on {
+                Some((ev, _)) => crate::ast::entry_name(ev, k),
+                None => crate::ast::body_name(&m.name, k),
+            };
             let rows: Vec<String> = self
                 .info
                 .picks(ci, &m.picks)
                 .iter()
-                .map(|(o, k)| format!("[{}] = {table}.{}", lua_string(o), lname(&crate::ast::entry_name(&ev, *k))))
+                .map(|(o, k)| format!("[{}] = {table}.{}", lua_string(o), lname(&piece(*k))))
                 .collect();
             self.line(
                 m.pos.line,

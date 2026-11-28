@@ -1,0 +1,72 @@
+-- Methods with bodies in options: the mistakes.
+state Phase = [Calm, Battle [Melee, Ranged]];
+
+class Hero {
+    has {
+        state = Phase.Calm;
+    }
+
+    method fire(int n) in Battle {
+    }
+
+    method fire(int n) in Battle {
+    }
+
+    method fire(int shots) in Calm {
+    }
+
+    method int fire(int n) in Battle.Melee {
+        return n;
+    }
+
+    method tick() {
+    }
+
+    method tick() in Batle {
+    }
+
+    method tick() {
+    }
+
+    method int count() in Calm {
+    }
+
+    method int count() {
+        return 1;
+    }
+}
+
+class Plain {
+    method fire() in Calm {
+    }
+}
+
+object Watcher {
+    has {
+        state = Phase.Calm;
+    }
+
+    method look() in Phase.Battle {
+    }
+
+    method look() in Battle.Far {
+    }
+}
+
+class Odd {
+    has {
+        state = Phase.Calm;
+    }
+
+    method look() in {
+    }
+}
+
+method alone() in Calm {
+}
+
+class Ghost like Hero {
+    method fire(float n) in Calm {
+    }
+}
+end

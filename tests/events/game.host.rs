@@ -68,6 +68,8 @@ fn main() {
     println!("{:?}", health.to_data());
     // Broken: no entry covers it, so a hit is ignored, though the shield handles Hit.
     println!("{:?} {:?}", shield.handle("Hit", &[game::Value::Entity(None), game::Value::Float(1.0), game::Value::Text("Ice".into())]), shield.to_data());
+    // Broken: update runs its body for Broken.
+    println!("{:?}", shield.update(0.5));
     // Cracked: the most precise entry wins over Down's.
     shield.set_data(&[("state".to_string(), game::Value::Text("Down.Cracked".into()))].into_iter().collect());
     println!("{:?} {:?}", shield.handle("Hit", &[game::Value::Entity(None), game::Value::Float(1.0), game::Value::Text("Ice".into())]), shield.to_data());

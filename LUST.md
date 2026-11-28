@@ -4,7 +4,7 @@ Lust is a small, strict language for apps, games and tools. It reads like a calm
 
 This is the single source of truth for Lust v2. Things still being designed are marked **(to design)** and gathered in the last section.
 
-> **What works today (alpha 97):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options, set with `=`, and values carried by each option), classes, objects, `like`, records (plain groups of values, copied wherever they go), methods (with values given by name, as `spawn(x = 3, y = 5)`), hooks with `new hook`, every kind of `loop`, `try`/`error` (with `Problem`, the kinds of failure, as a built-in state), `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too), with built-in states for their fixed choices (`Day`, `Request` and `Answer`). Waiting pauses only the run that waits (`wait`, `wait { }` until questions are true or a state is one of a `check`'s options, `or after` time limits, `start` to run a call alongside, `start gate = …` and `cancel gate;` to name and stop it, and `gate.state` to see how it's going), and so do asking a website and the computer's own file boxes; work started during a state is cancelled when the state ends, and a program whose runs could only wake each other stops with a message naming them. In a game, event handlers and started work wait across the engine's ticks, on the game's own time. Events in any program (`event`, `on { }` and `send`, with handlers for some of a thing's options: `Hit(…) in Battle { … }`), sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, tables and long lists, right-click menus, rows dragged to new places, dropped files, the mouse on a canvas, scrolling, pictures (SVG too), timers, keyboard shortcuts, fonts of your own, date and colour pickers, second windows, full screen, toasts, notifications and a tray icon, all drawn by Lust itself, sharp at any screen scaling, with input methods for typing any language and a tree for screen readers. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
+> **What works today (alpha 98):** both outputs. `.lsc` files are checked and turned into Lua. `.lst` files are checked and built into real programs through Rust (`lust build`), and `lust run` runs either kind straight away through Lua. Built so far: types (with vec3, vec2, rotation and colour), questions, `either`, maths (with bitwise operators) and text, arrays, maps, cMaps (with key-makers), states (with options inside options, set with `=`, and values carried by each option), classes, objects, `like`, records (plain groups of values, copied wherever they go), methods (with values given by name, as `spawn(x = 3, y = 5)`, and bodies for some of a thing's options: `method fire() in Battle { … }`), hooks with `new hook`, every kind of `loop`, `try`/`error` (with `Problem`, the kinds of failure, as a built-in state), `lua { }` blocks, the built-ins and the standard library (text and array tools, `Maths`, `Random`, `Files`, `Time` and `Json`, which holds vectors, rotations and colours too), with built-in states for their fixed choices (`Day`, `Request` and `Answer`). Waiting pauses only the run that waits (`wait`, `wait { }` until questions are true or a state is one of a `check`'s options, `or after` time limits, `start` to run a call alongside, `start gate = …` and `cancel gate;` to name and stop it, and `gate.state` to see how it's going), and so do asking a website and the computer's own file boxes; work started during a state is cancelled when the state ends, and a program whose runs could only wake each other stops with a message naming them. In a game, event handlers and started work wait across the engine's ticks, on the game's own time. Events in any program (`event`, `on { }` and `send`, with handlers for some of a thing's options: `Hit(…) in Battle { … }`), sharing between files (`pass`/`fetch`/`get`), things ending with their state (`keep`), nodes, assemblies, saves, databases and servers (`schema`/`route`) work too. Windows with `view` are built too: layout, styles, pieces of your own, inputs, text boxes, dropdowns, menus, dialogs, tips, dark mode, grids, splits, tabs, branches, progress bars, drawing, animation, tweens with easing, checkboxes, switches, radio buttons, number boxes, sliders, icons, tables and long lists, right-click menus, rows dragged to new places, dropped files, the mouse on a canvas, scrolling, pictures (SVG too), timers, keyboard shortcuts, fonts of your own, date and colour pickers, second windows, full screen, toasts, notifications and a tray icon, all drawn by Lust itself, sharp at any screen scaling, with input methods for typing any language and a tree for screen readers. Lust can also be part of a Rust program, with `native` methods and `lust build --library`. Not yet: LustQL as a language of its own. Lust v1 lives on the `v1` branch.
 
 ---
 
@@ -782,6 +782,50 @@ class Hero {
 - **`like`:** a class with entries of its own for an event replaces all of its parent's entries for that event, as a handler without `in` would; it never mixes its entries with its parent's. For events it has no entries for, it hears them as its parent does, choosing by its own current option.
 - **Everywhere `on` is:** classes, objects, nodes, windows, assemblies' pieces and components (whose `has` can hold `state = …;` too). It's quick: choosing the entry is one look-up by the current option, from a table made once, in both outputs.
 
+### Methods in some options: in
+
+A thing with a state of its own (section 8) can say which of its options a method is for. The same method can then have several **bodies**, each for different options, the way an event has entries (above):
+
+```
+state Phase = [Calm, Battle [Melee, Ranged], Dead];
+
+class Hero {
+    has {
+        int ammo = 3;
+        state = Phase.Calm;
+    }
+
+    method fire() in Battle {
+        ammo -= 1;
+    }
+
+    method fire() in Battle.Ranged {
+        print("aim first");
+    }
+
+    method int power(int base) in Calm {
+        return base;
+    }
+
+    method int power(int base) {
+        return base * 2;
+    }
+}
+
+Hero hero = new Hero;
+hero:fire();             -- stops: fire is only for Battle, but this Hero is Calm.
+```
+
+- **`in Option`** goes after the method's values, naming an option of the thing's own state, written on its own as in a `check`'s `when` (`in Battle`, not `in Phase.Battle`). Options inside options are written with their path: `in Battle.Melee`.
+- **Options inside options:** `in Battle` covers `Battle.Melee` and `Battle.Ranged` too. When two bodies cover an option, the most precise one wins, whatever order they're written in.
+- **A body without `in`** covers every option no other body covers.
+- **Calling a method while no body covers the thing's option** is an error of a kind of its own, `Problem.WrongState` (section 15): `fire is only for Battle, but this Hero is Calm.` The error is where the method was called, and `try` catches it like any other. The message names the thing by its class (`this Hero`, or `this Ghost` for a Ghost `like` Hero), or by its own name for an object or a node (`Gate`): a call doesn't carry the variable's name, which keeps every call as quick as before. To have no error at all, give the method a body without `in`.
+- **The body is chosen when the method is called,** by the option the thing is in then.
+- **Every body takes the same values and gives back the same,** with the same names and types: `int power(int base)` each time. Called with named values, `start`ed, or waiting, a method with bodies works like any other.
+- **Mistakes:** two bodies for the same option, or two without `in`; bodies that differ in their values or what they give back; `in` on a thing with no state of its own (`Plain has no state of its own, so fire can't be in Calm.`) or on a method on its own; `in` naming an option its state doesn't have, with a suggestion when there's one close; a `native` method with `in`; and a component's `update` with bodies only in some options, since it runs every tick whatever the option (give it a body without `in` too).
+- **`like`:** a class with bodies of its own for a method (or a plain method of that name) replaces all of its parent's bodies for it; it never mixes its bodies with its parent's. A method it doesn't write is its parent's, chosen by its own current option.
+- **Everywhere methods are:** classes, objects, nodes, windows, assemblies' pieces and components. It's quick: choosing the body is one look-up by the current option, from a table made once, in both outputs.
+
 ### Waiting: wait and start
 
 `wait seconds;` lets that many seconds go by, and `start` runs a method call alongside. Only the piece of work that waits pauses, never the window or the rest of the program:
@@ -1217,6 +1261,7 @@ These are `Problem`'s options:
 | `NoAnswer` | a website couldn't be reached, or answered with an error other than 401, 403 or 404 |
 | `Database` | the database itself failed: it couldn't be opened, or SQLite couldn't do what was asked |
 | `Stopped` | `Web:fail` stopped a route's method |
+| `WrongState` | a method was called while its thing is in an option none of the method's bodies is for (Methods in some options, section 11) |
 | `Other` | anything else, like a method calling itself forever |
 
 ---
