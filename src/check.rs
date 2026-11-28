@@ -108,6 +108,25 @@ pub enum NameRes {
     OwnMethod,
 }
 
+/// What `named` found in a call's values.
+enum Named {
+    /// No value is named.
+    None,
+    /// Every value is named rightly: for each of the method's values, which one is written.
+    Placed(Vec<usize>),
+    /// A mistake, already said.
+    Wrong,
+}
+
+/// What working out a value can do: nothing that changes (a number, a variable of the method's
+/// own), read something that could change (a field), or work of its own (a call).
+#[derive(Clone, Copy, PartialEq)]
+enum Kind {
+    Steady,
+    Reads,
+    Works,
+}
+
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum CallRes {
     Builtin,
@@ -138,6 +157,9 @@ pub struct Info {
     pub state_reads: HashMap<usize, (usize, usize)>,
     /// The names a `new hook { }` gives its values.
     pub hook_params: HashMap<usize, Vec<String>>,
+    /// Named values (`spawn(x = 3, y = 5)`), by the id of a call's first value: for each of the
+    /// method's or event's values, in its order, which value written in the call it is.
+    pub named: HashMap<usize, Vec<usize>>,
     /// Declared types: a variable's, keyed by its value; a called local hook's, keyed by the call.
     pub decl_types: HashMap<usize, Ty>,
     /// Standard library calls, by expression.
@@ -3599,12 +3621,36 @@ impl<'a> Checker<'a> {
             } => {
                 let shown = crate::ast::shown(event).to_string();
                 let want = self.info.events.get(event).cloned();
+                // send Wants(jump = true, fire = false): named values, put in the event's order.
+                let written = args;
+                let mut order = None;
+                let mut wrong = false;
+                let placed: Vec<Expr>;
+                let args: &[Expr] = match &want {
+                    Some(w) => match self.named(written, w, &shown, *epos, None) {
+                        Named::None => written,
+                        Named::Placed(o) => {
+                            placed = o.iter().map(|&i| written[i].unnamed().clone()).collect();
+                            order = Some(o);
+                            &placed
+                        }
+                        Named::Wrong => {
+                            wrong = true;
+                            placed = written.iter().map(|a| a.unnamed().clone()).collect();
+                            &placed
+                        }
+                    },
+                    None => {
+                        placed = written.iter().map(|a| a.unnamed().clone()).collect();
+                        &placed
+                    }
+                };
                 match &want {
                     None => self.err(
                         *epos,
                         format!("there's no event called {shown}. Say what it carries first: event {shown}(entity by);"),
                     ),
-                    Some(w) if w.len() != args.len() => {
+                    Some(w) if w.len() != args.len() && !wrong => {
                         let carries: Vec<String> = w.iter().map(|(n, t)| format!("{} {n}", self.show(t))).collect();
                         let (n, s) = (w.len(), if w.len() == 1 { "" } else { "s" });
                         self.err(
@@ -3619,7 +3665,7 @@ impl<'a> Checker<'a> {
                     _ => {}
                 }
                 for (i, a) in args.iter().enumerate() {
-                    match want.as_ref().and_then(|w| w.get(i)).cloned() {
+                    match want.as_ref().filter(|_| !wrong).and_then(|w| w.get(i)).cloned() {
                         Some((n, t)) => {
                             let got = self.expr(a, ctx, Some(&t));
                             self.expect_fits(a, &got, &t, &format!("{shown}'s {n} is {}", self.a(&t)));
@@ -3628,6 +3674,9 @@ impl<'a> Checker<'a> {
                             self.expr(a, ctx, None);
                         }
                     }
+                }
+                if let Some(o) = &order {
+                    self.work_order(written, o, &shown);
                 }
                 let Some(to) = to else {
                     // To every thing that handles it.
@@ -4433,6 +4482,15 @@ impl<'a> Checker<'a> {
                 Ty::Str
             }
             ExprKind::Bool(_) => Ty::Truth,
+            // Only a method or event of the program's own (or the engine's) takes values by name,
+            // and those are put in their places before they get here.
+            ExprKind::Named(n, npos, v) => {
+                self.err(
+                    *npos,
+                    format!("built-in methods take their values in order, without names, so write just the value, without {n} =."),
+                );
+                self.expr(v, ctx, expected)
+            }
             ExprKind::Random(lo, hi) => {
                 let a = self.expr(lo, ctx, None);
                 let b = self.expr(hi, ctx, None);
@@ -5797,6 +5855,182 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// The values of a call to a method of the program's own, an event's or the engine's, which
+    /// may be named (`spawn(x = 3, y = 5)`). `refuse` says why names can't be used here.
+    fn own_args(&mut self, args: &[Expr], params: &[(String, Ty)], what: &str, pos: Pos, ctx: &mut Ctx, refuse: Option<String>) {
+        match self.named(args, params, what, pos, refuse) {
+            Named::None => self.args(args, params, what, pos, ctx),
+            Named::Placed(order) => {
+                let placed: Vec<Expr> = order.iter().map(|&w| args[w].unnamed().clone()).collect();
+                self.args(&placed, params, what, pos, ctx);
+                self.work_order(args, &order, what);
+            }
+            Named::Wrong => {
+                for a in args {
+                    self.expr(a.unnamed(), ctx, None);
+                }
+            }
+        }
+    }
+
+    /// Why a hook's values can't be named, when its type doesn't name them all.
+    fn hook_names(sig: &HookSig, what: &str) -> Option<String> {
+        if sig.params.iter().all(|(_, n)| n.is_some()) {
+            return None;
+        }
+        Some(format!(
+            "{what}'s values have no names in its type, so they go in order. To name them, name them in the type, like hook(int amount)."
+        ))
+    }
+
+    /// Works out where each named value goes: for each of `params`, in order, which of `args`
+    /// is it. Every value is named or none is, each name once, and each one of `params`.
+    fn named(&mut self, args: &[Expr], params: &[(String, Ty)], what: &str, pos: Pos, refuse: Option<String>) -> Named {
+        let name_of = |a: &Expr| match &a.kind {
+            ExprKind::Named(n, p, _) => Some((n.clone(), *p)),
+            _ => None,
+        };
+        let Some((_, first)) = args.iter().find_map(name_of) else {
+            return Named::None;
+        };
+        if let Some(why) = refuse {
+            self.err(first, why);
+            return Named::Wrong;
+        }
+        let names: Vec<String> = params.iter().map(|(n, _)| n.clone()).collect();
+        if let Some(bare) = args.iter().find(|a| name_of(a).is_none()) {
+            self.err(
+                bare.pos,
+                format!(
+                    "a call names every value or none of them, but this value has no name. {what} takes {}.",
+                    and_list(&names)
+                ),
+            );
+            return Named::Wrong;
+        }
+        let mut wrong = false;
+        let mut seen: Vec<String> = Vec::new();
+        for a in args {
+            let Some((n, p)) = name_of(a) else { continue };
+            if seen.contains(&n) {
+                self.err(p, format!("{n} is named twice. Each value is named once."));
+                wrong = true;
+                continue;
+            }
+            seen.push(n.clone());
+            if !names.contains(&n) {
+                let close = suggest(&n, names.iter().cloned());
+                let hint = if !close.is_empty() {
+                    close
+                } else if names.is_empty() {
+                    format!(" {what} takes nothing.")
+                } else {
+                    format!(" Its values are {}.", and_list(&names))
+                };
+                self.err(p, format!("{what} has no value called {n}.{hint}"));
+                wrong = true;
+            }
+        }
+        if wrong {
+            return Named::Wrong;
+        }
+        let missing: Vec<String> = names.iter().filter(|n| !seen.contains(n)).cloned().collect();
+        if !missing.is_empty() {
+            let (it, is) = if missing.len() == 1 { ("it", "isn't") } else { ("they", "aren't") };
+            self.err(pos, format!("{what} needs {} too, but {it} {is} named here.", and_list(&missing)));
+            return Named::Wrong;
+        }
+        let order: Vec<usize> = names
+            .iter()
+            .map(|n| args.iter().position(|a| name_of(a).is_some_and(|(x, _)| &x == n)).unwrap_or(0))
+            .collect();
+        self.info.named.insert(args[0].id, order.clone());
+        Named::Placed(order)
+    }
+
+    /// Named values are worked out in the method's order, not the order they're written. That's
+    /// the same unless one of two values that swap places does work (calls something, makes
+    /// something, or could stop the program) and the other could see it: then it's a mistake.
+    fn work_order(&mut self, args: &[Expr], order: &[usize], what: &str) {
+        let kinds: Vec<Kind> = args.iter().map(|a| self.kind_of(a.unnamed())).collect();
+        let name = |w: usize| match &args[w].kind {
+            ExprKind::Named(n, p, _) => (n.clone(), *p),
+            _ => (String::new(), args[w].pos),
+        };
+        for (i, &early) in order.iter().enumerate() {
+            for &late in &order[i + 1..] {
+                // `early` is worked out first, but written after `late`.
+                if early < late {
+                    continue;
+                }
+                let (a, b) = (kinds[early], kinds[late]);
+                if (a == Kind::Works && b != Kind::Steady) || (b == Kind::Works && a != Kind::Steady) {
+                    let (first, _) = name(early);
+                    let (second, at) = name(late);
+                    let worker = if a == Kind::Works { first.clone() } else { second.clone() };
+                    self.err(
+                        at,
+                        format!(
+                            "{what} takes {first} before {second}, and {worker}'s value does work (it calls something, makes something or could stop the program), so working them out in that order could change what you get. Name {first} first, or work {worker} out into a variable before this line."
+                        ),
+                    );
+                    return;
+                }
+            }
+        }
+    }
+
+    /// Whether working out a value does something, reads something that could change, or neither.
+    fn kind_of(&self, e: &Expr) -> Kind {
+        fn worst(a: Kind, b: Kind) -> Kind {
+            if a == Kind::Works || b == Kind::Works {
+                Kind::Works
+            } else if a == Kind::Reads || b == Kind::Reads {
+                Kind::Reads
+            } else {
+                Kind::Steady
+            }
+        }
+        if self.info.options.contains_key(&e.id) {
+            return Kind::Steady;
+        }
+        match &e.kind {
+            ExprKind::Int(_) | ExprKind::Float(_) | ExprKind::Str(_) | ExprKind::Bool(_) | ExprKind::Nothing => Kind::Steady,
+            // Making a hook runs nothing.
+            ExprKind::NewHook(_) => Kind::Steady,
+            // A variable of the method's own can't be changed by working out another value; a
+            // field or a variable at the top of the file can.
+            ExprKind::Name(_) => match self.info.names.get(&e.id) {
+                Some(NameRes::Local) if !self.info.top_names.contains_key(&e.id) => Kind::Steady,
+                Some(NameRes::Object) => Kind::Steady,
+                _ => Kind::Reads,
+            },
+            ExprKind::Field(t, ..) | ExprKind::MethodRef(t, ..) | ExprKind::Len(t) | ExprKind::Like(t, ..) => {
+                worst(Kind::Reads, self.kind_of(t))
+            }
+            ExprKind::Neg(t) | ExprKind::Not(t) | ExprKind::BitNot(t) => self.kind_of(t),
+            ExprKind::Bin(BinOp::Div | BinOp::Mod, ..) => Kind::Works,
+            ExprKind::Bin(_, a, b, _) => worst(self.kind_of(a), self.kind_of(b)),
+            ExprKind::Either(a, b, c) => worst(worst(self.kind_of(a), self.kind_of(b)), self.kind_of(c)),
+            ExprKind::Template(parts) => parts.iter().fold(Kind::Steady, |k, p| match p {
+                TemplatePart::Value(v) => worst(k, self.kind_of(v)),
+                TemplatePart::Text(_) => k,
+            }),
+            ExprKind::List { items, keys } => items
+                .iter()
+                .chain(keys.iter().flatten())
+                .fold(Kind::Steady, |k, x| worst(k, self.kind_of(x))),
+            ExprKind::Named(_, _, v) => self.kind_of(v),
+            ExprKind::Call(..)
+            | ExprKind::Method(..)
+            | ExprKind::New { .. }
+            | ExprKind::Index(..)
+            | ExprKind::Convert(..)
+            | ExprKind::Saved(_)
+            | ExprKind::Random(..) => Kind::Works,
+        }
+    }
+
     fn hook_params(sig: &HookSig) -> Vec<(String, Ty)> {
         sig.params
             .iter()
@@ -5874,7 +6108,7 @@ impl<'a> Checker<'a> {
                 self.info.calls.insert(e.id, CallRes::LocalHook);
                 self.info.decl_types.insert(e.id, l.ty.clone());
                 let params = Self::hook_params(sig);
-                self.args(args, &params, name, e.pos, ctx);
+                self.own_args(args, &params, name, e.pos, ctx, Self::hook_names(sig, name));
                 return sig.ret.clone();
             }
             // vec3 velocity = velocity();: a variable can share its name with an ability.
@@ -5889,21 +6123,21 @@ impl<'a> Checker<'a> {
         if let Some(c) = ctx.class {
             if let Some(sig) = self.info.method(c, name).cloned() {
                 self.info.calls.insert(e.id, CallRes::Own);
-                self.args(args, &sig.params, name, e.pos, ctx);
+                self.own_args(args, &sig.params, name, e.pos, ctx, None);
                 return sig.ret;
             }
             if let Some(f) = self.info.field(c, name) {
                 if let Ty::Hook(sig) = f.ty.clone() {
                     self.info.calls.insert(e.id, CallRes::FieldHook);
                     let params = Self::hook_params(&sig);
-                    self.args(args, &params, name, e.pos, ctx);
+                    self.own_args(args, &params, name, e.pos, ctx, Self::hook_names(&sig, name));
                     return sig.ret.clone();
                 }
             }
         }
         if let Some(sig) = self.info.methods.get(name).cloned() {
             self.info.calls.insert(e.id, CallRes::Top);
-            self.args(args, &sig.params, name, e.pos, ctx);
+            self.own_args(args, &sig.params, name, e.pos, ctx, None);
             return sig.ret;
         }
         // Inside a component, the entity's own abilities are called bare: moveTo(place) is
@@ -5911,12 +6145,12 @@ impl<'a> Checker<'a> {
         if ctx.class.is_some_and(|c| self.info.classes[c].is_component) {
             if let Some(sig) = self.info.entity_methods.get(name).cloned() {
                 self.info.calls.insert(e.id, CallRes::Ability);
-                self.args(args, &sig.params, name, e.pos, ctx);
+                self.own_args(args, &sig.params, name, e.pos, ctx, None);
                 return sig.ret;
             }
         }
         for a in args {
-            self.expr(a, ctx, None);
+            self.expr(a.unnamed(), ctx, None);
         }
         let mut known: Vec<String> = self.info.methods.keys().cloned().collect();
         if let Some(c) = ctx.class {
@@ -6092,17 +6326,17 @@ impl<'a> Checker<'a> {
             Ty::Class(c) => {
                 if let Some(sig) = self.info.method(c, m).cloned() {
                     self.info.calls.insert(e.id, CallRes::Own);
-                    self.args(args, &sig.params, m, mpos, ctx);
+                    self.own_args(args, &sig.params, m, mpos, ctx, None);
                     return sig.ret;
                 }
                 if let Some(Ty::Hook(sig)) = self.info.field(c, m).map(|f| f.ty.clone()) {
                     self.info.calls.insert(e.id, CallRes::FieldHook);
                     let params = Self::hook_params(&sig);
-                    self.args(args, &params, m, mpos, ctx);
+                    self.own_args(args, &params, m, mpos, ctx, Self::hook_names(&sig, m));
                     return sig.ret.clone();
                 }
                 for a in args {
-                    self.expr(a, ctx, None);
+                    self.expr(a.unnamed(), ctx, None);
                 }
                 let cn = self.info.classes[c].name.clone();
                 let mut known = Vec::new();
@@ -6117,19 +6351,19 @@ impl<'a> Checker<'a> {
             }
             Ty::Error => {
                 for a in args {
-                    self.expr(a, ctx, None);
+                    self.expr(a.unnamed(), ctx, None);
                 }
                 Ty::Error
             }
             Ty::Entity if self.info.entity_methods.contains_key(m) => {
                 let sig = self.info.entity_methods[m].clone();
                 self.info.calls.insert(e.id, CallRes::Entity);
-                self.args(args, &sig.params, m, mpos, ctx);
+                self.own_args(args, &sig.params, m, mpos, ctx, None);
                 sig.ret
             }
             other => {
                 for a in args {
-                    self.expr(a, ctx, None);
+                    self.expr(a.unnamed(), ctx, None);
                 }
                 let what = match other {
                     Ty::Array(_) => " Arrays have inject, remove, has, find, join, sort, reverse, shuffle, pick, sum, average, smallest and largest.",

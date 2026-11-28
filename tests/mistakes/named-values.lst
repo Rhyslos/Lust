@@ -1,0 +1,46 @@
+-- Mistakes with named values.
+event Wants(bool jump, bool crouch, bool fire);
+
+method spawn(int x, int y) {
+    print(x, y);
+}
+
+method int roll() {
+    return 4;
+}
+
+class Body {
+    has {
+        int hp = 3;
+        hook(int) onHurt = nothing;
+    }
+    on {
+        Wants(bool jump, bool crouch, bool fire) {
+            print(jump);
+        }
+    }
+    method heal(int amount) {
+        hp += amount;
+    }
+}
+
+Body body = new Body;
+spawn(x = 1, 2);
+spawn(3, y = 4);
+spawn(x = 1, x = 2);
+spawn(x = 1, why = 2);
+spawn(xx = 1, y = 2);
+spawn(x = 1);
+spawn(x = true, y = 2);
+send Wants(jump = true, fire = false) to body;
+send Wants(jump = true, crouch = false, fier = true);
+body:heal(amont = 2);
+body:onHurt(amount = 2);
+print(Maths:sqrt(value = 2.0));
+bool found = "abc":contains(part = "b");
+print(text = "hi");
+spawn(y = roll(), x = body.hp);
+spawn(y = roll(), x = roll());
+nothere(a = 1);
+body:nothere(a = 1);
+end

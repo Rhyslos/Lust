@@ -2101,7 +2101,7 @@ impl<'a> Parser<'a> {
             self.next(); // (
             let mut args = Vec::new();
             while !self.at_sym(")") {
-                args.push(self.expr()?);
+                args.push(self.arg()?);
                 if self.at_sym(",") {
                     self.next();
                 } else if !self.at_sym(")") {
@@ -3262,11 +3262,25 @@ impl<'a> Parser<'a> {
         self.p > 0 && self.toks[self.p - 1].end != self.cur().pos
     }
 
+    /// One value in a call's or a send's ( ): `3`, or `x = 3` with its name.
+    fn arg(&mut self) -> R<Expr> {
+        if let Tk::Ident(name) = &self.cur().kind {
+            if self.peek(1).is_sym("=") {
+                let (name, pos) = (name.clone(), self.cur().pos);
+                self.next();
+                self.next(); // =
+                let value = self.expr()?;
+                return Ok(self.mk(pos, ExprKind::Named(name, pos, Box::new(value))));
+            }
+        }
+        self.expr()
+    }
+
     fn args(&mut self) -> R<Vec<Expr>> {
         self.next(); // (
         let mut args = Vec::new();
         while !self.at_sym(")") {
-            args.push(self.expr()?);
+            args.push(self.arg()?);
             if self.at_sym(",") {
                 self.next();
             } else if !self.at_sym(")") {

@@ -904,6 +904,8 @@ impl<'a> Renamer<'a> {
                 }
             }
             ExprKind::NewHook(body) => self.stmts(body),
+            // The name is the method's or event's own, so only the value is looked up.
+            ExprKind::Named(_, _, v) => self.expr(v),
             _ => {}
         }
     }

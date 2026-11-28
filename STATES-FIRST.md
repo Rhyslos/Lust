@@ -10,18 +10,7 @@ Built in alpha 94: see [LUST.md](LUST.md), section 8, Values on options.
 
 ## 2. Named values
 
-A call or a `send` can name each value, so long lists read clearly and can't be swapped by mistake.
-
-```
-send Wants(jump = true, crouch = false, fire = true) to body;
-spawn(x = 3, y = 5);
-```
-
-- **For method calls and `send` alike** (and `new hook` calls too, if they have names).
-- **All or none:** a call names every value or none of them, never some.
-- **Any order:** named values can come in any order, and each name appears once.
-- **The names are the method's or event's own:** a wrong name is a mistake that suggests the nearest one, and a missing one is a mistake that says which.
-- Nothing changes on the receiving side: the method's or `on` block's names are already there.
+Built in alpha 95: see [LUST.md](LUST.md), section 11, Named values.
 
 ## 3. Records
 
@@ -104,7 +93,7 @@ Not a language change. While `lust run` runs a program from Ledger, a **States**
 ## Build order
 
 1. Data on states (built, alpha 94)
-2. Named values
+2. Named values (built, alpha 95)
 3. Records (Lust's half, and a note for Solis)
 4. Events that count in a state
 5. Methods that exist in some states

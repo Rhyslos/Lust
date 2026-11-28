@@ -1,0 +1,22 @@
+spawn at 3 5
+spawn at 3 5
+spawn at 3 5
+9.0
+body wants true false true
+other wants true true false
+body hit by trap for 2.5
+other hit by trap for 2.5
+body moves to 1.0 2.0 at 9.0
+body moves to 0.5 1.0 at 2.0
+body moves to 3.0 4.0 at 1.5
+working out x
+working out y
+spawn at 1 2
+working out x again
+spawn at 3 7
+working out x once more
+spawn at 4 14
+hurt 3 because fell
+9
+spawn at 2 1
+spawn at -2 11

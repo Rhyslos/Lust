@@ -1,0 +1,20 @@
+named-values.lst:28:14  a call names every value or none of them, but this value has no name. spawn takes x and y.
+named-values.lst:29:7  a call names every value or none of them, but this value has no name. spawn takes x and y.
+named-values.lst:30:14  x is named twice. Each value is named once.
+named-values.lst:31:14  spawn has no value called why. Its values are x and y.
+named-values.lst:32:7  spawn has no value called xx. Did you mean x?
+named-values.lst:33:1  spawn needs y too, but it isn't named here.
+named-values.lst:34:11  x is an int, but this is a bool.
+named-values.lst:35:6  Wants needs crouch too, but it isn't named here.
+named-values.lst:36:41  Wants has no value called fier. Did you mean fire?
+named-values.lst:37:11  heal has no value called amont. Did you mean amount?
+named-values.lst:38:13  onHurt's values have no names in its type, so they go in order. To name them, name them in the type, like hook(int amount).
+named-values.lst:39:18  built-in methods take their values in order, without names, so write just the value, without value =.
+named-values.lst:40:29  built-in methods take their values in order, without names, so write just the value, without part =.
+named-values.lst:41:7  built-in methods take their values in order, without names, so write just the value, without text =.
+named-values.lst:42:7  spawn takes x before y, and y's value does work (it calls something, makes something or could stop the program), so working them out in that order could change what you get. Name x first, or work y out into a variable before this line.
+named-values.lst:43:7  spawn takes x before y, and x's value does work (it calls something, makes something or could stop the program), so working them out in that order could change what you get. Name x first, or work x out into a variable before this line.
+named-values.lst:44:1  there's no method called nothere.
+named-values.lst:45:6  Body has no method called nothere.
+
+18 mistakes. Nothing was run.

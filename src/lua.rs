@@ -2191,6 +2191,8 @@ impl<'a> W<'a> {
                 self.owned(made)
             }
             ExprKind::Saved(_) => "false".into(),
+            // Named values are put in their places once checked (named.rs), so none reach here.
+            ExprKind::Named(_, _, v) => self.expr(v),
             ExprKind::Random(lo, hi) => {
                 let f = if self.info.ty(e) == Ty::Float { "frandom" } else { "random" };
                 format!("_L.{f}({}, {})", self.expr(lo), self.expr(hi))

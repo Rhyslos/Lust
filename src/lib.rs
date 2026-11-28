@@ -27,6 +27,7 @@ mod check;
 mod diag;
 mod lexer;
 mod lua;
+mod named;
 mod parser;
 mod project;
 mod rust;
@@ -232,7 +233,7 @@ fn kind_of(path: &Path, display: &str) -> Result<bool, Vec<Problem>> {
 fn checked(path: &Path, src: String, is_script: bool, mem: Option<&project::Memory>, host: &[String]) -> Result<Checked, Vec<Problem>> {
     let mut diags = diag::Diags::default();
     let project = project::load(path, src, is_script, &mut diags, mem, host);
-    let prog = project.program;
+    let mut prog = project.program;
     let files = project.files;
     let info = check::check(&prog, &mut diags, is_script);
     if !diags.is_empty() {
@@ -247,6 +248,7 @@ fn checked(path: &Path, src: String, is_script: bool, mem: Option<&project::Memo
             })
             .collect());
     }
+    named::place(&mut prog, &info);
     let notes = {
         let mut n = diags.notes.clone();
         n.sort_by_key(|(p, _)| (p.line, p.col));
