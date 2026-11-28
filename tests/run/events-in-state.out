@@ -1,0 +1,24 @@
+camp: quiet
+Ann ticks calmly
+Bo haunts
+Ann is hit by orc while calm, and fights
+Ann takes 3.0 from orc in battle: 7.0
+camp: under attack
+Ann ticks in battle
+Bo haunts
+Ann dodges half of archer's hit at range: 5.0
+Ann can't heal now (Battle.Ranged)
+Bo can't heal now (Dead)
+Ann rests and heals 2: 7.0
+door: knock 1, opening slowly
+Ann says hello in any state
+Bo says hello in any state
+door: already busy
+Ann says hello in any state
+Bo says hello in any state
+Ann dodges half of rat's hit at range: 6.5
+door: open
+Ann takes 20.0 from troll in battle: -13.5
+Bo haunts
+Ann can't heal now (Dead)
+Dead

@@ -1,0 +1,60 @@
+-- Entries for events in options: the mistakes.
+state Phase = [Calm, Battle [Melee, Ranged]];
+
+event Hit(string by, float damage);
+event Tick();
+
+class Hero {
+    has {
+        state = Phase.Calm;
+    }
+
+    on {
+        Hit(string by, float damage) in Battle {
+        }
+        Hit(string by, float damage) in Battle {
+        }
+        Hit(string who, float damage) in Calm {
+        }
+        Hit(string by, int damage) in Battle.Melee {
+        }
+        Tick() {
+        }
+        Tick() in Batle {
+        }
+        Tick() {
+        }
+    }
+}
+
+class Plain {
+    on {
+        Tick() in Calm {
+        }
+    }
+}
+
+object Watcher {
+    has {
+        state = Phase.Calm;
+    }
+
+    on {
+        Tick() in Phase.Battle {
+        }
+        Hit(string by, float damage) in Battle.Far {
+        }
+    }
+}
+
+class Odd {
+    has {
+        state = Phase.Calm;
+    }
+
+    on {
+        Tick() in {
+        }
+    }
+}
+end

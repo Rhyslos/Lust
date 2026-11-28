@@ -1906,3 +1906,159 @@ mod records {
         assert!(fine > 50, "only {fine} programs checked");
     }
 }
+
+#[cfg(test)]
+mod events_in_state {
+    //! Entries for an event in some of a thing's options: Hit(…) in Battle { … }.
+
+    fn files(src: &str) -> Vec<(String, String)> {
+        vec![("main.lst".to_string(), format!("{src}\nend\n"))]
+    }
+
+    fn msgs(src: &str) -> Vec<String> {
+        match crate::check("main.lst", &files(src)) {
+            Ok(()) => vec![],
+            Err(p) => p.into_iter().map(|p| p.message).collect(),
+        }
+    }
+
+    const HEAD: &str = "state P = [Calm, Battle [Melee, Ranged], Dead];\nevent Hit(int n);\n";
+
+    fn hero(entries: &str) -> String {
+        format!("{HEAD}class Hero {{\n    has {{\n        state = P.Calm;\n    }}\n    on {{\n{entries}    }}\n}}\n")
+    }
+
+    /// The table each output chooses from, as Lua writes it.
+    fn table(src: &str) -> String {
+        let lua = crate::to_lua("main.lst", &files(src)).ok().unwrap().code;
+        lua.lines().find(|l| l.starts_with("Hero.__pick_on__Hit = ")).unwrap().to_string()
+    }
+
+    #[test]
+    fn the_most_precise_entry_wins_whatever_the_order() {
+        let t = table(&hero(
+            "        Hit(int n) in Battle.Ranged { }\n        Hit(int n) in Battle { }\n        Hit(int n) { }\n",
+        ));
+        assert!(t.contains("[\"Battle.Ranged\"] = Hero.in__Hit__1"), "{t}");
+        assert!(t.contains("[\"Battle\"] = Hero.in__Hit__2"), "{t}");
+        assert!(t.contains("[\"Battle.Melee\"] = Hero.in__Hit__2"), "{t}");
+        assert!(t.contains("[\"Calm\"] = Hero.in__Hit__3"), "{t}");
+        assert!(t.contains("[\"Dead\"] = Hero.in__Hit__3"), "{t}");
+    }
+
+    #[test]
+    fn options_no_entry_covers_are_left_out() {
+        let src = hero("        Hit(int n) in Calm { }\n");
+        let t = table(&src);
+        assert_eq!(t, "Hero.__pick_on__Hit = { [\"Calm\"] = Hero.in__Hit__1 }");
+        let rust = crate::to_rust_library("main.lst", &files(&src)).unwrap();
+        assert!(rust.contains("\"Calm\" => m0_in__Hit__1(this, v_n),"), "{rust}");
+        assert!(rust.contains("_ => {}"));
+    }
+
+    #[test]
+    fn events_without_in_are_as_before() {
+        let src = hero("        Hit(int n) { }\n");
+        let lua = crate::to_lua("main.lst", &files(&src)).ok().unwrap().code;
+        assert!(!lua.contains("__pick"));
+        assert!(msgs(&hero("        Hit(int n) { }\n        Hit(int n) { }\n"))[0].contains("Hero already handles Hit"));
+    }
+
+    #[test]
+    fn mistakes() {
+        let one = |entries: &str| msgs(&hero(entries)).join("\n");
+        assert!(one("        Hit(int n) in Calm { }\n        Hit(int n) in Calm { }\n").contains("already an entry for Hit in Calm"));
+        assert!(
+            one("        Hit(int n) in Calm { }\n        Hit(int n) { }\n        Hit(int n) { }\n")
+                .contains("already an entry for Hit without in")
+        );
+        assert!(one("        Hit(int n) in Calm { }\n        Hit(int m) in Dead { }\n")
+            .contains("same values, with the same names: Hit(int n)"));
+        assert!(one("        Hit(int n) in Calm { }\n        Hit(float n) in Dead { }\n").contains("same values"));
+        assert!(one("        Hit(int n) in Calmm { }\n").contains("P has no option called Calmm. Did you mean Calm?"));
+        assert!(one("        Hit(int n) in Battle.Far { }\n").contains("P has no option called Battle.Far."));
+        assert!(one("        Hit(int n) in P.Calm { }\n").contains("write the option on its own: in Calm"));
+        assert!(one("        Hit(int n) in { }\n").contains("in names the option this entry is for"));
+        // A thing with no state of its own.
+        let plain = msgs(&format!(
+            "{HEAD}object Door {{\n    on {{\n        Hit(int n) in Calm {{ }}\n    }}\n}}\n"
+        ));
+        assert!(plain[0].contains("Door has no state of its own"), "{plain:?}");
+        // The entries' values must still be what the event carries.
+        assert!(one("        Hit(string n) in Calm { }\n").contains("a handler takes what its event carries"));
+    }
+
+    #[test]
+    fn like_replaces_all_of_an_events_entries() {
+        let src = format!(
+            "{}class Ghost like Hero {{\n    on {{\n        Hit(int n) in Dead {{ }}\n    }}\n}}\n",
+            hero("        Hit(int n) in Calm { }\n        Hit(int n) in Battle { }\n")
+        );
+        let lua = crate::to_lua("main.lst", &files(&src)).ok().unwrap().code;
+        assert!(lua.contains("Ghost.__pick_on__Hit = { [\"Dead\"] = Ghost.in__Hit__1 }"), "{lua}");
+        crate::to_rust_library("main.lst", &files(&src)).unwrap();
+    }
+
+    #[test]
+    fn entries_fuzzed() {
+        // On blocks made at random from a fixed seed, sometimes broken by a piece dropped or
+        // added: checking never panics, and a program that checks writes both outputs.
+        let mut seed = 2028u64;
+        let mut next = |n: usize| {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            ((seed >> 33) % n as u64) as usize
+        };
+        let options = [
+            "Calm",
+            "Battle",
+            "Battle.Melee",
+            "Battle.Ranged",
+            "Dead",
+            "Calmm",
+            "P.Calm",
+            "Battle.Far",
+        ];
+        let values = ["int n", "int n", "int n", "int m", "float n", ""];
+        let junk = ["in", "{", "}", ".", "(", ")", ";", "Hit", "on"];
+        let mut fine = 0;
+        for _ in 0..1500 {
+            let mut entries = String::new();
+            for _ in 0..1 + next(4) {
+                let v = values[if next(5) == 0 { next(values.len()) } else { 0 }];
+                let opt = match next(6) {
+                    0 => String::new(),
+                    _ => format!(" in {}", options[if next(4) == 0 { next(options.len()) } else { next(5) }]),
+                };
+                let body = if next(4) == 0 {
+                    "state = P.Dead; wait 0.1; print(n);"
+                } else {
+                    "print(n);"
+                };
+                entries.push_str(&format!("        Hit({v}){opt} {{ {body} }}\n"));
+            }
+            let mut text = hero(&entries);
+            if next(4) == 0 {
+                text = text.replace("        state = P.Calm;\n", "");
+            }
+            text.push_str("Hero h = new Hero;\nsend Hit(1) to h;\n");
+            if next(3) == 0 {
+                let at = next(text.len());
+                if text.is_char_boundary(at) {
+                    match next(2) {
+                        0 => text.insert_str(at, junk[next(junk.len())]),
+                        _ => {
+                            text.remove(at);
+                        }
+                    }
+                }
+            }
+            let f = files(&text);
+            if crate::check("main.lst", &f).is_ok() {
+                crate::to_lua("main.lst", &f).unwrap();
+                crate::to_rust_library("main.lst", &f).unwrap();
+                fine += 1;
+            }
+        }
+        assert!(fine > 100, "only {fine} programs checked");
+    }
+}

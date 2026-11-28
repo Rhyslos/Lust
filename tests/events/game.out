@@ -3,13 +3,16 @@ event Died []
 event Hit [("by", Entity), ("damage", Float), ("kind", Choice(["Fire", "Ice"]))]
 event Pushed [("push", Vec3), ("turn", Rotation)]
 event Scored [("points", Int)]
-Armor handles ["Damaged", "Hit"], Health ["Died", "Hit"], Gun ["Pushed"]
+Armor handles ["Damaged", "Hit"], Health ["Died", "Hit"], Gun ["Pushed"], Shield ["Hit"]
 tick 0
 queued Hit to Some(2): [Entity(Some(1)), Float(6.0), Text("Fire")]
 0000000000002 Armor: dent 1
 0000000000002 Health: hit by 0000000000001 for 6.0 Fire
 queued Damaged to Some(2): [Float(6.0)]
+Shield: blocked Fire, now down
+shield is Text("Down")
 0000000000002 Armor: took 6.0
+shield is Text("Down")
 tick 1
 tick 2
 queued Hit to Some(2): [Entity(Some(1)), Float(6.0), Text("Fire")]
@@ -17,17 +20,24 @@ queued Hit to Some(2): [Entity(Some(1)), Float(6.0), Text("Fire")]
 0000000000002 Health: hit by 0000000000001 for 6.0 Fire
 queued Damaged to Some(2): [Float(6.0)]
 queued Died to Some(2): []
+Shield: took 6.0, -2.0 left
+shield is Text("Broken")
 0000000000002 Armor: took 6.0
+shield is Text("Broken")
 0000000000002 Health: died
 score 10
+shield is Text("Broken")
 0000000000001 Gun: pushed [1.0, 2.0, 0.5] turned [3.422854e-08, 0.9999999, 0.0]
 Ok(true)
-Err(LustError { file: "game.lst", line: Some(85), column: Some(9), message: "Pushed carries 2 values, but 1 came.", problem: "Other" })
-Err(LustError { file: "game.lst", line: Some(85), column: Some(9), message: "Pushed's push should be three numbers.", problem: "Other" })
+Err(LustError { file: "game.lst", line: Some(113), column: Some(9), message: "Pushed carries 2 values, but 1 came.", problem: "Other" })
+Err(LustError { file: "game.lst", line: Some(113), column: Some(9), message: "Pushed's push should be three numbers.", problem: "Other" })
 Ok(false)
 Err(LustError { file: "game.lst", line: Some(32), column: Some(9), message: "Hit's kind should be Fire or Ice.", problem: "Other" })
 {"hp": Float(-2.0)}
+Ok(true) {"hp": Float(-2.0), "state": Text("Broken")}
+Shield: cracked, so it breaks
+Ok(true) {"hp": Float(-2.0), "state": Text("Broken")}
 Ok(3)
-game.lst:80  dividing a whole number by zero doesn't work.
-"game.lst" Some(80) Some(13)
+game.lst:108  dividing a whole number by zero doesn't work.
+"game.lst" Some(108) Some(13)
 Lust 2.0.0

@@ -242,6 +242,36 @@ impl Info {
         self.field(c, "state").is_some()
     }
 
+    /// The state a class's own `state` field holds, if it has one.
+    pub fn own_state(&self, c: usize) -> Option<usize> {
+        match self.field(c, "state").map(|f| &f.ty) {
+            Some(Ty::State(s)) => Some(*s),
+            _ => None,
+        }
+    }
+
+    /// For a handler with entries (Hit(…) in Battle { … }): each option of the thing's own state
+    /// that an entry covers, and that entry's number. The most precise entry wins, and the one
+    /// without `in` covers the rest; options no entry covers are left out.
+    pub fn picks(&self, c: usize, picks: &[(Option<(String, crate::ast::Pos)>, usize)]) -> Vec<(String, usize)> {
+        let Some(s) = self.own_state(c) else { return vec![] };
+        let rest = picks.iter().find(|(o, _)| o.is_none()).map(|(_, k)| *k);
+        self.states[s]
+            .options
+            .iter()
+            .filter_map(|x| {
+                let best = picks
+                    .iter()
+                    .filter_map(|(o, k)| o.as_ref().map(|o| (&o.0, *k)))
+                    .filter(|(o, _)| *x == **o || x.starts_with(&format!("{o}.")))
+                    .max_by_key(|(o, _)| o.len())
+                    .map(|(_, k)| k)
+                    .or(rest)?;
+                Some((x.clone(), best))
+            })
+            .collect()
+    }
+
     /// If this is an object's own state (its `state` field), the object it belongs to:
     /// None for `this`, Some(target) for `player.state`.
     pub fn state_owner<'e>(&self, target: &'e Expr, class: Option<usize>) -> Option<Option<&'e Expr>> {
@@ -1122,6 +1152,7 @@ impl<'a> Checker<'a> {
                 } else {
                     self.info.lust_events = true;
                 }
+                self.entries_in(ci, &c.name, m);
             }
         }
         // Methods that replace a parent's must fit the same way.
@@ -1129,7 +1160,7 @@ impl<'a> Checker<'a> {
             let Some(&ci) = self.info.class_index.get(&c.name) else { continue };
             let Some(parent) = self.info.classes[ci].parent else { continue };
             for m in &c.methods {
-                if m.on.is_some() {
+                if m.on.is_some() || m.entry.is_some() {
                     continue;
                 }
                 if let Some(pm) = self.info.method(parent, &m.name).cloned() {
@@ -3585,6 +3616,37 @@ impl<'a> Checker<'a> {
     /// Does this class have a state of its own (state = …; in its has)?
     pub fn stateful(&self, c: usize) -> bool {
         self.info.field(c, "state").is_some()
+    }
+
+    /// A handler's entries (Hit(…) in Battle { … }) name options of the thing's own state.
+    fn entries_in(&mut self, ci: usize, class: &str, m: &MethodDecl) {
+        let written: Vec<(String, crate::ast::Pos)> = m.picks.iter().filter_map(|(o, _)| o.clone()).collect();
+        let Some((first, fpos)) = written.first().cloned() else { return };
+        let cls = crate::ast::shown(class).to_string();
+        let Some(s) = self.info.own_state(ci) else {
+            self.err(
+                fpos,
+                format!("{cls} has no state of its own, so an entry can't be in {first}. Give it one in its has block (state = …;), or take out in {first}."),
+            );
+            return;
+        };
+        let whole = crate::ast::shown(&self.info.states[s].name).to_string();
+        let opts = self.info.states[s].options.clone();
+        for (o, p) in written {
+            if opts.contains(&o) {
+                continue;
+            }
+            let state_prefix = format!("{whole}.");
+            if let Some(rest) = o.strip_prefix(&state_prefix).filter(|r| opts.iter().any(|x| x == r)) {
+                self.err(
+                    p,
+                    format!("an entry is for an option of {cls}'s own {whole}, so write the option on its own: in {rest}"),
+                );
+            } else {
+                let hint = suggest(&o, opts.iter().cloned());
+                self.err(p, format!("{whole} has no option called {o}.{hint}"));
+            }
+        }
     }
 
     /// Is this a new thing, made in a method of a class with a state, so it belongs to that state?

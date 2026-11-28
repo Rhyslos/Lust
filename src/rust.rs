@@ -298,6 +298,39 @@ pub fn write(prog: &Program, info: &Info, files: &[String], library: bool) -> St
                 let shown = format!("{}:{}", crate::ast::shown(&c.name), m.name);
                 b.push_str(&w.native_body(&name, &shown, &args, &sig.ret));
             }
+            if !m.picks.is_empty() {
+                // Entries in options: the one for the option it's in now, chosen by one match.
+                let ev = m.on.as_ref().map(|e| e.0.clone()).unwrap_or_default();
+                let mut by_entry: Vec<(usize, Vec<String>)> = Vec::new();
+                for (o, k) in info.picks(ci, &m.picks) {
+                    match by_entry.iter_mut().find(|(x, _)| *x == k) {
+                        Some((_, os)) => os.push(format!("{o:?}")),
+                        None => by_entry.push((k, vec![format!("{o:?}")])),
+                    }
+                }
+                let mut args = vec!["this".to_string()];
+                args.extend(m.params.iter().map(|p| format!("v_{}", p.name)));
+                let sf = w.field_of(ci, "state");
+                b.push_str(&format!(
+                    "    let s = this.borrow().{sf};
+    match s {{
+"
+                ));
+                for (k, os) in by_entry {
+                    b.push_str(&format!(
+                        "        {} => m{ci}_{}({}),
+",
+                        os.join(" | "),
+                        ident(&crate::ast::entry_name(&ev, k)),
+                        args.join(", ")
+                    ));
+                }
+                b.push_str(
+                    "        _ => {}
+    }
+",
+                );
+            }
             w.stmts(&m.body, &mut b, 1);
             if sig.ret != Ty::Void && !m.native {
                 b.push_str("    rt::unreachable()\n");

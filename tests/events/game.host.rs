@@ -25,7 +25,7 @@ fn main() {
     for e in game::events() {
         println!("event {} {:?}", e.name, e.values);
     }
-    println!("Armor handles {:?}, Health {:?}, Gun {:?}", game::Armor::HANDLES, game::Health::HANDLES, game::Gun::HANDLES);
+    println!("Armor handles {:?}, Health {:?}, Gun {:?}, Shield {:?}", game::Armor::HANDLES, game::Health::HANDLES, game::Gun::HANDLES, game::Shield::HANDLES);
 
     // Entity 1 has a gun aimed at entity 2, which has armor and health.
     let gun = game::Gun::new().unwrap();
@@ -35,6 +35,8 @@ fn main() {
     armor.set_me(Some(2)).unwrap();
     let health = game::Health::new().unwrap();
     health.set_me(Some(2)).unwrap();
+    let shield = game::Shield::new().unwrap();
+    shield.set_me(Some(2)).unwrap();
 
     for tick in 0..3 {
         println!("tick {tick}");
@@ -44,7 +46,9 @@ fn main() {
             if to == Some(2) {
                 let a = armor.handle(&name, &values).unwrap();
                 let h = health.handle(&name, &values).unwrap();
-                if !a && !h {
+                let s = shield.handle(&name, &values).unwrap();
+                println!("shield is {:?}", shield.to_data()["state"]);
+                if !a && !h && !s {
                     println!("nobody on 2 handles {name}");
                 }
             }
@@ -62,6 +66,11 @@ fn main() {
     println!("{:?}", gun.handle("Hit", &[]));
     println!("{:?}", health.handle("Hit", &[game::Value::Entity(None), game::Value::Int(1), game::Value::Text("Cold".into())]));
     println!("{:?}", health.to_data());
+    // Broken: no entry covers it, so a hit is ignored, though the shield handles Hit.
+    println!("{:?} {:?}", shield.handle("Hit", &[game::Value::Entity(None), game::Value::Float(1.0), game::Value::Text("Ice".into())]), shield.to_data());
+    // Cracked: the most precise entry wins over Down's.
+    shield.set_data(&[("state".to_string(), game::Value::Text("Down.Cracked".into()))].into_iter().collect());
+    println!("{:?} {:?}", shield.handle("Hit", &[game::Value::Entity(None), game::Value::Float(1.0), game::Value::Text("Ice".into())]), shield.to_data());
 
     // A failure in Lust code says where it happened: file, line and column, and why.
     println!("{:?}", gun.share(4));

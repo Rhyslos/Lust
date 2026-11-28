@@ -1,0 +1,11 @@
+events-in-state.lst:15:41  there's already an entry for Hit in Battle.
+events-in-state.lst:17:9  every entry for Hit takes the same values, with the same names: Hit(string by, float damage). This one is Hit(…) in Calm.
+events-in-state.lst:19:9  every entry for Hit takes the same values, with the same names: Hit(string by, float damage). This one is Hit(…) in Battle.Melee.
+events-in-state.lst:23:19  Phase has no option called Batle. Did you mean Battle?
+events-in-state.lst:25:9  there's already an entry for Tick without in. One covers every option the others don't, so there's only one.
+events-in-state.lst:32:19  Plain has no state of its own, so an entry can't be in Calm. Give it one in its has block (state = …;), or take out in Calm.
+events-in-state.lst:43:19  an entry is for an option of Watcher's own Phase, so write the option on its own: in Battle
+events-in-state.lst:45:41  Phase has no option called Battle.Far.
+events-in-state.lst:56:19  in names the option this entry is for: Tick(…) in Battle { … }
+
+9 mistakes. Nothing was run.
