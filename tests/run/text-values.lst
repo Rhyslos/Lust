@@ -31,12 +31,16 @@ print(p:card());
 print("{#p.name} letters. {lives + 1} next time, {either lives > 2? "plenty" or "careful"}");
 print("{p.mood} at {at}");
 print("nested: {"inner {lives}"}");
+-- A value can start with a number, [, - or ~, as in ordinary code.
+print("{1 + lives} {2 * lives - 1} {1.5 + p.speed} {-lives} {~lives} {[1, 2]} {-(lives + 1)}");
+print("{1 + (either lives > 2? 10 or 20)} and {(either lives > 9? "big" or "small") + "!"}");
 string greeting = "hi {p.name.upper()}";
 print(greeting);
 
 -- Plain braces stay plain: JSON, patterns, and \{ for a { before a name.
 print("{\"name\": \"Ada\"}");
 print("[0-9]{4}");
+print("[a-z]{1,3} and {2,} and {0} items, {-} and 5{-}");
 print("{}, { spaced }");
 print("\{lives} is written \{lives}");
 end

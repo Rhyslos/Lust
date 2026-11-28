@@ -1,0 +1,6 @@
+text-values-start.lst:3:13  either goes in brackets after +, so it's clear where its answers end: print("{1 + (either lives > 2? 1 or 2)}");
+text-values-start.lst:4:17  either goes in brackets after +, so it's clear where its answers end: print("{lives + (either lives > 2? 1 or 2)}");
+text-values-start.lst:5:13  expected a value here, but found the } that ends the value.
+text-values-start.lst:6:19  a { } in text holds one value: "hp: {hp}". Write \{ for a plain {.
+
+4 mistakes. Nothing was run.

@@ -270,10 +270,19 @@ pub fn lex(src: &str, file: usize, diags: &mut Diags) -> Vec<Token> {
                     advance!(2);
                     continue;
                 }
-                // "hp: {hp}": a { straight before a name, a bracket, # or text starts a value. Any
-                // other { is plain text, so JSON and patterns like [0-9]{4} need nothing special.
+                // "hp: {hp}": a { straight before a name, a bracket, # or text starts a value, and
+                // so does one before a number, [, - or ~, as in "{1 + lives}", unless it's a
+                // pattern's count like [0-9]{4} or {1,3}. Any other { is plain text, so JSON and
+                // patterns need nothing special.
                 let next = at(i + 1);
-                if ch == '{' && (next.is_alphabetic() || matches!(next, '(' | '#' | '"')) {
+                let sure = next.is_alphabetic() || matches!(next, '(' | '#' | '"');
+                let maybe = next.is_ascii_digit()
+                    || next == '['
+                    || (matches!(next, '-' | '~') && {
+                        let n = at(i + 2);
+                        n.is_alphanumeric() || n == '('
+                    });
+                if ch == '{' && (sure || maybe) {
                     // Find the } that ends the value: past brackets and text inside it.
                     let (mut j, mut depth) = (i + 1, 1);
                     while j < chars.len() && at(j) != '\n' {
@@ -297,6 +306,12 @@ pub fn lex(src: &str, file: usize, diags: &mut Diags) -> Vec<Token> {
                             _ => {}
                         }
                         j += 1;
+                    }
+                    let count = || chars[i + 1..j].iter().all(|c| c.is_ascii_digit() || *c == ',');
+                    if !sure && (at(j) != '}' || count()) {
+                        s.push(ch);
+                        advance!(1);
+                        continue;
                     }
                     if at(j) != '}' {
                         diags.add(
@@ -408,4 +423,76 @@ pub fn lex(src: &str, file: usize, diags: &mut Diags) -> Vec<Token> {
         end: Pos { line, col },
     });
     out
+}
+
+#[cfg(test)]
+mod text_values {
+    //! Which { in text starts a value, and which is just a brace.
+
+    use super::*;
+
+    /// How many values the text holds, and how many mistakes it gives.
+    fn values(src: &str) -> (usize, usize) {
+        let mut diags = Diags::default();
+        let toks = lex(src, 0, &mut diags);
+        let n = match &toks[0].kind {
+            Tk::Text(parts) => parts.iter().filter(|p| matches!(p, TextPart::Value(_))).count(),
+            _ => 0,
+        };
+        (n, diags.list.len())
+    }
+
+    #[test]
+    fn numbers_and_signs_start_values() {
+        for s in [
+            r#""{1 + a}""#,
+            r#""{2.5}""#,
+            r#""{-a}""#,
+            r#""{~a}""#,
+            r#""{[1, 2]}""#,
+            r#""{-(a)}""#,
+            r#""{12 * a}""#,
+        ] {
+            assert_eq!(values(s), (1, 0), "{s}");
+        }
+    }
+
+    #[test]
+    fn counts_json_and_lone_signs_stay_plain() {
+        for s in [
+            r#""[0-9]{4}""#,
+            r#""{1,3}""#,
+            r#""{2,}""#,
+            r#""{0} items""#,
+            r#""{}""#,
+            r#""{ a }""#,
+            r#""{-}""#,
+            r#""{- a}""#,
+            r#""{\"x\": 1}""#,
+            r#""{1 + 2""#,
+            r#""{[1""#,
+        ] {
+            assert_eq!(values(s), (0, 0), "{s}");
+        }
+    }
+
+    #[test]
+    fn a_name_left_open_is_still_a_mistake() {
+        assert_eq!(values(r#""{a + 1""#), (0, 1));
+    }
+
+    #[test]
+    fn odd_text_never_panics() {
+        let bits = ["{", "}", "1", ",", "-", "~", "[", "]", "(", "a", "\\{", " ", "#", "\\\""];
+        let mut seed = 7u64;
+        for _ in 0..3000 {
+            let mut s = String::from("\"");
+            for _ in 0..(seed % 12) {
+                seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                s.push_str(bits[(seed >> 33) as usize % bits.len()]);
+            }
+            s.push('"');
+            let _ = values(&s);
+        }
+    }
 }
